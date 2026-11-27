@@ -92,9 +92,6 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
       }],
     },
   }],
-  systemInstances: [],
-  settingsSections: [],
-  featureAvailability: [],
 });
 /** The same workflow with a typed Run input, so the Start run dialog mounts an input box. */
 const APP_BOOTSTRAP_WITH_INPUT = FrontendBootstrapWireSchema_m1.parse({ ...APP_BOOTSTRAP, workflows: (APP_BOOTSTRAP.workflows as readonly { readonly start: object }[]).map(flow => ({ ...flow,

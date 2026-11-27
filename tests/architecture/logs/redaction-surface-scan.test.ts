@@ -403,9 +403,9 @@ describe("redaction surface scan — the declaration audit", () => {
     const module = "src/models/dashboard/workbooks.ts";
     const surfaces = REDACTION_SURFACES.filter(surface => surface.module === module);
     assert.deepEqual(surfaces.map(surface => surface.id).sort(), [
-      "durable/editable-workbook", "durable/saved-workbook", "durable/workbook-operation", "request/workbook-create", "request/workbook-intake",
+      "durable/editable-workbook", "durable/saved-workbook", "durable/workbook-operation", "request/workbook-create",
       "request/workbook-operation", "request/workbook-reference", "request/workbook-save", "wire/editable-workbook", "wire/intake-command-result", "wire/saved-workbook",
-      "wire/workbook-history", "wire/workbook-import-result", "wire/workbook-intake", "wire/workbook-list", "wire/workbook-metadata", "wire/workbook-named-version",
+      "wire/workbook-history", "wire/workbook-import-result", "wire/workbook-list", "wire/workbook-metadata", "wire/workbook-named-version",
       "wire/workbook-operation-receipt", "wire/workbook-reference", "wire/workbook-type",
     ]);
     assert.equal(SURFACE_MODULE_DISPOSITIONS.find(entry => entry.module === module)?.state, "audited");
@@ -462,7 +462,7 @@ describe("redaction surface scan — the declaration audit", () => {
       const path = `${surface.startsWith("request/") ? "workbook." : ""}libraryId`;
       assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "captured-hr-value");
     }
-    for (const [surface, path] of [["wire/intake-session", "exclusions[].reason"], ["wire/workbook-intake", "session.exclusions[].reason"], ["wire/intake-command-result", "request.payload.reason"], ["wire/intake-command-result", "request.reason"], ["wire/worker-command-result", "request.reason"]]) {
+    for (const [surface, path] of [["wire/intake-session", "exclusions[].reason"], ["wire/intake-command-result", "request.payload.reason"], ["wire/intake-command-result", "request.reason"], ["wire/worker-command-result", "request.reason"]]) {
       assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "operator-authored", `${surface}|${path}`);
     }
     for (const surface of ["durable/saved-workbook", "wire/saved-workbook", "wire/workbook-history"]) {
@@ -471,7 +471,6 @@ describe("redaction surface scan — the declaration audit", () => {
         assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "repository-authored", `${surface}|${path}`);
       }
     }
-    assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === "wire/workbook-intake" && entry.path === "message")?.origin, "captured-hr-value");
     const origins = SURFACE_LEAF_ORIGINS.filter(entry => surfaces.some(surface => surface.id === entry.surface));
     for (const egress of ["process-egress", "os-notification"] as const) {
       const violations = auditSurfaceOrigins(surfaces.map(surface => ({ ...surface, egress })), origins);

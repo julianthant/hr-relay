@@ -1,7 +1,6 @@
 import { personLookupDescriptor } from "../../registered-workflows.js";
 import { personLookupModule } from "../../registered-workflows.js";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../../../../src/models/dashboard/bootstrap.js";
-import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../../../src/models/dashboard/settings.js";
 import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
 
@@ -137,20 +136,6 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
         readiness: { scope: "workbook-sources", state: "ready" }, spreadsheetIntake: personLookupModule.intake !== undefined, requiredWorkbookFields: [...personLookupModule.descriptor.requiredWorkbookFields],
       },
     }],
-    systemInstances: [
-      { system: "ucpath", prod: "available", test: { state: "available" } },
-      { system: "crm", prod: "available", test: { state: "unavailable", code: "not-configured", reason: "no CRM test instance is configured" } },
-    ],
-
-    settingsSections: [
-      { id: "storage", label: "Storage checks", revision: 1 },
-      { id: SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, label: "Workflow capabilities", revision: 1 },
-    ],
-    featureAvailability: [
-      { feature: "ocr", availability: { state: "unavailable", code: "deferred", reason: "OCR review lands in 2h" } },
-      { feature: "archive", availability: { state: "unavailable", code: "deferred", reason: "archive lands in 2i" } },
-      { feature: "workflow-editor", availability: { state: "unavailable", code: "deferred", reason: "the editor lands in a later phase" } },
-    ],
   });
 
   return { FIXTURE_BOOTSTRAP };

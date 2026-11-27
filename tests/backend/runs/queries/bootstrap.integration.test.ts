@@ -220,7 +220,6 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
   const world = await makeWorld();
   try {
     const wire = buildBootstrap(depsOf(world));
-    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:i9-check-start')).toBe(false);
     expect(wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'i9-check-start')?.start?.uploadRun?.pdfInput).toEqual({
       documentsField: 'documents', asOfField: 'asOf', reviewerField: 'reviewerName',
     });
@@ -229,12 +228,10 @@ it('serves implemented saved-row and CRM starts without stale implementation ref
     });
     const uploadDryRun = (id: string) => wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === id)?.start?.uploadRun?.supportsDryRun;
     expect([uploadDryRun('emergency-contact'), uploadDryRun('i9-check-start')]).toEqual([true, true]);
-    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:onboarding')).toBe(false);
     const onboarding = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'onboarding');
     expect(onboarding?.availability).toEqual({ state: 'available' });
     expect(onboarding?.start?.inputRun?.workbookRows).toEqual({ typeId: 'onboarding-roster', inputField: 'email' });
     expect(onboarding?.start?.inputRun?.typedInput?.initialMode).toBe(null);
-    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:crm-doc-download')).toBe(false);
     const crm = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'crm-doc-download');
     expect(crm?.availability).toEqual({ state: 'available' });
     expect(crm?.start?.inputRun?.parser).toBeDefined();

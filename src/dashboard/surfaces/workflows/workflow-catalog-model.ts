@@ -14,7 +14,7 @@ export interface WorkflowCatalogEntry extends WorkflowNavigationEntry {
 }
 
 /** The catalog lists the served workflows the sources policy marks "served"; nothing else is shown. */
-export function buildWorkflowCatalog(served: readonly RunStartWorkflow[], sources: WorkflowSourcePolicy = WORKFLOW_SOURCES, features: FrontendBootstrapWire["featureAvailability"] = []): readonly WorkflowCatalogEntry[] {
+export function buildWorkflowCatalog(served: readonly RunStartWorkflow[], sources: WorkflowSourcePolicy = WORKFLOW_SOURCES, features?: FrontendBootstrapWire["featureAvailability"]): readonly WorkflowCatalogEntry[] {
   const seen = new Set<string>();
   const entries: WorkflowCatalogEntry[] = served.filter(flow => workflowSource(flow.workflowId, sources) === "served").map(flow => {
     if (seen.has(flow.workflowId)) throw new Error(`WORKFLOW_CATALOG_DUPLICATE: ${flow.workflowId}`);
@@ -37,6 +37,6 @@ export function servedLaunchWorkflows(catalog: readonly WorkflowCatalogEntry[]):
 }
 
 export function workflowStartRestrictions(features: FrontendBootstrapWire['featureAvailability']): ReadonlyMap<string, string> {
-  return new Map(features.flatMap(feature => feature.feature.startsWith('workflow-start:') && feature.availability.state === 'unavailable'
+  return new Map((features ?? []).flatMap(feature => feature.feature.startsWith('workflow-start:') && feature.availability.state === 'unavailable'
     ? [[feature.feature.slice('workflow-start:'.length), feature.availability.reason] as const] : []));
 }

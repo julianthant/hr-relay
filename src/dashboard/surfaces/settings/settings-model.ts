@@ -1,7 +1,4 @@
 import { z } from "zod";
-import type {
-SettingsSectionPrimitiveSchema
-} from "../../../models/dashboard/bootstrap.js";
 import { PreflightCheckWireSchema } from "../../../models/dashboard/bootstrap.js";
 import type {
 EditableSettingsWire
@@ -12,9 +9,6 @@ SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 
 
 export type PreflightCheckWire = z.infer<typeof PreflightCheckWireSchema>;
-
-export type SettingsSection = z.infer<typeof SettingsSectionPrimitiveSchema>;
-
 
 /** Which glyph a nav entry draws. A KEY rather than the component itself
  * because this module may not export a component (see the boundary note above) */

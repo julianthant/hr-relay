@@ -179,21 +179,21 @@ field membership and discriminated states. The client checks identity as well as
 | Start and rerun planning | `commands/start-commands.ts` | `queue.ts`: `POST /api/v1/start-plans`, `POST /api/v1/rerun-warnings` |
 | Run detail, attempts | `queries/detail-queries.ts` | `run-detail.ts`: `GET /api/v1/runs/:runId`, `/attempt-history` |
 | Lazy run sections and rerun values | `queries/detail-queries.ts`, `queries/rerun-queries.ts` | `data.ts`, `trust.ts`: `GET /api/v1/runs/:runId/:section`; `data.ts`: `/rerun-values` |
-| Verified diagnostic bytes | `queries/detail-queries.ts` | `trust.ts`: `GET /api/v1/diagnostic-bundles/:bundleId`, `/manifest`, `/attachments/:artifactId`; verified artifact URL `/artifacts/v1/:artifactId` |
+| Verified diagnostic bytes | `queries/detail-queries.ts` | `trust.ts`: `GET /api/v1/diagnostic-bundles/:bundleId/manifest` and `/attachments/:artifactId` under the bundle path; verified artifact URL `/artifacts/v1/:artifactId` |
 | ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /check`, `/sign-in`, `/sign-in/:attemptId/cancel` under the account path |
 | Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/facts`, `/editable`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
 | Preflight | `queries/preflight-queries.ts`, `queries/chatgpt-account-queries.ts` | `settings-preflight.ts`: `GET /api/v1/preflight`, `POST /api/v1/preflight/rerun`; explicit diagnostic through the existing `chatgpt-account.ts`: `POST /api/v1/settings/chatgpt-account/test-ocr` |
 | Clear run history | `queries/storage-queries.ts`, `commands/settings-commands.ts` | `storage.ts`: `GET /api/v1/storage/run-history`, confirmed `POST /api/v1/storage/run-history/clear`, result-only `POST /api/v1/storage/run-history/result` (never starts an unrecorded command); requires the selected-person `runHistory` service in composition; Clear/result carry the confirmed profile ID and session epoch, admitted before effects and stripped from the internal journal request |
-| Notifications | `queries/notification-queries.ts` | `notifications.ts`: `GET /api/v1/notifications`, `/status`, `/:notificationId/target` |
+| Notifications | `queries/notification-queries.ts` | `notifications.ts`: `GET /api/v1/notifications`, `/:notificationId/target` and `/collection` under the notifications path |
 | Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity.csv`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
 | Explorer | `queries/explorer-queries.ts` | `explorer.ts`: read-only `GET /api/v1/explorer` |
-| Intake | `queries/intake-queries.ts` | `intake.ts`: `POST /api/v1/intake/files`, `GET /api/v1/intake/:sessionId` |
+| Intake | `queries/intake-queries.ts` | `intake.ts`: `GET /api/v1/intake/:sessionId` and `/commands/:commandId` under the session path |
 | Workbook revisions | `queries/workbook-library-queries.ts` | `workbooks.ts`: read-only `GET /api/v1/workbooks/:libraryId/revisions/:version`; exact CAS revision for attachment open/download, independent of named-version history |
 | Commands | `commands/shared-commands.ts`, `index.ts` (`workerCommandResult`) | `commands.ts`: `POST /api/v1/commands`, `/api/v1/commands/bulk`; read-only `GET /api/v1/worker-commands/:commandId` |
 | Day events | `subscriptions/subscription.ts` | `shell.ts`: `GET /events/v1?topics=dashboard-day:<day>[,run:<runId>]` |
 
 `FrontendBootstrapWire` carries actor, server clock, descriptor/config identity, workflows,
-Settings sections, storage, and readiness. `DashboardDayWire` carries the selected day's queue,
+storage, and readiness. `DashboardDayWire` carries the selected day's queue,
 counts, workers and pools, and projection identity. Its optional `attemptHistory`
 contains each queue run's `runId`, `startedAt`, and `endedAt` for that day, including runs in
 progress. When present, `DashboardDayWireSchema` requires exact run membership and matching

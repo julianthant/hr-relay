@@ -10,7 +10,6 @@ import type { DashboardApp } from '../../../../../src/backend/transports/http/ro
 import { registerWorkbookRoutes } from '../../../../../src/backend/transports/http/routes/workbooks.js';
 import { WorkbookLibraryError } from '../../../../../src/backend/workbooks/workbook-library-error.js';
 import { fixtureDescriptor } from '../../../../support/fixtures/descriptor-fixtures.js';
-import { UNWIRED_INTAKE_SERVICE } from "../../../../support/fixtures/intake-kernel-seams.js";
 import { createWorkbookLibraryQueries } from '../../../../../src/dashboard/client/queries/workbook-library-queries.js';
 import { createDashboardTransport } from '../../../../../src/dashboard/client/transport.js';
 import { DashboardClientError } from '../../../../../src/dashboard/client/errors.js';
@@ -98,7 +97,7 @@ it('lists the workbook revision and type from the same authority snapshot', asyn
     } });
     const library = createWorkbookLibraryService({ repository, clock: manualClock(new Date('2026-11-02T00:00:00.000Z')), sync: unexpectedWorkbookSync });
     const app: DashboardApp = new Hono();
-    registerWorkbookRoutes(app, { workbooks: { library, intake: async () => { throw new Error('unexpected intake'); }, workflows: [] } });
+    registerWorkbookRoutes(app, { workbooks: { library, workflows: [] } });
     const client = workbookClient(app);
     const first = library.create(workbook);
     library.putType({ id: 'reference', name: 'Reference', keyFieldId: null, fields: ['roster.date'], defaultWorkbookId: null });
@@ -196,10 +195,7 @@ it('retires workbook routes with no mounted consumer', async () => {
 });
 
 it("serves create/list/open/save/conflict/history with exact Date transport and durable CAS", async () => {
-  const h = await harness({ intake: {
-    ...UNWIRED_INTAKE_SERVICE,
-    upload: async () => ({ state: "refused", code: "unreadable-file", message: "Fixture intake refusal." }),
-  } });
+  const h = await harness();
   const created = await h.app.request("http://localhost/api/v1/workbooks", { method: "POST", headers, body: JSON.stringify({ workbook: encodeEditableWorkbook(workbook) }) });
   assert.equal(created.status, 201);
   const firstBody = await created.text();
@@ -218,11 +214,6 @@ it("serves create/list/open/save/conflict/history with exact Date transport and 
   assert.equal(revision.status, 200);
   assert.equal(await revision.text(), firstBody);
   assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(`${path}/revisions/2`)).json()), second);
-  const intake = await h.app.request(`${path}/intake`, {
-    method: "POST", headers, body: JSON.stringify({ expectedVersion: second.version, workflowId: fixtureDescriptor.id }),
-  });
-  assert.equal(intake.status, 422);
-  assert.equal(await intake.text(), '{"state":"refused","code":"unreadable-file","message":"Fixture intake refusal."}');
   const unavailable = await h.app.request(`${path}/revisions/3`);
   assert.equal(unavailable.status, 404); assert.equal((await unavailable.json() as { code: string }).code, 'WORKBOOK_REVISION_UNAVAILABLE');
   for (const invalid of ['0', '-1', 'NaN', '1.5', '1e0', '01', '0x1', '%201']) assert.equal((await h.app.request(`${path}/revisions/${invalid}`)).status, 400);
@@ -261,14 +252,14 @@ it('returns a named conflict and retains the master when formula metadata makes 
   assert.equal((await response.json() as { code: string }).code, 'WORKBOOK_METADATA_UNSUPPORTED');
   assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(path)).json()), first);
 });
-it.each(["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/copy-mapping", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/library-actions"])("requires JSON before effects for %s", async path => {
+it.each(["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/copy-mapping", "/api/v1/workbooks/types", "/api/v1/workbooks/id/library-actions"])("requires JSON before effects for %s", async path => {
   const h = await harness(), beforeFault = faultAuthoritySnapshot(h);
   const response = await h.app.request(`http://localhost${path}`, { method: "POST", headers: { host: "localhost", origin: "http://localhost", "content-type": "text/plain" }, body: "{}" });
   assert.equal(response.status, 415); assertHttpFaultOnly(h, beforeFault, 1);
 });
 it.each(foreignOriginCases())("rejects foreign workbook mutation %s before reading the body", async (_label, originHeaders) => {
   const h = await harness();
-  for (const path of ["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/copy-mapping", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/library-actions"]) {
+  for (const path of ["/api/v1/workbooks/id/clone", "/api/v1/workbooks/import", "/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/copy-mapping", "/api/v1/workbooks/types", "/api/v1/workbooks/id/library-actions"]) {
     const request = new Request(`http://localhost${path}`, { method: "POST", headers: { ...originHeaders, "content-type": "application/json" }, body: "{}" });
     const read = vi.spyOn(request, "json");
     assert.equal((await h.app.request(request)).status, 403); assert.equal(request.bodyUsed, false); assert.equal(read.mock.calls.length, 0);
@@ -373,7 +364,7 @@ it('dispatches a SharePoint import to the authenticated download boundary and se
           { signal: command.signal, assertCurrent: () => command.signal.throwIfAborted() });
       } } });
     const app: DashboardApp = new Hono();
-    registerWorkbookRoutes(app, { workbooks: { library, intake: async () => { throw new Error('unexpected intake'); }, workflows: [] } });
+    registerWorkbookRoutes(app, { workbooks: { library, workflows: [] } });
     const url = 'https://example.sharepoint.com/sites/hr/Remote.csv';
     const response = await app.request('/api/v1/workbooks/import', { method: 'POST', headers,
       body: JSON.stringify({ source: 'sharepoint', name: 'Remote', url, tags: ['Fall'] }) });
@@ -412,7 +403,7 @@ it('serves a closed retired status without merge payload and rejects its exact c
       if (!(error instanceof WorkbookLibraryError)) throw error;
       return context.json({ code: error.code }, 400);
     });
-    registerWorkbookRoutes(app, { workbooks: { library, intake: async () => { throw new Error('unexpected intake'); }, workflows: [] } });
+    registerWorkbookRoutes(app, { workbooks: { library, workflows: [] } });
     const before = database.prepare('SELECT * FROM workbook_library_actions').all();
     const path = `/api/v1/workbooks/${record.libraryId}/library-actions`;
     const status = await app.request(`${path}/${record.action.operationId}`);
@@ -435,7 +426,7 @@ it("refuses malformed workbook path encoding across reads and mutations", async 
     new Request(`${base}/%zz/revisions/1`),
     new Request(`${base}/example/versions/%zz`),
     new Request(`${base}/example/library-actions/%zz`),
-    ...["clone", "library-actions", "save", "intake"].map(action =>
+    ...["clone", "library-actions", "save"].map(action =>
       new Request(`${base}/%zz/${action}`, { method: "POST", headers, body: "{}" })),
   ];
   const responses = await Promise.all(requests.map(async request => {

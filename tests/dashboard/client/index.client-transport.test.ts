@@ -339,15 +339,13 @@ describe("typed queries and error normalization", () => {
     });
 
     await assert.rejects(client.submitStartPlan({ workflowId: "x", submissions: [{}], dryRun: true, browserMode: "headless", captureBrowserScreenshots: false }));
-    await assert.rejects(client.uploadIntakeFile({
-      workflowId: "x", fileName: "roster.csv", mediaType: "text/csv", bytes: new Uint8Array([1, 2, 3]).buffer,
-    }));
+    await assert.rejects(client.uploadOcrSource({ fileName: "scan.pdf", bytes: new Uint8Array([1, 2, 3]) }));
     await assert.rejects(client.exportXlsx({ requestVersion:3, selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28", snapshotToken:"as1.test.token" } }));
     await assert.rejects(client.bootstrap());
 
     assert.deepEqual(sent, [
       { path: "/api/v1/start-plans", method: "POST", origin: "http://127.0.0.1:3938", contentType: "application/json" },
-      { path: "/api/v1/intake/files", method: "POST", origin: "http://127.0.0.1:3938", contentType: "text/csv" },
+      { path: "/api/v1/ocr/files", method: "POST", origin: "http://127.0.0.1:3938", contentType: "application/pdf" },
       { path: "/api/v1/exports/xlsx", method: "POST", origin: "http://127.0.0.1:3938", contentType: "application/json" },
       { path: "/api/v1/bootstrap", method: "GET", origin: null, contentType: null },
     ]);

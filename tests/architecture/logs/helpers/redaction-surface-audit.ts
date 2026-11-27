@@ -4,7 +4,7 @@ import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema
 import { ChatGptAccountStatusSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptOcrTestResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
 import { EditableWorkbookSchema, SavedWorkbookSchema, EditableWorkbookWireSchema, SavedWorkbookWireSchema,
   WorkbookListWireSchema, WorkbookHistoryWireSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookImportResultSchema,
-  WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, IntakeCommandResultWireSchema,
+  IntakeCommandResultWireSchema,
   WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookOperationSchema, WorkbookOperatorOperationRequestSchema,
   WorkbookOperationReceiptSchema, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookSnapshotSchema } from "../../../../src/models/dashboard/workbooks.js";
 import { CalendarWireSchema } from "../../../../src/models/dashboard/calendar.js";
@@ -771,8 +771,6 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/workbook-reference", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookSnapshotSchema },
   { id: "request/workbook-create", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookCreateRequestSchema },
   { id: "request/workbook-save", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookSaveRequestSchema },
-  { id: "request/workbook-intake", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookIntakeRequestSchema },
-  { id: "wire/workbook-intake", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookIntakeResultSchema },
   { id: "wire/intake-command-result", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: IntakeCommandResultWireSchema },
   { id: "wire/ocr-command-result", egress: "operator-loopback", module: "src/models/dashboard/run-detail.ts", schema: OcrCommandResultWireSchema },
   { id: "wire/worker-command-result", egress: "operator-loopback", module: "src/models/dashboard/worker-command-result.ts", schema: WorkerCommandResultWireSchema },
@@ -1206,29 +1204,6 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/stream-envelope", path: "publication.notification.context.workflow", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "publication.notification.summary", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "publication.notification.title", origin: "repository-authored" },
-  { surface: "wire/workbook-intake", path: "session.columns[].header", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.columns[].normalizedHeader", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.columns[].samples[]", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.constants[].value", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.corrections[].correctedValue", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.exclusions[].reason", origin: "operator-authored" },
-  { surface: "wire/workbook-intake", path: "session.headerCandidates[].cells[]", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.manifest.validRows[].parsedInput", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.rerun.diff.added[].parsedInput", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.rerun.diff.changes[].now", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.rerun.diff.changes[].was", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.rerun.diff.removed[].parsedInput", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.sheet", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.sheets[]", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.sourceName", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.workbookSource.libraryId", origin: "repository-authored" },
-  { surface: "wire/workbook-intake", path: "session.targets[].label", origin: "repository-authored" },
-  { surface: "wire/workbook-intake", path: "session.validation.rejected[].column.header", origin: "captured-hr-value" },
-  { surface: "wire/workbook-intake", path: "session.validation.rejected[].issues[].code", origin: "repository-authored" },
-  { surface: "wire/workbook-intake", path: "session.validation.rejected[].issues[].message", origin: "repository-authored" },
-  { surface: "wire/workbook-intake", path: "session.validation.rejected[].issues[].path[]", origin: "repository-authored" },
-  { surface: "wire/workbook-intake", path: "session.validation.rejected[].path[]", origin: "repository-authored" },
-  { surface: "wire/workbook-intake", path: "session.validation.rejected[].reason", origin: "repository-authored" },
 
   ...["durable/editable-workbook", "wire/editable-workbook"].flatMap(surface => WORKBOOK_VALUE_ORIGINS.map(entry => ({ ...entry, surface }))),
   ...['request/workbook-clone', 'request/workbook-import'].flatMap(surface => ['name', 'tags[]'].map(path => ({ surface, path, origin: 'captured-hr-value' as const }))),
@@ -1261,8 +1236,6 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: 'wire/workbook-reference', path: 'libraryId', origin: 'repository-authored' },
   ...LIBRARY_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-reference', path: `type.${path}`, origin: 'captured-hr-value' as const })),
   ...['rows[].key', 'rows[].matches[].sheetId', 'rows[].matches[].rowId', 'rows[].matches[].values'].map(path => ({ surface: 'wire/workbook-reference', path, origin: 'captured-hr-value' as const })),
-  { surface: "wire/workbook-intake", path: "code", origin: "repository-authored" },
-  { surface: "wire/workbook-intake", path: "message", origin: "captured-hr-value" },
   { surface: "wire/intake-command-result", path: "request.payload.correctedValue", origin: "captured-hr-value" },
   { surface: "wire/intake-command-result", path: "request.payload.reason", origin: "operator-authored" },
   { surface: "wire/intake-command-result", path: "request.payload.sheet", origin: "captured-hr-value" },
@@ -1406,7 +1379,6 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.value.output[].source.sourceId", origin: "captured-hr-value" },
 
 
-  { surface: "wire/editable-settings", path: "catalog[].schema", origin: "repository-authored" },
   { surface: "wire/editable-settings", path: "deployment", origin: "repository-authored" },
   { surface: "wire/editable-settings", path: "protectedSettings.readback.entries", origin: "repository-authored" },
   { surface: "wire/editable-settings", path: "protectedSettings.entries.ucpathPassword.value", origin: "protected-value" },
@@ -1698,8 +1670,6 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/bootstrap", path: "preflight[].detail", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "preflight[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "preflight[].remediation", origin: "repository-authored" },
-  { surface: "wire/bootstrap", path: "settingsSections[].label", origin: "repository-authored" },
-  { surface: "wire/bootstrap", path: "systemInstances[].test.reason", origin: "repository-authored" },
 
   { surface: "wire/bootstrap", path: "workflows[].availability.reason", origin: "repository-authored" },
   // WorkflowCodeSchema limits values to lowercase short codes, so no free-text disposition is required.

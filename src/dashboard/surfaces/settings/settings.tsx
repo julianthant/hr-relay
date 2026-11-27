@@ -19,11 +19,11 @@ import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
 import { AccountSettings, type AccountPage } from "./account/account-settings.js";
 import { DeleteAccountControl } from "./general/ui-settings-records-general-paths.js";
-import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
+import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon } from "./settings-model.js";
 import {type StorageHealthSummary } from "./storage/storage-settings-model.js";
 
 
-export type { SettingsSection,StorageHealthSummary };
+export type { StorageHealthSummary };
 
 
 /** The served sections this build has a renderer for. */

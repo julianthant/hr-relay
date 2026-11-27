@@ -10,7 +10,7 @@ export { STARTUP_READ_DEADLINE_MS };
 // Reads a first screen can make, and the account check its next read repeats. Writes are never expired: one may still land after its answer is dropped.
 const FIRST_SCREEN_READS = new Set(["activityPopulation", "activityReport", "applicationLifecycle", "assistantActivity", "assistantConversation", "assistantHistory",
   "assistantModelPreference", "assistantModels", "calendar", "chatGptAccount", "checkChatGptAccount", "editableSettings", "intakeSession", "itemAttemptHistory", "notificationCollection",
-  "notificationSnapshot", "notificationStatus", "preflightScopes", "readActivityPopulation", "readPreflight", "readProfileDuoKeys", "readiness", "runDetail", "runHistoryStatus", "runSection",
+  "notificationSnapshot", "preflightScopes", "readActivityPopulation", "readPreflight", "readProfileDuoKeys", "readiness", "runDetail", "runHistoryStatus", "runSection",
   "settingsFacts", "workbookCatalog", "workbookCompatibility", "workbookHistory", "workbookList", "workbookRevision", "workbookTypes", "workflowExplorer"]);
 const STILL_LOADING = '[data-slot="skeleton"], [data-loading-layout], [aria-busy="true"]:not(button)';
 

@@ -29,7 +29,6 @@ import { createTrustNotifications } from "../../../../../src/backend/app/composi
 import { composeNotificationPublications, composeNotificationRoutes } from "../../../../../src/backend/app/composition/dashboard/notification-wiring.js";
 import { ocrHostRun } from "../../../../../src/backend/runs/queries/ocr-record-members.js";
 import { createNotificationTargetQuery } from "../../../../../src/backend/runs/queries/notifications.js";
-import { createWorkbookIntakeBridge } from "../../../../../src/backend/runs/commands/workbook-intake-service.js";
 import { createWorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../../../../src/backend/workbooks/workbook-library-error.js";
 import type { AssistantService } from "../../../../../src/backend/assistant/service.js";
@@ -201,7 +200,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       };
       return {
         notifications: composeNotificationRoutes({ database, clock, lifecycle, runDetailDeps, descriptors: strictDescriptors, assertCurrent: () => undefined, notificationObserver: observer, notificationTarget }),
-        workbooks: { library, intake: createWorkbookIntakeBridge(library, UNWIRED_INTAKE_SERVICE), workflows: modules.map(module => module.descriptor) },
+        workbooks: { library, workflows: modules.map(module => module.descriptor) },
         assistant,
       };
     };
