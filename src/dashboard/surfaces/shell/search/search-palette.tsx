@@ -1,6 +1,6 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
-import { ChartNoAxesColumn, Circle, CircleAlert, CircleCheck, Clock, FileSpreadsheet, ListTree, LoaderCircle, Play, Settings, Table2, type LucideIcon } from "lucide-react";
+import { ChartNoAxesColumn, Circle, CircleAlert, CircleCheck, Clock, FileSpreadsheet, ListTree, LoaderCircle, Play, Search, Settings, Table2, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Kbd, Skeleton } from "../../../ds/ui.js";
 import { workflowIcon } from "../../workflows/workflow-icons.js";
@@ -58,7 +58,8 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
         onEscapeKeyDown={event => { if (query !== "") { event.preventDefault(); onQuery(""); } }}>
         <DialogPrimitive.Title className="sr-only">Search Relay</DialogPrimitive.Title>
         <Command ref={watchSelection} shouldFilter={false} loop label="Search Relay" className="flex min-h-0 flex-1 flex-col">
-          <Command.Input autoFocus aria-label="Search Relay" placeholder="Search Relay" value={query} onValueChange={onQuery} className="search-palette-input" />
+          <div className="ds-search-field search-palette-field"><div data-slot="search-field-group"><Search aria-hidden className="size-[14px] shrink-0 text-[color:var(--field-placeholder)]" />
+            <Command.Input autoFocus data-slot="search-field-input" aria-label="Search Relay" placeholder="Search Relay" value={query} onValueChange={onQuery} /></div></div>
           <Command.List ref={list} label="Results" className="search-palette-list" onScroll={event => { const list = event.currentTarget; if (onMoreRuns && list.scrollHeight - list.scrollTop - list.clientHeight < list.clientHeight) onMoreRuns(); }}>
             {sections.length === 0 && !loading && <p role="status" className="search-palette-empty">No matches</p>}
             {sections.map(section => <Command.Group key={section.id} aria-label={section.label}>

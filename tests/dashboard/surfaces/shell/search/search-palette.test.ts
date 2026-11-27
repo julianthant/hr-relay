@@ -41,7 +41,7 @@ it("puts the filter tabs after the results, gives workflows their rail icon and 
   await act(async () => root?.render(createElement(TooltipProvider, null, createElement(RailSearch, { data: { today: "2026-08-03", counts: {}, results: [] }, workflows: [{ id: "separations", label: "Separations", icon: "UserMinus" }], startKey: "R", onAction: action => actions.push(action), onWorkflow: () => {}, onResult: () => {} }))));
   await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search"]')!.click());
   const palette = document.querySelector(".search-palette")!;
-  const order = [...palette.querySelector("[cmdk-root]")!.children].filter(child => !child.hasAttribute("cmdk-label")).map(child => child.getAttribute("cmdk-input") !== null ? "input" : child.classList.contains("search-palette-chips") ? "tabs" : "list");
+  const order = [...palette.querySelector("[cmdk-root]")!.children].filter(child => !child.hasAttribute("cmdk-label")).map(child => child.querySelector("[cmdk-input]") ? "input" : child.classList.contains("search-palette-chips") ? "tabs" : "list");
   assert.deepEqual(order, ["input", "list", "tabs"]);
   const rows = [...palette.querySelectorAll(".search-palette-row")];
   assert.deepEqual(rows.slice(0, 5).map(row => row.textContent), ["Start a runR", "Spreadsheets", "Explorer", "Analytics", "Settings"]);

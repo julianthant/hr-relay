@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { createElement } from "react";
+import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { Input, SearchInput, SecretField } from "../../../../src/dashboard/ds/primitives/primitives-form.js";
@@ -23,7 +22,8 @@ describe("Input, SecretField and SearchInput", () => {
 
   it("has one look: no variant prop and no look class", () => {
     assert.doesNotMatch(html(createElement(SearchInput, { "aria-label": "Find" })), /ds-search-field--/u);
-    const source = readFileSync(new URL("../../../../src/dashboard/ds/primitives/primitives-form.tsx", import.meta.url), "utf8");
-    assert.doesNotMatch(source.slice(source.indexOf("export const SearchInput")), /variant\??:/u);
+    type Props = ComponentProps<typeof SearchInput>;
+    const variantFree: "variant" extends keyof Props ? never : true = true;
+    assert.equal(variantFree, true);
   });
 });
