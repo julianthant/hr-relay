@@ -42,6 +42,7 @@ import { AssistantToolRefusal } from "../../../../../src/backend/assistant/plugi
 import { createAssistantController } from "../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
 import { createAssistantHistory } from "../../../../../src/dashboard/surfaces/assistant/assistant-history-model.js";
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from "../../../../../src/dashboard/app/commands/command-executor.js";
+import type { AssistantTypedProposalPorts } from "../../../../../src/backend/assistant/typed-proposals.js";
 
 vi.mock("../../../../../src/backend/runs/commands/run-worker-capacity.js", async importOriginal => {
   const actual = await importOriginal<typeof workerCapacity>();
@@ -49,12 +50,12 @@ vi.mock("../../../../../src/backend/runs/commands/run-worker-capacity.js", async
 });
 
 // The composed submit, as the typed-yes owner receives it; `tamper` resends one claimed row under a changed attribution first.
-const submitProbe = vi.hoisted(() => ({ submit: undefined as undefined | ((command: never, attribution: never) => Promise<unknown>),
+const submitProbe = vi.hoisted(() => ({ submit: undefined as undefined | AssistantTypedProposalPorts["submit"],
   tamper: undefined as undefined | ((attribution: Record<string, unknown>) => unknown), tampered: [] as unknown[] }));
 vi.mock("../../../../../src/backend/assistant/typed-proposals.js", async importOriginal => {
   const actual = await importOriginal<typeof import("../../../../../src/backend/assistant/typed-proposals.js")>();
   return { ...actual, createAssistantTypedProposals: (ports: Parameters<typeof actual.createAssistantTypedProposals>[0]) => {
-    submitProbe.submit = ports.submit as never;
+    submitProbe.submit = (command, attribution) => ports.submit(command, attribution);
     return actual.createAssistantTypedProposals({ ...ports, async submit(command, attribution) {
       const tamper = submitProbe.tamper; submitProbe.tamper = undefined;
       if (tamper !== undefined) submitProbe.tampered.push(await Promise.resolve().then(() => ports.submit(command, tamper(attribution) as never)).then(() => 'admitted', (error: unknown) => error));
@@ -380,9 +381,9 @@ it('starts a read-only session through the composed kernel, serves it in Queue a
       return new Response(completedResponseStream(output, request.model, `resp_${String(turns)}`), { headers: { 'Content-Type': 'text/event-stream' } });
     });
     // The dashboard's own assistant controller over the served history sends the message and later presses the chip's Stop.
-    const history = await createAssistantHistory(client, { getItem: () => null, removeItem() {} }, context.admission.profileBinding.profileId, new AbortController().signal);
+    const history = await createAssistantHistory(client as Required<typeof client>, { getItem: () => null, removeItem() {} }, context.admission.profileBinding.profileId, new AbortController().signal);
     if (history.chats.read().length === 0) await history.chats.create();
-    const chatId = history.chats.selectedId(); assert.ok(chatId);
+    const chatId = history.chats.selectedId?.() ?? history.chats.read()[0]?.id; assert.ok(chatId);
     const scope: CommandExecutionScope = { actorId: LOCAL_OPERATOR_ACTOR_ID, client, authority: {}, dayRequest: {} }, feedback: CommandOutcome[] = [];
     const controller = createAssistantController(client, { authority: 'a', commands: { executor: new CommandExecutor(() => scope), scope, feedback: value => { feedback.push(value); } } }, {
       conversationId: chatId, read: () => history.read(chatId), retain: state => { history.retain(chatId, state); }, revision: () => history.revision(chatId),
@@ -407,9 +408,9 @@ it('starts a read-only session through the composed kernel, serves it in Queue a
     const audits = context.database.authority.commandAudits.findByCommand(start.commandId);
     for (const wrong of [{ ...owned, conversationId: randomUUID() }, { ...owned, acceptedMessageId: randomUUID() }, { ...owned, binding: { kind: 'session' as const, actionId: randomUUID() } },
       { ...owned, profileId: randomUUID() }, { ...owned, binding: { kind: 'proposal' as const, proposalId: randomUUID(), rowId: randomUUID() } }, { kind: 'unrecorded' as const }]) {
-      await assert.rejects(async () => submit(start as never, wrong as never), (error: unknown) => error instanceof AssistantToolRefusal && error.code === 'ASSISTANT_PROPOSAL_REFUSED', JSON.stringify(wrong));
+      await assert.rejects(async () => submit(start, wrong), (error: unknown) => error instanceof AssistantToolRefusal && error.code === 'ASSISTANT_PROPOSAL_REFUSED', JSON.stringify(wrong));
     }
-    await assert.rejects(async () => submit({ ...start, source: SourceSurfaceIdSchema.parse('dashboard') } as never, owned as never), AssistantToolRefusal);
+    await assert.rejects(async () => submit({ ...start, source: SourceSurfaceIdSchema.parse('dashboard') }, owned), AssistantToolRefusal);
     assert.deepEqual(context.database.authority.commandAudits.findByCommand(start.commandId), audits);
 
     // Queue and Logs both serve the run.

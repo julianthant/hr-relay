@@ -1,4 +1,4 @@
-import { ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantM1Request, type AssistantM1RespondEnvelope, AssistantSessionViewSchema } from '../../../../src/models/dashboard/assistant.js';
+import { AssistantReplyPartsSchema, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantM1Request, type AssistantM1RespondEnvelope, AssistantSessionViewSchema } from '../../../../src/models/dashboard/assistant.js';
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from '../../../../src/dashboard/app/commands/command-executor.js';
 import { AssistantModelPreferenceCommandRequestSchema, CommandResultSchema, type CommandResult } from '../../../../src/rules/commands/commands.js';
 import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
@@ -7,7 +7,7 @@ import { it, vi } from 'vitest';
 import { createAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { assistantModelLabel } from '../../../../src/models/config/assistant-model-preference.js';
 import { resultClient, scriptedEnvelope, type ScriptedReply } from '../../../support/helpers/dashboard/assistant-served-client.js';
-import type { AssistantState } from '../../../../src/dashboard/surfaces/assistant/assistant-model.js';
+import type { AssistantState, AssistantMessage } from '../../../../src/dashboard/surfaces/assistant/assistant-model.js';
 import { createAssistantHistory } from '../../../../src/dashboard/surfaces/assistant/assistant-history-model.js';
 import { assistantHistoryServer } from '../../../support/helpers/dashboard/assistant-history-server.js';
 
@@ -232,7 +232,7 @@ it('re-reads session chips after a session reply, and Stop sends the run\'s Canc
 it('a same-id Retry answered by a delivery receipt restores the started session with its Stop, and the session starts once', async () => {
   const ids: string[] = [], session = { kind: 'session' as const, runId: RUN_ID, label: 'Sample, Avery', meta: 'Running' };
   let starts = 0, stored = false;
-  const client = { ...resultClient({}), async assistantRespond(input: AssistantM1Request): Promise<AssistantM1RespondEnvelope> {
+  const client = { ...resultClient({ async assistantRespond(): Promise<ScriptedReply> { throw new Error('replaced below'); } }), async assistantRespond(input: AssistantM1Request): Promise<AssistantM1RespondEnvelope> {
     ids.push(input.messageId);
     // The server starts once per accepted message id; the resend replays the stored turn as a delivery receipt.
     if (!stored) { stored = true; starts++; throw new Error('connection dropped after the session started'); }
@@ -244,7 +244,7 @@ it('a same-id Retry answered by a delivery receipt restores the started session 
   const c = createAssistantController(client, { authority: 'a' }, { conversationId: crypto.randomUUID(), read: () => kept && { ...kept, sessions: [sessionView(3, true)] },
     retain: state => { kept = state; }, revision: () => 1, receipt() {}, async local() {}, async refresh() {}, unsaved() {},
     // The first read-back fails; after the resend the stored reply carries the session.
-    async outcome() { reads++; if (reads === 1) throw new Error('history offline'); return { id: 'stored', role: 'assistant', text: '', parts: [session] }; } });
+    async outcome(): Promise<AssistantMessage | undefined> { reads++; if (reads === 1) throw new Error('history offline'); return { id: 'stored', role: 'assistant', text: '', parts: AssistantReplyPartsSchema.parse([session]) }; } });
   sendControl(c, 'start a lookup for Avery');
   await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'failed'));
   assert.equal(c.snapshot().sessions?.length ?? 0, 0);
