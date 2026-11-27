@@ -126,7 +126,7 @@
 .queue-options-menu > .queue-options-reset.ds-menu-item { color: var(--ds-fg-link); }
 /* Sort and Status submenus share the Options menu's row, label, note and check geometry. */
 .queue-options-sub.ds-menu-surface { padding: 6px; }
-.queue-options-sub .ds-menu-item { min-height: 36px; padding-left: 10px; gap: 10px; }
+.queue-options-sub .ds-menu-item { min-height: 36px; padding-left: 10px; padding-right: 34px; gap: 10px; }
 .queue-options-sub .ds-menu-label { padding: 6px 10px 4px; }
 .queue-options-count { margin-left: auto; color: var(--ui-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .queue-options-note { margin: 0; padding: 0 10px 4px; color: var(--ui-secondary); font-size: 12px; line-height: 1.4; }
