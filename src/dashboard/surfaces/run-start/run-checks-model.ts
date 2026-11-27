@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { chatGptOcrAvailable } from "../../../models/dashboard/chatgpt-account.js";
 import { PreflightSelectionSchema, type PreflightReadinessWire } from "../../../models/preflight/preflight-contract.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { BOUNDED_READ_BUDGET_MS, PREFLIGHT_RERUN_DEADLINE_MS, readWithDeadline } from "../../client/read-deadline.js";
 import type { PreflightQueries } from "../../client/queries/preflight-queries.js";
 import type { SettingsQueries } from "../../client/queries/settings-queries.js";
+import type { ChatGptAccountQueries } from "../../client/queries/chatgpt-account-queries.js";
 import { useDashboardCommandBinding } from "../../state/client-context.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { CHECK_COPY } from "../settings/preflight/preflight-check-copy.js";
@@ -27,7 +29,7 @@ export type RunChecksState =
 const RANK: Readonly<Record<RunCheckVerdict, number>> = { fail: 0, warning: 1, pass: 2 };
 
 /** Every check of the served report as a row, problems first; text comes from the readiness check copy. */
-export function runCheckRows(wire: PreflightReadinessWire): RunChecksState {
+export function runCheckRows(wire: PreflightReadinessWire, ocrAvailable = true): RunChecksState {
   if (wire.state !== "present") return { state: "unavailable", message: wire.reason };
   const rows = wire.report.results.map((result): RunCheckRow => {
     const copy = CHECK_COPY[result.check];
@@ -37,6 +39,7 @@ export function runCheckRows(wire: PreflightReadinessWire): RunChecksState {
     return { check: result.check, title: copy.name, description,
       verdict: result.status, ...(fix === null ? {} : { fix }) };
   });
+  if (!ocrAvailable) rows.unshift({ check: "ocr.extract", title: "OCR page reading", description: ERROR_CATALOG.PROVIDER_UNAVAILABLE.text, verdict: "fail" });
   return { state: "ready", rows: rows.map((row, index) => ({ row, index })).sort((a, b) => RANK[a.row.verdict] - RANK[b.row.verdict] || a.index - b.index).map(({ row }) => row) };
 }
 
@@ -45,13 +48,14 @@ export const runChecksBlocked = (state: RunChecksState): boolean =>
   state.state !== "ready" || state.rows.some(row => row.verdict === "fail");
 
 /** Reads exact-scope evidence while active; the transport bounds and retries each read. Checks may prepare missing evidence once per open dialog and once after a Fix visit. */
-export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "editableSettings">, workflowId: string | undefined, active: boolean, prepare: boolean, open: boolean) {
+export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "editableSettings"> & Pick<ChatGptAccountQueries, "chatGptAccount">,
+  workflowId: string | undefined, active: boolean, prepare: boolean, open: boolean, requiresOcr: boolean) {
   const binding = useDashboardCommandBinding();
   const actorId = binding?.scope.actorId;
   const authority = binding?.authority.epoch;
-  const [read, setRead] = useState<Readonly<{ workflowId: string | undefined; state: RunChecksState }>>({ workflowId, state: { state: "checking" } });
+  const [read, setRead] = useState<Readonly<{ workflowId: string | undefined; requiresOcr: boolean; state: RunChecksState }>>({ workflowId, requiresOcr, state: { state: "checking" } });
   /** Another workflow's checks never stand for this one's. */
-  const state: RunChecksState = read.workflowId === workflowId ? read.state : { state: "checking" };
+  const state: RunChecksState = read.workflowId === workflowId && read.requiresOcr === requiresOcr ? read.state : { state: "checking" };
   /** The latest asked-for re-check, bound to the workflow it was asked for; `handled` is the last one sent. */
   const [rerun, setRerun] = useState<Readonly<{ workflowId: string; n: number }>>();
   const handled = useRef(0);
@@ -66,7 +70,7 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
   useEffect(() => {
     if (!active || workflowId === undefined) return;
     let current = true;
-    const setState = (next: RunChecksState) => setRead({ workflowId, state: next });
+    const setState = (next: RunChecksState) => setRead({ workflowId, requiresOcr, state: next });
     const posting = rerun !== undefined && rerun.workflowId === workflowId && rerun.n > handled.current;
     if (rerun !== undefined) handled.current = Math.max(handled.current, rerun.n);
     setState({ state: "checking" });
@@ -97,11 +101,14 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
       if (!current) return;
       return client.readPreflight(selection);
     };
-    void check().then(
-      wire => { if (current && wire !== undefined) setState(runCheckRows(wire)); },
+    const provider = requiresOcr
+      ? readWithDeadline(() => client.chatGptAccount(), "PROVIDER_UNAVAILABLE", BOUNDED_READ_BUDGET_MS).then(chatGptOcrAvailable, () => false)
+      : Promise.resolve(true);
+    void Promise.all([check(), provider]).then(
+      ([wire, ready]) => { if (current && wire !== undefined) setState(runCheckRows(wire, ready)); },
       () => { if (current) setState({ state: "unavailable", message: ERROR_CATALOG.PREFLIGHT_READ_UNAVAILABLE.text }); });
     return () => { current = false; };
-  }, [client, workflowId, active, rerun, actorId, authority]);
+  }, [client, workflowId, active, rerun, actorId, authority, requiresOcr]);
   const recheck = useCallback(() => { if (workflowId !== undefined) ask(workflowId); }, [ask, workflowId]);
   return { state, recheck, prepareAfterFix: () => { asked.current = false; } };
 }

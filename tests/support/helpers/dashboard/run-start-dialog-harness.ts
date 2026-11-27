@@ -146,6 +146,10 @@ export function createRunStartDialogHarness() {
     let readback: ReturnType<typeof DashboardDayWireSchema.parse> | undefined;
     const methods: Partial<DashboardClient> = { ...served,
       readPreflight: served.readPreflight ?? (async () => READY),
+      chatGptAccount: served.chatGptAccount ?? (async () => ({
+        account: { state: "connected", name: "Fixture Operator", email: "fixture@example.test", expiresAt: "2026-11-01T00:00:00Z", planUsage: "enabled" },
+        connection: { state: "unchecked", checkedAt: null, failureCode: null }, usage: { state: "available", resetAt: null },
+      })),
       ...(submitStartPlan === undefined ? {} : { submitStartPlan: async (input: unknown) => {
         reviewedPlan = await submitStartPlan(input);
         return reviewedPlan;

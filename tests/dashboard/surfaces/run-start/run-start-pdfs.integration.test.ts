@@ -273,10 +273,12 @@ it("plans one Emergency Contact run per uploaded PDF", async () => {
   expect(dialog.text()).toContain("Do not file");
 });
 
-async function contactDialog(plans: unknown[], options: { withoutOcrFields?: boolean } = {}) {
+async function contactDialog(plans: unknown[], options: { withoutOcrFields?: boolean; ocrUnavailable?: boolean } = {}) {
   const contact = compileWorkflow(emergencyContactWorkflow).descriptor;
   const uploadRun = contact.surfaces.uploadRun; assert.ok(uploadRun);
   const served = client({
+    ...(options.ocrUnavailable === true ? { chatGptAccount: async () => ({ account: { state: "signed-out" as const },
+      connection: { state: "unchecked" as const, checkedAt: null, failureCode: null }, usage: { state: "unavailable" as const, reason: "signed-out" as const } }) } : {}),
     uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
       artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }),
     submitStartPlan: async request => { plans.push(request); const plan = h.planResponse("5a000000-0000-4000-8000-000000000002");
@@ -294,6 +296,18 @@ async function contactDialog(plans: unknown[], options: { withoutOcrFields?: boo
   return dialog;
 }
 const ocrSwitch = () => [...document.querySelectorAll<HTMLElement>('[role="switch"]')].find(node => node.closest("label")?.textContent?.includes("Extract with OCR"));
+
+it("shows unavailable OCR in Checks and keeps manual entry available", async () => {
+  const plans: unknown[] = [];
+  const dialog = await contactDialog(plans, { ocrUnavailable: true });
+  expect(dialog.text()).toContain(ERROR_CATALOG.PROVIDER_UNAVAILABLE.text);
+  expect(dialog.disabled("Start run")).toBe(true);
+  expect(plans).toHaveLength(0);
+  const control = ocrSwitch(); assert.ok(control);
+  await act(async () => control.click()); await h.settle();
+  expect(dialog.text()).not.toContain(ERROR_CATALOG.PROVIDER_UNAVAILABLE.text);
+  expect(dialog.disabled("Start run")).toBe(false);
+});
 
 it("offers Extract with OCR on by default as a switch row, and the footer says OCR on", async () => {
   const dialog = await contactDialog([]);

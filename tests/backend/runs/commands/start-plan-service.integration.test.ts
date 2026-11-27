@@ -42,7 +42,8 @@ afterEach(async () => {
 });
 
 async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start", initialize = true,
-  workbooksFor?: (database: AuthorityDatabase) => Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion" | "types" | "createReferenceCapture">) {
+  workbooksFor?: (database: AuthorityDatabase) => Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion" | "types" | "createReferenceCapture">,
+  ocrProviderAvailable?: () => boolean) {
   const profile = await profileFixtures.create(); profiles.push(profile);
   const database = AuthorityDatabase.open(profile.admission,
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, CLOCK,
@@ -63,6 +64,7 @@ async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart
     },
     authorityRead: database,
     ...(workbooksFor === undefined ? {} : { workbooks: workbooksFor(database) }),
+    ...(ocrProviderAvailable === undefined ? {} : { ocrProviderAvailable }),
     descriptors: {
       resolve: (workflowId) => (workflowId === String(descriptor.id) ? descriptor : undefined),
     },
@@ -288,20 +290,25 @@ it("rolls a canonical plan back with its enclosing transaction and retains the e
   assert.ok(h.database.authority.startPlans.get(accepted.startPlanId));
 });
 
-it("plans one dry-run Emergency Contact PDF start against a header-only ocr-roster", async () => {
+it("requires an available OCR provider for an Emergency Contact PDF start with OCR on", async () => {
   const descriptor = compileWorkflow(emergencyContactWorkflow).descriptor;
   let library: WorkbookLibraryService | undefined;
-  const h = await harnessFor(descriptor, undefined, true, database => library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK, sync: unexpectedWorkbookSync }));
+  let available = false;
+  const h = await harnessFor(descriptor, undefined, true, database => library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK, sync: unexpectedWorkbookSync }), () => available);
   assert.ok(library);
   library.putType({ id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null });
   const roster = library.create({ name: "OCR roster", themes: [], hasFormulas: false, sheets: [{ id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
     columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
     rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }] }] });
   library.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
-  const wire = h.service.plan({ workflowId: descriptor.id, dryRun: true, selectedStepKeys: descriptor.timeline.map(step => step.key),
-    submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" }, onbaseFiling: "file" }],
+  const start = (extractWithOcr: boolean) => h.service.plan({ workflowId: descriptor.id, dryRun: true, selectedStepKeys: descriptor.timeline.map(step => step.key),
+    submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" }, onbaseFiling: "file", extractWithOcr }],
     workbookReferences: [{ entry: 1, libraryId: roster.libraryId, versionId: library.libraryVersion(roster.libraryId).version.id, sheetId: "people",
       expectedVersion: library.read(roster.libraryId).version }] });
+  assert.throws(() => start(true), { message: ERROR_CATALOG.PROVIDER_UNAVAILABLE.text });
+  assert.equal(start(false).planned.length, 1);
+  available = true;
+  const wire = start(true);
   assert.equal(wire.refused.length, 0, JSON.stringify(wire.refused));
   assert.equal(wire.planned.length, 1);
 });

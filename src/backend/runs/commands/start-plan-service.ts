@@ -26,12 +26,14 @@ import { StartStepOmissionRefusedError, applyStartStepSelection, resolveStartSte
 import type { StartPlannerDeps } from "../start/plan.js";
 import { TargetNotFoundError } from "./refusals.js";
 import { isInterruptedRerunSource } from "../start/recovery-plan.js";
+import { assertOcrStartReady } from "../start/ocr-readiness.js";
 
 export type { StartPlanWire } from "../../../models/dashboard/start-plan.js";
 
 export interface StartPlanServiceDeps {
   readonly workbooks?: StartPlannerDeps["workbooks"];
   readonly preflight?: PreflightAdmission;
+  readonly ocrProviderAvailable?: () => boolean;
   readonly recovery?: RunRecoveryMode;
   readonly protectedSecrets?: ProtectedSecretSource;
   /** Internal test admission only; never accepted by the public ingress schema. */
@@ -196,6 +198,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         } else if (ingress.warningAcknowledgment !== undefined) {
           throw new Error("warning acknowledgment requires a Rerun source");
         }
+        assertOcrStartReady(descriptor, record, deps.ocrProviderAvailable);
         return repositories.startPlans.create(record);
       });
       if (stored.state !== "inserted") {

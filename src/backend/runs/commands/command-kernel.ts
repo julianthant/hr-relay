@@ -50,6 +50,7 @@ export interface CommandKernelDependencies {
     resolveReference?(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>, capturedAt: string): SchemaBoundCanonicalValue | Readonly<{ state: "pending" }>;
   }>;
   readonly preflight?: PreflightAdmission;
+  readonly ocrProviderAvailable?: () => boolean;
   readonly applicationQuitAvailable?: boolean;
   readonly authority: CommandAuthority;
   readonly lifecycle: RunRecordService;

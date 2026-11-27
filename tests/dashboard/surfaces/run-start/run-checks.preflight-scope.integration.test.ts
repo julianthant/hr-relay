@@ -90,7 +90,7 @@ function checksHarness(workflowId: string, failingCheck: "config.valid" | "secre
 const checksUnavailable = () => [...document.querySelectorAll("button")].some(button => button.textContent === "Check again");
 
 function Checks({ client, workflowId }: { client: DashboardClient; workflowId: string }) {
-  const checks = useRunChecks(client, workflowId, true, true, true);
+  const checks = useRunChecks(client, workflowId, true, true, true, false);
   return createElement("div", null,
     createElement(RunChecksStage, { checks: checks.state, onFix: () => undefined, onRecheck: checks.recheck }),
     createElement("button", { disabled: runChecksBlocked(checks.state), "data-checks-start": true }, "Start dry run"));

@@ -66,6 +66,8 @@ export const ChatGptAccountStatusSchema = z.strictObject({
   account: ChatGptAccountViewSchema, connection: ChatGptConnectionStatusSchema, usage: ChatGptUsageStatusSchema,
 });
 export type ChatGptAccountStatus = z.infer<typeof ChatGptAccountStatusSchema>;
+export const chatGptOcrAvailable = ({ usage, connection }: ChatGptAccountStatus): boolean =>
+  usage.state === "available" && connection.state !== "refused" && connection.state !== "uncertain";
 
 export const ChatGptOcrTestResultSchema = z.union([
   z.strictObject({ state: z.literal("completed"), model: z.string().min(1).max(128) }), RefusedSchema, UncertainSchema,
