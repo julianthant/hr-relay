@@ -383,8 +383,8 @@ separate filtered states.
 The rail reads one `InboxWiring`; the harness supplies sample notifications derived from current queue rows by `useNotificationsSampleInbox`, with read flags in memory. Read is separate from urgency resolution. Opening a valid target marks read and
 closes the popover; a target that cannot open raises a toast without navigating to an approximate workflow, and a deleted run says so
 on its own row. A storage notice opens Settings > General. Repeats fold into one row with a count: a failure folds across runs for the
-same workflow, person and failure text, with its repeating notice; every other event folds per run. Unread failures and waits sit under
-Needs you; everything else, read ones included, lists under Earlier. Escape or a click outside closes the popover and returns focus to the bell. A ping uses
+same workflow, person and failure text, with its repeating notice; every other event folds per run. Unread failures and waits, and every notice still waiting on the operator, sit under
+Needs you; read-only archive notices list under History; everything else, read ones included, lists under Earlier. Escape or a click outside closes the popover and returns focus to the bell. A ping uses
 the shared toast; the bell opens the inbox.
 
 Durable delivery, read state, and full cross-day search still need producer replacement. The typed
