@@ -8,7 +8,7 @@ import type { HeldNotificationStatus } from "../client/subscriptions/row-store.j
 import type { NotificationCollectionTarget } from "../../models/notifications/notifications.js";
 import type { NotificationTarget } from "../../models/notifications/notification-target.js";
 import type { NotificationTriggerEvent } from "../../rules/notifications/notification-triggers.js";
-import { NotificationCommandRequestSchema } from "../../rules/commands/commands.js";
+import { NotificationCommandReceiptSchema, NotificationCommandRequestSchema } from "../../rules/commands/commands.js";
 import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure, shortFailureText } from "../../models/failures/error-catalog.js";
 import { verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import { notificationAge, type NotificationControl, type NotificationDestination, type NotificationItem, type NotificationsState } from "../surfaces/notifications/notifications-view-model.js";
@@ -178,7 +178,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   const [publicationNotice, setPublicationNotice] = useState<{ request: typeof request; text: string }>();
   /** Items whose run the server answered as deleted when the operator opened them. */
   const [gone, setGone] = useState<{ request: typeof request; ids: ReadonlySet<string> }>();
-  /** Rows the person cleared, at the revision they were listed at; a refused clear takes its rows back out. */
+  /** Clear hides listed revisions while pending and committed revisions after confirmation. */
   const [cleared, setCleared] = useState<{ request: typeof request; ids: ReadonlyMap<string, number> }>();
   const clearedIds = cleared?.request === request ? cleared.ids : undefined;
   const clearedRef = useRef(clearedIds); clearedRef.current = clearedIds;
@@ -199,6 +199,24 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
     setUpserts(previous => ({ request, rows: rows.reduce(upsertListedRow,
       previous?.request === request ? previous.rows.filter(held => base !== undefined && listedAhead(base, held, true)) : NO_UPSERTS) }));
   }, [request]);
+  const overlayReceipt = (evidence: unknown, action: NotificationControl | "snooze" | "unsnooze") => {
+    const receipt = NotificationCommandReceiptSchema.parse(evidence);
+    const revisions = new Map(receipt.changes.map(change => [change.notificationId, change.revision]));
+    const changed = (rowsRef.current ?? NO_UPSERTS).flatMap(row => {
+      // The stream supplies aggregate state when a row represents several storage notices.
+      if (row.kind === "backfill-gap" || row.readOnlyHistory === true || row.actorId !== receipt.actorId
+        || row.kind === "notification" && row.group !== undefined) return [];
+      const revision = revisions.get(row.notificationId);
+      if (revision === undefined || revision !== row.revision + 1) return [];
+      const readState = action === "read" || action === "unread" ? action : row.readState;
+      const snoozedUntil = action === "snooze" ? receipt.snoozedUntil : action === "unsnooze" ? undefined : row.snoozedUntil;
+      return [NotificationWireSchema.parse({ ...row, revision, readState, snoozedUntil,
+        state: snoozedUntil === undefined ? readState : "snoozed",
+        ...(row.kind === "command" ? { priority: readState === "unread" && snoozedUntil === undefined } : {}),
+      })];
+    });
+    if (changed.length > 0) overlay(changed);
+  };
   const subscribePublications = dayState.subscribePublications;
   const arrivalListeners = useRef(new Set<(arrival: InboxArrival) => void>());
   useEffect(() => {
@@ -245,7 +263,11 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       source: "dashboard", family: "notification", type: "notification-clear", target: { actorId: request.scope.actorId, members, matchingCount: members.length } });
     const outcome = await owner.executor.execute(command, { scope: owner.scope, readback: (request, reply) => verifyShellCommandEffect(client, owner.authority.day, request, reply),
       publish: outcome => {
-        if (current.current.request !== request || outcome.kind === "confirmed") return;
+        if (current.current.request !== request) return;
+        if (outcome.kind === "confirmed") {
+          hide(NotificationCommandReceiptSchema.parse(outcome.readback).changes.map(change => [change.notificationId, change.revision]));
+          return;
+        }
         owner.feedback(outcome);
         if (outcome.kind === "conflict") dayState.refresh();
       } });
@@ -270,7 +292,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
     }
     setCommandNotice({ request, text: inboxMessage("NOTIFICATION_COMMAND_PENDING") });
     let outcome: Awaited<ReturnType<typeof owner.executor.execute>> | undefined;
-    // A group acts on every durable member it holds; each confirmed readback replaces the rows it stands for.
+    // A group acts on every durable member it holds.
     for (const member of members) {
       const command = NotificationCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: owner.authority.now(), requestedBy: request.scope.actorId,
         source: "dashboard", family: "notification", type: `notification-${action}`, target: { notificationId: member.notificationId, actorId: request.scope.actorId, expectedVersion: member.revision } });
@@ -278,7 +300,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
         publish: outcome => {
           if (current.current.request !== request) return;
           if (outcome.kind === "confirmed") {
-            overlay([NotificationWireSchema.parse(outcome.readback)]);
+            overlayReceipt(outcome.readback, action);
             setCommandNotice({ request, text: "" });
           }
           else {
@@ -344,7 +366,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
         publish: outcome => {
           if (current.current.request !== request) return;
           if (outcome.kind === "confirmed") {
-            overlay(NotificationWireSchema.array().parse(outcome.readback));
+            overlayReceipt(outcome.readback, "read");
             setCommandNotice({ request, text: "" });
           } else { setCommandNotice({ request, text: outcome.feedback.text }); owner.feedback(outcome); }
         } });
