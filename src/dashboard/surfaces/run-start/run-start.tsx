@@ -30,7 +30,7 @@ import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
 import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
 import { SYSTEM_NAME } from "../shared/status/system-chip-model.js";
-import { planRefusalNotice, forcedStepOmissions, initialStepOmissionDraft, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable } from "./run-start-model.js";
+import { planRefusalNotice, forcedStepOmissions, handOffStepOmissions, initialStepOmissionDraft, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable } from "./run-start-model.js";
 import { includedRowCount, rowFieldsOpen, rowOpenFold, startRowsOf, stepEntries, type OpenStepRow, type StartStep, type StepRow } from "./run-steps-model.js";
 import { reconcileRunStartStage, runStartStages } from "./run-start-timeline.js";
 import { pdfRunOcrFooter, pdfRunSelectValue, pdfRunSwitchValue, restorePdfRun, usePdfRunInput } from "./run-start-pdfs.js";
@@ -228,6 +228,7 @@ export function RunStartDialog({
   /** Lock forced omissions using the descriptor cascade; the planner owns the rule. */
   const steps = workflow?.steps ?? EMPTY_STEPS;
   const forcedByStep = useMemo(() => forcedStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
+  const handOffByStep = useMemo(() => handOffStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
   const rows = useMemo(() => startRowsOf({ steps, rows: workflow?.rows }), [steps, workflow?.rows]);
   const inputDriven = useCallback((row: StepRow): boolean => launchDraft.rowInputDriven(workflow, typedValues, row), [workflow, typedValues]);
   const openRows: readonly OpenStepRow[] = useMemo(() => customizeSteps ? rows.flatMap(row => {
@@ -447,10 +448,12 @@ export function RunStartDialog({
     pdfSurface, preview, selectedStepKeys, customizeSteps, openRows, stepOmissions, dryRun, captureBrowserScreenshots, priority });
   const spreadsheetReadiness = runStartSpreadsheetReadiness(spreadsheets, referenceSelections, isRerun, snapshot);
   const { spreadsheetsError, spreadsheetsReading } = spreadsheetReadiness;
+  const handOff = [...handOffByStep.keys()].map(key => rows.find(row => row.stepKey === key)?.label ?? steps.find(step => step.key === key)?.label ?? key);
+  const handOffReason = handOff.length === 0 ? null : `Turn off ${handOff.join(", ")} if done by hand.`;
   const { gates, blockedReason, launchFields, optionsBlockedReason, multiSubject, stepsFailure, stepsBlockedReason,
     sentOmittedSteps, planOmittedSteps, omissionMismatch, onLastStage, rerunInputGone, dryRunGone } = runStartGates(
     draft, spreadsheets, savedRows, spreadsheetReadiness, { workflowId, inputRun, pdfSurface, pdfInput, preview, declaredInput,
-      openRows, customizeSteps, stepOmissions, plan, snapshot, supportsDryRun, dryRun, checks, launchStages, currentStage });
+      openRows, customizeSteps, stepOmissions, handOffReason, plan, snapshot, supportsDryRun, dryRun, checks, launchStages, currentStage });
 
   const stepLabel = (key: string): string => {
     const step = steps.find((candidate) => candidate.key === key);
@@ -625,7 +628,7 @@ export function RunStartDialog({
 
               {stepsShown && workflow !== undefined && (
                 <RunStartSteps workflow={workflow} snapshot={snapshot} rows={rows} selectedStepKeys={selectedStepKeys} manualRows={manualRows}
-                  forcedByStep={forcedByStep} openRows={openRows} isRerun={isRerun} multiSubject={multiSubject} inputDriven={inputDriven}
+                  forcedByStep={forcedByStep} handOffByStep={handOffByStep} openRows={openRows} isRerun={isRerun} multiSubject={multiSubject} inputDriven={inputDriven}
                   sending={sending} stepLabel={stepLabel} stepsFailure={stepsFailure} copiedOmissions={copiedOmissions} update={update} />
               )}
 

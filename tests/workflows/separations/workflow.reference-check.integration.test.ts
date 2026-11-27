@@ -5,6 +5,7 @@ import { stepProofModuleOf } from "../../../src/backend/app/registries/step-proo
 import { buildRunGate } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { projectObservedOperatorFields } from "../../../src/backend/runs/queries/run-logs.js";
 import { readRunCheckpoint } from "../../../src/backend/storage/sqlite/run-continuation.js";
+import { previewRerunWarnings } from "../../../src/backend/runs/start/rerun.js";
 import { referenceCheckStop } from "../../../src/models/processing/workbooks/reference-check-stop.js";
 import { MatchIdentityOutputSchema } from "../../../src/models/workflows/separations/match-identity.js";
 import { SeparationsReadReferenceStop } from "../../../src/models/workflows/separations/read-reference-stop.js";
@@ -131,7 +132,7 @@ describe("Separations composition with a reference spreadsheet", () => {
   const REFERENCE_GATE = "reference-check-review";
   const OMIT_KRONOS = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/12/2026", separationDate: "06/19/2026" } }];
 
-  async function composition(options: Readonly<{ documentEid?: string; searchOutcome?: PersonOrgSearchPageOutcome }> = {}) {
+  async function composition(options: Readonly<{ documentEid?: string; searchOutcome?: PersonOrgSearchPageOutcome; kualiDiesAfterFiling?: true }> = {}) {
     const clock = manualClock(new Date(COMPOSITION_NOW));
     const kuali = createKualiFakeWorld({ actionId: COMPOSITION_ACTION_ID, documentNumber: COMPOSITION_DOCUMENT, displayedEid: COMPOSITION_EID });
     kuali.separationForm = { formType: KUALI_SEPARATION_FORM_TYPE, employeeName: COMPOSITION_DOCUMENT_NAME, eid: options.documentEid ?? COMPOSITION_EID, employeeType: "Student",
@@ -150,7 +151,12 @@ describe("Separations composition with a reference spreadsheet", () => {
         const personStates: readonly unknown[] = [UCPATH_PERSON_ORG_SEARCH_READY, UCPATH_PERSON_ORG_DETAIL_READY];
         // The person-org fake owns the search screens; the Smart HR world owns the transaction pages.
         return { ...person, scanTerminationTransactions: filing.scanTerminationTransactions, stageTermination: filing.stageTermination,
-          stagePendingTerminationSweep: filing.stagePendingTerminationSweep, commit: filing.commit,
+          stagePendingTerminationSweep: filing.stagePendingTerminationSweep,
+          commit: async (...args: Parameters<typeof filing.commit>) => {
+            const committed = await filing.commit(...args);
+            if (options.kualiDiesAfterFiling === true) kuali.openThrows = new Error("the Kuali page closed");
+            return committed;
+          },
           searchPersonOrg: (input: typeof searches[number]) => {
             searches.push(input);
             const outcome = options.searchOutcome;
@@ -168,14 +174,15 @@ describe("Separations composition with a reference spreadsheet", () => {
     });
     const f = await world.fixture(separationsDescriptor, sessions);
     const commits = () => [...kuali.events, ...ucpath.events].filter(event => event.startsWith("commit:"));
-    const begin = (picks: Parameters<typeof f.start>[1], dryRun = false) => f.start({ documentNumber: COMPOSITION_DOCUMENT }, picks, dryRun, { stepOmissions: OMIT_KRONOS,
-      selectedStepKeys: separationsDescriptor.timeline.map(step => step.key).filter(key => key !== "kronos-timecard") });
+    const begin = (picks: Parameters<typeof f.start>[1], dryRun = false, stepOmissions: readonly { step: string; facts: Record<string, unknown> }[] = OMIT_KRONOS) =>
+      f.start({ documentNumber: COMPOSITION_DOCUMENT }, picks, dryRun, { stepOmissions,
+        selectedStepKeys: separationsDescriptor.timeline.map(step => step.key).filter(key => !stepOmissions.some(omitted => omitted.step === key)) });
     const writeIntents = (run: RunRecord) => f.database.authority.writeIntents.listByRun(run.envelope.runId);
     const holding = () => f.spreadsheet("Separations roster", "People", ["eid", "fullName"], [["10000009", "Blair Example"], [COMPOSITION_EID, COMPOSITION_UCPATH_NAME]]);
     const missing = () => f.spreadsheet("Badge list", "Issued", ["eid"], [["10000009"]]);
     const renamed = () => f.spreadsheet("Separations roster", "People", ["fullName", "eid"], [[ROW_ONLY_NAME, COMPOSITION_EID]]);
     const parkedAt = (run: RunRecord) => run.lifecycle.state === "parked-gate" ? String(run.lifecycle.gateId) : run.lifecycle.state;
-    return { ...f, commits, begin, writeIntents, holding, missing, renamed, parkedAt, searches };
+    return { ...f, commits, begin, writeIntents, holding, missing, renamed, parkedAt, searches, ucpath, kuali };
   }
 
   it("stops before searching UCPath when the Kuali document has no Employee ID", async () => {
@@ -270,6 +277,62 @@ describe("Separations composition with a reference spreadsheet", () => {
     assert.notEqual(c.parkedAt(run), REFERENCE_GATE);
     assert.deepEqual(c.nodeSpans(run, REFERENCE_GATE), [["skipped", "condition-false"]]);
     assert.deepEqual(c.checkLines(run), ["Separations roster · People: found in row 3"]);
+  });
+
+  it("sends no UCPath write when its form actions were done by hand, and records the typed receipt", async () => {
+    const c = await composition();
+    // The termination someone filed by hand, as UCPath now shows it.
+    c.ucpath.rows.push({ transactionId: COMPOSITION_RECEIPT, emplId: COMPOSITION_EID, action: "TER", approvalStatus: "Approved", startDate: "06/22/2026", displayedName: COMPOSITION_UCPATH_NAME });
+    c.ucpath.employmentRecords.push({ transactionId: COMPOSITION_RECEIPT, emplRecord: "0" });
+    const run = await c.execute(c.begin([], false, [...OMIT_KRONOS, { step: "pending-termination", facts: {} },
+      { step: "ucpath-transaction", facts: { transactionNumber: COMPOSITION_RECEIPT, approvalStatus: "Approved", effectiveDate: "06/22/2026" } }]));
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify(run.lifecycle));
+    assert.deepEqual(c.commits(), ["commit:kuali.rrss-document.save-button"]);
+    assert.deepEqual(c.writeIntents(run).map(intent => intent.system), ["kuali"]);
+    for (const skipped of ["pending-set", "clear-pending", "file-termination"]) assert.deepEqual(c.nodeSpans(run, skipped), [["skipped", "step-omitted"]], skipped);
+    const receipt = c.database.authority.runCheckpoints.listByItem(separationsDescriptor.id, run.envelope.itemId).find(record => record.nodeId === "receipt");
+    assert.equal((receipt?.output.value as { effectiveDate?: string } | undefined)?.effectiveDate, "06/22/2026", "the receipt carries the typed filing date, not the plan's 06/20/2026");
+  });
+
+  it("reruns a filed termination whose pending sweep was done by hand, warning of the filed write", async () => {
+    const c = await composition();
+    const omissions = [...OMIT_KRONOS, { step: "pending-termination", facts: {} }];
+    const run = await c.execute(c.begin([], false, omissions));
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify(run.lifecycle));
+    assert.deepEqual(c.nodeSpans(run, "clear-pending"), [["skipped", "step-omitted"]]);
+    const plan = previewRerunWarnings(c.database.authority, separationsDescriptor, { runId: run.envelope.runId, expectedVersion: run.version, intent: "rerun",
+      selectedStepKeys: separationsDescriptor.timeline.map(step => step.key).filter(key => !omissions.some(omitted => omitted.step === key)) });
+    assert.ok(plan.warnings.some(warning => warning.nodeId === "file-termination"), JSON.stringify(plan.warnings));
+  });
+
+  it("recovers a run that failed after filing with the pending sweep done by hand, without filing again", async () => {
+    const c = await composition({ kualiDiesAfterFiling: true });
+    const failed = await c.execute(c.begin([], false, [...OMIT_KRONOS, { step: "pending-termination", facts: {} }]));
+    assert.ok(failed.lifecycle.state === "terminal" && failed.lifecycle.outcome === "failed", JSON.stringify(failed.lifecycle));
+    assert.deepEqual(c.nodeSpans(failed, "clear-pending"), [["skipped", "step-omitted"]]);
+    assert.deepEqual(c.commits(), ["commit:ucpath.smart-hr.save-and-submit-button"]);
+    delete c.kuali.openThrows;
+    const recovered = c.recover(failed);
+    assert.ok(recovered.state === "applied", JSON.stringify(recovered));
+    const successorId = recovered.affectedTargets.flatMap(target => target.family === "run" && target.runId !== failed.envelope.runId ? [target.runId] : [])[0];
+    const successor = successorId === undefined ? undefined : c.database.authority.runs.get(successorId);
+    assert.ok(successor?.envelope.continuation !== undefined);
+    const done = await c.execute(successor);
+    assert.ok(done.lifecycle.state === "terminal" && done.lifecycle.outcome === "done", JSON.stringify(done.lifecycle));
+    assert.deepEqual(c.commits(), ["commit:kuali.rrss-document.save-button", "commit:ucpath.smart-hr.save-and-submit-button"], "the termination is filed once");
+    assert.deepEqual(c.writeIntents(done).map(intent => intent.system), ["kuali"]);
+  });
+
+  it("refuses a manual approval whose Employee ID is not the run's before any write", async () => {
+    const c = await composition();
+    const review = (emplId: string) => [...OMIT_KRONOS, { step: "identity-review", facts: { emplId, ucpathName: COMPOSITION_UCPATH_NAME } }];
+    const wrong = await c.execute(c.begin([], false, review("10000009")));
+    assert.ok(wrong.lifecycle.state === "terminal" && wrong.lifecycle.outcome !== "done", JSON.stringify(wrong.lifecycle));
+    assert.deepEqual(c.commits(), []);
+    assert.deepEqual(c.writeIntents(wrong), []);
+    assert.deepEqual(c.nodeSpans(wrong, "pending-set"), [], "the run stops at the approval, before UCPath is touched");
+    const bound = await c.execute(c.begin([], false, review(COMPOSITION_EID)));
+    assert.ok(bound.lifecycle.state === "terminal" && bound.lifecycle.outcome === "done", JSON.stringify(bound.lifecycle));
   });
 
   it("resumes past a skipped identity approval when the document carries the Employee ID and the Kronos timecard is omitted", async () => {
