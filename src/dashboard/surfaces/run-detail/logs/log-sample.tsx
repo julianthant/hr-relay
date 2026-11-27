@@ -81,9 +81,9 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     const showFindings = findings?.stepId === id;
     const showPreview = id === lastStepId && previewRegion !== undefined;
     if (!showFindings && !showPreview) return undefined;
-    return <>{showFindings && findings !== undefined ? <UcpathFoundTransactions key={`${selection.row.runId}:${findings.stepId}`} attemptLabel={findings.attemptLabel}
+    return <>{showFindings && findings !== undefined ? <div className="col-start-2 mt-4 min-w-0"><UcpathFoundTransactions key={`${selection.row.runId}:${findings.stepId}`} attemptLabel={findings.attemptLabel}
       presentation={resource.command?.state === "pending" ? { state: "checking" } : findings.presentation}
-      onDecision={resource.onUcpathDecision} /> : undefined}
+      onDecision={resource.onUcpathDecision} /></div> : undefined}
       {showPreview ? <div className="col-start-2 mt-4 min-w-0">{previewRegion}</div> : undefined}</>;
   }, [projection.ucpathFindings, selection.row.runId, resource.command?.state, resource.onUcpathDecision, lastStepId, previewRegion]);
   const retryRun = useCallback(() => {
