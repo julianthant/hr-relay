@@ -24,7 +24,7 @@ import { createIntakeService } from "../../../../src/backend/runs/commands/intak
 import { createIntakeParser } from "../../../../src/backend/processing/spreadsheet/intake-parser.js";
 import { registerIntakeRoutes } from "../../../../src/backend/transports/http/routes/intake.js";
 import { registerCommandsRoutes } from "../../../../src/backend/transports/http/routes/commands.js";
-import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "../../../../src/backend/transports/http/routes/operator-mutation-ingress.js";
+import { operatorMutationIngressGuard } from "../../../../src/backend/transports/http/routes/operator-mutation-ingress.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../../src/backend/transports/http/request-identity.js";
 import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
 import type { DashboardCommandService } from "../../../../src/backend/runs/commands/command-service.js";
@@ -97,7 +97,6 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
   const identity = createSoloRequestIdentityCheckpoint({ id: LOCAL_OPERATOR_ACTOR_ID, label: "Synthetic operator" });
   const app: DashboardApp = new Hono();
   app.use("*", async (c, next) => { c.set("requestActorId", identity.identify(c.req.raw)); await next(); });
-  app.use("/api/v1/intake/files", operatorOpaqueIngressGuard);
   app.use("/api/v1/commands", operatorMutationIngressGuard);
   registerIntakeRoutes(app, { intake: {
     upload: request => runtime.intake.upload(request), read: id => runtime.intake.read(id), prepare: request => runtime.intake.prepare(request),

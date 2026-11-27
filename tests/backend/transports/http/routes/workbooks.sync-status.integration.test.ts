@@ -35,7 +35,7 @@ function open(database: DatabaseSync, sync: WorkbookSyncDownload) {
   const clock = manualClock(new Date(at));
   const service = createWorkbookLibraryService({ repository, clock, sync });
   const app: DashboardApp = new Hono();
-  registerWorkbookRoutes(app, { workbooks: { library: service, intake: async () => { throw new Error('unexpected intake'); }, workflows: [] } });
+  registerWorkbookRoutes(app, { workbooks: { library: service, workflows: [] } });
   const catalog = async () => {
     const response = await app.request('/api/v1/workbooks/catalog');
     expect(response.status).toBe(200);

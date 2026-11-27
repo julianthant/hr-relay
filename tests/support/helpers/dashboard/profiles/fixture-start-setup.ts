@@ -1,7 +1,6 @@
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { separationsDescriptor } from "../../registered-workflows.js";
 import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../../../../src/models/dashboard/bootstrap.js";
-import { projectWorkbookCompatibility } from "../../../../../src/models/dashboard/workbook-library.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../../../src/models/dashboard/start-plan.js";
 import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
@@ -29,7 +28,6 @@ FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
 
   const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
     ...FIXTURE_BOOTSTRAP,
-    workbookCompatibility: projectWorkbookCompatibility(WORKFLOW_MODULES.map(module => module.descriptor), []),
     descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
     workflows: WORKFLOW_MODULES.map((module) => ({
       id: module.descriptor.id,

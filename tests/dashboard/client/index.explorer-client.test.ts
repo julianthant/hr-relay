@@ -53,6 +53,21 @@ describe("the explorer queries", () => {
     await assert.rejects(() => client.workflowExplorer(), DashboardClientError);
   });
 
+  it("requires the current bootstrap hash before sharing an Explorer response", async () => {
+    const first = readFixtureExplorer(explorerQueryDeps(CLOCK, HASH));
+    const nextHash = FingerprintSchema.parse("e".repeat(64));
+    let response = first;
+    const { client, calls } = clientOver(() => ({ status: 200, body: response }));
+
+    await client.workflowExplorer(undefined, { descriptorHash: HASH });
+    await assert.rejects(() => client.workflowExplorer(undefined, { descriptorHash: nextHash }), DashboardClientError);
+    response = { ...first, descriptorHash: nextHash };
+    const next = await client.workflowExplorer(undefined, { descriptorHash: nextHash });
+    assert.equal(next.descriptorHash, nextHash);
+    assert.deepEqual(await client.workflowExplorer(undefined, { descriptorHash: nextHash }), next);
+    assert.equal(calls.length, 3);
+  });
+
   it("has no Explorer validation client or writable command envelope", () => {
     const { client } = clientOver(() => { throw new Error("unexpected dispatch"); });
     assert.equal("validateExplorerEdit" in client, false);

@@ -19,8 +19,7 @@ import type { SettingsQueries } from "./queries/settings-queries.js";
 import { createSettingsQueries } from "./queries/settings-queries.js";
 import type { ShellQueries } from "./queries/shell-queries.js";
 import { createShellQueries } from "./queries/shell-queries.js";
-import type { StorageQueries } from "./queries/storage-queries.js";
-import { createStorageQueries } from "./queries/storage-queries.js";
+import { createStorageQueries, type StorageQueries } from "./queries/storage-queries.js";
 import type { DashboardTransport } from "./transport.js";
 
 
@@ -34,7 +33,7 @@ export type { DetailQueries } from "./queries/detail-queries.js";
 export { createExplorerQueries } from "./queries/explorer-queries.js";
 export type { ExplorerQueries } from "./queries/explorer-queries.js";
 export { createIntakeQueries } from "./queries/intake-queries.js";
-export type { IntakeQueries,IntakeUploadRequest,IntakeUploadResult } from "./queries/intake-queries.js";
+export type { IntakeQueries } from "./queries/intake-queries.js";
 export { createPreflightQueries } from "./queries/preflight-queries.js";
 export type { PreflightQueries } from "./queries/preflight-queries.js";
 export { createQueueQueries } from "./queries/queue-queries.js";
@@ -43,6 +42,7 @@ export { createSettingsQueries } from "./queries/settings-queries.js";
 export type { SettingsQueries } from "./queries/settings-queries.js";
 export { createShellQueries } from "./queries/shell-queries.js";
 export type { ShellQueries } from "./queries/shell-queries.js";
+
 export { createStorageQueries } from "./queries/storage-queries.js";
 export type { StorageQueries } from "./queries/storage-queries.js";
 

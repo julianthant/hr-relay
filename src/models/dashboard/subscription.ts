@@ -67,7 +67,7 @@ export const StreamRowSchema = z.discriminatedUnion("model", [
   z.strictObject({ model: z.literal("run-panel"), key: RunIdSchema, value: RunPanelSchema }).superRefine((row, context) => {
     if (row.value.state === "available" && row.value.detail.runId !== row.key) context.addIssue({ code: "custom", path: ["value"], message: "run panel must belong to its key" });
   }),
-  /** What `GET /notifications/status` answers for the actor. */
+  /** The notification observation status for the actor. */
   z.strictObject({ model: z.literal("notification-status"), key: ActorIdSchema, value: ReadSchema(NotificationObservationStatusSchema) }),
   z.strictObject({ model: z.literal("notification-list"), key: ActorIdSchema, value: ReadSchema(z.array(NotificationWireSchema)) }).superRefine((row, context) => {
     if (row.value.state !== "available") return;

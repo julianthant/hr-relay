@@ -333,11 +333,10 @@ describe("spreadsheet registration stays outside Run", () => {
     assert.deepEqual(intakeHandoffs, []);
   });
   it("a served intake capability does not restore the retired upload action", async () => {
-    let uploads = 0;
-    const dialog = await openDialog(stubClient({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } }));
+    const dialog = await openDialog(stubClient({}));
     await dialog.type(TYPED); await dialog.press("Next");
     assert.ok(!dialog.text().includes("Import a spreadsheet"));
-    assert.equal(uploads, 0); assert.deepEqual(intakeHandoffs, []);
+    assert.deepEqual(intakeHandoffs, []);
   });
   it("omits reference controls for a workflow without declared references", async () => {
     let submission: unknown;
@@ -392,7 +391,6 @@ const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
         : { state: "present", surface: start.inputRun },
     spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookFields: start.requiredWorkbookFields,
     workbookReference: start.workbookReference,
-    referenceSources: FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility.workflows.find(workflow => workflow.workflowId === entry.id)?.sources ?? [],
   };
 });
 

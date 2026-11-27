@@ -38,15 +38,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       reason: "the test harness runs no backup lane",
     });
 
-    const boot = FrontendBootstrapWireSchema.parse(await (await h.app.request("/api/v1/bootstrap")).json());
-    const storage = boot.storage;
-    assert.equal(storage.authority, "healthy");
-    const sections = boot.settingsSections as { id: string; label: string }[];
-
-    assert.deepEqual(sections, [
-      { id: "storage", label: "Storage checks", revision: 1 },
-      { id: "workflow-capabilities", label: "Workflow capabilities", revision: 1 },
-    ]);
+    const body: unknown = await (await h.app.request("/api/v1/bootstrap")).json();
+    assert.ok(body !== null && typeof body === "object");
+    for (const key of ["systemInstances", "settingsSections", "featureAvailability"]) {
+      assert.equal(Object.hasOwn(body, key), false, key);
+    }
+    const boot = FrontendBootstrapWireSchema.parse(body);
+    assert.equal(boot.storage.authority, "healthy");
   });
 
   it("serves a sanitized span-stream structural diagnosis through the real storage doctor", async () => {

@@ -106,8 +106,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/exports/search", operatorMutationIngressGuard);
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
   app.use("/api/v1/rerun-warnings", operatorMutationIngressGuard);
-  // Intake bytes use the file media type; Host/Origin admission still applies.
-  app.use("/api/v1/intake/files", operatorOpaqueIngressGuard);
+  // OCR bytes use the file media type; Host/Origin admission still applies.
   app.use("/api/v1/ocr/files", operatorOpaqueIngressGuard);
   app.use("/api/v1/workbooks", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/types", operatorMutationIngressGuard);
@@ -115,7 +114,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/workbooks/:libraryId/clone", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/library-actions", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/save", operatorMutationIngressGuard);
-  app.use("/api/v1/workbooks/:libraryId/intake", operatorMutationIngressGuard);
+  app.use("/api/v1/workbooks/:libraryId/copy-mapping", operatorMutationIngressGuard);
 
   app.post("/api/v1/debug/errors", async c => {
     const now = deps.bootstrap.clock.nowMs();

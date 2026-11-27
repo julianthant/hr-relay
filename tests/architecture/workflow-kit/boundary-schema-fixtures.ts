@@ -233,10 +233,8 @@ const ACTION_EVIDENCE = {
 const BOOTSTRAP = {
   wireVersion: 1, appVersion: "1.0.0", descriptorHash: HASH_A, settingsSchemaHash: HASH_B, protectedSchemaHash: HASH_A,
   projectionGeneration: 1, actor: { id: "local-operator", label: "Local operator" },
-  workbookCompatibility: { workflows: [], libraries: [] },
   serverClock: { now: NOW, zone: "America/Los_Angeles" },
   storage: { authority: "healthy" }, workflows: [],
-  systemInstances: [], settingsSections: [], featureAvailability: [],
 };
 const DAY = {
   day: "2026-07-31", descriptorHash: HASH_A, projectionGeneration: 1, snapshotCursor: "pc:1",

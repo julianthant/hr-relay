@@ -33,20 +33,6 @@ export function registerTrustRoutes(app: DashboardApp, deps: TrustRouteDeps): vo
     c.header("x-content-type-options", "nosniff");
   });
 
-  app.get("/api/v1/diagnostic-bundles/:bundleId", async (c) => {
-    const { bundleId } = BundlePathSchema.parse(c.req.param());
-    if (deps.diagnosticBundles === undefined) {
-      throw new SectionUnavailableError("diagnostic bundle readback is not available: no diagnostic bundle authority is composed");
-    }
-    const bundle = await readDiagnosticBundle(
-      deps.diagnosticBundles,
-      bundleId,
-      undefined,
-      c.req.raw.signal,
-    );
-    return c.json(bundle.wire);
-  });
-
   app.get("/api/v1/diagnostic-bundles/:bundleId/manifest", async (c) => {
     const { bundleId } = BundlePathSchema.parse(c.req.param());
     if (deps.diagnosticBundles === undefined) {

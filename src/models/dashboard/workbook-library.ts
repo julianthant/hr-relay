@@ -134,7 +134,7 @@ export type WorkbookCompatibility = z.infer<typeof WorkbookCompatibilitySchema>;
 export const WorkbookActiveSelectionSchema = z.strictObject({
   /** Which declaration the pick answers; absent means the workflow's required reference. */
   typeId: WorkbookIdSchema.optional(),
-  entry: z.number().int().positive(), libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema,
+  entry: z.number().int().positive(), libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema.optional(),
   sheetId: WorkbookIdSchema, expectedVersion: WorkbookRevisionSchema,
   selectedRow: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema }).optional(),
 }).superRefine((selection, context) => {
@@ -147,7 +147,7 @@ export const WorkbookActiveSnapshotRequestSchema = z.strictObject({
   fields: z.array(KnownWorkbookFieldSchema).min(1),
   writableFields: z.array(KnownWorkbookFieldSchema),
   mode: z.enum(["keys", "all"]), keys: z.array(z.string().min(1)),
-  libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema, sheetId: WorkbookIdSchema,
+  libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema.optional(), sheetId: WorkbookIdSchema,
   expectedVersion: WorkbookRevisionSchema,
   selectedRow: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema }).optional(),
 }).superRefine((request, context) => {

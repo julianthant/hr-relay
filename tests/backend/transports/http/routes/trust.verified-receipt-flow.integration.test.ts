@@ -203,8 +203,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     if (removeArtifact) rmSync(artifactPath);
     else writeFileSync(artifactPath, "{\"mutated\":true}", "utf8");
 
-    const suffix = removeArtifact ? "/manifest" : "";
-    const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}${suffix}`);
+    const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}/manifest`);
     const body = await json(response);
     assert.equal(response.status, 500);
     assert.equal(body.code, removeArtifact ? "DIAGNOSTIC_BUNDLE_BYTES_MISSING" : "DIAGNOSTIC_BUNDLE_CORRUPT");
@@ -234,7 +233,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       }),
     });
     const bundle = await captureDiagnosticBundle(h);
-    const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}`);
+    const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}/manifest`);
     const body = await json(response);
 
     assert.equal(response.status, 500);

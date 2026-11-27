@@ -38,7 +38,6 @@ export { createRowStore, type RowStore, type RowStoreWriter } from "./subscripti
 export type { StartPlanResponse } from "./commands.js";
 export type { OperatorXlsxClientDownload } from "./commands.js";
 export type { OperatorXlsxExportRequest } from "../../models/dashboard/xlsx-export.js";
-export type { IntakeUploadRequest, IntakeUploadResult } from "./queries.js";
 export type {
   CrossDateSearchPage,
   CrossDateSearchQuery,

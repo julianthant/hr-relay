@@ -15,7 +15,7 @@ import { launchWorkflows } from "../../../../src/dashboard/surfaces/run-start/ru
 import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 
-const SERVED_FIXTURE = launchWorkflows(parseWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows), SERVED_CATALOG_BOOTSTRAP.workbookCompatibility);
+const SERVED_FIXTURE = launchWorkflows(parseWorkflows(SERVED_CATALOG_BOOTSTRAP.workflows));
 const SERVED_CATALOG = buildWorkflowCatalog(SERVED_FIXTURE, servedFixtureSources(SERVED_FIXTURE));
 const READBACK_MS = 2500;
 
