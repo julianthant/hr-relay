@@ -273,7 +273,8 @@ it("serves archived notices as read alongside actionable copy notices", async ()
   expect(target).toEqual({ actorId: LOCAL_OPERATOR_ACTOR_ID, members: [{ notificationId: localId, expectedVersion: 1 }], matchingCount: 1 });
   const readAll = NotificationCommandRequestSchema.parse({ ...command, commandId: randomUUID(), type: "notification-read-all", target });
   const applied = await client.executeCommand(readAll);
-  expect(applied).toMatchObject({ state: "applied", affectedTargets: [{ family: "notification", notificationId: localId }] });
+  const receipt = { actorId: LOCAL_OPERATOR_ACTOR_ID, changes: [{ notificationId: localId, revision: 2 }] };
+  expect(applied).toMatchObject({ state: "applied", affectedTargets: [{ family: "notification", notificationId: localId }], notificationReceipt: receipt });
   expect(await verifyShellCommandEffect(client, day, readAll, applied)).toMatchObject({ state: "matched" });
 
   const unread = NotificationCommandRequestSchema.parse({ ...command, commandId: randomUUID(), type: "notification-unread",
@@ -281,6 +282,9 @@ it("serves archived notices as read alongside actionable copy notices", async ()
   const toggled = await client.executeCommand(unread);
   expect(toggled.state).toBe("applied");
   expect(await verifyShellCommandEffect(client, day, unread, toggled)).toMatchObject({ state: "matched" });
+  const replay = await client.executeCommand(readAll);
+  expect(replay).toMatchObject({ state: "already-applied", notificationReceipt: receipt });
+  expect(await verifyShellCommandEffect(client, day, readAll, replay)).toMatchObject({ state: "matched" });
   expect((await client.notificationSnapshot()).find(row => row.notificationId === archivedId)).toMatchObject(archived);
   expect(readFileSync(archivePath)).toEqual(archive);
 });

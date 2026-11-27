@@ -1,4 +1,4 @@
-import { WorkbookCheckRequirementSchema, WorkbookCompatibilitySchema, WorkbookFieldRequirementSchema, WorkbookRequirementDeclarationSchema } from "./workbook-library.js";
+import { WorkbookCheckRequirementSchema, WorkbookFieldRequirementSchema, WorkbookRequirementDeclarationSchema } from "./workbook-library.js";
 import { z } from "zod";
 import { StorageAuthoritySummarySchema } from "../storage/storage-status.js";
 import { ActivityTimeZoneSchema } from "./activity-volume.js";
@@ -145,7 +145,6 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
     serverClock: ServerClockWireSchema,
     storage: StorageAuthoritySummarySchema,
     workflows: z.array(parts.workflow),
-    workbookCompatibility: WorkbookCompatibilitySchema,
     featureAvailability: z.array(FeatureAvailabilityWireSchema).min(1).optional(),
     // Optional permits older producers; current composition must supply the strict report.
     preflight: z.array(PreflightCheckWireSchema).optional(),

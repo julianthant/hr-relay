@@ -94,8 +94,6 @@ describe("bootstrap start-surface block", () => {
       // Re-parsed on purpose: the producer's own `.parse` is what makes this a
       // statement about the WIRE rather than about an object literal.
       const wire = FrontendBootstrapWireSchema.parse(buildBootstrap(depsOf(world)));
-      expect(wire.workbookCompatibility.workflows.map(workflow => workflow.workflowId))
-        .toEqual(DESCRIPTORS.map(descriptor => descriptor.id));
       const served = new Map(
         WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)
           .map((entry) => [String(entry.id), entry.start] as const),
@@ -121,12 +119,9 @@ describe("bootstrap start-surface block", () => {
 
           readiness: descriptor.requiredWorkbookFields.length === 0
             ? { scope: "workbook-sources", state: "ready" }
-            : wire.workbookCompatibility.workflows.find(workflow => workflow.workflowId === descriptor.id)?.sources.length
-              ? { scope: "workbook-sources", state: "selection-needed",
-                fixAction: { kind: "choose-workbook-sources", workflowId: descriptor.id } }
-              : { scope: "workbook-sources", state: "unavailable", reasonCode: "WORKBOOK_LIBRARY_EMPTY",
-                reason: "Import a Library spreadsheet before choosing a source.",
-                fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
+            : { scope: "workbook-sources", state: "unavailable", reasonCode: "WORKBOOK_LIBRARY_EMPTY",
+              reason: "Import a Library spreadsheet before choosing a source.",
+              fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
           spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
           ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
           ...(["person-lookup", "separations", "onboarding", "work-study", "i9-check-start", "emergency-contact", "emergency-contact-member"].includes(String(descriptor.id)) ? { workbookCheck: { id: "reference-check", keyFieldId: "eid" } } : {}),

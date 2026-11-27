@@ -434,7 +434,8 @@ export async function harness(options: {
     ...(options.notifications === undefined ? {} : { notifications: options.notifications(database) }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workerCommandResult: createWorkerCommandResultQuery(database),
-    workbooks: { library: workbookLibrary, workflows: options.workbookWorkflows ?? [fixtureDescriptor] },
+    workbooks: { library: workbookLibrary, workflows: options.workbookWorkflows ?? [fixtureDescriptor],
+      withReadPosition: serve => database.withAuthorityReadSnapshot(() => serve(database.capturedChangeKey().changeLogSeq)) },
     bootstrap: {
       appVersion: "0.1.0",
       clock,

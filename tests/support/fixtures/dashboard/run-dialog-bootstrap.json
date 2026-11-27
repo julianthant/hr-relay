@@ -137,9 +137,5 @@
     ]
    }
   }
- ],
- "workbookCompatibility": {
-  "workflows": [],
-  "libraries": []
- }
+ ]
 }

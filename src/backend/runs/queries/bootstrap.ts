@@ -111,7 +111,6 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       checkedAt: preflight.checkedAt,
     })),
 
-    workbookCompatibility,
     workflows: deps.modules.map(({ descriptor, role, intake }) => ({
       id: descriptor.id,
       code: descriptor.code,

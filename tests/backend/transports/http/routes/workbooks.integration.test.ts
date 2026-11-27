@@ -147,6 +147,34 @@ it('serves current workbook compatibility from server workflow declarations befo
   assert.deepEqual(await response.json(), projectWorkbookCompatibilityFromRepository(h.database.authority.workbooks, [fixtureDescriptor]));
 });
 
+it('serves workbook readiness in bootstrap and revalidates the three separate workbook reads', async () => {
+  const h = await harness();
+  const boot: unknown = await (await h.app.request('/api/v1/bootstrap')).json();
+  expect(boot).not.toHaveProperty('workbookCompatibility');
+  expect(boot).toHaveProperty('workflows.0.start.readiness.scope', 'workbook-sources');
+  const paths = ['catalog', 'compatibility', 'types'].map(read => `/api/v1/workbooks/${read}`);
+  const validators = await Promise.all(paths.map(async path => {
+    const first = await h.app.request(path);
+    expect(first.status).toBe(200);
+    expect(first.headers.get('cache-control')).toBe('private, no-cache');
+    expect(first.headers.get('vary')?.toLowerCase()).toContain('x-relay-session');
+    const etag = first.headers.get('etag');
+    assert.ok(etag);
+    const revisit = await h.app.request(path, { headers: { 'if-none-match': etag } });
+    expect(revisit.status).toBe(304);
+    expect(await revisit.text()).toBe('');
+    return { 'if-none-match': etag };
+  }));
+  const client = workbookClient(h.app);
+  const saved = await client.workbookCreate(workbook);
+  await client.workbookPutType({ id: 'reference', name: 'Reference', keyFieldId: null, fields: ['roster.date'], defaultWorkbookId: null });
+  const changed = await Promise.all(paths.map(async (path, index) => h.app.request(path, { headers: validators[index] })));
+  expect(changed.map(response => response.status)).toEqual([200, 200, 200]);
+  expect(await changed[0].json()).toMatchObject([{ libraryId: saved.libraryId }]);
+  expect(await changed[1].json()).toMatchObject({ libraries: [{ libraryId: saved.libraryId }] });
+  expect(await changed[2].json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'reference' })]));
+});
+
 it('retires workbook routes with no mounted consumer', async () => {
   const h = await harness();
   const base = 'http://localhost/api/v1/workbooks';

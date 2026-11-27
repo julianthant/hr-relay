@@ -1008,10 +1008,7 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     ...['recovery', 'correction'].map(owner => ({ surface: 'wire/run-detail-section', path: `payload.value.${owner}.request.workbookReferences[].typeId`, origin: 'repository-authored' as const })),
     { surface: 'wire/bootstrap', path: 'workflows[].start.readiness.fixAction.requiredFields[]', origin: 'repository-authored' },
     { surface: 'wire/bootstrap', path: 'workflows[].start.readiness.reason', origin: 'repository-authored' },
-    ...COMPATIBILITY_LEAF_ORIGINS.flatMap(([path, origin]) => [
-      { surface: 'wire/bootstrap', path: `workbookCompatibility.${path}`, origin },
-      { surface: 'wire/workbook-compatibility', path, origin },
-    ]),
+    ...COMPATIBILITY_LEAF_ORIGINS.map(([path, origin]) => ({ surface: 'wire/workbook-compatibility', path, origin })),
     { surface: 'request/workbook-reference-write', path: 'typeId', origin: 'repository-authored' },
     { surface: 'request/workbook-reference-write', path: 'key', origin: 'captured-hr-value' },
     { surface: 'request/workbook-reference-write', path: 'values[].fieldId', origin: 'repository-authored' },

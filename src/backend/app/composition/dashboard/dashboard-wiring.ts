@@ -362,6 +362,10 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       } };
     } });
   const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync });
+  const workbookReadPosition = database.trackAuthorityTables([
+    "workbook_library", "workbook_library_state", "workbook_library_snapshots", "workbook_payloads",
+    "workbook_types", "workflow_workbook_selections",
+  ]);
 
   const shell = composeShell({ workbookCompatibility: workflows => workbookLibrary.compatibility(workflows), database, readLanes, projection, activity, clock, ids, artifacts, descriptors,
     actorLabel: () => {
@@ -433,7 +437,14 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     ocr: ocrSources,
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workerCommandResult: createWorkerCommandResultQuery(database),
-    workbooks: { library: workbookLibrary, workflows: shell.bootstrap.modules.map(module => module.descriptor) },
+    workbooks: { library: workbookLibrary, workflows: shell.bootstrap.modules.map(module => module.descriptor),
+      withReadPosition: serve => database.withAuthorityReadSnapshot(() => {
+        assertCurrent();
+        const response = serve(workbookReadPosition());
+        assertCurrent();
+        return response;
+      }),
+    },
     ...settingsBoundary.routes,
     ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
     runHistory: { status: () => runHistory.status(), clear: request => runHistory.clear(confirmedHistoryCommand(request)),

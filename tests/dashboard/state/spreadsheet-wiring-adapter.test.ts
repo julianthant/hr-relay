@@ -25,7 +25,7 @@ function setup() {
     workbookCompatibility: vi.fn<WorkbookLibraryQueries['workbookCompatibility']>(async () => WorkbookCompatibilitySchema.parse({ workflows: [], libraries: [
       { libraryId: 'saved', versionId: 'original', sheets: [{ sheetId: 'sheet', sheetName: 'People', mappings: [], workflows: [] }] },
     ] })),
-    workbookList: vi.fn(async () => [summaryOf(saved())]), workbookOpen: vi.fn(async () => saved()), workbookCreate: vi.fn(async (workbook: unknown) => saved(1, { ...workbook as ReturnType<typeof book>, libraryId: 'generated' })), workbookSave: vi.fn(async (_id: string, version: number, workbook: unknown) => saved(version + 1, workbook as ReturnType<typeof book>)), workbookRevision: vi.fn(), workbookHistory: vi.fn(), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>(), workbookCopyMapping: vi.fn<WorkbookLibraryQueries['workbookCopyMapping']>() } satisfies WorkbookLibraryQueries;
+    workbookList: vi.fn(async () => [summaryOf(saved())]), workbookOpen: vi.fn(async () => saved()), workbookCreate: vi.fn(async (workbook: unknown) => saved(1, { ...workbook as ReturnType<typeof book>, libraryId: 'generated' })), workbookSave: vi.fn(async (_id: string, version: number, workbook: unknown) => saved(version + 1, workbook as ReturnType<typeof book>)), workbookRevision: vi.fn(), workbookHistory: vi.fn(), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(async () => []), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(async () => []), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>(), workbookCopyMapping: vi.fn<WorkbookLibraryQueries['workbookCopyMapping']>() } satisfies WorkbookLibraryQueries;
   return { client, adapter: createSpreadsheetWiringAdapter(client) };
 }
 describe('served workbook authority', () => {
@@ -246,6 +246,10 @@ describe('named library actions', () => {
     client.workbookTypes.mockResolvedValue([file.type]);
     assert.equal((await adapter.saveType(file.type)).state, 'confirmed');
     assert.equal(adapter.snapshot().typesError, '');
+    await adapter.loadCatalog();
+    assert.equal(client.workbookCatalog.mock.calls.length, 2);
+    assert.equal(client.workbookCompatibility.mock.calls.length, 2);
+    assert.equal(client.workbookTypes.mock.calls.length, 2);
   });
   const entry = () => WorkbookLibraryEntrySchema.parse({ libraryId: 'saved', version: 3, name: 'Roster.xlsx', updatedAt: '2026-11-01T00:00:00Z', rowCount: 0,
     worksheets: [{ id: 'sheet', name: 'People' }], metadata: { typeId: 'roster', sharePoint: null },

@@ -41,7 +41,6 @@ const startWorkflows = (workflows: readonly unknown[]): readonly RunStartWorkflo
     ...(start.rows === undefined ? {} : { rows: start.rows }),
     inputRun: start.inputRun === undefined ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] } : { state: "present", surface: start.inputRun },
     spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookFields: start.requiredWorkbookFields, workbookReference: start.workbookReference,
-    referenceSources: FIXTURE_BOOTSTRAP.workbookCompatibility.workflows.find(workflow => workflow.workflowId === entry.id)?.sources ?? [],
   };
 });
 export const RUN_DIALOG_WORKFLOWS = startWorkflows(FIXTURE_BOOTSTRAP.workflows);

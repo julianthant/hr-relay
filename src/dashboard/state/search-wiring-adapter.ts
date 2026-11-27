@@ -1,6 +1,6 @@
 import { DISPLAY_STATUS_LABELS, displayStatusOf } from "../../models/dashboard/status-vocabulary.js";
 import type { QueueStatus } from "../surfaces/shared/status/status-model.js";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { CrossDateSearchQuerySchema, CrossDateSearchStateFacetSchema, compareCrossDateSearchResults, currentCorpusSearchQuery, type CrossDateSearchPage, type CrossDateSearchQueryInput } from "../../models/dashboard/search.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../models/failures/error-catalog.js";
@@ -11,6 +11,7 @@ import type { PaletteSheet } from "../surfaces/shell/search/search-palette-model
 import type { WorkbookLibraryEntry } from "../../models/dashboard/workbook-library.js";
 import { sheetOf } from "../surfaces/spreadsheets/design/sheets-v2-model.js";
 import { formatMonthDay } from "../lib/date-format.js";
+import { useWorkbookSession } from "./spreadsheet-wiring-adapter.js";
 
 export const searchMessage = (code: "SEARCH_UNAVAILABLE" | "SEARCH_LIBRARY_UNAVAILABLE" | "SEARCH_SUBJECT_UNAVAILABLE") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
@@ -75,18 +76,13 @@ export function workspaceSearchQuery(query: string, workflows: readonly Pick<Wor
 }
 
 /** The saved library as palette rows, read while the palette is open. */
-export function useLibrarySheets(client: Pick<DashboardClient, "workbookCatalog">, enabled: boolean): Readonly<{ sheets: readonly PaletteSheet[]; unavailable?: string }> {
-  const [state, setState] = useState<{ sheets: readonly PaletteSheet[]; read: "pending" | "ready" | "failed" }>({ sheets: [], read: "pending" });
-  useEffect(() => {
-    if (!enabled) return;
-    let live = true;
-    setState(previous => ({ ...previous, read: "pending" }));
-    client.workbookCatalog().then(records => { if (live) setState({ sheets: paletteSheets(records), read: "ready" }); }, () => { if (live) setState(previous => ({ ...previous, read: "failed" })); });
-    return () => { live = false; };
-  }, [client, enabled]);
-  // Loaded rows stay while a re-read is pending or failed; only a settled read is a verified list.
-  if (state.read === "ready") return { sheets: state.sheets };
-  return state.read === "failed" ? { sheets: state.sheets, unavailable: searchMessage("SEARCH_LIBRARY_UNAVAILABLE") } : { sheets: state.sheets };
+export function useLibrarySheets(client: DashboardClient, enabled: boolean, authority?: object): Readonly<{ sheets: readonly PaletteSheet[]; unavailable?: string }> {
+  const adapter = useWorkbookSession(client, authority);
+  useEffect(() => { if (enabled) void adapter.loadCatalogOnly(); }, [adapter, enabled, authority]);
+  const catalog = useSyncExternalStore(adapter.subscribe, () => enabled ? adapter.snapshot().catalog : undefined, () => undefined);
+  const failed = useSyncExternalStore(adapter.subscribe, () => enabled && adapter.snapshot().catalogReadFailed, () => false);
+  const sheets = useMemo(() => catalog === undefined ? [] : paletteSheets(catalog), [catalog]);
+  return failed ? { sheets, unavailable: searchMessage("SEARCH_LIBRARY_UNAVAILABLE") } : { sheets };
 }
 
 const NO_TITLES: ReadonlyMap<string, string> = new Map();
