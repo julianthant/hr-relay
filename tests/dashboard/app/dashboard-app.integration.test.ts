@@ -155,7 +155,7 @@ try {
   await vi.waitFor(() => assert_m0.equal(button("Add to library").disabled, false));
   await click(button("Add to library"));
   await settle();
-  assert_m0.equal(document.querySelector('input[aria-label="Name"]'), null);
+  assert_m0.ok(document.querySelector('input[aria-label="Name"]') === null);
   const imported = (await savedWorkbooks()).find(record => record.name === "Focus roster"); assert_m0.ok(imported);
   assert_m0.equal((await openedWorkbook(imported.libraryId)).workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
   assert_m0.equal(uploads, 0); assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
@@ -171,7 +171,7 @@ try {
   const before = (await savedWorkbooks()).map(record => record.name);
   await chooseSpreadsheet();
   await click(button(dismissal));
-  assert_m0.equal(document.querySelector('input[aria-label="Name"]'), null);
+  assert_m0.ok(document.querySelector('input[aria-label="Name"]') === null);
   assert_m0.deepEqual((await savedWorkbooks()).map(record => record.name), before);
   assert_m0.equal(starts, 0);
   assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
