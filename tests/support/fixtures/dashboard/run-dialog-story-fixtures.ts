@@ -18,6 +18,7 @@ import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
 import intakeSnapshot from "./run-dialog-intake-sessions.json" with { type: "json" };
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../../src/models/intake/wire.js";
+import { FIXTURE_CHATGPT_OCR_AVAILABLE } from "./fixture-chatgpt-account.js";
 import bootstrapSnapshot from "./run-dialog-bootstrap.json" with { type: "json" };
 import workStudySnapshot from "./run-dialog-work-study.json" with { type: "json" };
 import separationsSnapshot from "./run-dialog-separations.json" with { type: "json" };
@@ -113,7 +114,7 @@ export const RUN_DIALOG_READY = runDialogReadiness([]);
 
 /** A client that serves only what the story scripts and READY readiness; reaching for anything else fails the story loudly. */
 export function runDialogClient(served: Partial<DashboardClient> = {}): DashboardClient {
-  const methods: Partial<DashboardClient> = { readPreflight: async () => RUN_DIALOG_READY, ...served };
+  const methods: Partial<DashboardClient> = { readPreflight: async () => RUN_DIALOG_READY, chatGptAccount: async () => FIXTURE_CHATGPT_OCR_AVAILABLE, ...served };
   return new Proxy(methods, { get(target, property): unknown {
     const impl: unknown = Reflect.get(target, property);
     if (impl === undefined && typeof property === "string" && property !== "then") throw new Error(`the Run dialog story reached for client.${property}, which it does not serve`);

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, expect, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
+import { FIXTURE_CHATGPT_OCR_SIGNED_OUT } from "../../../support/fixtures/dashboard/fixture-chatgpt-account.js";
 import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../src/models/workflows/i9-check/start.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
@@ -277,8 +278,7 @@ async function contactDialog(plans: unknown[], options: { withoutOcrFields?: boo
   const contact = compileWorkflow(emergencyContactWorkflow).descriptor;
   const uploadRun = contact.surfaces.uploadRun; assert.ok(uploadRun);
   const served = client({
-    ...(options.ocrUnavailable === true ? { chatGptAccount: async () => ({ account: { state: "signed-out" as const },
-      connection: { state: "unchecked" as const, checkedAt: null, failureCode: null }, usage: { state: "unavailable" as const, reason: "signed-out" as const } }) } : {}),
+    ...(options.ocrUnavailable === true ? { chatGptAccount: async () => FIXTURE_CHATGPT_OCR_SIGNED_OUT } : {}),
     uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
       artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }),
     submitStartPlan: async request => { plans.push(request); const plan = h.planResponse("5a000000-0000-4000-8000-000000000002");

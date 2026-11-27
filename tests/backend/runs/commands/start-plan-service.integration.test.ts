@@ -301,10 +301,11 @@ it("requires an available OCR provider for an Emergency Contact PDF start with O
     columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
     rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }] }] });
   library.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
+  const workbookReferences = [{ entry: 1, libraryId: roster.libraryId, versionId: library.libraryVersion(roster.libraryId).version.id, sheetId: "people",
+    expectedVersion: library.read(roster.libraryId).version }];
   const start = (extractWithOcr: boolean) => h.service.plan({ workflowId: descriptor.id, dryRun: true, selectedStepKeys: descriptor.timeline.map(step => step.key),
     submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" }, onbaseFiling: "file", extractWithOcr }],
-    workbookReferences: [{ entry: 1, libraryId: roster.libraryId, versionId: library.libraryVersion(roster.libraryId).version.id, sheetId: "people",
-      expectedVersion: library.read(roster.libraryId).version }] });
+    workbookReferences });
   assert.throws(() => start(true), { message: ERROR_CATALOG.PROVIDER_UNAVAILABLE.text });
   assert.equal(start(false).planned.length, 1);
   available = true;
