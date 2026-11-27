@@ -98,10 +98,10 @@ describe("authority schema version lists", () => {
     assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 44 }).success, true);
     assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 0 }).success, false);
     assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 46 }).success, false);
-    const report = { state: "planned" as const, fromSchemaVersion: 0, toSchemaVersion: 44, credentials: "unchanged" as const };
+    const report = { state: "planned" as const, fromSchemaVersion: 0, toSchemaVersion: 45, credentials: "unchanged" as const };
     assert.equal(StorageUpgradeReportSchema.safeParse(report).success, true);
     assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, fromSchemaVersion: 39 }).success, true);
-    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, state: "already-upgraded", fromSchemaVersion: 44 }).success, true);
+    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, state: "already-upgraded", fromSchemaVersion: 45 }).success, true);
     assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, fromSchemaVersion: 46 }).success, false);
     assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, toSchemaVersion: 39 }).success, false);
   });

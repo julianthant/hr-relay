@@ -43,7 +43,7 @@ describe("Settings > General groups", () => {
     assert.deepEqual(rows.map(sectionOf), ["Runs", "Runs", "Notifications", "Notifications", "Notifications", "Notifications"]);
   });
   it("puts the ChatGPT status row before the Full access switch and no Subscription page in the nav", async () => {
-    const h = await setup();
+    const h = await setup(true);
     const card = h.host.querySelector('[data-settings-path="chatgpt.account"]');
     const permission = h.host.querySelector('[data-settings-path="assistant.fullAccess"]');
     assert.ok(card && permission);

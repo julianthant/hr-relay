@@ -7,9 +7,9 @@ export function AssistantSettings() {
   const { value, state, change } = usePersonPreferences();
   return <BodySection title="Assistant" description="ChatGPT sign-in and assistant permissions."><FormGroup label="Assistant">
     <ChatGptAccountSettings grouped />
-    <div data-settings-path="assistant.fullAccess" className="settings-compact-row">
+    {(state === "ready" || state === "saving") && <div data-settings-path="assistant.fullAccess" className="settings-compact-row">
       <Switch name="preferences.assistantFullAccess" label="Full access" checked={value.assistantFullAccess} disabled={state !== "ready"}
         onCheckedChange={enabled => { void change?.({ "preferences.assistantFullAccess": { set: enabled } }); }} />
-    </div>
+    </div>}
   </FormGroup></BodySection>;
 }
