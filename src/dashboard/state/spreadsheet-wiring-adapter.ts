@@ -78,7 +78,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
     const read = (async () => client.workbookCatalog())().then(catalog => {
       if (catalogRead === read) publish({ catalog, catalogReadFailed: false });
       return { state: 'ready' as const, catalog };
-    }, error => {
+    }, (error: unknown) => {
       if (catalogRead === read) {
         catalogRead = undefined;
         publish({ catalogReadFailed: true });
