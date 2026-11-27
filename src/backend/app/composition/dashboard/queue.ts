@@ -5,9 +5,9 @@ import { aggregateMemberRetryAvailable, batchMemberRetryAvailable } from "../../
 import type { WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 import { WorkerActivitySchema, WorkerDirectiveSchema, WorkerParentMessageSchema } from "../../../runtime/workers/worker-messages.js";
 import { WorkerBrowserObservationSchema, WorkerSetupRefusalCodeSchema } from "../../../../models/run/worker-control.js";
-import { WorkerPoolMemberSchema } from "../../../../models/run/worker-slot.js";
+import { WorkerPoolMemberSchema, WorkerSlotRecordSchema } from "../../../../models/run/worker-slot.js";
 import { ErrorCatalogCodeSchema } from "../../../../models/failures/error-catalog.js";
-import { BrowserSystemIdSchema, LocalDateSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
+import { BrowserSystemIdSchema, IsoInstantSchema, LocalDateSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import { systemIdFactory } from "../../../../rules/identity/identifiers.js";
 import { capturedInstantClock, localDatePart, systemClock, type Clock } from "../../../../rules/time/clock.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
@@ -99,8 +99,11 @@ const WorkerMemberViewSchema = z.strictObject({
   held: z.enum(["exit-unobserved", "kill-undelivered"]).optional(),
 });
 /** What main alone knows: its worker pool's members and which workflows are still starting them. */
-const ProcessFactsSchema = z.strictObject({ workers: z.array(WorkerMemberViewSchema), startupPending: z.array(WorkflowIdSchema) });
-type ProcessFacts = Readonly<{ workers: readonly WorkerMemberView[]; startupPending: readonly string[] }>;
+const ProcessFactsSchema = z.strictObject({ workers: z.array(WorkerMemberViewSchema), startupPending: z.array(WorkflowIdSchema),
+  sampleSessions: z.array(z.strictObject({ slot: WorkerSlotRecordSchema,
+    leases: z.array(z.strictObject({ system: BrowserSystemIdSchema, since: IsoInstantSchema })) })).optional() });
+type ProcessFacts = Readonly<{ workers: readonly WorkerMemberView[]; startupPending: readonly string[];
+  sampleSessions?: ReturnType<CopySamples["dayFacts"]> }>;
 
 function exitOf(exit: z.infer<typeof WorkerExitFactSchema> | undefined): WorkerMemberView["exit"] {
   if (exit === undefined) return undefined;
@@ -118,7 +121,8 @@ function admitProcessFacts(input: unknown): ProcessFacts {
   const workers = parsed.workers.map((view): WorkerMemberView => ({ member: view.member, lifetimeId: view.lifetimeId, version: view.version,
     state: view.state, directive: view.directive, pid: view.pid, startedAt: view.startedAt, activity: view.activity, browsers: view.browsers,
     ...(view.browserSystems === undefined ? {} : { browserSystems: view.browserSystems }), exit: exitOf(view.exit), held: view.held }));
-  return { workers, startupPending: parsed.startupPending };
+  return { workers, startupPending: parsed.startupPending,
+    ...(parsed.sampleSessions === undefined ? {} : { sampleSessions: parsed.sampleSessions }) };
 }
 
 /* ── the lane's replica ──────────────────────────────────────────────────── */
@@ -161,7 +165,11 @@ function laneReplica(context: LaneWarmContext): LaneReplica {
     descriptors: readableDescriptors, replica: true,
     reader: { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries },
     authority: operatorAuthority({ database: history, reader, descriptors: readableDescriptors,
-      workerMembers: () => state.facts.workers, workerStartupPending: workflowId => state.facts.startupPending.includes(workflowId) }),
+      workerMembers: () => state.facts.workers, workerStartupPending: workflowId => state.facts.startupPending.includes(workflowId),
+      samples: {
+        slots: () => state.facts.sampleSessions?.map(({ slot }) => slot) ?? [],
+        leases: workerId => state.facts.sampleSessions?.find(({ slot }) => slot.workerId === workerId)?.leases,
+      } }),
   });
   const replica: LaneReplica = { projection, state };
   replicas.set(history, replica);
@@ -221,10 +229,12 @@ export const queueDayRead = defineLaneRead(import.meta.url, "dashboard-queue-day
 });
 
 /** Main's side of the lane day: the process facts it sends, under a revision that moves whenever they change. */
-function createDayLane(lanes: DashboardReadLanes, workerMembers: () => readonly WorkerMemberView[], workerStartupPending: (workflowId: string) => boolean): DashboardDayLane {
+function createDayLane(lanes: DashboardReadLanes, workerMembers: () => readonly WorkerMemberView[],
+  workerStartupPending: (workflowId: string) => boolean, samples?: Pick<CopySamples, "dayFacts">): DashboardDayLane {
   let revision = 0, held: string | undefined;
   const facts = (): Readonly<{ revision: number; facts: ProcessFacts }> => {
-    const current: ProcessFacts = { workers: workerMembers(), startupPending: WORKFLOW_IDS.filter(workflowId => workerStartupPending(workflowId)) };
+    const current: ProcessFacts = { workers: workerMembers(), startupPending: WORKFLOW_IDS.filter(workflowId => workerStartupPending(workflowId)),
+      ...(samples === undefined ? {} : { sampleSessions: samples.dayFacts() }) };
     const key = JSON.stringify(current);
     if (key !== held) { held = key; revision += 1; }
     return { revision, facts: current };
@@ -244,13 +254,12 @@ export function createOperatorProjection(input: Omit<ProjectionInput, "authority
   /** With lanes, the day is built on the navigation lane from its replica; the pool's members are then required. */
   readLanes?: DashboardReadLanes;
   /** A copy's sample Sessions cards, served beside the durable worker slots. */
-  samples?: Pick<CopySamples, "slots" | "leases"> }) {
+  samples?: Pick<CopySamples, "slots" | "leases" | "dayFacts"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors } = input;
   let dayLane: DashboardDayLane | undefined;
-  // The lane replica cannot read main's in-memory sample cards, so a seeded copy builds its day on main.
-  if (input.readLanes !== undefined && input.samples === undefined) {
+  if (input.readLanes !== undefined) {
     if (input.workerMembers === undefined) throw new Error("queue-day-lane-worker-members-required");
-    dayLane = createDayLane(input.readLanes, input.workerMembers, input.workerStartupPending ?? (() => false));
+    dayLane = createDayLane(input.readLanes, input.workerMembers, input.workerStartupPending ?? (() => false), input.samples);
   }
   return createRunQueueProjection({
     assistantUsage: (from, to, generatedAt) => queryAssistantUsage(database, { from, to, generatedAt }),
