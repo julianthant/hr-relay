@@ -1,3 +1,4 @@
+import { recordHistoricalRecover } from "../../support/helpers/backend/record-historical-recover.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -68,7 +69,8 @@ function refuseDirectRecover(f: Fixture, target: RunRecord) {
   try {
     for (const request of [command, command, { ...command, commandId: randomUUID() }]) {
       const calls = recover.mock.calls.length;
-      const result = f.canonical.kernel.execute(request);
+      assert.throws(() => f.canonical.kernel.execute(request), /Open Rerun/u);
+      const result = recordHistoricalRecover({ ...f, lifecycle: f.canonical.lifecycle }, contactSaveMember.descriptor, request);
       assert.ok(result.state === "rejected" && result.code === "RUN_CONTINUATION_REFUSED", JSON.stringify(result));
       const replay = admitted.has(request.commandId);
       if (!replay && target.lifecycle.state === "terminal") {

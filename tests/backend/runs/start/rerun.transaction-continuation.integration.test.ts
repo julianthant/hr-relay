@@ -1,3 +1,4 @@
+import { recordHistoricalRecover } from "../../../support/helpers/backend/record-historical-recover.js";
 import { validateCompletedTransactionContinuations } from "../../../../src/backend/runs/start/recovery-plan.js";
 import { failureDecision } from "../../../../src/backend/runs/queries/run-detail/receipts-failures.js";
 import { FailureDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
@@ -14,12 +15,14 @@ import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/wor
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { DelegationEdgeIdSchema, EidSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { RerunSourceSchema } from "../../../../src/models/run/rerun.js";
 import { captureRunContinuation } from "../../../../src/backend/storage/sqlite/run-continuation.js";
 import { AuthenticatedRunContinuation } from "../../../../src/backend/storage/sqlite/run-continuation-delegation.js";
 import { previewRerunWarnings, RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
+import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { sourceBoundReadContract, sourceBoundReadDescriptor, sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, WriteFixtureCommit, WriteFixturePrepare, WriteFixtureProofSchema,
   writeFixtureMemoDescriptor, WRITE_FIXTURE_EID, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
@@ -129,12 +132,69 @@ function effects(h: Fixture) {
     checkpoints: h.database.authority.runCheckpoints.listByItem(descriptor.id, h.failed.envelope.itemId).filter(row => row.nodeId === WRITE_FIXTURE_NODE_ID),
     confirmations: h.database.authority.timelineEvents.page({}).filter(row => row.payload.kind === "operation-confirmed") };
 }
+
+function interruptPaused(h: Fixture) {
+  const paused = h.failed;
+  const resumed = requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: h.ids.uuid(), runId: paused.envelope.runId, expectedVersion: paused.version }));
+  const owner = testWorkerLifetime(h.database, h.descriptor.id, 1);
+  const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id,
+    workerId: owner.workerId, runtimeConfig: selectRunRuntime(h.database.authority) }));
+  assert.equal(claimed.envelope.runId, resumed.envelope.runId);
+  const endedAt = h.clock.now().toISOString();
+  const terminal = h.database.withAuthorityTransaction(repositories => repositories.runs.transition({
+    runId: claimed.envelope.runId, expectedVersion: claimed.version, now: endedAt,
+    claim: { workerId: owner.workerId, claimGeneration: claimed.claimGeneration },
+    lifecycle: { state: "terminal", outcome: "interrupted", endedAt },
+  }));
+  assert.ok(terminal.state === "applied");
+  return { runId: terminal.run.envelope.runId, expectedVersion: terminal.run.version };
+}
+
+it("retains a completed write on an interrupted rerun and requires confirmation if it is selected again", async () => {
+  const h = await fixture([], descriptor, [], true);
+  const source = interruptPaused(h);
+  const values = readRerunValues({ database: h.database, reader: h.lifecycle, descriptors: { resolve: () => descriptor } }, source);
+  assert.ok(values.state === "available", JSON.stringify(values));
+  assert.deepEqual(values.snapshot.retainedSteps, [{ key: "before", repeatable: true }, { key: WRITE_FIXTURE_NODE_ID, repeatable: true }]);
+  const plan = (selectedStepKeys: string[]) => h.planner.plan({ workflowId: descriptor.id, dryRun: false,
+    submissions: [], selectedStepKeys, rerunSource: { ...source, intent: "rerun", selectedStepKeys } });
+  const repeat = plan([WRITE_FIXTURE_NODE_ID, "finish"]);
+  assert.deepEqual(repeat.rerun?.warnings.map(warning => warning.nodeId), [WRITE_FIXTURE_NODE_ID]);
+  assert.equal(h.kernel.execute(h.command(repeat)).state, "confirmation-required");
+  const before = effects(h);
+  const unfinished = plan(["finish"]);
+  assert.deepEqual(unfinished.rerun?.warnings, []);
+  assert.equal(unfinished.rerun !== undefined && "continuation" in unfinished.rerun, false);
+  const continued = h.start(unfinished);
+  assert.ok(continued.envelope.continuation?.checkpoints.some(row => row.nodeId === WRITE_FIXTURE_NODE_ID));
+  assert.equal((await h.execute(continued)).state, "done");
+  assert.deepEqual(effects(h), before);
+});
+
+it("reuses a completed delegated result and its dependent write through interrupted Rerun and Start", async () => {
+  const h = await fixture([], childReceiptDescriptor, [sourceBoundReadDescriptor], true);
+  const source = interruptPaused(h);
+  const children = h.database.authority.runs.listChildren(source.runId);
+  assert.equal(children.length, 1);
+  const values = readRerunValues({ database: h.database, reader: h.lifecycle, descriptors: h.descriptors }, source);
+  assert.ok(values.state === "available", JSON.stringify(values));
+  assert.ok(values.snapshot.retainedSteps?.some(step => !step.repeatable));
+  const selectedStepKeys = childReceiptDescriptor.timeline.map(step => step.key)
+    .filter(key => !values.snapshot.retainedSteps?.some(step => step.key === key));
+  const before = effects(h);
+  const plan = h.planner.plan({ workflowId: childReceiptDescriptor.id, dryRun: false, submissions: [], selectedStepKeys,
+    rerunSource: { ...source, intent: "rerun", selectedStepKeys } });
+  const continued = h.start(plan);
+  assert.equal((await h.execute(continued)).state, "done");
+  assert.deepEqual(effects(h), before);
+  assert.deepEqual(h.database.authority.runs.listByWorkflow(sourceBoundReadDescriptor.id), children);
+});
 function operatorRecover(h: Fixture, run = h.failed, replay = false) {
   const command = { commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
     source: "dashboard", family: "run", type: "recover-run", target: { runId: run.envelope.runId, expectedVersion: run.version } };
-  const result = h.kernel.execute(command);
+  const result = recordHistoricalRecover(h, h.descriptors.resolve, command);
   if (replay) {
-    const repeated = h.kernel.execute(command); assert.ok(repeated.state === "already-applied");
+    const repeated = recordHistoricalRecover(h, h.descriptors.resolve, command); assert.ok(repeated.state === "already-applied");
     assert.ok(result.state === "applied"); assert.deepEqual(repeated.affectedTargets, result.affectedTargets);
   }
   assert.equal(result.state, "applied"); assert.ok(result.state === "applied");
@@ -327,7 +387,7 @@ it("refuses a genuinely acknowledged predecessor repeat at recovery admission be
   const before = effects(h);
   assert.equal(before.intents.length, 2); assert.equal(new Set(before.intents.map(intent => intent.idempotencyKey)).size, 2);
   assert.ok(before.intents.some(intent => intent.status === "committed" && intent.occurrence !== undefined));
-  const rejected = h.kernel.execute({ commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+  const rejected = recordHistoricalRecover(h, h.descriptor, { commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
     source: "dashboard", family: "run", type: "recover-run", target: { runId: failedRepeat.envelope.runId, expectedVersion: failedRepeat.version } });
   assert.ok(rejected.state === "rejected"); assert.equal(rejected.code, "RUN_CONTINUATION_REFUSED");
   assert.throws(() => validateCompletedTransactionContinuations(h.database.authority, h.descriptor, failedRepeat),

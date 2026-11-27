@@ -1,3 +1,4 @@
+import { recordHistoricalRecover } from "../../../support/helpers/backend/record-historical-recover.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
@@ -29,7 +30,7 @@ it("recovers through exact product and lifecycle journals after equivalent runti
   });
   const command = (run: typeof source) => ({ commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
     source: "dashboard", family: "run", type: "recover-run", target: { runId: run.envelope.runId, expectedVersion: run.version } });
-  const firstCommand = command(source), applied = h.kernel.execute(firstCommand);
+  const firstCommand = command(source), applied = recordHistoricalRecover(h, h.descriptor, firstCommand);
   assert.equal(applied.state, "applied"); assert.ok(applied.state === "applied");
   const firstTarget = applied.affectedTargets[0]; assert.ok(firstTarget?.family === "run");
   const first = h.database.authority.runs.get(firstTarget.runId); assert.ok(first);
@@ -40,13 +41,13 @@ it("recovers through exact product and lifecycle journals after equivalent runti
   assert.deepEqual(validateRunContinuation(h.database.authority, first.envelope), [source]);
   assert.equal(h.database.authority.lifecycleJournal.findRunOrigin(first.envelope.runId)?.operation, "recover");
   assert.equal((await h.execute(first)).state, "failed");
-  const failed = h.fresh(first), next = h.kernel.execute(command(failed));
+  const failed = h.fresh(first), next = recordHistoricalRecover(h, h.descriptor, command(failed));
   assert.equal(next.state, "applied"); assert.ok(next.state === "applied");
   const target = next.affectedTargets[0]; assert.ok(target?.family === "run");
   const continued = h.database.authority.runs.get(target.runId); assert.ok(continued);
   assert.equal((await h.execute(continued)).state, "done");
   const count = h.database.authority.runs.listByItem({ workflow: h.descriptor.id, itemId: source.envelope.itemId }).length;
-  const replay = h.kernel.execute(firstCommand); assert.equal(replay.state, "already-applied");
+  const replay = recordHistoricalRecover(h, h.descriptor, firstCommand); assert.equal(replay.state, "already-applied");
   assert.deepEqual(replay.affectedTargets, applied.affectedTargets);
   assert.equal(h.database.authority.runs.listByItem({ workflow: h.descriptor.id, itemId: source.envelope.itemId }).length, count);
   assert.equal(canonicalJsonStringify(h.fresh(source)), original);

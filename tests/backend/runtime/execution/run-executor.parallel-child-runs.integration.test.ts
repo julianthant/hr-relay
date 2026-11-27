@@ -1,3 +1,4 @@
+import { recordHistoricalRecover } from "../../../support/helpers/backend/record-historical-recover.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -253,7 +254,8 @@ it("recovers only the failed nested branch and reuses the completed sibling rece
   assert.ok(receipt);
   assert.equal(calls.get("10800001"), 1);
   assert.equal(calls.get("10800002"), 2);
-  assert.equal(f.execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard", requestedBy: "local-operator",
+  assert.equal(recordHistoricalRecover({ ...f, lifecycle: f.execution.lifecycle }, workflow => f.modules.find(module => module.descriptor.id === workflow)?.descriptor,
+    { commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard", requestedBy: "local-operator",
     requestedAt: f.clock.now().toISOString(), target: { runId: failed.envelope.runId, expectedVersion: failed.version } }).state, "applied");
   const replacement = f.database.authority.runs.listByItem({ workflow: f.run.envelope.workflow, itemId: f.run.envelope.itemId })
     .find(run => run.envelope.retryOf === f.run.envelope.runId);

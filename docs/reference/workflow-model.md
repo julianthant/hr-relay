@@ -718,20 +718,14 @@ currently carry no dependency receipt: earlier or in-flight replacement historie
 native authority refuse with `RUN_CONTINUATION_REFUSED`, including own-run Resume. Effective
 members never substitute for an unprovable original scope.
 
-Dashboard Rerun consumes its canonical source-bound plan; native Retry uses the lifecycle
-service. These ordinary doors do not capture continuation lineage.
+Dashboard Rerun consumes a source-bound Start plan. An interrupted source carries authenticated
+continuation for completed work the operator leaves unselected. The planner requires the source
+contract and runtime fingerprint, preserves its input, dry-run mode and omissions, and refuses
+attempting or parked writes. Selecting a completed write requires repeat consent. Normal Rerun
+starts fresh. Native Retry retains its existing lifecycle rules.
 
-The separate **Recover completed steps** action uses `run/recover-run`. It is operator-only: the assistant cannot retain or dispatch it. Native recovery and its server-derived planner require the kernel's exact active canonical recovery-command scope before reading product audit proof or minting an attempt; a parsed or retained command alone provides no authority. Its public request names only
-the source run and expected version. `runs/start/recovery-plan.ts` derives a `RunRecoveryPlan` from
-native authority, distinct from a Rerun plan. It accepts failed or interrupted sources under the same
-descriptor version, contract and runtime fingerprint, with no attempting or parked writes. It keeps
-source inputs, dry-run mode and omissions unchanged; it accepts no caller checkpoint or input override.
-`RunRecordService.recover` allocates a new attempt and records a separate `recover` lifecycle journal.
-The command's confirmation and typed refusal use the existing action renderer and client facade.
-
-A recovered run may use a new configuration snapshot with the same fingerprint after startup.
-Repeated recovery authenticates its product command, native origin, issuance and original start plan;
-it does not substitute snapshot-ID equality for that lineage. Parent recovery replaces only failed
+Historical `run/recover-run` commands and `recover` lifecycle journals still authenticate retained
+attempts. A continued run may use a new configuration snapshot with the same fingerprint. Parent recovery replaces only failed
 children with sealed terminal proof and preserves successful siblings. An interrupted parent may
 recover those proven children. A truly interrupted child without native terminal-result authority
 refuses visibly; normal crash reconciliation first records a structured failed settlement.
