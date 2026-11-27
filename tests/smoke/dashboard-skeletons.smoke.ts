@@ -262,7 +262,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     test("a held cold Settings read measures the fixed General form", async ({ dashboard, page, seeded }) => {
       const hold = await openWithColdSettingsHold(page, seeded.baseUrl, () => dashboard.open());
       await expect(seededQueueCard(dashboard, dashboard.runId("doneRun"))).toBeVisible();
-      await expect.poll(() => hold.evaluate(read => read.timing.withheldAt)).toBeDefined();
+      // Boot takes the stream row, so the first Settings read starts with the opening below.
       const open = page.getByRole("button", { name: "Settings", exact: true });
       const themeField = page.locator(THEME_FIELD);
       await measure(page, open, async () => {

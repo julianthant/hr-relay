@@ -94,9 +94,9 @@ test("worker add and remove settle after delayed or refused replies and clear on
     reply = Promise.withResolvers<boolean>();
     await add.click();
     await dialog.getByRole("combobox", { name: "Workflow" }).click();
-    await page.getByRole("option", { name: "Separations", exact: true }).click();
+    await page.getByRole("option", { name: /^Separations/ }).click();
     await expect(dialog.getByRole("spinbutton", { name: "Workers" })).toHaveValue("1");
-    await dialog.getByRole("button", { name: "Add workers", exact: true }).click();
+    await dialog.getByRole("button", { name: /^Add \d+ workers?$/ }).click();
     await expect(adding).toBeVisible();
     await expect(progress).toHaveText("Starting a worker for Separations.");
     await expect(add).toBeDisabled();

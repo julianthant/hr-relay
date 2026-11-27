@@ -128,6 +128,7 @@ describe("workflow descriptor registry", () => {
       ["kronos-timecard", "Kronos timecard"],
       ["identity-review", "Identity approval"],
       ["reference-check", "Check reference spreadsheets"],
+      ["pending-termination", "Pending terminations"],
       ["ucpath-transaction", "UCPath transaction"],
       ["kuali-finalization", "Kuali finalization"],
     ]);

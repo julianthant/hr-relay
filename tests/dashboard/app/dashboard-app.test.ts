@@ -311,7 +311,7 @@ describe_m1("the sidebar's Start run +", () => {
     await loadLazyPages();
     const click = (selector: string) => act_m1(async () => { const node = document.querySelector<HTMLButtonElement>(selector); assert_m1.ok(node, selector); node.click(); await new Promise(resolve => setTimeout(resolve, 35)); });
     const input = () => { const node = document.querySelector<HTMLTextAreaElement | HTMLInputElement>('[role="dialog"] [aria-label="Input"] textarea, [role="dialog"] [aria-label="Input"] input:not([type="checkbox"])'); assert_m1.ok(node, "the Run input is mounted"); return node; };
-    const cancel = () => act_m1(async () => { const node = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(entry => entry.textContent?.trim() === "Cancel"); assert_m1.ok(node); node.click(); await new Promise(resolve => setTimeout(resolve, 35)); });
+    const cancel = () => act_m1(async () => { const node = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(entry => entry.getAttribute("aria-label") === "Close"); assert_m1.ok(node); node.click(); await new Promise(resolve => setTimeout(resolve, 35)); });
     const text = () => document.querySelector('[role="dialog"]')?.textContent ?? "";
     const type = (value: string) => act_m1(async () => { const node = input(); Object.getOwnPropertyDescriptor(node instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")?.set?.call(node, value); node.dispatchEvent(new Event("input", { bubbles: true })); });
 
@@ -975,6 +975,7 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
       commands += 1;
       return Promise.resolve(Response.json(authority.execute(CommandRequestSchema.parse(body))));
     } });
+    await act_m2(async () => { h.settingsRow(authority.read()); });
     assert_m2.equal(preferences.snapshot().state, "ready");
     let saving: ReturnType<typeof preferences.change> | undefined;
     await act_m2(async () => { saving = preferences.change({ "preferences.animations": { set: !preferences.snapshot().value.animations } }); });

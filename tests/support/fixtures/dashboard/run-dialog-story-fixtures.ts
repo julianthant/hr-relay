@@ -18,6 +18,7 @@ import intakeSnapshot from "./run-dialog-intake-sessions.json" with { type: "jso
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../../src/models/intake/wire.js";
 import bootstrapSnapshot from "./run-dialog-bootstrap.json" with { type: "json" };
 import workStudySnapshot from "./run-dialog-work-study.json" with { type: "json" };
+import separationsSnapshot from "./run-dialog-separations.json" with { type: "json" };
 
 /** The served bootstrap of the one registered workflow, saved so the gallery page stays free of backend modules; run-dialog-bootstrap.integration.test.ts keeps it current. */
 export const RUN_DIALOG_BOOTSTRAP = FrontendBootstrapWireSchema.parse(bootstrapSnapshot);
@@ -60,11 +61,14 @@ export const RUN_DIALOG_REFERENCE_CATALOG = catalogOf(flow => ({ ...flow, requir
 /** The entry as a workflow with the optional second check. */
 export const RUN_DIALOG_CHECK_CATALOG = catalogOf(flow => ({ ...flow, workbookCheck: { id: "reference-check", keyFieldId: "eid" } }));
 /** The entry as a PDF workflow: documents in, an OCR switch and a required choice on the Options stage. */
-export const RUN_DIALOG_PDF_CATALOG = catalogOf(flow => ({ ...flow, inputRun: { state: "absent", reason: "PDF input" }, uploadRun: {
+const pdfFlow = (flow: RunStartWorkflow): RunStartWorkflow => ({ ...flow, inputRun: { state: "absent", reason: "PDF input" }, uploadRun: {
   pdfInput: { documentField: "document", fileNameField: "fileName", readingIdField: "readingId", fixed: {} }, title: literal("Upload PDFs"),
   fields: [{ kind: "boolean", field: "extractWithOcr", label: "Read with OCR", initial: true, description: "Turn off for text PDFs." },
     { kind: "select", field: "form", label: "Form", required: true, options: [{ value: "i9", label: "I-9" }, { value: "w4", label: "W-4" }] }],
-  accepts: [{ mediaType: "application/pdf", extensions: [".pdf"], maxBytes: PositiveIntSchema.parse(25 * 1024 * 1024) }], successMessage: literal("Started."), supportsDryRun: true } }));
+  accepts: [{ mediaType: "application/pdf", extensions: [".pdf"], maxBytes: PositiveIntSchema.parse(25 * 1024 * 1024) }], successMessage: literal("Started."), supportsDryRun: true } });
+export const RUN_DIALOG_PDF_CATALOG = catalogOf(pdfFlow);
+/** The PDF workflow reading its people from a required reference spreadsheet: PDFs and References on one Input stage. */
+export const RUN_DIALOG_PDF_REFERENCE_CATALOG = catalogOf(flow => ({ ...pdfFlow(flow), requiredWorkbookFields: ["eid"], workbookReference: { id: "roster-type", keyFieldId: "eid", mode: "keys", writableFields: [] } }));
 
 /** What the client serves for a PDF the story attaches: the upload as the actor made it, named and sized as sent. */
 export const runDialogUpload: DashboardClient["uploadOcrSource"] = async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-26T21:00:00.000Z",
@@ -161,6 +165,42 @@ export function runDialogWriteRerunWarning(): RerunWarningWire {
   return RerunWarningWireSchema.parse({ workflowId: RUN_DIALOG_WORK_STUDY, rerun: {
     source: { runId: RUN_ID, expectedVersion: 3, intent: "rerun", selectedStepKeys: WORK_STUDY.steps.map(({ key }) => key) },
     warnings: [{ ...WRITE_RECEIPT, system: "ucpath", businessKeyDigest: HASH }], warningDigest: HASH,
+  } });
+}
+
+/** The served Separations entry, saved beside the bootstrap; run-dialog-bootstrap.integration.test.ts keeps it current. */
+const [SEPARATIONS] = startWorkflows([separationsSnapshot]);
+if (SEPARATIONS === undefined) throw new Error("the saved Separations entry is missing");
+export const RUN_DIALOG_SEPARATIONS = SEPARATIONS.workflowId;
+export const RUN_DIALOG_SEPARATIONS_CATALOG = buildWorkflowCatalog([SEPARATIONS], Object.freeze({ [SEPARATIONS.workflowId]: "served" as const }));
+/** A Kuali document number the Separations input accepts. */
+export const RUN_DIALOG_SEPARATIONS_TYPED = "4510";
+const done = (nodeId: string) => ({ nodeId, state: "completed", reason: "checkpoint" });
+const byHand = (nodeId: string) => ({ nodeId, state: "completed", reason: "step-omitted" });
+const typed = (nodeId: string) => ({ nodeId, state: "completed", reason: "operator-asserted" });
+const SEPARATIONS_SOURCE_STEPS = {
+  "kuali-extraction": [done("resolve-action"), done("document"), done("plan"), done("termination-type")],
+  "identity-check": [done("subject"), done("job-summary"), done("employment"), done("department-option")],
+  "kronos-timecard": [byHand("timecard-search"), byHand("timecard"), typed("dates")],
+  "identity-review": [done("comparison"), { nodeId: "identity-approval", state: "completed", reason: "gate-result" }, done("approval")],
+  "reference-check": [{ nodeId: "reference-check", state: "completed", reason: "condition-skipped" }],
+  "pending-termination": [byHand("pending-set"), byHand("clear-pending")],
+  "ucpath-transaction": [byHand("file-termination"), typed("receipt")],
+  "kuali-finalization": [{ nodeId: "filing-presence", state: "completed", reason: "settled-transaction" }, { nodeId: "finalize-kuali", state: "failed", reason: "failure" }],
+} as const;
+
+/** A Separations run whose timecard was typed, whose UCPath form actions were done by hand, and whose Kuali finalization failed. */
+export function runDialogSeparationsRerunSnapshot(): RerunValuesResponse {
+  return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
+    sourceInput: { state: "available", value: { documentNumber: RUN_DIALOG_SEPARATIONS_TYPED } },
+    source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_SEPARATIONS, descriptorVersion: SEPARATIONS.version, contractFingerprint: HASH, outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headless" },
+    steps: SEPARATIONS.steps.map(({ key }) => {
+      const nodes = SEPARATIONS_SOURCE_STEPS[key as keyof typeof SEPARATIONS_SOURCE_STEPS];
+      return { key, state: nodes.some(node => node.state === "failed") ? "failed" : "completed", nodes };
+    }),
+    values: [], transactions: [],
+    typed: [{ step: "kronos-timecard", facts: { lastDayWorked: "06/18/2026", separationDate: "06/18/2026" } },
+      { step: "pending-termination", facts: {} }, { step: "ucpath-transaction", facts: { transactionNumber: "T002204014", approvalStatus: "Approved", effectiveDate: "06/20/2026" } }],
   } });
 }
 

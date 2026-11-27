@@ -133,7 +133,7 @@ describe("source-bound Rerun value read", () => {
       surfaces: { inputRun: InputRunSurfaceSchema.parse({
       placeholder: "Email", parser, typedInput: { modeField: "mode", modeLabel: "Hire mode", initialMode: "new-hire",
         description: "Read retained hire input", controls: [], modes: ["new-hire", "rehire"].map(value => ({
-          value, label: value, inputLabel: "Email", hint: "Saved email", placeholder: "Email",
+          value, label: value, inputLabel: "Email", placeholder: "Email",
           defaults: [{ field: "postalCodeOverride", value: { kind: "text", text: "92093" } },
             { field: "configuredJobEndDate", value: { kind: "text", text: "06/30/2027" } }],
           parser: { kind: "entries", spec: parser }, display: { kind: "first-present", fields: ["email"] }, identityFields: ["email"],

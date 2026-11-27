@@ -44,10 +44,10 @@ describe("older typed Rerun backend prefill through mounted current form", () =>
       }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: { runId: run.envelope.runId, expectedVersion: run.version } });
       if (kind === "padded-name") {
         assert.match(dialog.text(), /The original input can't be reused; use Start run\./u);
-        assert.equal(dialog.disabled("Continue"), true); assert.equal(request, undefined);
+        assert.equal(dialog.disabled("Next"), true); assert.equal(request, undefined);
         return;
       }
-      await dialog.press("Continue"); await dialog.press("Start run");
+      await dialog.press("Next"); await dialog.press("Start run");
       assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [{ mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true, includeCrmDates: false }]);
     } finally { await backend.dispose(); }
   });

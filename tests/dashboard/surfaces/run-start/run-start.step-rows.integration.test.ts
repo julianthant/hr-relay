@@ -27,9 +27,9 @@ const planOmitting = (steps: readonly string[]) => StartPlanWireSchema.parse({ .
 async function openSteps(workflow: RunStartWorkflow, typed: string, client = h.stubClient({})) {
   const dialog = await h.openDialog(client, { workflows: [workflow], panelWorkflowId: workflow.workflowId });
   await dialog.type(typed);
-  await dialog.press("Continue");
+  await dialog.press("Next");
   await dialog.press("Customize steps");
-  await dialog.press("Continue");
+  await dialog.press("Next");
   assert.equal(dialog.stage(), "Steps");
   return dialog;
 }
@@ -52,16 +52,13 @@ async function typeDate(label: string, text: string) {
 const submitted = (requests: unknown[]) => StartPlanRequestSchema.parse(requests.at(-1));
 
 describe("the Steps stage draws the served rows", () => {
-  it("shows each row's label and its note, and locks what the workflow locks", async () => {
+  it("shows each row's label and locks nothing", async () => {
     const dialog = await openSteps(served("separations"), "4502");
     const text = dialog.text();
     assert.match(text, /7 of 7 included/u);
     for (const label of ["Read Kuali document", "Verify employee identity", "Read timecard", "Approve identity", "Check pending termination", "Submit termination", "Finalize Kuali document"]) assert.ok(text.includes(label), label);
-    assert.match(rowNamed("Submit termination").textContent ?? "", /Form action · required/u);
-    assert.match(rowNamed("Approve identity").textContent ?? "", /Approval required/u);
-    assert.match(rowNamed("Verify employee identity").textContent ?? "", /Required read/u);
-    assert.equal(dialog.disabled("Submit termination (required)"), true);
-    assert.equal(dialog.disabled("Include Read timecard"), false);
+    for (const label of ["Submit termination", "Approve identity", "Verify employee identity", "Read timecard"]) assert.equal(dialog.disabled(`Include ${label}`), false, label);
+    assert.doesNotMatch(text, /required/u);
     assert.doesNotMatch(text, /requires every node/u);
   });
 
@@ -137,11 +134,10 @@ describe("the Steps stage draws the served rows", () => {
     await dialog.press("Read CRM dates");
     await typeDate("Employment date", "01/15/2020");
     await typeDate("Oath date", "02/20/2020");
-    await dialog.press("Back");
-    await dialog.press("Back");
+    await dialog.press("1 Input");
     await dialog.type(`${h.TYPED}; 10000001`);
-    await dialog.press("Continue");
-    await dialog.press("Continue");
+    await dialog.press("Next");
+    await dialog.press("Next");
     assert.equal(dialog.stage(), "Steps");
     assert.deepEqual(alerts(), ["Typed values fit one person; 2 are entered."]);
     assert.equal(dialog.disabled("Start run"), true);
@@ -216,7 +212,7 @@ describe("Rerun draws the same rows", () => {
     for (let wait = 0; wait < 6; wait += 1) await h.settle();
     return dialog;
   }
-  const finish = async (dialog: Awaited<ReturnType<typeof openRerun>>) => { await dialog.press("Continue"); await dialog.press("Start run"); };
+  const finish = async (dialog: Awaited<ReturnType<typeof openRerun>>) => { await dialog.press("Next"); await dialog.press("Start run"); };
 
   it("starts with every row included and a badge from the source run", async () => {
     const dialog = await openRerun(snapshot(), []);

@@ -202,6 +202,8 @@ export const TimelineTypedValuesWireSchema = z.strictObject({
     /** A value holding one of the run's protected inputs is named, never shown. */
     z.strictObject({ key: z.string().min(1), label: z.string().min(1), withheld: z.literal(true), mark: TypedValueMarkSchema }),
   ])),
+  /** The step's form actions the typed values stand for: done outside Relay, not read by hand. */
+  doneByHand: z.array(NodeIdSchema).min(1).optional(),
 });
 export type TimelineTypedValuesWire = z.infer<typeof TimelineTypedValuesWireSchema>;
 

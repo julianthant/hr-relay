@@ -30,7 +30,7 @@ function served(...reports: ReturnType<typeof h.readiness>[]) {
 }
 async function reachChecks(dialog: Awaited<ReturnType<typeof h.openDialog>>) {
   await dialog.type(h.TYPED);
-  await dialog.press("Continue");
+  await dialog.press("Next");
   for (let wait = 0; wait < 6; wait += 1) await h.settle();
   assert.equal(dialog.stage(), "Start");
 }
@@ -76,7 +76,7 @@ describe("the Run dialog's Checks section", () => {
     const pending = Promise.withResolvers<ReturnType<typeof h.readiness>>();
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
-    await slow.press("Continue");
+    await slow.press("Next");
     assert.equal(slow.disabled("Start run"), true);
     assert.ok(slow.text().includes("Checking"));
     await act(async () => { pending.resolve(h.readiness([PASSING])); });
@@ -164,25 +164,27 @@ describe("the Run dialog's Checks section", () => {
     assert.ok(!/Node\.js|dependenc|configuration|data store|scope/iu.test(dialog.text()), "no developer words");
   });
 
-  it("holds the list's place while checking: one Checking indicator over eight placeholder rows", async () => {
+  it("shows only spinners while checking: one beside Checks, one in Start, and no rows", async () => {
     const pending = Promise.withResolvers<ReturnType<typeof h.readiness>>();
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
-    await slow.press("Continue");
+    await slow.press("Next");
     const section = document.body.querySelector('section[aria-label="Checks"]');
-    assert.equal(((section?.textContent ?? "").match(/Checking/gu) ?? []).length, 1, "the Checks section says Checking once");
-    assert.equal(document.body.querySelectorAll('[aria-label="Checking"] .ds-run-row').length, 8);
+    assert.equal(section?.querySelectorAll('[aria-label="Checking"]').length, 1);
+    assert.equal(section?.querySelectorAll('.ds-run-row, [data-slot="skeleton"]').length, 0);
+    assert.equal(h.buttons().find(button => h.buttonName(button) === "Start run")?.getAttribute("aria-busy"), "true");
     await act(async () => { pending.resolve(h.readiness([PASSING])); });
-    assert.equal(document.body.querySelector('[aria-label="Checking"]') === null, true);
+    assert.equal(section?.querySelector('[aria-label="Checking"]') === null, true);
   });
 
-  it("draws a failed check's fix as a button beside a Failed status, with its whole summary readable", async () => {
+  it("draws a failed check's fix as the row's one button, with its whole summary readable", async () => {
     const { client } = served(h.readiness([FIXABLE, PASSING]));
     const dialog = await h.openDialog(client);
     await dialog.rerender({ onFixCheck: () => undefined });
     await reachChecks(dialog);
     const row = document.body.querySelector('[aria-label="Check results"] .ds-run-row');
-    assert.ok(row?.textContent?.includes("Failed"), "the status stays beside the button");
+    assert.equal(row?.textContent?.includes("Failed"), false, "the button replaces the status");
+    assert.match(dialog.text(), /1 check failed/u);
     const fix = fixButton("Add password");
     assert.ok(fix && fix.tagName === "BUTTON" && fix.querySelector("svg") === null, "a plain button, not a status pill with an icon");
     const summary = [...(row?.querySelectorAll("div") ?? [])].find(node => node.textContent === FIXABLE.summary);
@@ -204,7 +206,7 @@ describe("the Run dialog's Checks section", () => {
     assert.equal(reads.length, 2, "the checks run again after Settings");
     assert.equal(dialog.stage(), "Start");
     assert.equal(dialog.disabled("Start run"), false, "the fixed check no longer blocks Start");
-    await dialog.press("Back");
+    await dialog.press("1 Input");
     assert.equal(dialog.typedInput().value, h.TYPED);
     assert.equal(window.sessionStorage.length, 0);
   });
@@ -233,13 +235,13 @@ describe("the Run dialog's Checks section", () => {
     const pending = Promise.withResolvers<ReturnType<typeof h.readiness>>();
     const slow = await h.openDialog(h.stubClient({ readPreflight: () => pending.promise }));
     await slow.type(h.TYPED);
-    await slow.press("Continue");
+    await slow.press("Next");
     const region = document.body.querySelector('section[aria-label="Checks"] [role="status"]');
     assert.ok(region?.textContent?.includes("Checking"));
     await act(async () => { pending.resolve(h.readiness([PASSING, UNFIXABLE])); });
     const after = document.body.querySelector('section[aria-label="Checks"] [role="status"]');
     assert.equal(after === region, true, "the same live region is updated, not replaced");
-    assert.match(after?.textContent ?? "", /1 check needs fixing/u);
+    assert.match(after?.textContent ?? "", /1 check failed/u);
   });
 });
 
@@ -262,8 +264,8 @@ describe("asking for a re-check", () => {
     assert.equal(served.reruns(), 0, "opening the dialog asks for no re-check");
     await reachChecks(dialog);
     assert.equal(served.reruns(), 1);
-    await dialog.press("Back");
-    await dialog.press("Continue");
+    await dialog.press("1 Input");
+    await dialog.press("Next");
     for (let wait = 0; wait < 6; wait += 1) await h.settle();
     assert.equal(served.reruns(), 1, "a second visit to Checks only reads");
   });
@@ -344,7 +346,7 @@ describe("a refused re-check through the real client", () => {
     return { dialog, before: reports.length };
   }
   async function toChecks(dialog: Awaited<ReturnType<typeof h.openDialog>>) {
-    await dialog.press("Continue");
+    await dialog.press("Next");
     for (let wait = 0; wait < 6; wait += 1) await h.settle();
     assert.equal(dialog.stage(), "Start");
   }

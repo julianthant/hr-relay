@@ -37,7 +37,7 @@ it.each(["normal", "refused", "uncertain"] as const)("shows add progress in the 
   const progress = panel.querySelector('p[role="status"]'); assert(progress);
   assert.equal(progress.textContent, "", "the status line is in the page before there is anything to announce");
   await act(async () => { trigger.focus(); trigger.click(); });
-  const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent === "Add workers");
+  const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => /^Add \d+ workers?$/.test(button.textContent ?? ""));
   assert(confirm instanceof HTMLButtonElement);
   await act(async () => { confirm.focus(); confirm.click(); });
   assert.equal(document.querySelector('[role="dialog"]') === null, true);
@@ -80,7 +80,7 @@ it("drops add progress when the panel unmounts and ignores its late settlement",
   await act(async () => render());
   const trigger = host.querySelector('button[aria-label="Add workers"]'); assert(trigger instanceof HTMLButtonElement);
   await act(async () => trigger.click());
-  const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent === "Add workers"); assert(confirm instanceof HTMLButtonElement);
+  const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => /^Add \d+ workers?$/.test(button.textContent ?? "")); assert(confirm instanceof HTMLButtonElement);
   await act(async () => confirm.click());
   assert.equal(document.querySelector('[data-slot="toast-title"]') === null, true, "progress is never a toast");
   assert.equal(host.querySelectorAll('li[aria-busy]').length, 1);

@@ -78,7 +78,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
           }
         ],
         inputRun: {
-          placeholder: "Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)",
+          placeholder: "e.g. 10873698; Battistessa, Johnnie",
           parser: {
             split: {
               kind: "delimited",
