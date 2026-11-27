@@ -123,7 +123,7 @@ describe("selected saved Onboarding row start authority", () => {
     assert.equal(f.kernel.execute(world.runCommand("cancel", run.envelope.runId, run.version)).state, "applied");
     assert.equal(f.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "terminal");
     assert.equal((await deleteVersion(f.library.catalog()[0])).status, 200);
-    assert.ok(!f.library.versions(f.id).some(version => version.id === versionId));
+    assert.equal((await app.request(`/api/v1/workbooks/${f.id}/versions/${versionId}`)).status, 404);
   });
 
   it("refuses selected rows without the declared workbook-row input capability", async () => {
