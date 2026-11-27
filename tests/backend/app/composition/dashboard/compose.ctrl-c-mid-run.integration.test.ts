@@ -204,6 +204,7 @@ it("an idle Person Lookup worker claims and starts a task within two seconds of 
 
     const queue = DashboardDayWireSchema.parse(await (await fetch(`${origin}/api/v1/dashboard?day=${localDatePart(new Date(queued))}`, { headers })).json());
     assert.equal(queue.queueSurfaces.find(row => row.runId === run.runId)?.status, "running", timing);
+    process.stdout.write(`Person Lookup startup ${timing}\n`);
   } finally {
     db.close();
     await stream.body?.cancel();

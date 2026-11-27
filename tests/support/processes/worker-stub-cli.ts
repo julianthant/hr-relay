@@ -24,6 +24,7 @@ process.on("message", (raw: unknown) => {
   const parsed = WorkerParentMessageSchema.safeParse(raw);
   if (!parsed.success) return;
   const message = parsed.data;
+  if (message.kind === "worker-work-available") return;
   if (message.kind === "worker-stop") {
     if (mode === "ignore-stop") return;
     process.stdout.write(`WORKER-STUB STOPPED ${workerId} ${message.reason}\n`);

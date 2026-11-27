@@ -30,6 +30,7 @@ export function createWorkerChildChannel(input: Readonly<{
 }>) {
   let turn: "free" | "run" | "control" = "free";
   let lastRequestSequence = 0;
+  let workAvailable = new AbortController();
 
   const run = async (request: WorkerControlRequest): Promise<JsonValue> => {
     switch (request.type) {
@@ -48,6 +49,7 @@ export function createWorkerChildChannel(input: Readonly<{
       if (!parsed.success) throw new WorkerIpcProtocolError(typeof raw === "object" && raw !== null && "kind" in raw ? String(raw.kind) : "invalid");
       const message = parsed.data;
       if (message.kind === "worker-stop") { input.onStop(message.reason); return; }
+      if (message.kind === "worker-work-available") { workAvailable.abort(); return; }
       const reply = (outcome: WorkerReplyOutcome): void => { input.send({ kind: "worker-reply", requestId: message.requestId, outcome }); };
       if (message.sequence <= lastRequestSequence) { reply(refused("WORKER_IPC_PROTOCOL_INVALID")); return; }
       lastRequestSequence = message.sequence;
@@ -63,6 +65,11 @@ export function createWorkerChildChannel(input: Readonly<{
       turn = "control";
       void run(message.request).then(result => { reply({ state: "done", result }); }, error => { reply(outcomeOf(error)); })
         .finally(() => { turn = "free"; });
+    },
+    /** Capture before claiming so a wake during an empty claim also interrupts the next idle wait. */
+    watchForWork(): AbortSignal {
+      if (workAvailable.signal.aborted) workAvailable = new AbortController();
+      return workAvailable.signal;
     },
     /** The claim loop asks before each claim; false while a control runs. */
     beginRun(): boolean {

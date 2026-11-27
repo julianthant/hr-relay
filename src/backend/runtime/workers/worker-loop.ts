@@ -127,6 +127,7 @@ export interface WorkerLoopDependencies {
   readonly controlPoll?: () => "run" | "pause" | "stop";
   /** The child's one turn shared with parent controls: `begin` is false while a control runs. */
   readonly claimTurn?: Readonly<{ begin(): boolean; end(): void }>;
+  readonly watchForWork?: () => AbortSignal;
   /** Hands the loop's session manager to the child's parent-request handlers. */
   readonly bindSessions?: (sessions: WorkerSessionManager) => void;
   readonly browserActivity?: (activity: "acquiring" | "authenticating" | "closing") => () => void;
@@ -347,7 +348,9 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         await boundedWait(deps.scheduler, clock, (deps.idleCadence?.() ?? deps.idleRepollMs), deps.stopSignal);
         continue;
       }
+      const workAvailable = deps.watchForWork?.();
       let idleDelayMs: number | undefined;
+      let idleSignal = deps.stopSignal;
       try {
       const claimRequest = {
         commandId: lifecycleCommandId("claim", { workerId, nonce: deps.ids.uuid() }),
@@ -396,6 +399,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         // No browser stays open while a parent waits on a gate or on its children.
         if (parksWhenIdle) await sessions.closeAll("parked");
         idleDelayMs = decision.delayMs;
+        if (workAvailable !== undefined) idleSignal = AbortSignal.any([idleSignal, workAvailable]);
         continue;
       }
 
@@ -507,7 +511,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         for (const state of undeliveredTransitions.splice(0)) {
           deps.log.warn("Worker lifecycle diagnostic delivery failed.", { workerId, state });
         }
-        if (idleDelayMs !== undefined) await boundedWait(deps.scheduler, clock, idleDelayMs, deps.stopSignal);
+        if (idleDelayMs !== undefined) await boundedWait(deps.scheduler, clock, idleDelayMs, idleSignal);
       }
     }
     finishRefusal();

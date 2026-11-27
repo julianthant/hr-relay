@@ -71,6 +71,41 @@ it("rejects stale and duplicate worker control sequences", async () => {
 });
 
 describe("worker run loop", () => {
+  for (const wakeDelivered of [true, false]) it(wakeDelivered
+    ? "rechecks for work when a wake arrives during an empty claim"
+    : "claims on the idle repoll if the work wake was lost", async () => {
+    const h = await loopHarness({ exitWhenIdle: false });
+    const empty = Promise.withResolvers<void>(), releaseEmpty = Promise.withResolvers<void>();
+    const unexpected = (): never => { throw new Error("unrequested control"); };
+    const child = createWorkerChildChannel({ clock: h.authority.clock, send: unexpected, onStop: unexpected,
+      handlers: { refreshBrowser: unexpected, reopenBrowser: unexpected, checkParkedWrite: unexpected,
+        closeForRemoval: unexpected, pause: unexpected, resume: unexpected } });
+    let claims = 0;
+    const looping = runWorkerLoop({ ...h.deps, idleRepollMs: 30_000, watchForWork: child.watchForWork,
+      claimNext: async (request, sessions) => {
+        claims += 1;
+        const outcome = await h.deps.claimNext(request, sessions);
+        if (claims === 1) { empty.resolve(); await releaseEmpty.promise; }
+        if (claims === 3) h.stop.abort();
+        return outcome;
+      } });
+    try {
+      await Promise.race([empty.promise, looping]);
+      h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+      if (wakeDelivered) child.receive({ kind: "worker-work-available" });
+      releaseEmpty.resolve();
+      if (!wakeDelivered) {
+        await new Promise<void>(resolve => setImmediate(resolve));
+        assert.equal(claims, 1);
+        const [timer] = h.scheduler.pending();
+        assert.ok(timer);
+        assert.equal(timer.deadlineMonotonicMs - h.authority.clock.monotonicMs(), 30_000);
+        timer.fire();
+      }
+      assert.deepEqual((await looping).outcomes.map(outcome => outcome.state), ["done"]);
+    } finally { releaseEmpty.resolve(); h.stop.abort(); await looping; }
+  });
+
   it("stops with a typed preflight refusal before sessions or execution and never repeats the claim", async () => {
     const h = await loopHarness(); let claims = 0;
     const report = await runWorkerLoop({ ...h.deps, claimNext: () => {
