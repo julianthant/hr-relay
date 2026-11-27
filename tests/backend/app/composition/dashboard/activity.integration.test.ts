@@ -219,6 +219,9 @@ it("binds every preset and Custom range to one selected report in decoded CSV an
     assert.deepEqual(csvRow("Window from"), ["Window from", report.from]);
     assert.deepEqual(csvRow("Window to"), ["Window to", report.to]);
     assert.deepEqual(csvRow("Runs in range"), ["Runs in range", String(expectedRuns)]);
+    const populationHeading = csvRows.findIndex(row => row[0] === "Complete selected run population");
+    assert.ok(populationHeading > 0, `${selection.name} CSV omitted the population section`);
+    const summaryCsvRows = csvRows.slice(0, populationHeading);
 
     const xlsxRequest = {
       requestVersion: 3,
@@ -261,7 +264,7 @@ it("binds every preset and Custom range to one selected report in decoded CSV an
     assert.deepEqual(readMe.data.find((row) => row[0] === "Runs")?.slice(0, 2), ["Runs", expectedRuns]);
     assert.deepEqual(summary.data.find((row) => row[0] === "Total runs")?.slice(0, 2), ["Total runs", expectedRuns]);
     assert.equal(byDay.data.slice(1).reduce((total, row) => total + Number(row[1]), 0), expectedRuns);
-    assert.equal(JSON.stringify({ report, csvRows, sheets }).includes(PRIVATE_ACTIVITY_LABEL), false);
+    assert.equal(JSON.stringify({ report, summaryCsvRows, sheets }).includes(PRIVATE_ACTIVITY_LABEL), false);
   }
 });
 

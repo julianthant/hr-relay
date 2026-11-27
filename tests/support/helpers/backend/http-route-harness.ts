@@ -437,7 +437,7 @@ export async function harness(options: {
   const activityInput = { database, clock, descriptors, ledger: createTransactionHistory(database.authority) };
   const activityLanes = options.activityOnLane === true ? createComposedDashboardReadHost({ admission: profile.admission, database, clock }) : undefined;
   if (activityLanes !== undefined) cleanups.push(() => activityLanes.close());
-  const { activity, activityPopulation, reports, readActivityDocument } = composeActivity({ ...activityInput, ...(activityLanes === undefined ? {} : { readLanes: activityLanes }) });
+  const { activity, activityPopulation, reports, readActivityDocument } = composeActivity({ ...activityInput, readLanes: activityLanes });
   const workbookLibrary = createWorkbookLibraryService({ sync: options.workbookSync ?? unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
   const app = createDashboardApp({
     protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
