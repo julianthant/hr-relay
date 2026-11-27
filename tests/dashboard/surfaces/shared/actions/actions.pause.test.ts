@@ -16,37 +16,56 @@ const control = (command: "pause" | "resume", expectedVersion: number) => Action
 
 function mount() {
   const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
-  const sent: unknown[] = []; let settle: () => void = () => undefined;
+  const sent: string[] = []; let settle: (confirmed: boolean) => void = () => undefined;
   const draw = (runId: string, command: "pause" | "resume", version: number) => act(async () => root?.render(createElement(FooterActions, {
     actions: [control(command, version)], target: { runId, expectedVersion: version },
-    onAction: (action) => { sent.push(action.kind === "command" && action.command); return new Promise<void>(resolve => { settle = resolve; }); } })));
+    onAction: (action) => { sent.push(action.kind === "command" ? `${action.command}@${action.expectedVersion}` : action.key); return new Promise<boolean>(resolve => { settle = resolve; }); } })));
   const button = () => host.querySelector("button");
-  return { host, sent, draw, button, settle: () => act(async () => settle()) };
+  const click = () => act(async () => button()?.click());
+  return { host, sent, draw, button, click, settle: (confirmed: boolean) => act(async () => settle(confirmed)) };
 }
 
-it("Pause shows an enabled Resume on the next render, and a second click sends nothing stale", async () => {
+it("Pause shows an enabled Resume on the next render", async () => {
   const m = mount(); await m.draw("a", "pause", 7);
   assert.equal(m.button()?.getAttribute("aria-label"), "Pause");
-  await act(async () => m.button()?.click());
+  await m.click();
   assert.equal(m.button()?.getAttribute("aria-label"), "Resume");
   assert.equal(m.button()?.disabled, false);
   assert.doesNotMatch(m.host.innerHTML, /animate-spin|after this step/);
-  await act(async () => m.button()?.click());
-  assert.deepEqual(m.sent, ["pause"]);
+});
+
+it("keeps Resume after the command confirms before the stream moves, and sends a pressed Resume once against the fresh descriptor", async () => {
+  const m = mount(); await m.draw("a", "pause", 7);
+  await m.click();
+  await m.click();
+  assert.deepEqual(m.sent, ["pause@7"]);
+  await m.settle(true);
+  assert.equal(m.button()?.getAttribute("aria-label"), "Resume");
+  assert.deepEqual(m.sent, ["pause@7"]);
   await m.draw("a", "resume", 8);
+  assert.deepEqual(m.sent, ["pause@7", "resume@8"]);
+  await m.draw("a", "resume", 8);
+  assert.deepEqual(m.sent, ["pause@7", "resume@8"]);
+});
+
+it("sends nothing extra when Resume was not pressed during the interval", async () => {
+  const m = mount(); await m.draw("a", "pause", 7);
+  await m.click(); await m.settle(true); await m.draw("a", "resume", 8);
+  assert.deepEqual(m.sent, ["pause@7"]);
   assert.equal(m.button()?.getAttribute("aria-label"), "Resume");
 });
 
-it("restores the served Pause when the press settles without the row moving", async () => {
+it("restores Pause and drops a queued Resume when the Pause is refused", async () => {
   const m = mount(); await m.draw("a", "pause", 7);
-  await act(async () => m.button()?.click());
-  await m.settle();
+  await m.click(); await m.click();
+  await m.settle(false);
   assert.equal(m.button()?.getAttribute("aria-label"), "Pause");
+  assert.deepEqual(m.sent, ["pause@7"]);
 });
 
 it("does not show Resume on another run at the same revision", async () => {
   const m = mount(); await m.draw("a", "pause", 7);
-  await act(async () => m.button()?.click());
+  await m.click();
   await m.draw("b", "pause", 7);
   assert.equal(m.button()?.getAttribute("aria-label"), "Pause");
 });

@@ -43,8 +43,10 @@ export interface ActionTarget {
   expectedVersion: number;
 }
 
-/** Every control calls this. */
-export type DashboardActionHandler = (action: ActionDescriptorWire, target: ActionTarget) => Promise<void> | void;
+type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
+
+/** Every control calls this; a command resolves true only when its effect is confirmed. */
+export type DashboardActionHandler = (action: ActionDescriptorWire, target: ActionTarget) => Promise<void | boolean> | void;
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
 
@@ -120,8 +122,18 @@ export function FooterActions({
     const timer = setTimeout(() => setPressed(null), PENDING_LIMIT_MS);
     return () => clearTimeout(timer);
   }, [pressed]);
-  // Pause and Resume flip at once: the opposite control shows until the row's revision moves.
-  const [flipped, setFlipped] = useState<{ runId: string; command: string; version: number } | null>(null);
+  // Pause and Resume show their opposite at once and keep it until the run's served control changes;
+  // a refused or unconfirmed press restores the served control. A press on the shown opposite is kept
+  // (`queued`) and sent once against the fresh served descriptor.
+  const [flip, setFlip] = useState<{ runId: string; command: string; version: number; queued: boolean } | null>(null);
+  const servedToggle = footer.find((entry): entry is CommandAction => entry.kind === "command" && (entry.command === "pause" || entry.command === "resume"));
+  const flipHolds = flip !== null && servedToggle !== undefined && flip.runId === target.runId
+    && flip.command === servedToggle.command && flip.version === target.expectedVersion;
+  useEffect(() => {
+    if (flip === null || flipHolds) return;
+    if (flip.runId === target.runId && flip.queued && servedToggle !== undefined && servedToggle.command !== flip.command) void onAction(servedToggle, target);
+    setFlip(null);
+  }, [flip, flipHolds, servedToggle, target, onAction]);
   if (footer.length === 0 && !onPreviewAction) return null;
   // No `Cancel group` caption beside the ✕: an icon that already means cancel,
   // captioned "cancel", is the same word twice; the warning lives in the ✕'s own `title`.
@@ -131,21 +143,19 @@ export function FooterActions({
         <IconActionButton tone="muted" icon={<RotateCcw aria-hidden className={dsIcon.sm} />} label="Retry" onClick={event => { event.stopPropagation(); onPreviewAction('retry'); }} />
         <IconActionButton tone="destructive" icon={<Trash2 aria-hidden className={dsIcon.sm} />} label="Delete" onClick={event => { event.stopPropagation(); onPreviewAction('delete'); }} />
       </>}
-      {footer.map((served) => {
-        const toggle = served.kind === "command" && (served.command === "pause" || served.command === "resume");
-        const isFlipped = toggle && flipped?.runId === target.runId && flipped.command === served.command && flipped.version === target.expectedVersion;
-        const a = isFlipped
-          ? { ...served, key: served.key === "pause" ? "resume" : "pause", command: served.key === "pause" ? "resume" : "pause",
-            label: served.key === "pause" ? "Resume" : "Pause", icon: served.key === "pause" ? "resume" : "pause" } as ActionDescriptorWire
-          : served;
-        const label = groupCount === undefined ? a.label
-          : a.key === "pause" ? `Pause all ${groupCount}` : a.key === CANCEL_TREE_KEY ? `Stop all ${groupCount}` : a.label;
+      {footer.map((a) => {
+        const toggle = a.kind === "command" && (a.command === "pause" || a.command === "resume");
+        const isFlipped = toggle && flipHolds && a === servedToggle;
+        const shown = isFlipped ? (a.key === "pause" ? { key: "resume", label: "Resume", icon: "resume" as const } : { key: "pause", label: "Pause", icon: "pause" as const })
+          : { key: a.key, label: a.label, icon: a.icon };
+        const label = groupCount === undefined ? shown.label
+          : shown.key === "pause" ? `Pause all ${groupCount}` : a.key === CANCEL_TREE_KEY ? `Stop all ${groupCount}` : shown.label;
         return (
         <IconActionButton
           key={a.key}
           pending={pressed?.key === a.key && pressed.version === target.expectedVersion}
           tone={INTENT_TONE[a.intent]}
-          icon={KEY_ICONS[a.key] ?? ICONS[a.icon ?? "external"]}
+          icon={KEY_ICONS[shown.key] ?? ICONS[shown.icon ?? "external"]}
           label={label}
           title={
             a.key === CANCEL_TREE_KEY && groupCount === undefined
@@ -157,16 +167,16 @@ export function FooterActions({
           onClick={(e) => {
             e.stopPropagation();
             const row = e.currentTarget.closest<HTMLElement>('[data-demo-row-id]')?.querySelector<HTMLElement>("[data-queue-open]") ?? null;
-            // A flipped control waits for the run's fresh served descriptor; the stale version would be refused.
-            if (isFlipped) return;
-            if (toggle) setFlipped({ runId: target.runId, command: served.key, version: target.expectedVersion });
-            else if (a.kind === "command" && !a.confirm) setPressed({ key: a.key, version: target.expectedVersion });
+            if (isFlipped) { setFlip(now => now === null ? now : { ...now, queued: true }); return; }
             const press = { key: a.key, runId: target.runId, version: target.expectedVersion };
+            if (toggle) setFlip({ runId: press.runId, command: a.key, version: press.version, queued: false });
+            else if (a.kind === "command" && !a.confirm) setPressed({ key: a.key, version: target.expectedVersion });
             const settled = onAction(a, target);
             if (toggle) {
-              // A settled press that left the row unchanged was refused: show the served control again.
-              const restore = () => setFlipped(now => now?.runId === press.runId && now.version === press.version ? null : now);
-              if (settled === undefined) restore(); else void settled.catch((cause: unknown) => { window.reportError(cause); }).finally(restore);
+              // Only a confirmed command keeps the flip, until the stream serves the new control.
+              const unconfirmed = (confirmed: unknown) => { if (confirmed !== true) setFlip(now => now?.runId === press.runId && now.version === press.version ? null : now); };
+              if (settled === undefined) unconfirmed(false);
+              else void settled.then(unconfirmed, (cause: unknown) => { window.reportError(cause); unconfirmed(false); });
             } else if (a.kind === "command" && !a.confirm) {
               if (settled === undefined) setPressed(null);
               else void settled.catch((cause: unknown) => { window.reportError(cause); })
