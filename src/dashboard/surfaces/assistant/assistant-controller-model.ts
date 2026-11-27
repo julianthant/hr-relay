@@ -9,7 +9,7 @@ import type { AssistantQueries } from '../../client/index.js';
 import type { AssistantM1RespondEnvelope, AssistantReceipt, AssistantStageResult } from '../../../models/dashboard/assistant.js';
 import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel, type AssistantModelPreference } from "../../../models/config/assistant-model-preference.js";
 import { ASSISTANT_FAILURES, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelCatalog, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
-import { assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantState } from './assistant-model.js';
+import { assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantState, type AssistantTurn } from './assistant-model.js';
 import { replyText, type SessionStop } from './assistant-reply-parts-model.js';
 import { composeCommandRequest } from '../../app/commands/command-dispatch.js';
 import { ASSISTANT_UNSAVED_REPLY, type AssistantHistory } from './assistant-history-model.js';
@@ -90,7 +90,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     if (current()) owner.preferenceChanged?.(actual, true);
     return { kind: "saved", view: actual };
   }
-  async function respond(requestId: number, prompt: string, staged?: readonly string[], messageId: string = crypto.randomUUID()) {
+  async function respond({ requestId, prompt, staged, messageId = crypto.randomUUID(), approvalMode = 'ask' }: Exclude<AssistantTurn, { state: 'idle' }>) {
     const request = { requestId, prompt, abort: new AbortController(), binding };
     outstanding = request;
     const current = () => !retired && outstanding === request && !request.abort.signal.aborted && binding === request.binding;
@@ -133,7 +133,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         await complete(saved.kind === "saved" ? preferenceText(saved.view) : saved.text);
         return;
       }
-      const envelope = await client.assistantRespond({ conversationId, expectedRevision: history?.revision() ?? 1, messageId,
+      const envelope = await client.assistantRespond({ conversationId, expectedRevision: history?.revision() ?? 1, messageId, approvalMode,
         message: prompt, ...(binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }), ...(staged?.length ? { attachments: [...staged] } : {}) }, request.abort.signal);
       if (envelope.receipt !== undefined) history?.receipt(envelope.receipt);
       if (!current()) return;
@@ -217,7 +217,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       if (action.type === 'edit' || action.type === 'new-chat' || action.type === 'cancel') abort();
       const previous = state;
       publish(assistantReducer(state, action.type === 'send' ? { ...action, messageId: action.messageId ?? crypto.randomUUID() } : action));
-      if (state !== previous && state.turn.state === 'waiting' && (action.type === 'send' || action.type === 'retry')) void respond(state.turn.requestId, state.turn.prompt, state.turn.staged, state.turn.messageId);
+      if (state !== previous && state.turn.state === 'waiting' && (action.type === 'send' || action.type === 'retry')) void respond(state.turn);
     },
   });
 }

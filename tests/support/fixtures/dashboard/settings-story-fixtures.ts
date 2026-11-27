@@ -121,5 +121,6 @@ export function settingsStoryServer(options: SettingsStoryServerOptions = {}): S
     }
     return json({ code: "NOT_SERVED" }, 404);
   };
+  if (read === "answer") rows.apply([{ model: "settings", key: "editable", value: { state: "available", value: document() } }]);
   return { client: createDashboardClient({ baseUrl: BASE_URL, fetchImpl }), commands, rows };
 }
