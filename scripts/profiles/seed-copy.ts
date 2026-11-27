@@ -14,6 +14,7 @@ import { runtimeProfiles } from "../../src/models/config/define-runtime-isolatio
 import { RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
 import { notificationTitle } from "../../src/models/dashboard/projection.js";
 import { PACIFIC_TIME_ZONE, searchPartitionDay } from "../../src/models/dashboard/search-calendar.js";
+import { TimelineEventRecordSchema } from "../../src/models/events/timeline.js";
 import { SpanEventWireSchema, NoteWireSchema, type NoteWire } from "../../src/models/events/types.js";
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../../src/models/notifications/notifications.js";
 import { RunRecordSchema, type RunLifecycle, type RunRecord } from "../../src/models/run/record.js";
@@ -270,7 +271,7 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
       const ts = new Date(at).toISOString();
       events.push({ ...task, t: "span.started", ts, name: node.label });
       // Logs draws a line for a note, not for a finished span.
-      events.push(createNoteTimelineWriter({ repository: { append: record => ({ ...record, cursor: 1 }) }, clock: capturedInstantClock(ts), pid: 1 })
+      events.push(createNoteTimelineWriter({ repository: { append: input => ({ state: "inserted", record: TimelineEventRecordSchema.parse(Object.assign({ cursor: 1 }, input)) }) }, clock: capturedInstantClock(ts), pid: 1 })
         .emitNote({ workflow: workflow.id, address: { runId, traceId, attempt: run.envelope.attempt, spanPath: task.spanPath, parentSpanPath: spanPath }, level: "step", message: node.label }));
       at += stepMs;
       const open = claimed !== undefined && position === reached - 1;
