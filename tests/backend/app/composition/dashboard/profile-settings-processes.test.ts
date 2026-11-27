@@ -24,7 +24,8 @@ function fixture() {
   const child = new ChildProcess();
   let connected = true;
   Object.defineProperty(child, "connected", { get: () => connected });
-  const send = vi.spyOn(child, "send").mockReturnValue(true);
+  const send = vi.fn<(_message: unknown) => boolean>(() => true);
+  child.send = send;
   vi.mocked(fork).mockReset().mockReturnValue(child);
   let profileOpen = true;
   const settings = createProfileSettingsProcesses(
