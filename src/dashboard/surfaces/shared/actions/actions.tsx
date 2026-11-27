@@ -120,6 +120,8 @@ export function FooterActions({
     const timer = setTimeout(() => setPressed(null), PENDING_LIMIT_MS);
     return () => clearTimeout(timer);
   }, [pressed]);
+  // Pause and Resume flip at once: the opposite control shows until the row's revision moves.
+  const [flipped, setFlipped] = useState<number | null>(null);
   if (footer.length === 0 && !onPreviewAction) return null;
   // No `Cancel group` caption beside the ✕: an icon that already means cancel,
   // captioned "cancel", is the same word twice; the warning lives in the ✕'s own `title`.
@@ -129,7 +131,12 @@ export function FooterActions({
         <IconActionButton tone="muted" icon={<RotateCcw aria-hidden className={dsIcon.sm} />} label="Retry" onClick={event => { event.stopPropagation(); onPreviewAction('retry'); }} />
         <IconActionButton tone="destructive" icon={<Trash2 aria-hidden className={dsIcon.sm} />} label="Delete" onClick={event => { event.stopPropagation(); onPreviewAction('delete'); }} />
       </>}
-      {footer.map((a) => {
+      {footer.map((served) => {
+        const toggle = served.kind === "command" && (served.command === "pause" || served.command === "resume");
+        const a = toggle && flipped === target.expectedVersion
+          ? { ...served, key: served.key === "pause" ? "resume" : "pause", command: served.key === "pause" ? "resume" : "pause",
+            label: served.key === "pause" ? "Resume" : "Pause", icon: served.key === "pause" ? "resume" : "pause" } as ActionDescriptorWire
+          : served;
         const label = groupCount === undefined ? a.label
           : a.key === "pause" ? `Pause all ${groupCount}` : a.key === CANCEL_TREE_KEY ? `Stop all ${groupCount}` : a.label;
         return (
@@ -149,10 +156,11 @@ export function FooterActions({
           onClick={(e) => {
             e.stopPropagation();
             const row = e.currentTarget.closest<HTMLElement>('[data-demo-row-id]')?.querySelector<HTMLElement>("[data-queue-open]") ?? null;
-            if (a.kind === "command" && !a.confirm) setPressed({ key: a.key, version: target.expectedVersion });
+            if (toggle) setFlipped(now => now === target.expectedVersion ? null : target.expectedVersion);
+            else if (a.kind === "command" && !a.confirm) setPressed({ key: a.key, version: target.expectedVersion });
             const press = { key: a.key, version: target.expectedVersion };
             const settled = onAction(a, target);
-            if (a.kind === "command" && !a.confirm) {
+            if (!toggle && a.kind === "command" && !a.confirm) {
               if (settled === undefined) setPressed(null);
               else void settled.catch((cause: unknown) => { window.reportError(cause); })
                 .finally(() => setPressed(now => now?.key === press.key && now.version === press.version ? null : now));
