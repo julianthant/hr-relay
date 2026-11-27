@@ -18,6 +18,8 @@ const globalInputs = [
   "tests/support/private-temp-setup.ts",
 ];
 const workflowExplorerTest = /^tests\/backend\/transports\/http\/routes\/explorer\.[^/]+\.integration\.test\.ts$/u;
+const workflowFacts = "src/backend/assistant/plugins/workflows/facts.json";
+const workflowFactsTest = "tests/backend/assistant/plugins/workflows/facts.integration.test.ts";
 const excludedTests = new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES]);
 
 type FileTree = ReadonlyMap<string, string>;
@@ -183,10 +185,12 @@ export function createAffectedTestsPlanner(root: string): (base: string, head: s
         if (distance < (distances.get(file) ?? Infinity)) distances.set(file, distance);
       }
     }
-    // Explorer tests assert a workflow's whole step graph but import it many hops away; rank them first so the shard limit keeps them.
+    // Explorer and committed-facts tests assert whole workflow definitions but import them many hops away; rank them first so the shard limit keeps them.
     if (changed.some(file => file.startsWith("src/workflows/"))) {
-      for (const file of files.keys()) if (workflowExplorerTest.test(file)) distances.set(file, 0);
+      for (const file of files.keys()) if (workflowExplorerTest.test(file) || file === workflowFactsTest) distances.set(file, 0);
     }
+    // The facts test reads the committed file from disk, so no import edge selects it.
+    if (changed.includes(workflowFacts) && files.has(workflowFactsTest)) distances.set(workflowFactsTest, 0);
     const global = changed.some(file => /^(?:package(?:-lock)?\.json|(?:vitest\.config|tsconfig)(?:\.[\w-]+)*\.[\w]+)$/u.test(file))
       || globalInputs.some(file => distances.has(file));
     const ordered = [...files.keys()].filter(file =>
