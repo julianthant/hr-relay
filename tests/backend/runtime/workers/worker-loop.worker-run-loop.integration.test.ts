@@ -106,6 +106,23 @@ describe("worker run loop", () => {
     } finally { releaseEmpty.resolve(); h.stop.abort(); await looping; }
   });
 
+  it("checks queued work immediately when a paused worker resumes", async () => {
+    const h = await loopHarness();
+    let paused = true;
+    const unexpected = (): never => { throw new Error("unrequested control"); };
+    const child = createWorkerChildChannel({ clock: h.authority.clock, send: () => undefined, onStop: unexpected,
+      handlers: { refreshBrowser: unexpected, reopenBrowser: unexpected, checkParkedWrite: unexpected,
+        closeForRemoval: unexpected, pause: unexpected, resume: () => { paused = false; return { directive: "run" }; } } });
+    h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+    const looping = runWorkerLoop({ ...h.deps, watchForWork: child.watchForWork, controlPoll: () => paused ? "pause" : "run" });
+    try {
+      assert.equal(h.authority.database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+      assert.equal(h.scheduler.pending().length, 1);
+      child.receive({ kind: "worker-resume", requestId: randomUUID(), sequence: 1 });
+      assert.deepEqual((await looping).outcomes.map(outcome => outcome.state), ["done"]);
+    } finally { h.stop.abort(); await looping; }
+  });
+
   it("stops with a typed preflight refusal before sessions or execution and never repeats the claim", async () => {
     const h = await loopHarness(); let claims = 0;
     const report = await runWorkerLoop({ ...h.deps, claimNext: () => {

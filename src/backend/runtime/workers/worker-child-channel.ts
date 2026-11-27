@@ -58,6 +58,7 @@ export function createWorkerChildChannel(input: Readonly<{
         try { outcome = { state: "done", result: message.kind === "worker-pause" ? input.handlers.pause() : input.handlers.resume() }; }
         catch (error) { outcome = outcomeOf(error); }
         reply(outcome);
+        if (message.kind === "worker-resume" && outcome.state === "done") workAvailable.abort();
         return;
       }
       if (input.clock.nowMs() >= Date.parse(message.sentAt) + message.deadlineMs) { reply(refused("WORKER_REQUEST_EXPIRED")); return; }
