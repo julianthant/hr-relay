@@ -157,9 +157,9 @@ function QueueProgress({ pipeline, moving }: { pipeline: QueueSurfaceWire["pipel
       {pipeline.map((step) => (
         <span key={step.id} title={stepTitle(step)} className={cn("h-1.5 min-w-0 flex-1 rounded-full", STEP_TONE[step.state],
           moving && step.state === "active" && "relative overflow-hidden bg-ui-info/25")}>
-          {/* Reduced motion drops the sweep and leaves a half-filled segment, unlike done or pending. */}
+          {/* Reduced motion stops the pulse and leaves a half-filled segment, unlike done or pending. */}
           {moving && step.state === "active" && <span aria-hidden data-queue-step-running
-            className="absolute inset-y-0 left-0 w-1/2 animate-[ds-step-sweep_1s_linear_infinite] bg-ui-info motion-reduce:animate-none" />}
+            className="absolute inset-y-0 left-0 w-1/2 animate-pulse bg-ui-info motion-reduce:animate-none" />}
         </span>
       ))}
     </div>
