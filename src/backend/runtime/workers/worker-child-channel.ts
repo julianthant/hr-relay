@@ -65,7 +65,11 @@ export function createWorkerChildChannel(input: Readonly<{
       if (turn !== "free") { reply(refused("WORKER_BUSY")); return; }
       turn = "control";
       void run(message.request).then(result => { reply({ state: "done", result }); }, error => { reply(outcomeOf(error)); })
-        .finally(() => { turn = "free"; });
+        .finally(() => {
+          turn = "free";
+          // The parent sends Stop after closing browsers for removal.
+          if (message.request.type !== "close-for-removal") workAvailable.abort();
+        });
     },
     /** Capture before claiming so a wake during an empty claim also interrupts the next idle wait. */
     watchForWork(): AbortSignal {
