@@ -37,6 +37,29 @@ function approval(f: Fixture, selectedRecordIds?: readonly string[]) {
   return f.approval(selectedRecordIds);
 }
 
+it("fails an Emergency Contact run with the reason its only OCR page failed", async () => {
+  const { canonical, database, parentRun, run } = await world.fixture({ coordinator: true, dryRun: true,
+    holdPages: true, failManualPageOnce: 1 });
+  const signal = new AbortController().signal;
+  const page = await canonical.step(parentRun, signal);
+  assert.equal(page.run.envelope.workflow, "ocr-page");
+  assert.ok(page.outcome.state === "failed");
+  const pageFailure = database.authority.failures.get(page.outcome.failureId);
+  assert.ok(pageFailure);
+  assert.equal(pageFailure.code, "INCONSISTENT_INPUTS");
+
+  const ocr = await canonical.step(parentRun, signal);
+  assert.equal(ocr.run.envelope.runId, run.envelope.runId);
+  assert.ok(ocr.outcome.state === "failed", `OCR stopped at ${ocr.outcome.state}`);
+  const parent = await canonical.step(parentRun, signal);
+  assert.equal(parent.run.envelope.runId, parentRun.envelope.runId);
+  assert.ok(parent.outcome.state === "failed");
+  const parentFailure = database.authority.failures.get(parent.outcome.failureId);
+  assert.equal(parentFailure?.code, pageFailure.code);
+  assert.equal(parentFailure.summary, pageFailure.summary);
+  assert.equal(database.authority.ocrReviews.latest(run.envelope.runId), undefined);
+});
+
 it("redacts full historical batches with origins and refuses undeclared or malformed observations", () => {
   const review = { ...retainedOcrStore.tasks.readResult.contract.example.review, roster: {
     artifact: retainedOcrStore.tasks.readResult.contract.example.review.accounting.manifest.document,

@@ -312,8 +312,12 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       // holdPages: stop once the OCR run has queued its page runs, before any page is claimed.
       const executeToPages = async () => {
         const outcomes: Awaited<ReturnType<typeof canonical.execute>>["outcomes"] = [];
-        const pagesQueued = () => database.authority.runs.listChildren(parentRun.envelope.runId)
-          .some(child => child.envelope.workflow === "ocr-page" && child.lifecycle.state === "queued");
+        const pagesQueued = () => {
+          const ocrRun = root === ocrRoot ? parentRun : database.authority.runs.listChildren(parentRun.envelope.runId)
+            .find(child => child.envelope.workflow === "ocr");
+          return ocrRun !== undefined && database.authority.runs.listChildren(ocrRun.envelope.runId)
+            .some(child => child.envelope.workflow === "ocr-page" && child.lifecycle.state === "queued");
+        };
         while (!pagesQueued()) outcomes.push((await canonical.step(parentRun, signal)).outcome);
         return { run: database.authority.runs.get(parentRun.envelope.runId), outcomes };
       };
