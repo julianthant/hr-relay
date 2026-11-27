@@ -108,7 +108,10 @@ describe("notification collection commands", () => {
     assert.deepEqual(result.affectedTargets, []);
     assert.equal(result.noChange, "no-matching-notifications");
     const audit = database.authority.commandAudits.findByCommand(request.commandId); assert.ok(audit);
-    assert.deepEqual(audit.result, result); assert.deepEqual(audit.versionChanges, []);
+    // The receipt is derived for each reply from the audit's version changes; the audit stores the result without it.
+    const { notificationReceipt, ...stored } = result;
+    assert.deepEqual(notificationReceipt, { actorId: "local-operator", changes: [] });
+    assert.deepEqual(audit.result, stored); assert.deepEqual(audit.versionChanges, []);
     const replay = kernel.execute(request); assert.deepEqual(replay, { ...result, state: "already-applied" });
     assert.deepEqual(database.authority.commandAudits.findByCommand(request.commandId), audit);
     const generation = database.getMeta().authorityGeneration;
