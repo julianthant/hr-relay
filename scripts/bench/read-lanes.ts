@@ -299,7 +299,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
       if (context.pages().length !== 3) throw new Error("read-lanes-g4-tab-count");
       const option = queue.getByRole("button", { name: /^Options/u });
       const calendar = queue.getByRole("menu", { name: "Pick a date" });
-      const column = queue.locator(".dashboard-queue-column");
+      const queueContent = queue.locator('.dashboard-queue-column:not([aria-busy="true"]) [data-queue-scroll]');
       const sound = "preferences.notifications.sound";
       const soundControl = settings.locator(`[data-settings-path="${sound}"]`).getByRole("combobox");
       await soundControl.waitFor();
@@ -329,7 +329,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
           await cell.click();
           if (!(await stream).ok()) throw new Error("read-lanes-g4-queue-stream-http");
           await queue.waitForURL(url => url.searchParams.get("day") === day);
-          await column.locator("[data-queue-scroll]").waitFor();
+          await queueContent.locator("[data-queue-open], [data-queue-batch-id]").first().waitFor();
           const span = await queue.evaluate(async () => {
             const start: unknown = Reflect.get(window, "relayG4Click");
             if (typeof start !== "number") throw new Error("read-lanes-g4-click-missing");
@@ -361,10 +361,11 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
               const block = pending.slice(0, end), data = block.split("\n").find(line => line.startsWith("data: "));
               pending = pending.slice(end + 2);
               if (data === undefined) continue;
-              first ??= performance.timeOrigin + performance.now();
+              const frameAt = performance.timeOrigin + performance.now();
+              first ??= frameAt;
               const envelope: unknown = JSON.parse(data.slice(6));
               if (envelope !== null && typeof envelope === "object" && "type" in envelope && envelope.type === "snapshot") {
-                return { start, end: first, payload: envelope };
+                return { start, end: frameAt, firstFrameMs: first - start, payload: envelope };
               }
               if (envelope === null || typeof envelope !== "object" || !("type" in envelope) || envelope.type !== "hello") {
                 throw new Error("read-lanes-g4-stream-no-snapshot");
@@ -376,8 +377,10 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
       const snapshot = async (day: string) => {
         const result = await read(`/events/v1?topics=dashboard-day:${day}`, true);
         const envelope = DashboardStreamEnvelopeSchema.parse(result.payload);
-        if (envelope.type !== "snapshot" || envelope.payload.day !== day) throw new Error("read-lanes-g4-stream-day-mismatch");
-        return { start: result.start, end: result.end };
+        if (envelope.type !== "snapshot" || envelope.payload.day !== day || envelope.payload.queueSurfaces.length === 0) {
+          throw new Error("read-lanes-g4-empty-or-mismatched-snapshot");
+        }
+        return { start: result.start, end: result.end, firstFrameMs: z.number().nonnegative().parse(result.firstFrameMs) };
       };
       const workload = async (day: string) => {
         const [found, calendarRead] = await Promise.all([
@@ -407,8 +410,9 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
         };
       }
 
-      const baseline: Span[] = [], uncontendedSse: Span[] = [];
-      const contention: { click: Span; search: Span; calendar: Span; settings: Span; sse: Span }[] = [];
+      type Snapshot = Awaited<ReturnType<typeof snapshot>>;
+      const baseline: Span[] = [], uncontendedSse: Snapshot[] = [];
+      const contention: { click: Span; search: Span; calendar: Span; settings: Span; sse: Snapshot }[] = [];
       return await withG4Cleanup(async () => {
         for (let index = 0; index < G4_SAMPLES; index++) {
           const day = input.days[index % 2 === 0 ? 1 : 0];
@@ -421,7 +425,9 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
           const [clickDayNow, changeSetting] = await Promise.all([clickDay(day), prepareSettingChange()]);
           const [click, companions, sse, changed] = await Promise.allSettled([clickDayNow(), workload(day), snapshot(day), changeSetting()]);
           if (click.status !== "fulfilled" || companions.status !== "fulfilled" || sse.status !== "fulfilled" || changed.status !== "fulfilled") {
-            throw new Error("read-lanes-g4-contention-workload-failed");
+            const failed = Object.entries({ click, companions, sse, changed }).flatMap(([name, result]) =>
+              result.status === "rejected" ? [new Error(name, { cause: result.reason })] : []);
+            throw new AggregateError(failed, "read-lanes-g4-contention-workload-failed");
           }
           contention.push({ click: click.value, ...companions.value, settings: changed.value, sse: sse.value });
         }
@@ -458,8 +464,8 @@ function summarizeG4(shape: Shape, runs: readonly G4Run[], startGate: z.infer<ty
     && startup.ranges.addedRssMiB[1] <= ADDED_RSS_LIMIT_BYTES / 1024 / 1024;
   const summaries = runs.map(({ baseline, uncontendedSse, contention, metrics }) => {
     const clicks = contention.map(sample => elapsed(sample.click)), alone = baseline.map(elapsed);
-    const sseAlone = Math.max(...uncontendedSse.map(elapsed));
-    const p50Ms = percentile(clicks, 0.50), p95Ms = percentile(clicks, 0.95), sseMs = Math.max(...contention.map(sample => elapsed(sample.sse)));
+    const sseAlone = Math.max(...uncontendedSse.map(sample => sample.firstFrameMs));
+    const p50Ms = percentile(clicks, 0.50), p95Ms = percentile(clicks, 0.95), sseMs = Math.max(...contention.map(sample => sample.sse.firstFrameMs));
     const overlap = Object.fromEntries((["search", "calendar", "settings", "sse"] as const).map(kind =>
       [kind, contention.filter(sample => overlaps(sample.click, sample[kind])).length]));
     const scanOverlap = contention.filter(sample => metrics.scans.some(scan => !scan.cached && overlaps(sample.click, scan))).length;
