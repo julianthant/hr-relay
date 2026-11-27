@@ -535,10 +535,10 @@ export function Switch({
 
 /** The one search field, with its icon, an optional shortcut hint and a clear × while it has text.
  * `sidebar`: the filled 36px pill above a list of rows (Settings sidebar, workflow picker).
- * `field`: the 28px bordered 8px field inside a page, toolbar or menu; `menu` is the same field and stays only until the surfaces that pass it drop it. */
+ * `field`: the 28px bordered 8px field inside a page, toolbar or menu. */
 export const SearchInput = forwardRef<
   HTMLInputElement,
-  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; trailing?: ReactNode; variant?: 'field' | 'sidebar' | 'menu' }
+  InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode; trailing?: ReactNode; variant?: 'field' | 'sidebar' }
 >(function SearchInput({ className, onClear, shortcut, trailing, variant = 'field', value, defaultValue, disabled, readOnly, ...props }, ref) {
   const field = useFieldControl();
   return (
