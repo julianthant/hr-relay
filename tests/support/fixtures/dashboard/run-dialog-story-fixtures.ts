@@ -57,6 +57,8 @@ const typedInput = (flow: RunStartWorkflow, supportsDryRun: boolean): RunStartWo
 export const RUN_DIALOG_DRY_RUN_CATALOG = catalogOf(flow => typedInput(flow, true));
 /** The entry as a workflow that reads its people from a required reference spreadsheet. */
 export const RUN_DIALOG_REFERENCE_CATALOG = catalogOf(flow => ({ ...flow, requiredWorkbookFields: ["eid"], workbookReference: { id: "roster-type", keyFieldId: "eid", mode: "keys", writableFields: [] } }));
+/** The entry as CRM Doc Download declares its reference: the one workflow whose reference takes several worksheets. */
+export const RUN_DIALOG_SEVERAL_SHEETS_CATALOG = catalogOf(flow => ({ ...flow, label: "CRM Doc Download", requiredWorkbookFields: ["eid"], workbookReference: { id: "onboarding-roster", keyFieldId: "eid", mode: "keys", writableFields: [] } }));
 /** The entry as a workflow with the optional second check. */
 export const RUN_DIALOG_CHECK_CATALOG = catalogOf(flow => ({ ...flow, workbookCheck: { id: "reference-check", keyFieldId: "eid" } }));
 /** The entry as a PDF workflow: documents in, an OCR switch and a required choice on the Options stage. */

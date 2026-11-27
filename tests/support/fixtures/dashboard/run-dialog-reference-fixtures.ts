@@ -4,10 +4,10 @@ import { WorkbookLibraryEntrySchema, WorkbookLibraryVersionViewSchema, projectWo
 import { RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW } from "./run-dialog-story-fixtures.js";
 
 /** What the library serves when one saved spreadsheet is bound to the reference workflow's key field: the Spreadsheets field works. */
-export function runDialogReferenceReads(names: readonly string[] = ["First"]): Partial<DashboardClient> {
+export function runDialogReferenceReads(names: readonly string[] = ["First"], typeId = "roster-type"): Partial<DashboardClient> {
   const entry = WorkbookLibraryEntrySchema.parse({ libraryId: "roster", name: "Roster", version: 1, updatedAt: "2026-11-01T00:00:00Z", rowCount: 2,
-    worksheets: names.map((name, index) => ({ id: index === 0 ? "first" : `sheet-${index}`, name })), metadata: { typeId: "roster-type", sharePoint: null },
-    type: { id: "roster-type", name: "Roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: "roster" },
+    worksheets: names.map((name, index) => ({ id: index === 0 ? "first" : `sheet-${index}`, name })), metadata: { typeId, sharePoint: null },
+    type: { id: typeId, name: "Roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: "roster" },
     state: { libraryId: "roster", revision: 1, selectedVersionId: "version", removed: false, pinned: false, tags: [], origin: { kind: "local" },
       versions: [{ id: "version", name: "Reviewed", snapshotId: "snapshot", version: 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" }] } });
   const view = WorkbookLibraryVersionViewSchema.parse({ libraryId: "roster", version: entry.state.versions[0], workbook: {
@@ -19,7 +19,7 @@ export function runDialogReferenceReads(names: readonly string[] = ["First"]): P
   return {
     workbookList: async () => [], workbookCatalog: async () => [entry], workbookTypes: async () => [entry.type], workbookLibraryVersion: async () => view,
     workbookCompatibility: async () => projectWorkbookCompatibility([{ id: RUN_DIALOG_WORKFLOW, label: "Person Lookup", requiredWorkbookFields: ["eid"],
-      workbookReference: { id: "roster-type", keyFieldId: "eid", mode: "keys", writableFields: [] } }],
+      workbookReference: { id: typeId, keyFieldId: "eid", mode: "keys", writableFields: [] } }],
     [{ libraryId: "roster", versionId: "version", origin: { kind: "local" }, removed: false,
       sheets: entry.worksheets.map(sheet => ({ ...sheet, mappings: [{ fieldId: "eid", column: 0, basis: "manual" as const }] })) }]),
   };
