@@ -100,3 +100,22 @@ it("is the shared search field and still a combobox driven by the arrow keys and
   await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
   assert.deepEqual(actions, ["spreadsheets"]);
 });
+
+it("keeps cmdk's query state: ArrowDown to Spreadsheets, typing s, then Enter activates the new first result", async () => {
+  const actions: string[] = [];
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(RailSearch, { data: { today: "2026-08-03", counts: {}, results: [] }, workflows: [], startKey: "R", onAction: action => actions.push(action), onWorkflow: () => {}, onResult: () => {} }))));
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search"]')!.click());
+  const input = document.querySelector<HTMLInputElement>('input[aria-label="Search Relay"]')!;
+  assert.equal(input.getAttribute("aria-autocomplete"), "list");
+  await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })); });
+  assert.equal(document.getElementById(input.getAttribute("aria-activedescendant")!)?.textContent, "Spreadsheets");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "s");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  assert.equal(document.getElementById(input.getAttribute("aria-activedescendant")!)?.textContent?.startsWith("Start a run"), true);
+  await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+  assert.deepEqual(actions, ["start"]);
+});

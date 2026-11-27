@@ -35,16 +35,12 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
   const field = useRef<HTMLInputElement>(null);
   // A Runs list that fits without scrolling can never fire a scroll, so it asks for the next page itself.
   useEffect(() => { const el = list.current; if (open && filter === "runs" && onMoreRuns && el && el.scrollHeight <= el.clientHeight) onMoreRuns(); }, [open, filter, onMoreRuns, sections]);
-  // cmdk owns the list id and leaves aria-activedescendant unset until the selection first moves; the shared field is not its Input, so the input id, label link and both are wired here
+  // cmdk leaves aria-activedescendant unset until the selection first moves
   const watchSelection = (root: HTMLElement | null) => {
     if (!root) return;
     const sync = () => {
       const input = root.querySelector("[cmdk-input]");
       const selected = root.querySelector('[cmdk-item][aria-selected="true"]');
-      const label = root.querySelector<HTMLLabelElement>("[cmdk-label]");
-      if (input && label) { input.id = label.htmlFor; input.setAttribute("aria-labelledby", label.id); }
-      const results = root.querySelector("[cmdk-list]");
-      if (input && results) input.setAttribute("aria-controls", results.id);
       if (input && selected) input.setAttribute("aria-activedescendant", selected.id);
     };
     sync();
@@ -63,7 +59,7 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
         onEscapeKeyDown={event => { if (query !== "") { event.preventDefault(); onQuery(""); } }}>
         <DialogPrimitive.Title className="sr-only">Search Relay</DialogPrimitive.Title>
         <Command ref={watchSelection} shouldFilter={false} loop label="Search Relay" className="flex min-h-0 flex-1 flex-col">
-          <div className="search-palette-field"><SearchInput ref={field} cmdk-input="" role="combobox" aria-expanded aria-label="Search Relay" placeholder="Search Relay" autoComplete="off" value={query} onChange={event => onQuery(event.target.value)} onClear={() => onQuery("")} /></div>
+          <div className="search-palette-field"><Command.Input asChild value={query} onValueChange={onQuery}><SearchInput ref={field} aria-label="Search Relay" placeholder="Search Relay" onClear={() => onQuery("")} /></Command.Input></div>
           <Command.List ref={list} label="Results" className="search-palette-list" onScroll={event => { const list = event.currentTarget; if (onMoreRuns && list.scrollHeight - list.scrollTop - list.clientHeight < list.clientHeight) onMoreRuns(); }}>
             {sections.length === 0 && !loading && <p role="status" className="search-palette-empty">No matches</p>}
             {sections.map(section => <Command.Group key={section.id} aria-label={section.label}>
