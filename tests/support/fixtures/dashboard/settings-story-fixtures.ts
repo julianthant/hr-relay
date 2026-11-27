@@ -20,8 +20,8 @@ const CREDENTIAL_IDS: Readonly<Record<ProtectedSettingsName, string>> = {
   sharepointOnboardingRosterUrl: "a3333333-3333-4333-8333-333333333333",
 };
 
-/** How the page's first read of the editable settings goes. `fail-once` fails the first read and answers every later one. */
-export type SettingsRead = "answer" | "never" | "fail" | "fail-once";
+/** How the page's first read of the editable settings goes. `fail-once` fails the first read and answers every later one; `hold-later` answers the first and never the rest. */
+export type SettingsRead = "answer" | "never" | "fail" | "fail-once" | "hold-later";
 /** What the page's next save command comes back as. `restart` lands and says Relay must restart; `replayed` says it was already saved. */
 export type SettingsSave = "applied" | "restart" | "replayed" | "conflict" | "rejected" | "lost" | "never";
 export type SettingsCredentials = "saved" | "empty" | "unavailable";
@@ -88,6 +88,7 @@ export function settingsStoryServer(options: SettingsStoryServerOptions = {}): S
       reads += 1;
       if (read === "never") return never();
       if (read === "fail" || (read === "fail-once" && reads === 1)) return json({ code: "SETTINGS_READ_UNAVAILABLE" }, 500);
+      if (read === "hold-later" && reads > 1) return never();
       return json(document());
     }
     if (pathname === "/api/v1/commands" && typeof init?.body === "string") {

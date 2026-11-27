@@ -1,9 +1,10 @@
 /** Shell surface stories: the startup loader, the notices over the dashboard, the queue column when it has no queue, the
  * workflow rail, search, and the Pause-all and Log out dialogs. The real components run on fixtures and a client that never answers. */
-import { useEffect, useState, type ComponentProps } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import { DashboardClientProvider } from "../../../../../../src/dashboard/state/client-context.js";
 import { EmptyState, FailureNotice, Notice, Panel, PanelBody, Switch } from "../../../../../../src/dashboard/ds/ui.js";
 import { QueueSkeleton } from "../../../../../../src/dashboard/surfaces/shared/loading/loading.js";
+import { KeptDayMark } from "../../../../../../src/dashboard/app/loaded-app.js";
 import { QueueHeader } from "../../../../../../src/dashboard/surfaces/queue/queue-header.js";
 import { PausedRunsStrip, QuitDialog } from "../../../../../../src/dashboard/surfaces/queue/queue-toolbar.js";
 import { HubShell } from "../../../../../../src/dashboard/surfaces/shell/hub-shell.js";
@@ -78,10 +79,10 @@ const RAIL = {
   "start-focus": rail("The sidebar with keyboard focus on a workflow's Start run +", SHELL_STORY_COUNTS_IDLE, false, page => page.locator(".workflow-rail-start").first().focus()),
 } satisfies Record<RailState, Story>;
 
-type HeaderState = "closed" | "options-open" | "options-changed" | "options-changed-open";
-const header = (title: string, changed: boolean, play?: Story["play"]): Story => ({ title, ready: '[aria-label="Queue header"]', ...(play === undefined ? {} : { play }),
+type HeaderState = "kept-day" | "closed" | "options-open" | "options-changed" | "options-changed-open";
+const header = (title: string, changed: boolean, play?: Story["play"], extra: Partial<Story> = {}, dayMark?: ReactNode): Story => ({ title, ready: '[aria-label="Queue header"]', ...(play === undefined ? {} : { play }), ...extra,
   render: () => <StoryFrame><QueueHeader title="Person Lookup" ask={<AssistantLauncher />} startId="story-start-run" onStartRun={noop} day={changed ? "2026-10-29" : "2026-10-30"} today="2026-10-30" onDay={noop}
-    sort={changed ? "oldest" : "attention"} order={changed ? "oldest" : "newest"} onSort={noop} active={changed ? ["failed"] : ["all"]} counts={[]} onFilter={noop} /></StoryFrame> });
+    sort={changed ? "oldest" : "attention"} order={changed ? "oldest" : "newest"} onSort={noop} active={changed ? ["failed"] : ["all"]} counts={[]} onFilter={noop} {...(dayMark === undefined ? {} : { dayMark })} /></StoryFrame> });
 // Opened by keyboard on the last item: it takes the menu's Tab stop, and arrows from it walk the rest without opening a submenu.
 const openOptions: Story["play"] = async page => {
   await page.getByRole("button", { name: /^Options/ }).press("Enter");
@@ -89,6 +90,7 @@ const openOptions: Story["play"] = async page => {
   await page.keyboard.press("End");
 };
 const HEADER = {
+  "kept-day": header("The queue header over a kept day, the spinner beside Options once the read is slow", false, undefined, { ready: '[data-queue-stale] [role="status"]' }, <KeptDayMark />),
   closed: header("The queue header with Options closed", false),
   "options-open": header("The Options menu open: Date, Sort by, Status, Attention first, Reset", false, openOptions),
   "options-changed": header("The queue header with options changed from their defaults", true),

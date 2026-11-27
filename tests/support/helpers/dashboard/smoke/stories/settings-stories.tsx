@@ -62,6 +62,10 @@ const LOAD = {
   loaded: scene("General, every setting read", { play: loaded }),
 } satisfies Record<EditableSettingsState["state"], Story>;
 
+const REFRESH = {
+  "kept-document": scene("General over its kept document while a slow re-read runs, the spinner beside the title", { server: { read: "hold-later" }, host: { rereadOnceLoaded: true }, story: { ready: '[data-settings-stale] [role="status"]', knownFailures: { "no-dead-disabled-control": "#1018" } } }),
+} satisfies Record<"kept-document", Story>;
+
 const SECTION = {
   general: scene("General page", { play: loaded }),
   account: scene("Account page", { section: "account", story: { ready: 'h1:has-text("Account"), h2:has-text("Account")' } }),
@@ -204,6 +208,6 @@ const NOTICE = {
 
 export const SETTINGS_STORIES = defineSurface("settings", {
   load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,
-  save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, "duo-keys": DUO_KEYS, notice: NOTICE,
+  refresh: REFRESH, save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, "duo-keys": DUO_KEYS, notice: NOTICE,
 });
 

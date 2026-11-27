@@ -100,7 +100,7 @@ const COMBINATION = {
   "all-states": bar("One worker in every state", ready(...Object.values(SESSION_WORKER_BY_STATE))),
   "one-row-light": bar("Five workers in one row, the next card peeking, light", ready(SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.starting, ...QUIET_IDLE), { theme: "light" }),
   "duo-setup-refused": bar("A worker stopped during Duo setup", ready(DUO_SETUP_REFUSED), { theme: "light" }, { ready: 'text="Duo isn\'t set up. Set it up in Settings."' }),
-  stale: bar("Counts held from the last day while the next loads, controls locked", { state: "ready", workers: [SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed], stale: true }),
+  stale: bar("Counts held from the last day while the next loads, controls locked", { state: "ready", workers: [SESSION_WORKER_BY_STATE.running, SESSION_WORKER_BY_STATE.failed], stale: true }, {}, { ready: '[data-sessions-stale] [role="status"]' }),
   wide: bar("A worker with five systems, a wide card with nicknames", ready(WIDE_WORKER)),
   "adding-empty": bar("A worker being added to an empty panel, shown as a Starting card", ready(), { operations: ADDING }, { ready: "li[aria-busy]" }),
   adding: bar("A worker being added, its Starting card before an idle card", ready(QUIET_IDLE[0]), { operations: ADDING }, { ready: "li[aria-busy]" }),
