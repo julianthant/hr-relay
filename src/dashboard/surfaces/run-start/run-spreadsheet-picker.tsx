@@ -61,7 +61,7 @@ function WorksheetMenu({ owner, worksheets, picked, mode, disabled, onChange }: 
             onCheckedChange={on => { const next = on === true ? [...picked, worksheet.sheetId] : picked.filter(id => id !== worksheet.sheetId); if (next.length > 0) onChange(next); }}>{worksheet.sheetName}</DropdownMenuCheckboxItem>)}
       </DropdownMenuGroup>
       {found.length === 0 && <p className="m-0 p-2 text-body text-ui-muted">No worksheets match.</p>}
-      <p className="m-0 pt-1 text-center text-caption text-ui-muted">{worksheets.length === 1 ? "1 worksheet" : `${worksheets.length} worksheets`}</p>
+      <p className="ds-menu-label m-0">{worksheets.length === 1 ? "1 worksheet" : `${worksheets.length} worksheets`}</p>
     </DropdownMenuContent>
   </DropdownMenu>;
 }
