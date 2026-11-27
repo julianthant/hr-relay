@@ -297,16 +297,17 @@ async function expectTimelines(client: ReturnType<typeof createDashboardClient>,
     expect(steps.map(step => step.time), name).not.toContain("—");
     const descriptor = WORKFLOW_MODULES.find(module => module.descriptor.id === run.envelope.workflow)?.descriptor;
     assert.ok(descriptor !== undefined, name);
-    const noted = steps.flatMap((step, index) => step.entries.some(entry => entry.kind === "fields") ? [{ index, title: step.title }] : []);
-    expect(steps.flatMap(step => step.entries.filter(entry => entry.kind === "note").map(() => step.title)).filter(title => title === "Run note"), name).toEqual([]);
-    // Rows follow the descriptor's step order and only cover steps a real run would have finished: none for the open step.
-    const order = descriptor.timeline.filter(group => (group.operatorFields ?? []).some(field => field.sources.some(source => source.kind === "output")));
-    const titles = noted.map(note => note.title);
-    const positions = titles.map(title => order.findIndex(group => group.label === title));
+    const noted = steps.flatMap((step, index) => descriptor.timeline.some(group => group.label === step.title) ? [{ index, title: step.title }] : []);
+    expect(steps.map(step => step.title), name).not.toContain("Run note");
+    // Every started step has a row under its descriptor title, in descriptor order.
+    const spanless = new Set<string>(descriptorRuntimeNodes(descriptor).filter(node => node.kind === "gate" || node.kind === "child-run").map(node => node.id));
+    const order = descriptor.timeline.filter(group => group.nodes.some(node => !spanless.has(node)));
+    const positions = noted.map(note => order.findIndex(group => group.label === note.title));
+    expect(noted.length, name).toBeGreaterThan(0);
     expect(positions.every(position => position >= 0), name).toBe(true);
     expect([...positions].sort((left, right) => left - right), name).toEqual(positions);
-    if (state === "succeeded") expect(new Set(titles).size, name).toBe(order.length);
-    if (state === "needs-duo") expect(noted, name).toEqual([]);
+    if (state === "succeeded") expect(new Set(noted.map(note => note.title)).size, name).toBe(order.length);
+    if (state === "needs-duo") expect(noted.map(note => note.title), name).toEqual([order[0]?.label]);
     const cards = steps.flatMap((step, index) => step.entries.some(entry => entry.kind === "decision") || step.title === "Run cancelled" ? [{ index, title: step.title }] : []);
     const parkedWrite = run.lifecycle.state === "parked-write";
     const hasGate = descriptorRuntimeNodes(descriptor).some(node => node.kind === "gate" && node.resolvedBy === "operator");

@@ -486,12 +486,12 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       steps.push({ id: gate.gateId, time, title: plainStepLabel(gate.label), entries: [{ kind: "decision", id: gate.gateId, time, decision: { state: "review", ...gateCard } }] });
       continue;
     }
-    // The timeline strip already shows done, pending, running and failed stages; only a skip, wait or cancel adds a log line.
-    if (event.state === "done" || event.state === "pending" || event.state === "active" || (event.state === "failed" && failedNodes.has(requireNative(event.native).nodeId))) continue;
+    // Every step that started or finished gets a row, so a run whose steps record no fields still reads as a timeline; the failed step's own card covers its failure.
+    if (event.state === "pending" || (event.state === "failed" && failedNodes.has(requireNative(event.native).nodeId))) continue;
     const time = formatTimeWithSeconds(event.at);
     groupable.add(event.noteId);
     order.set(event.noteId, requireNative(event.native).order); node.set(event.noteId, requireNative(event.native).nodeId);
-    const state = { failed: "Failed", blocked: "Waiting", cancelled: "Cancelled", skipped: "Skipped" }[event.state];
+    const state = { done: "Done", active: "Running", failed: "Failed", blocked: "Waiting", cancelled: "Cancelled", skipped: "Skipped" }[event.state];
     const reason = event.notRun.state === "present" ? event.notRun.reason : undefined;
     const typed = detail.timeline.steps?.find(category => category.key === event.categoryKey)?.typedValues;
     const typedFields = typed?.fields.length ?? 0;
