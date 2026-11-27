@@ -35,7 +35,7 @@ import { searchPartitionDay } from "../../../../../src/models/dashboard/search-c
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
-import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
+import { LOCAL_OPERATOR_ACTOR_ID, SourceSurfaceIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { deriveTraceId } from "../../../../../src/rules/identity/identifiers.js";
 import { StorageHealthConcernSchema } from "../../../../../src/rules/notifications/notification-triggers.js";
 
@@ -379,7 +379,7 @@ it('starts a read-only session through the composed kernel, serves it in Queue a
     assert.equal(attributionOwnsCommand(store, start, owned, profileId), true);
     for (const wrong of [{ ...owned, conversationId: randomUUID() }, { ...owned, binding: { kind: 'session' as const, actionId: randomUUID() } }, { ...owned, profileId: randomUUID() }, { kind: 'unrecorded' as const }])
       assert.equal(attributionOwnsCommand(store, start, wrong, profileId), false, JSON.stringify(wrong));
-    assert.equal(attributionOwnsCommand(store, { ...start, source: 'dashboard' }, owned, profileId), false);
+    assert.equal(attributionOwnsCommand(store, { ...start, source: SourceSurfaceIdSchema.parse('dashboard') }, owned, profileId), false);
 
     // Queue and Logs both serve the run.
     const day = await client.dashboardDay(searchPartitionDay(new Date(clock.now().toISOString())));

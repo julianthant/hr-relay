@@ -337,7 +337,7 @@ it('shows a refused reply as one failure notice with no button, so nothing resen
   assert.equal(current.state.turn.state, 'idle');
   assert.match(document.body.textContent ?? '', /The assistant could not reply\./u);
   assert.equal(document.querySelectorAll('.hub-assistant-line').length, 0);
-  assert.equal(document.querySelector('.hub-transcript [role="alert"] button, .hub-transcript .failure-notice button'), null);
+  assert.ok(document.querySelector('.hub-transcript [role="alert"] button, .hub-transcript .failure-notice button') === null);
   assert.equal([...document.querySelectorAll('.hub-transcript button')].some(button => button.textContent === 'Retry' || button.textContent === 'Open Settings'), false);
   assert.equal(calls, 1);
   assert.equal((document.body.textContent?.match(/The assistant could not reply\./gu) ?? []).length, 1);

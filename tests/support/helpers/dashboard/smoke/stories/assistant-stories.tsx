@@ -65,8 +65,8 @@ const REPLY = {
 
 // A refusal is one notice with no button; the account strip carries Sign in or Open Settings.
 const REFUSAL = {
-  "plan-off": after("A reply refused because the plan is off", { client: { reply: { refused: "ASSISTANT_PLAN_DISABLED" } } }, `text=${JSON.stringify(ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED)}`),
-  "rate-limited": after("A reply refused for too many requests", { client: { reply: { refused: "CHATGPT_RATE_LIMITED" } } }, `text=${JSON.stringify(ASSISTANT_FAILURES.CHATGPT_RATE_LIMITED)}`),
+  "plan-off": after("A reply refused because the plan is off", { client: { reply: { refused: "ASSISTANT_PLAN_DISABLED" } } }, `[title=${JSON.stringify(ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED)}]`),
+  "rate-limited": after("A reply refused for too many requests", { client: { reply: { refused: "CHATGPT_RATE_LIMITED" } } }, `[title=${JSON.stringify(ASSISTANT_FAILURES.CHATGPT_RATE_LIMITED)}]`),
 };
 
 const HISTORY = {

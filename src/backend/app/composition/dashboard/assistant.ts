@@ -132,7 +132,7 @@ export function composeAssistant(options: Readonly<{
   const browserMode = () => database.withAuthorityReadSnapshot(() => selectActiveRunSettings(database.authority)).config.browser.headless ? 'headless' as const : 'headed' as const;
   // Every assistant command reaches the kernel only with the attribution of the claim that owns it.
   const submit: AssistantTypedProposalPorts['submit'] = (command, attribution) => {
-    if (!attributionOwnsCommand(store, command, attribution, service.owner().profileId)) throw new AssistantAuthorizationError('assistant-attribution-mismatch', 'ASSISTANT_PROPOSAL_REFUSED');
+    if (!attributionOwnsCommand(store, command, attribution, service.owner().profileId)) throw new AssistantToolRefusal('ASSISTANT_PROPOSAL_REFUSED');
     return options.starts.submit(command, attribution);
   };
   const common = { ...options.starts, submit, current: service.owner, clock: service.clock, actorId: service.actorId, browserMode };
