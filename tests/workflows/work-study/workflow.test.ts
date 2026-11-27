@@ -36,3 +36,10 @@ it("declares one required effective date for the whole start, served as declared
   expect(served?.typedInput?.controls).toEqual([{ kind: "date", field: "effectiveDate", label: "Effective date", placement: "input",
     modes: ["employee-ids"], requires: [], required: true, refusal: "Choose a valid effective date." }]);
 });
+
+it("serves Employee ID entry guidance without sample IDs", () => {
+  const served = WorkflowStartWireSchema.shape.inputRun.parse(descriptor.surfaces.inputRun);
+  expect(served?.examples).toBeUndefined();
+  expect(served?.placeholder).toBe("Separate Employee IDs with semicolons");
+  expect(served?.typedInput?.modes.map(mode => mode.placeholder)).toEqual(["Separate Employee IDs with semicolons"]);
+});
