@@ -20,7 +20,7 @@
     "enqueue": "reject-active",
     "version": 1,
     "inputRun": {
-      "placeholder": "10000001; 10000002",
+      "placeholder": "Separate Employee IDs with semicolons",
       "parser": {
         "split": {
           "kind": "delimited",
@@ -52,7 +52,7 @@
             "value": "employee-ids",
             "label": "Employee IDs",
             "inputLabel": "Employee IDs",
-            "placeholder": "10000001; 10000002",
+            "placeholder": "Separate Employee IDs with semicolons",
             "defaults": [],
             "parser": {
               "kind": "entries",
