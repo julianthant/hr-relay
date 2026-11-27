@@ -480,6 +480,12 @@ export function Spinner({ className, label = "Loading" }: { className?: string; 
   );
 }
 
+/** A named spinner for a refresh over kept content; invisible until the read is slow. */
+export function DelayedSpinner({ label = "Refreshing" }: { label?: string }) {
+  const waiting = useSkeletonWait();
+  return <span className={waiting ? "invisible" : undefined}><Spinner label={label} /></span>;
+}
+
 /** Match the incoming content’s dimensions so loading does not shift layout. Invisible until the read is slow. */
 export function Skeleton({ className }: { className?: string }) {
   const waiting = useSkeletonWait();

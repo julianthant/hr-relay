@@ -1,9 +1,8 @@
 import { type IdleSessionCountdown } from './session-idle-model.js';
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { ChevronDown, ChevronUp, UsersRound, X } from "lucide-react";
-import { BareButton, dsFocus, IconButton, Skeleton } from "../../ds/ui.js";
+import { BareButton, DelayedSpinner, dsFocus, IconButton, Skeleton } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
-import { DelayedSpinner } from "../activity/analytics-view.js";
 import { SESSIONS_CONSOLE_ID } from "./sessions-context.js";
 import "./sessions.css";
 import { SESSION_STATE_LABELS, sessionTallies, type SessionControl, type SessionsViewState } from "./sessions-view-model.js";
@@ -22,7 +21,7 @@ function BarCounts({ data }: { data: SessionsViewState }) {
 
 /** Says the counts are from the day last read with a small spinner; like a skeleton, it shows only once the new day has been slow. */
 function StaleMark() {
-  return <span aria-hidden data-sessions-stale className="ml-1.5 inline-flex size-4 items-center justify-center align-middle"><DelayedSpinner /></span>;
+  return <span data-sessions-stale className="ml-1.5 inline-flex size-4 items-center justify-center align-middle"><DelayedSpinner /></span>;
 }
 
 function SessionsSkeleton() {

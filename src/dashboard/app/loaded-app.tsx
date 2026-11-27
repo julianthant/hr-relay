@@ -34,8 +34,7 @@ import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
-import { DelayedSpinner } from "../surfaces/activity/analytics-view.js";
-import { Button,FailureNotice,Notice,EmptyState,Panel,PanelBody,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
+import { Button,DelayedSpinner,FailureNotice,Notice,EmptyState,Panel,PanelBody,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { createServedClock, ServedClockContext, useClockView } from "../state/served-clock.js";
@@ -159,7 +158,7 @@ interface LoadedAppProps {
 /** A stored command result opens its run through the same validated served navigation as a run notice. */
 /** The queue shows a kept copy of this day while it reloads: a small spinner, after the skeleton wait. */
 function KeptDayMark() {
-  return <span aria-hidden data-queue-stale className="inline-flex size-4 items-center justify-center mr-2"><DelayedSpinner /></span>;
+  return <span data-queue-stale className="inline-flex size-4 items-center justify-center mr-2"><DelayedSpinner /></span>;
 }
 
 function commandResultRun(destination: NotificationDestination): NotificationDestination | undefined {
