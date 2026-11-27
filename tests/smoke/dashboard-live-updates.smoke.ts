@@ -145,7 +145,8 @@ test("notification row: Tab reaches the visible clear control and Enter clears i
   await dashboard.open();
   const before = await unreadCount(page);
   await seeded.drive.publishNotification();
-  await expect.poll(() => unreadCount(page)).toBe(before + 1);
+  await seeded.drive.publishNotification(true);
+  await expect.poll(() => unreadCount(page)).toBe(before + 2);
   await page.getByRole("button", { name: /^Notifications, \d+ unread$/u }).click();
   const popover = page.getByRole("dialog", { name: "Notifications" });
   const rows = popover.locator(".notice-row");
@@ -157,10 +158,18 @@ test("notification row: Tab reaches the visible clear control and Enter clears i
   const clear = row.getByRole("button", { name: "Clear notification" });
   await expect(clear).toBeFocused();
   await expect(row.locator(".notice-action")).toHaveCSS("opacity", "1");
-  const served = page.waitForRequest(request => new URL(request.url()).pathname === "/api/v1/commands" && request.method() === "POST" && request.postData()?.includes("notification-clear") === true);
+  const listedIds = async () => (await (await page.request.get(new URL("/api/v1/notifications", page.url()).href)).json() as { notificationId: string }[]).map(entry => entry.notificationId);
+  const before = await listedIds();
+  const cleared = await row.getAttribute("data-id");
+  expect(before.length, "a sibling notice is listed beside the one cleared").toBeGreaterThan(1);
+  const served = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/commands" && response.request().method() === "POST" && response.request().postData()?.includes("notification-clear") === true);
   await page.keyboard.press("Enter");
-  await served;
+  expect(await (await served).json()).toMatchObject({ state: "applied" });
   await expect(rows).toHaveCount(count - 1);
+  const after = await listedIds();
+  expect(after).not.toContain(cleared);
+  expect(after.length).toBe(before.length - 1);
+  expect(after.every(id => before.includes(id))).toBe(true);
 });
 
 // A Work-Study run held at its first read goes on and the executor parks it at the gate the workflow declares.
