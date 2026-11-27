@@ -50,8 +50,8 @@ export const RUN_DIALOG_WORKFLOWS = startWorkflows(FIXTURE_BOOTSTRAP.workflows);
 export const RUN_DIALOG_CATALOG = buildWorkflowCatalog(RUN_DIALOG_WORKFLOWS,
   Object.freeze(Object.fromEntries(RUN_DIALOG_WORKFLOWS.map(flow => [flow.workflowId, "served" as const]))));
 
-const catalogOf = (patch: (flow: RunStartWorkflow) => RunStartWorkflow) => buildWorkflowCatalog(RUN_DIALOG_WORKFLOWS.map(patch),
-  Object.freeze(Object.fromEntries(RUN_DIALOG_WORKFLOWS.map(flow => [flow.workflowId, "served" as const]))));
+const catalogOf = (patch: (flow: RunStartWorkflow) => RunStartWorkflow) => { const flows = RUN_DIALOG_WORKFLOWS.map(patch);
+  return buildWorkflowCatalog(flows, Object.freeze(Object.fromEntries(flows.map(flow => [flow.workflowId, "served" as const])))); };
 const literal = (text: string) => ({ segments: [{ kind: "literal" as const, text }] });
 const typedInput = (flow: RunStartWorkflow, supportsDryRun: boolean): RunStartWorkflow => flow.inputRun.state === "present"
   ? { ...flow, inputRun: { state: "present", surface: { ...flow.inputRun.surface, supportsDryRun } } } : flow;

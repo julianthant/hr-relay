@@ -75,7 +75,7 @@ it("starts a real CRM Doc Download run from the mounted picker with a reference 
   await dialog.type(EMAIL); await dialog.press("Next"); await dialog.press("Start run");
   const runs = f.database.authority.runs.listByWorkflow(crm.id);
   assert.equal(runs.length, 1);
-  const references = (runs[0]!.input.workbookReferences ?? []).map(bound => parseRunWorkbookReference(bound));
+  const references = (runs[0].input.workbookReferences ?? []).map(bound => parseRunWorkbookReference(bound));
   assert.deepEqual(references.map(reference => reference.snapshot.worksheets.map(worksheet => worksheet.sheetId)), [["Nov 2"], ["Nov 16"]]);
   assert.deepEqual(references.map(reference => reference.snapshot.rows[0]?.matches.length), [1, 1]);
 });
