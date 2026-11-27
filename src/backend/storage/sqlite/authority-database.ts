@@ -25,6 +25,7 @@ import type { CredentialStore } from "../../../models/config/credential-store.js
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { ConfigSnapshotRecordSchema,type ConfigSnapshotRecord,ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
+import { CalendarStoreQuerySchema, CalendarWireSchema, type CalendarWire } from "../../../models/dashboard/calendar.js";
 import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import { RunEnvelopeSchema } from "../../../models/run/envelope.js";
 import { ConfirmationPublicationSchema,confirmationPublicationFromRow,confirmedOperationTimeline,reconstructConfirmedOperation,type ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
@@ -234,6 +235,24 @@ function changeLogIntervalClear(database: DatabaseSync, cursor: number, through:
     && database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name IN (SELECT value FROM json_each(?)) LIMIT 1`).get(cursor, selected) === undefined;
 }
 
+/** Calendar proves run ancestry and delegation evidence. Settings and notification-health writes cannot change that proof. */
+function calendarChangeIntervalClear(database: DatabaseSync, from: number, through: number): boolean {
+  const count = through - from;
+  if (count === 0) return true;
+  if (count < 0 || count > 256) return false;
+  const changes = readAuthorityChanges(database, from, count);
+  return changes.length === count && changes.every((change, index) => {
+    if (change.seq !== from + index + 1) return false;
+    if (change.table === "settings" || change.table === "notification_states") return change.op === "update";
+    if (change.table === "settings_snapshots") return change.op === "insert";
+    if (change.table !== "commands" && change.table !== "command_audits") return false;
+    const settingsImages = change.keys.filter(key => key === "family:settings").length;
+    if (change.keys.some(key => key.startsWith("run:"))) return false;
+    return change.op === "insert" ? settingsImages === 1
+      : change.table === "commands" && change.op === "update" && settingsImages === 2;
+  });
+}
+
 const SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES = 1000;
 
 export class AuthorityDatabase implements Disposable {
@@ -260,6 +279,7 @@ export class AuthorityDatabase implements Disposable {
   #checkpointCustodians = 0;
   #historyOwner?: AuthorityDatabase;
   #historyCursorOffset = 0;
+  #calendarCache?: { position: ReturnType<AuthorityDatabase["capturedChangeKey"]>; entries: Map<string, CalendarWire> };
   readonly #dashboardReadSources = new Set<symbol>();
   /** Statements reused across reads: only the run lookup a queue read repeats per row, used with get(), never iterate(). */
   #statements: SQLTagStore;
@@ -2322,8 +2342,30 @@ export class AuthorityDatabase implements Disposable {
   }
 
   queryRunCalendar(query: Parameters<ReturnType<typeof createRunSummaries>["calendar"]>[1]) {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId),
-      envelopes => this.authority.dependencies.parents(envelopes)).calendar(this.getMeta().authorityGeneration, query) });
+    return this.withAuthorityReadSnapshot(() => {
+      this.#validateExternalQuerySources();
+      const authorityGeneration = this.getMeta().authorityGeneration;
+      const read = () => createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId),
+        envelopes => this.authority.dependencies.parents(envelopes)).calendar(authorityGeneration, query);
+      if (this.#transactionMode !== "read" || this.#changeReader === undefined) return read();
+      const { month, day, today } = CalendarStoreQuerySchema.parse(query);
+      const key = `${month}|${day}|${today}`;
+      const position = this.capturedChangeKey();
+      const previous = this.#calendarCache;
+      const entries = previous !== undefined && previous.position.schemaCookie === position.schemaCookie
+        && calendarChangeIntervalClear(this.#database, previous.position.changeLogSeq, position.changeLogSeq)
+        ? previous.entries : new Map<string, CalendarWire>();
+      this.#calendarCache = { position, entries };
+      const cached = entries.get(key);
+      if (cached !== undefined) return CalendarWireSchema.parse({ ...cached, authorityGeneration });
+      const wire = read();
+      if (entries.size >= 4) {
+        const oldest = entries.keys().next().value;
+        if (oldest !== undefined) entries.delete(oldest);
+      }
+      entries.set(key, structuredClone(wire));
+      return wire;
+    });
   }
 
   readRunSummaries() {
