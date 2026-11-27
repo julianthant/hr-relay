@@ -179,6 +179,20 @@ describe_m1("approved mixed queue presentation", () => {
     assert_m1.equal(empty.querySelector("[data-queue-progress]") === null, true);
     assert_m1.ok(!empty.textContent?.includes("0 / 0"));
   });
+  it_m1("moves only the active step of a working run", () => {
+    const row = single("running");
+    const moving = (overrides: object) => render(QueueSurfaceWireSchema_m1.parse({ ...row, ...overrides })).querySelectorAll("[data-queue-step-running]");
+    const active = row.pipeline.findIndex(step => step.state === "active");
+    assert_m1.ok(active >= 0);
+    const [fill, ...rest] = moving({});
+    assert_m1.equal(rest.length, 0);
+    assert_m1.equal(fill?.parentElement?.getAttribute("title")?.includes("(active)"), true);
+    assert_m1.ok(fill?.classList.contains("motion-reduce:animate-none"));
+    assert_m1.equal(moving({ pauseControl: { state: "pause-pending", expectedVersion: 1 } }).length, 1);
+    assert_m1.equal(moving({ pauseControl: { state: "paused", expectedVersion: 1 } }).length, 0);
+    assert_m1.equal(moving({ operatorWait: { state: "present", kind: "duo", system: "ucpath", since: row.updatedAt } }).length, 0);
+    assert_m1.equal(moving({ status: "blocked" }).length, 0);
+  });
   it_m1("omits an unmeasured terminal duration and preserves measured zero", () => {
     const done = single("done");
     const unknown = render(QueueSurfaceWireSchema_m1.parse({ ...done, endedAt: { state: "absent", reason: "Historical end not retained" } }));

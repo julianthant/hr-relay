@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import { afterAll, afterEach, describe, it } from "vitest";
+import { Hono } from "hono";
 import { createStartPlanService } from "../../../src/backend/runs/commands/start-plan-service.js";
 import { authenticateOnboardingRosterExecution } from "../../../src/backend/runs/workbooks.js";
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
+import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
+import { failureStatus } from "../../../src/backend/transports/http/routes/failure-status.js";
+import { registerWorkbookRoutes } from "../../../src/backend/transports/http/routes/workbooks.js";
 import { RunWorkbookSelectedRowReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { OnboardingCanonicalValueSchema } from "../../../src/models/workflows/onboarding/input.js";
@@ -69,6 +73,52 @@ async function fixture(workflow: AnyWorkflowDescriptor = descriptor) {
 }
 
 describe("selected saved Onboarding row start authority", () => {
+  it("pins the current named version when a start selection omits its version ID", async () => {
+    const f = await fixture();
+    const named = await f.apply({ kind: "create-version", name: "Reviewed roster", from: { kind: "version", versionId: f.versionId }, useNow: true });
+    const { versionId: _versionId, ...selection } = f.selection(1);
+    const { wire, record } = f.plan({ ...f.request(), workbookReferences: [selection] });
+    assert.deepEqual(wire.refused, []);
+    assert.equal(wire.planned[0]?.workbookReferences?.[0]?.versionId, named.action.operationId);
+    assert.equal(wire.planned[0]?.workbookReferences?.[0]?.versionName, "Reviewed roster");
+    const duplicate = f.plan({ ...f.request(), workbookReferences: [selection, f.selection(1)] });
+    assert.deepEqual(duplicate.wire.refused.map(refusal => refusal.code), ["capability-unavailable"]);
+    const run = f.start(record)[0];
+    const reference = RunWorkbookSelectedRowReferenceSchema.parse(run.input.workbookReferences?.[0].value);
+    assert.equal(reference.request.versionId, named.action.operationId);
+    assert.equal(reference.snapshot.versionName, "Reviewed roster");
+  });
+
+  it("refuses deleting a named version held by a start plan or a terminal run through the workbook route", async () => {
+    const f = await fixture();
+    const { action: { operationId: versionId } } = await f.apply({ kind: "create-version", name: "Pinned roster", from: { kind: "version", versionId: f.versionId }, useNow: true });
+    const app: DashboardApp = new Hono();
+    app.onError((error, c) => { const { status, body } = failureStatus(error); return c.json(body, status); });
+    registerWorkbookRoutes(app, { workbooks: { library: f.library, workflows: [] } });
+    const assertDeleteRefused = async () => {
+      const [entry] = f.library.catalog();
+      assert.notEqual(entry.state.selectedVersionId, versionId);
+      const response = await app.request(`/api/v1/workbooks/${f.id}/library-actions`, { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ operationId: randomUUID(),
+          expectedVersion: entry.version, expectedRevision: entry.state.revision, change: { kind: "delete-version", versionId } }) });
+      assert.equal(response.status, 409);
+      assert.equal((await response.json() as { code: string }).code, "WORKBOOK_VERSION_IN_USE");
+      assert.deepEqual(f.library.catalog(), [entry]);
+    };
+
+    assert.equal(f.plan().wire.planned.length, 1);
+    await f.apply({ kind: "use-version", versionId: f.versionId });
+    await assertDeleteRefused();
+
+    await f.apply({ kind: "use-version", versionId });
+    const [run] = f.start(f.plan().record);
+    assert.equal(f.kernel.execute(world.runCommand("cancel", run.envelope.runId, run.version)).state, "applied");
+    assert.equal(f.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "terminal");
+    await f.apply({ kind: "use-version", versionId: f.versionId });
+    f.clock.advanceWall(601_000);
+    await assertDeleteRefused();
+  });
+
   it("refuses selected rows without the declared workbook-row input capability", async () => {
     const f = await fixture(compileWorkflow({ ...onboardingWorkflow, surfaces: {} }).descriptor);
     const { record } = f.plan();

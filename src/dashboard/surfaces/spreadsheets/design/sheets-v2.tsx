@@ -165,7 +165,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
       <div>{catalogError ? <FailureNotice sentence="Couldn't load spreadsheets." action={{ label: 'Retry', onClick: () => void adapter.refreshCatalog() }} />
         : catalogLoading ? <SheetsSkeleton />
         : sheets.length === 0 ? <EmptyState title="No spreadsheets yet" action={importMenu} />
-        : <div className="ds-table-list"><div className="ds-toolbar-row mb-5 flex items-center gap-2"><SearchInput aria-label="Search spreadsheets" placeholder="Search spreadsheets" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} className="sv2-search min-w-0 flex-1" />
+        : <div className="ds-table-list"><div className="ds-toolbar-row mb-5 flex items-center gap-2"><SearchInput aria-label="Search spreadsheets" placeholder="Search spreadsheets" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} className="min-w-0 flex-1" />
             <TagFilter groups={groups} value={activeFilter} onChange={setFilter} /></div>
           {tables.length ? tables.map(table => <SheetTable key={table.title} title={table.title} sheets={table.items} actions={rows} limit={table.title === 'Spreadsheets' ? CREATED_ROWS : undefined} />)
             : <Grey className="ds-text-ui">No spreadsheets match.</Grey>}

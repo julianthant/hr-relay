@@ -1,4 +1,4 @@
-import { WorkbookImportResultSchema, decodeEditableWorkbook, encodeEditableWorkbook, EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperation, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookSnapshotSchema, RunWorkbookSnapshotReferenceSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
+import { WorkbookImportResultSchema, decodeEditableWorkbook, encodeEditableWorkbook, EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperation, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookNamedReferenceSnapshotSchema, WorkbookSnapshotRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookSnapshotSchema, RunWorkbookSnapshotReferenceSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
@@ -71,21 +71,29 @@ export function createWorkbookReferenceCapture(repository: WorkbookLibraryReposi
     indexes: Map<string, Map<string, SelectedSheet["rows"][number][]>>;
     currentSheetMatches: boolean;
   }>();
+  const selectedVersions = new Map<string, string>();
+  const readEntry = (libraryId: string) => {
+    const entry = repository.catalog().find(candidate => candidate.libraryId === libraryId);
+    if (entry === undefined || entry.state.origin.kind !== "local" || entry.state.removed) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
+    return entry;
+  };
   let populatedCells = 0, gridCells = 0;
   return (value: unknown) => {
     const request = input(WorkbookActiveSnapshotRequestSchema, value);
-    const identity = JSON.stringify([request.libraryId, request.versionId, request.sheetId]);
+    const suppliedVersion = request.versionId ?? selectedVersions.get(request.libraryId);
+    const defaultEntry = suppliedVersion === undefined ? readEntry(request.libraryId) : undefined;
+    const versionId = defaultEntry?.state.selectedVersionId ?? suppliedVersion;
+    const identity = JSON.stringify([request.libraryId, versionId, request.sheetId]);
     let source = sources.get(identity);
     let selectedPopulatedCells = 0, selectedGridCells = 0;
     if (source === undefined) {
-      const entry = repository.catalog().find(candidate => candidate.libraryId === request.libraryId);
-      if (entry === undefined || entry.state.origin.kind !== "local" || entry.state.removed) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
+      const entry = defaultEntry ?? readEntry(request.libraryId);
       const current = repository.read(request.libraryId);
       if (current === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
       if (current.version !== request.expectedVersion
-        || request.writableFields.length > 0 && entry.state.selectedVersionId !== request.versionId)
+        || request.writableFields.length > 0 && entry.state.selectedVersionId !== versionId)
         throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
-      const selected = repository.libraryVersion(request.libraryId, request.versionId);
+      const selected = repository.libraryVersion(request.libraryId, versionId);
       const sheet = selected.workbook.sheets.find(candidate => candidate.id === request.sheetId);
       if (sheet === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
       for (const row of sheet.rows) for (const cell of row.cells) if (populatedSpreadsheetValue(cell.value)) selectedPopulatedCells++;
@@ -100,7 +108,7 @@ export function createWorkbookReferenceCapture(repository: WorkbookLibraryReposi
     }
     const { sheet } = source;
     if (source.currentVersion !== request.expectedVersion
-      || request.writableFields.length > 0 && source.selectedVersionId !== request.versionId)
+      || request.writableFields.length > 0 && source.selectedVersionId !== versionId)
       throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
     if (request.writableFields.length > 0 && !source.currentSheetMatches) throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
     if (workbookFieldCoverage(request.fields, (sheet.columnBindings ?? []).flatMap(binding =>
@@ -142,13 +150,14 @@ export function createWorkbookReferenceCapture(repository: WorkbookLibraryReposi
     if (request.selectedRow !== undefined && rows.flatMap(row => row.matches).filter(match =>
       match.sheetId === request.selectedRow?.sheetId && match.rowId === request.selectedRow?.rowId).length !== 1)
       throw new WorkbookLibraryError("WORKBOOK_INVALID");
-    const snapshot = deepFreeze(WorkbookSnapshotSchema.parse({ libraryId: request.libraryId, version: source.currentVersion,
+    const snapshot = deepFreeze(WorkbookNamedReferenceSnapshotSchema.parse({ libraryId: request.libraryId, version: source.currentVersion,
       versionId: source.versionId, versionName: source.versionName,
       worksheets: [{ sheetId: sheet.id, name: sheet.name }],
       type: { id: request.typeId, name: source.name, keyFieldId: request.keyFieldId,
         fields: request.fields, defaultWorkbookId: null }, rows }));
     if (!sources.has(identity)) {
       sources.set(identity, source);
+      if (!selectedVersions.has(request.libraryId)) selectedVersions.set(request.libraryId, source.selectedVersionId);
       populatedCells += selectedPopulatedCells;
       gridCells += selectedGridCells;
     }
@@ -358,12 +367,15 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       return use(input(EditableWorkbookSchema, workbook), scope.assertCurrent);
     });
   };
-  const withDownloadedWorkbook = <T>(libraryId: string, operationId: string, signal: AbortSignal, use: (workbook: EditableWorkbookWire) => T): Promise<T> => {
+  const withDownloadedWorkbook = async <T>(libraryId: string, operationId: string, signal: AbortSignal, use: (workbook: EditableWorkbookWire) => T): Promise<T> => {
     const record = read(libraryId), link = deps.repository.metadata(libraryId).sharePoint;
     if (link === null) throw new WorkbookLibraryError('WORKBOOK_SYNC_LINK_REQUIRED');
     if (record.workbook.hasFormulas || record.workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
-    return withImportedDownload({ libraryId, operationId, expectedVersion: record.version, link, signal }, workbook =>
-      use(encodeSavedWorkbook({ ...record, workbook: { ...workbook, name: record.workbook.name, libraryId } }).workbook));
+    const { workbook, assertCurrent } = await withImportedDownload({ libraryId, operationId, expectedVersion: record.version, link, signal },
+      (workbook, assertCurrent) => ({ workbook, assertCurrent }));
+    assertCurrent();
+    signal.throwIfAborted();
+    return use(encodeSavedWorkbook({ ...record, workbook: { ...workbook, name: record.workbook.name, libraryId } }).workbook);
   };
   const save = (libraryId: string, expectedVersion: number, value: unknown): SavedWorkbook => {
     const workbook = input(EditableWorkbookSchema, value);
