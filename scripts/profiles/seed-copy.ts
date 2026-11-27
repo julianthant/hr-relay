@@ -19,6 +19,7 @@ import { SpanEventWireSchema, NoteWireSchema, type NoteWire } from "../../src/mo
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../../src/models/notifications/notifications.js";
 import { RunRecordSchema, type RunLifecycle, type RunRecord } from "../../src/models/run/record.js";
 import { RunSessionRecordSchema } from "../../src/models/run/session.js";
+import { deriveIdempotencyKeyDigest, deriveWriteBindingProofDigest, WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../src/rules/write-safety/write-safety.js";
 import { FailureRecordSchema } from "../../src/models/trust/failure.js";
 import { deriveSchemaHash } from "../../src/models/validation/schema-bound-value.js";
 import { canonicalInputSamples } from "../../src/models/workflow/canonical-input.js";
@@ -197,6 +198,28 @@ function seedInput(workflow: AnyWorkflowDescriptor): RunRecord["input"] {
   });
 }
 
+const parkedTaskId = "ucpath/create-termination";
+
+/** The parked intent and its attempt a review card reads. Synthetic: the sample run refuses every answer. */
+function seedParkedWrite({ run, nodeId, parked, id, at }: Readonly<{ run: RunRecord; nodeId: string; at: string;
+  parked: Readonly<{ writeIntentId: string; code: "unknown"; message: string }>; id: (kind: string) => string }>) {
+  const { runId, itemId, workflow, traceId } = run.envelope;
+  const subject = { kind: "person", identifierKind: "eid", bindingDigest: seedDigest, displaySuffix: "SYNTHETIC" } as const;
+  const bindingProof = { kind: "subject-match", version: 1, proofId: id("proof"), runId, attempt: 1, leaseId: id("lease"), taskId: parkedTaskId,
+    observationId: "ucpath.termination.subject", pageStateId: "ucpath.termination-ready", expected: subject, observed: subject, match: "match",
+    observedAt: at, afterPrepareSpanPath: `${traceId}/${nodeId}/prepare` } as const;
+  const bound = { writeIntentId: parked.writeIntentId, generation: 1, runId, runAttempt: 1, bindingProof,
+    bindingProofDigest: deriveWriteBindingProofDigest(bindingProof), fencedAt: at };
+  const authorityReason = { version: 1, code: "inline-recovery-unknown", evidence: { kind: "probe", digest: seedDigest } } as const;
+  const idempotencyKey = `${seedNamespace}|SYNTHETIC|${runId}`;
+  const intent = WriteIntentRecordSchema.parse({ ...bound, workflowId: workflow, itemId, taskId: parkedTaskId, system: "ucpath", idempotencyKey,
+    idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", idempotencyKey), currentAttemptId: id("write-attempt"), version: 1,
+    createdAt: at, updatedAt: at, status: "parked", parkedCode: parked.code, message: parked.message, authorityReason });
+  const attempt = WriteAttemptRecordSchema.parse({ ...bound, writeAttemptId: id("write-attempt"),
+    outcome: { state: "parked", code: parked.code, message: parked.message, authorityReason }, recordedAt: at });
+  return { intent, attempt, nodeId: NodeIdSchema.parse(nodeId) };
+}
+
 function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) {
   const { workflow, day, state } = slot;
   const live = "live" in slot ? slot.live : undefined;
@@ -218,8 +241,13 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   // Gates and child runs own no task span.
   const spanless = new Set<string>(runtimeNodes.filter(node => node.kind === "gate" || node.kind === "child-run").map(node => node.id));
   const steps = workflow.timeline.flatMap(category => category.nodes).filter(node => !spanless.has(node.id));
+  // Today's separation under review is parked on its termination write; history and other workflows stay interrupted.
+  const writeNode = live === undefined || state !== "needs-review" ? undefined
+    : runtimeNodes.find(node => node.kind === "transaction" && node.commit.uses.id === parkedTaskId);
+  const writeStep = steps.findIndex(node => node.id === writeNode?.id);
+  if (writeNode !== undefined && writeStep < 0) throw new SeedCopyError(`seed-copy-write-step-missing: ${workflow.id}`);
   // A Duo wait holds the first sign-in; any other state has at least one step behind it.
-  const current = state === "needs-duo" ? 0 : Math.max(Math.min(1, steps.length - 1),
+  const current = writeNode !== undefined ? writeStep : state === "needs-duo" ? 0 : Math.max(Math.min(1, steps.length - 1),
     live?.workerId !== undefined ? Math.floor(steps.length / 2) : Number.parseInt(hash.slice(4, 8), 16) % steps.length);
   const step = steps[current];
   const claim = { workerId: seedNamespace, claimGeneration: 1 };
@@ -233,7 +261,10 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   });
   const outcome = { succeeded: "done", failed: "failed", cancelled: "cancelled", "needs-review": "interrupted" } as const;
   const claimed = live?.workerId === undefined ? undefined : { workerId: live.workerId, claimedAt: new Date(Math.min(now.getTime(), timeMs + 1000)).toISOString(), heartbeatAt: now.toISOString() };
-  const lifecycle: z.input<typeof RunRecordSchema>["lifecycle"] = claimed !== undefined
+  const parked = { writeIntentId: id("write-intent"), code: "unknown", message: "Synthetic example: the save could not be confirmed." } as const;
+  const lifecycle: z.input<typeof RunRecordSchema>["lifecycle"] = writeNode !== undefined
+    ? { state: "parked-write", writeIntentId: parked.writeIntentId, intentGeneration: 1, parkedAt: settledAt, code: parked.code, message: parked.message }
+    : claimed !== undefined
     ? { state: "running", ...claimed, ...(step === undefined ? {} : { currentNodeId: step.id }) }
     : state === "queued" ? { state: "queued" }
     : state === "waiting"
@@ -274,7 +305,7 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
       events.push(createNoteTimelineWriter({ repository: { append: input => ({ state: "inserted", record: TimelineEventRecordSchema.parse(Object.assign({ cursor: 1 }, input)) }) }, clock: capturedInstantClock(ts), pid: 1 })
         .emitNote({ workflow: workflow.id, address: { runId, traceId, attempt: run.envelope.attempt, spanPath: task.spanPath, parentSpanPath: spanPath }, level: "step", message: node.label }));
       at += stepMs;
-      const open = claimed !== undefined && position === reached - 1;
+      const open = (claimed !== undefined || writeNode !== undefined) && position === reached - 1;
       const last = position === reached - 1 && outcome !== undefined && outcome !== "done";
       if (!open) events.push({ ...task, ...(last && failure !== undefined ? { failureId: failure.failureId } : {}), t: "span.ended",
         ts: new Date(at).toISOString(), outcome: last ? outcome : "done" });
@@ -284,7 +315,8 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
     const failureRef = failure === undefined ? {} : { failureId: failure.failureId };
     events.push({ ...common, ...failureRef, t: "span.ended", kind: "run", ts: settledAt, spanPath, outcome: run.lifecycle.outcome });
   }
-  return { ...slot, run, failure, events: events.map(event => "t" in event ? SpanEventWireSchema.parse(event) : NoteWireSchema.parse(event)) };
+  const write = writeNode === undefined ? undefined : seedParkedWrite({ run, nodeId: writeNode.id, parked, id, at: settledAt });
+  return { ...slot, run, failure, write, events: events.map(event => "t" in event ? SpanEventWireSchema.parse(event) : NoteWireSchema.parse(event)) };
 }
 
 function seedNotifications(runs: readonly ReturnType<typeof seedRun>[], profileId: string, now: Date) {

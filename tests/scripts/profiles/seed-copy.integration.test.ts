@@ -5,6 +5,8 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vitest";
 import { composeDashboardRuntime } from "../../../src/backend/app/composition/dashboard/compose.js";
 import { composeProfileRuntime } from "../../../src/backend/app/composition/storage-compose.js";
@@ -19,14 +21,15 @@ import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { CommandExecutor } from "../../../src/dashboard/app/commands/command-executor.js";
 import { createDashboardClient, createRowStore } from "../../../src/dashboard/client/index.js";
+import { RunStateChips } from "../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
 import { projectRunLogs, readRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.js";
-import { isNeedsDuo, isStarting, queueBatches } from "../../../src/dashboard/surfaces/queue/queue-model.js";
+import { NEEDS_DUO_LABEL, isNeedsDuo, isStarting, queueBatches } from "../../../src/dashboard/surfaces/queue/queue-model.js";
 import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { createSessionPreviewPort } from "../../../src/dashboard/surfaces/sessions/session-preview-command-model.js";
 import { sessionWorkerAuthorityKey, sessionsFromDay } from "../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
-import { workflowProjections } from "../../../src/workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowProjections } from "../../../src/workflow-kit/workflow.js";
 import workflowSources from "../../../config/dashboard-workflow-sources.json" with { type: "json" };
 import { runtimeProfiles } from "../../../src/models/config/define-runtime-isolation.js";
 import { searchPartitionDay } from "../../../src/models/dashboard/search-calendar.js";
@@ -272,28 +275,44 @@ it("replaces its synthetic history and retains imported rows outside operational
     "needs-duo": servedModules.filter(({ descriptor }) => hasBrowsers(descriptor.id)).length } });
 });
 
-/** Every run that started reads as a real one: its setup steps lead its Logs, any state card follows, and the badge says its state. */
+/** The header status each seeded state must draw. */
+const HEADER_STATUS: Record<string, string> = { queued: "Queued", running: "Running", cancelling: "Cancelling", "needs-duo": NEEDS_DUO_LABEL,
+  paused: "Paused", waiting: "Review", succeeded: "Done", failed: "Failed", cancelled: "Cancelled", "needs-review": "Write parked" };
+
+/** Every generated run reads as a real one: its recorded setup leads its Logs in order, its state card follows, and the header says its state. */
 async function expectTimelines(client: ReturnType<typeof createDashboardClient>, generated: readonly RunRecord[]) {
-  const rows = new Map((await client.dashboardDay(searchPartitionDay(clock.now()))).queueSurfaces.map(row => [row.runId, row]));
-  const live = generated.filter(row => row.displayName?.includes(" today ") === true);
-  // One seeded run per workflow and state covers history; every live run is read.
-  const history = new Map(generated.filter(row => !live.includes(row))
-    .map(row => [`${row.envelope.workflow}/${row.displayName?.split(" ").at(-1) ?? ""}`, row]));
-  for (const day of new Set([...history.values()].map(row => searchPartitionDay(new Date(row.envelope.enqueuedAt))))) {
+  const rows = new Map<string, Awaited<ReturnType<typeof client.dashboardDay>>["queueSurfaces"][number]>();
+  for (const day of new Set([clock.now(), ...generated.map(run => new Date(run.envelope.enqueuedAt))].map(searchPartitionDay))) {
     for (const row of (await client.dashboardDay(day)).queueSurfaces) rows.set(row.runId, row);
   }
-  for (const run of [...live, ...history.values()]) {
+  for (const run of generated) {
     const row = rows.get(run.envelope.runId), name = run.displayName ?? "";
     assert.ok(row !== undefined, name);
-    const state = name.split(" ").at(-1);
+    const state = name.split(" ").at(-1) ?? "";
+    expect(renderToStaticMarkup(createElement(RunStateChips, { row })).replace(/<[^>]*>/gu, " "), name).toContain(HEADER_STATUS[state]);
     expect(isStarting(row), name).toBe(false);
     expect(isNeedsDuo(row), name).toBe(state === "needs-duo");
-    if (state === "paused") expect(row.pauseControl?.state, name).toBe("paused");
     if (run.claimGeneration === 0) { expect(state, name).toBe("queued"); continue; }
     const { steps } = projectRunLogs(await readRunLogs(client, { row, workflowLabel: row.workflowId }, new AbortController().signal), client);
-    expect(steps[0]?.entries.some(entry => entry.kind === "note"), name).toBe(true);
     expect(steps.map(step => step.time), name).not.toContain("—");
+    const descriptor = WORKFLOW_MODULES.find(module => module.descriptor.id === run.envelope.workflow)?.descriptor;
+    assert.ok(descriptor !== undefined, name);
+    const spanless = new Set<string>(descriptorRuntimeNodes(descriptor).filter(node => node.kind === "gate" || node.kind === "child-run").map(node => node.id));
+    const setup = descriptor.timeline.flatMap(category => category.nodes).filter(node => !spanless.has(node.id)).map(node => node.label);
+    const noted = steps.flatMap((step, index) => step.entries.flatMap(entry => entry.kind === "note" && setup.includes(entry.message) ? [{ index, message: entry.message }] : []));
+    expect(noted.length, name).toBeGreaterThan(0);
+    expect(noted.map(note => note.message), name).toEqual(setup.slice(0, noted.length));
+    const cards = steps.flatMap((step, index) => step.entries.some(entry => entry.kind === "decision") || step.title === "Run cancelled" ? [{ index, title: step.title }] : []);
+    const parkedWrite = run.lifecycle.state === "parked-write";
+    const expected = state === "paused" || state === "cancelled" || state === "needs-review" ? 1 : 0;
+    if (state !== "waiting") expect(cards, name).toHaveLength(expected);
+    if (state === "paused") expect(cards[0]?.title, name).toBe("Run paused");
+    if (state === "cancelled") expect(cards[0]?.title, name).toBe("Run cancelled");
+    if (parkedWrite) expect(cards[0]?.title, name).toMatch(/termination/iu);
+    else if (state === "needs-review") expect(cards[0]?.title, name).toBe("Run not responding");
+    for (const card of cards) expect(card.index, name).toBeGreaterThan(noted.at(-1)?.index ?? Number.POSITIVE_INFINITY);
   }
+  expect(generated.filter(run => run.lifecycle.state === "parked-write").map(run => run.envelope.workflow)).toEqual(["separations"]);
 }
 
 /** Today's sample queue and Sessions show every live state, and every action on them is refused or stays on the card. */
@@ -304,7 +323,8 @@ async function expectLiveSamples(client: ReturnType<typeof createDashboardClient
   expect(live.every(row => served.has(row.envelope.workflow))).toBe(true);
   for (const { descriptor } of servedModules) {
     const runs = live.filter(row => row.envelope.workflow === descriptor.id);
-    expect(new Set(runs.map(row => row.lifecycle.state)), descriptor.id).toEqual(new Set(["queued", "running", "parked-gate", "terminal"]));
+    expect(new Set(runs.map(row => row.lifecycle.state)), descriptor.id)
+      .toEqual(new Set(["queued", "running", "parked-gate", "terminal", ...descriptor.id === "separations" ? ["parked-write"] : []]));
     expect(runs.some(row => row.cancelRequested === true), descriptor.id).toBe(true);
     expect(runs.some(row => row.pause?.state === "paused"), descriptor.id).toBe(true);
     expect(runs.every(row => searchPartitionDay(new Date(row.envelope.enqueuedAt)) === today), descriptor.id).toBe(true);
@@ -355,6 +375,15 @@ async function expectLiveSamples(client: ReturnType<typeof createDashboardClient
       expect(await client.executeCommand(command)).toEqual({ state: "rejected", commandId: command.commandId, code: "SAMPLE_RUN_REFUSED", message: "Sample run: nothing runs." });
     }
     expect(await client.rerunValues({ runId: sample.envelope.runId, expectedVersion: sample.version })).toEqual({ state: "refused", code: "sample-run" });
+  }
+  // The review card's own answers are refused too, before any resolver reads the sample's intent.
+  const underReview = live.find(row => row.lifecycle.state === "parked-write");
+  assert.ok(underReview?.lifecycle.state === "parked-write");
+  for (const type of ["recheck-write", "resolve-write-absent"] as const) {
+    const command = { ...envelope("run-detail"), family: "run", type, target: { runId: underReview.envelope.runId, expectedVersion: underReview.version,
+      writeIntentId: underReview.lifecycle.writeIntentId, intentGeneration: 1, writeAttemptId: randomUUID(), bindingProofDigest: "a".repeat(64) },
+      payload: { occurrenceKeyDigest: "a".repeat(64) } };
+    expect(await client.executeCommand(command)).toMatchObject({ state: "rejected", code: "SAMPLE_RUN_REFUSED" });
   }
   const bulk = envelope("queue");
   const targets = live.slice(0, 2).map(sample => ({ runId: sample.envelope.runId, expectedVersion: sample.version }));
