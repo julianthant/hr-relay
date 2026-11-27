@@ -32,7 +32,7 @@ export function authenticateParkedWriteRecheck(intentInput: unknown, attemptInpu
 
 export function isFreshParkedWriteAbsence(intent: Extract<WriteIntentRecord, { status: "parked" }>, evidence: AbsentEvidence, resolvedAt: string): boolean {
   const observedAt = Date.parse(evidence.observedAt);
-  return intent.recheck !== undefined && evidence.idempotencyKeyDigest === (intent.occurrence?.businessKeyDigest ?? intent.idempotencyKeyDigest)
+  return intent.recheck !== undefined && evidence.idempotencyKeyDigest === intent.idempotencyKeyDigest
     && observedAt >= Date.parse(intent.recheck.requestedAt) && observedAt >= Date.parse(intent.fencedAt)
     && observedAt <= Date.parse(resolvedAt);
 }
