@@ -165,7 +165,7 @@ export function queueRowActions(
   const pause = facts.pauseControl?.command;
   const pauseActions = pause === undefined ? [] : [ActionDescriptorWireSchema.parse({
     key: pause, kind: "command", command: pause, expectedVersion: facts.pauseControl?.expectedVersion,
-    label: pause === "pause" ? "Pause after this step" : "Resume", intent: "neutral", icon: pause, placement: ["footer"],
+    label: pause === "pause" ? "Pause" : "Resume", intent: "neutral", icon: pause, placement: ["footer"],
   })];
   return [...pauseActions, ...memberRetry, ...retry, ...rerun, ...SERVED_ORDER
     .filter((command) => policyEnables(policy, command, facts) && KERNEL_ADMITS[command](facts))

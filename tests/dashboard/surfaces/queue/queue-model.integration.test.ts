@@ -313,7 +313,7 @@ describe_m1("nondelegated Lookup batch presentation", () => {
       .find(button => !/^(Pause|Stop) all \d+$/u.test(button.getAttribute("aria-label") ?? button.textContent ?? "")) ?? null;
     const actions = [
       { kind: "command", key: "cancel", command: "cancel", label: "Cancel run", expectedVersion: 11, intent: "destructive", placement: ["footer"], icon: "cancel" },
-      { kind: "command", key: "pause", command: "pause", label: "Pause after this step", expectedVersion: 12, intent: "neutral", placement: ["footer"], icon: "pause" },
+      { kind: "command", key: "pause", command: "pause", label: "Pause", expectedVersion: 12, intent: "neutral", placement: ["footer"], icon: "pause" },
       { kind: "navigation", key: "rerun", navigate: { kind: "rerun", expectedVersion: 13 }, label: "Rerun", intent: "primary", placement: ["footer"], icon: "retry" },
       { kind: "command", key: "delete", command: "delete", label: "Delete run", expectedVersion: 14, intent: "destructive", placement: ["footer"], icon: "delete" },
       { kind: "command", key: "resume", command: "resume", label: "Resume", expectedVersion: 15, intent: "neutral", placement: ["footer"], icon: "resume" },
@@ -350,13 +350,13 @@ describe_m1("nondelegated Lookup batch presentation", () => {
   });
 
   it_m1("shows a row action pending until the reply arrives, ignores a second press, and frees it on a refusal", async () => {
-    const pause = { kind: "command", key: "pause", command: "pause", label: "Pause after this step", expectedVersion: 12, intent: "neutral", placement: ["footer"], icon: "pause" };
+    const pause = { kind: "command", key: "bump", command: "bump", label: "Bump", expectedVersion: 12, intent: "neutral", placement: ["footer"], icon: "bump" };
     const row = lookupRow(1, { rowRevision: 12, actions: [pause] });
     const sent: unknown[] = [];
     let reply: () => void = () => undefined;
     const handlers: QueueHandlers_m1 = { onSelect: () => undefined, onAction: (action, target) => { sent.push([action, target]); return new Promise<void>(resolve => { reply = resolve; }); } };
     await render([row], handlers, row.runId);
-    const button = (): HTMLButtonElement | null => document.querySelector<HTMLButtonElement>('[data-queue-member-actions] button[aria-label="Pause after this step"]');
+    const button = (): HTMLButtonElement | null => document.querySelector<HTMLButtonElement>('[data-queue-member-actions] button[aria-label="Bump"]');
     const before = button(); assert_m1.ok(before);
     assert_m1.equal(before.disabled, false);
     await act_m1(async () => before.click());
