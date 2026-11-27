@@ -19,7 +19,7 @@ export class StartupCrashRecoveryRefusedError extends Error {
   constructor(cause: unknown) { super(ERROR_CATALOG.STARTUP_CRASH_RECOVERY_REFUSED.text, { cause }); }
 }
 
-type CleanupCode = "RUN_CRASH_RESOURCES_RELEASED" | "RUN_STALE_QUEUE_CANCELLED" | "RUN_INTERRUPTED_BY_CRASH" | "RUN_CRASH_WRITE_UNRESOLVED";
+type CleanupCode = "RUN_CRASH_RESOURCES_RELEASED" | "RUN_STALE_QUEUE_CANCELLED" | "RUN_CRASH_WRITE_UNRESOLVED";
 
 
 function appendRecoveryNotification(repositories: AuthorityRepositories, code: CleanupCode, identity: unknown, now: string, runId?: string): void {
@@ -42,7 +42,8 @@ export function reconcileStoppedLogout(database: AuthorityDatabase, operation: L
     publishQueued: () => { throw new Error("profile-logout-cannot-enqueue"); } });
   for (const request of settlement.requests) {
     const run = requireLifecycleApplied(lifecycle.recoverCrash(request, lifetime));
-    appendRecoveryNotification(database.authority, run.lifecycle.state === "parked-write" ? "RUN_CRASH_WRITE_UNRESOLVED" : "RUN_INTERRUPTED_BY_CRASH",
+    // A crash-ended run is announced once by the canonical failure publisher, not here.
+    if (run.lifecycle.state === "parked-write") appendRecoveryNotification(database.authority, "RUN_CRASH_WRITE_UNRESOLVED",
       { runId: request.runId, version: request.expectedVersion }, settlement.stoppedAt, request.runId);
   }
   for (const released of database.releaseHeldSessionLeases(lifetime, settlement.stoppedAt)) {
@@ -86,7 +87,7 @@ function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLoc
           const result = requireLifecycleApplied(lifecycle.recoverCrash({ commandId: lifecycleCommandId("startup-crash", { runId: run.envelope.runId, version: run.version, claim }),
             runId: run.envelope.runId, expectedVersion: run.version, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
             now: clock.now().toISOString() }, lock));
-          notify(result.lifecycle.state === "parked-write" ? "RUN_CRASH_WRITE_UNRESOLVED" : "RUN_INTERRUPTED_BY_CRASH", { runId: run.envelope.runId, version: run.version }, run.envelope.runId);
+          if (result.lifecycle.state === "parked-write") notify("RUN_CRASH_WRITE_UNRESOLVED", { runId: run.envelope.runId, version: run.version }, run.envelope.runId);
         } else if (workerId === undefined && run.lifecycle.state === "queued" && run.pause === undefined && run.claimGeneration === 0
           && searchPartitionDay(new Date(run.envelope.enqueuedAt)) < searchPartitionDay(clock.now())) {
           database.assertPristineQueuedRun(run.envelope.runId, run.version);
