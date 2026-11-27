@@ -2,6 +2,7 @@ import { AssistantM1NativeCommandAuditSchema, convertAssistantCommandPairToM1 } 
 import { CURRENT_RUN_SETTLEMENT_SQL } from "./run-settlement-row.js";
 import { CHANGE_LOG_SCHEMA_VERSION } from "./authority-change-log.js";
 import { OCR_SEARCH_TERMS_SCHEMA_VERSION } from "./migrations.js";
+import { RUN_SEARCH_FTS_SCHEMA_VERSION } from "./run-search-fts.js";
 import { RUN_REFERENCES_TABLE } from "../../../models/config/authority.js";
 import { hash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
@@ -122,6 +123,16 @@ function safeSubject(database: DatabaseSync, run: PredecessorRunRecord, declarat
 const OCR_SUBJECT_STRENGTH = deepFreeze({ exact: 0, prefix: 1, contains: 2 });
 const OCR_UNFINISHED_OUTCOMES = deepFreeze(["cancelled", "discarded", "superseded"]);
 const OCR_UNFINISHED_SQL = OCR_UNFINISHED_OUTCOMES.map(outcome => `'${outcome}'`).join(",");
+const FTS_FIELDS = { all: "{run_id trace workflow subject actor}", run: "run_id", trace: "trace",
+  workflow: "workflow", subject: "subject", actor: "actor" } as const;
+
+function ftsSubjectMatch(field: string, query: string, ocrDigest: string | undefined): string | undefined {
+  // shortcut: shorter than a trigram uses the exact predicate, revisit if short searches become a bottleneck.
+  const phrase = query.split("\0").find(part => [...part].length >= 3);
+  if (phrase === undefined) return undefined;
+  const plain = `${field}:"${phrase.replaceAll('"', '""')}"`;
+  return ocrDigest === undefined ? plain : `(${plain} OR ocr_subject_terms:"|${ocrDigest}|")`;
+}
 
 function ocrSubjectDigest(term: string): string {
   return hash("sha256", Buffer.from(`relay:run-search-ocr-subject:v1\0${term}`, "utf16le"), "base64url");
@@ -490,7 +501,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
       if (next !== "published" && next !== "building") throw new Error(`run-search-rebuild-result-invalid: ${next}`);
       return publish({ state: next, sourceGeneration, afterRun: selected.at(-1) ?? prior.afterRun, rowCount: (restart ? 0 : prior.rowCount) + selected.length }, now);
     },
-    search(input: unknown, sourceGeneration: number) {
+    search(input: unknown, sourceGeneration: number, includeHistory = false) {
       const request = RunSearchReadRequestSchema.parse(input);
       nextRunSearchState(runSearchStateOf(publicationState(), sourceGeneration), "search");
       const clauses: string[] = [], parameters: (string | number)[] = [];
@@ -511,6 +522,18 @@ export function createRunSearchIndex(database: DatabaseSync) {
 
       const ocrDigest = hasOcrSubjects && q.length > 0 && (scope === "all" || scope === "subject") ? ocrSubjectDigest(q) : undefined;
       const ocrMatch = "instr(s.ocr_subject_terms,?)>0";
+      if (schemaVersion >= RUN_SEARCH_FTS_SCHEMA_VERSION) {
+        const facet = facets.subject?.toLowerCase();
+        const match = [ftsSubjectMatch(FTS_FIELDS[scope], q, ocrDigest),
+          facet === undefined ? undefined : ftsSubjectMatch("subject", facet, ocrSubjectDigest(facet))]
+          .filter(part => part !== undefined).join(" AND ");
+        if (match !== "") {
+          const candidates = (databaseName: "main" | "history") =>
+            `SELECT run_id FROM ${databaseName}.run_search_fts WHERE run_search_fts MATCH ?`;
+          if (includeHistory) add(`s.id IN (${candidates("main")} UNION ALL ${candidates("history")})`, match, match);
+          else add(`s.id IN (${candidates("main")})`, match);
+        }
+      }
       if (q.length > 0) {
         const scopedFields = scope === "all" ? Object.values(fields) : [fields[scope]];
         const conditions = scopedFields.map(field => `instr(${field},?)>0`);
