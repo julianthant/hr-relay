@@ -616,15 +616,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       const second = await connect();
       assert.deepEqual(second.initial.rows, [row(failed)]);
 
-      const runId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6c07";
-      h.database.authority.runs.enqueue(personLookupQueuedRun({ runId, itemId: "33333337-3333-4333-8333-333333333333" }));
-      const run = h.database.authority.runs.get(runId);
-      assert.ok(run);
+      const run = currentSeparationsRun({ seed: 340, shape: "single" });
+      seedCurrentSeparationsRun(h, run);
       projectCurrentSeparationsRuns(h, [run]);
 
       const [moved, unchanged] = await Promise.all([snapshot(first.reader), snapshot(second.reader)]);
       assert.equal(moved.cursor, unchanged.cursor);
-      assert.ok(unchanged.payload.queueSurfaces.some(entry => entry.runId === runId));
+      assert.ok(unchanged.payload.queueSurfaces.some(entry => entry.runId === run.envelope.runId));
       assert.deepEqual(moved.rows, [row(failed)]);
       assert.deepEqual(unchanged.rows, []);
     } finally {
