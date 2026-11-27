@@ -9,7 +9,7 @@ import { cn } from "../../lib/utils.js";
 import { plural } from "../shared/status/format.js";
 import { SheetsV2 } from "../spreadsheets/design/sheets-v2.js";
 import type { SettingsSaveListener,SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
-import { CREDENTIALS_UNAVAILABLE, SettingsAuthoritySection } from "./editor/settings-authorities.js";
+import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
 import { EditableSettingsSection } from "./editor/settings-editor.js";
 import "./settings-data.css";
@@ -19,7 +19,7 @@ import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
 import { AccountSettings, type AccountPage } from "./account/account-settings.js";
 import { DeleteAccountControl } from "./general/ui-settings-records-general-paths.js";
-import { SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon } from "./settings-model.js";
+import { CREDENTIALS_UNAVAILABLE,SETTINGS_DATA_SECTION_IDS,SETTINGS_KEYBOARD_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon } from "./settings-model.js";
 import {type StorageHealthSummary } from "./storage/storage-settings-model.js";
 
 

@@ -1,3 +1,4 @@
+import { CREDENTIALS_UNAVAILABLE } from "../settings-model.js";
 import { profileInitials } from "../../../../models/profiles/profile-identity.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
 import { Fragment } from "react";
@@ -19,8 +20,6 @@ const PROTECTED_DESCRIPTION: Readonly<Record<string, string>> = {
   ucpathUserId: "Login name for UCPath access.",
   ucpathPassword: "Password for UCPath access.",
 };
-
-export const CREDENTIALS_UNAVAILABLE = "Credentials unavailable; reopen Settings to try again.";
 
 function CredentialsSection({ editor, profileName, embedded }: { editor: Editor; profileName: string; embedded: boolean }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
