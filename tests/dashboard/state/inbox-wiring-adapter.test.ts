@@ -6,7 +6,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, it } from "vitest";
 import { foldRows, inboxProjection, notificationPolicy, notificationTargetMatches, useInboxWiring, type InboxWiring } from "../../../src/dashboard/state/inbox-wiring-adapter.js";
 import { alertSwitch } from "../../../src/dashboard/surfaces/notifications/notification-rail-model.js";
-import type { NotificationItem } from "../../../src/dashboard/surfaces/notifications/notifications-view-model.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { CommandExecutor, type CommandExecutionScope } from "../../../src/dashboard/app/commands/command-executor.js";
@@ -699,9 +698,8 @@ it("sends no clear while the inbox is unavailable, reconnecting or reloading, an
   assert.deepEqual(h.commands.map(command => command.type), ["notification-clear"]);
 });
 
-test("a repeating-failure notice lists in the bell without raising a toast, and a failure raises one", () => {
-  const [repeating] = (inboxProjection([row("repeating-failure")], now).state as { items: NotificationItem[] }).items;
-  const [failed] = (inboxProjection([row("run-failed")], now).state as { items: NotificationItem[] }).items;
-  assert.equal(alertSwitch(repeating, NEUTRAL_PERSON_PREFERENCES.notifications), false);
-  assert.equal(alertSwitch(failed, NEUTRAL_PERSON_PREFERENCES.notifications), true);
+it("a repeating-failure notice lists in the bell without raising a toast, and a failure raises one", () => {
+  const items = (kind: string) => { const { state } = inboxProjection([row(kind)], now); if (state.state !== "ready") throw new Error("inbox not ready"); return state.items; };
+  assert.equal(alertSwitch(items("repeating-failure")[0], NEUTRAL_PERSON_PREFERENCES.notifications), false);
+  assert.equal(alertSwitch(items("run-failed")[0], NEUTRAL_PERSON_PREFERENCES.notifications), true);
 });

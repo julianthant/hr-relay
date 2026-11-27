@@ -23,7 +23,7 @@ import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/r
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { CONFIG_SNAPSHOT } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
-import { admitFixtureSlot } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
+import { admitFixtureSlot, testRunService } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { scaledMs } from "../../../../support/time-scale.js";
 
 const profileFixtures = createProfileFixtureSet();
@@ -216,7 +216,9 @@ describe("canonical notification producers", () => {
   it("publishes one failure notice for a real failure and none for a cancelled run", async () => {
     const f = await fixture();
     try {
-      seedRun(f, runRecordOf({ seed: 5, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }));
+      const queued = seedRun(f, runRecordOf({ seed: 5 }));
+      expect(testRunService(f.db, f.clock).transition({ commandId: id(5), runId: queued.envelope.runId, expectedVersion: queued.version,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: f.clock.now().toISOString() } }).state).toBe("applied");
       expect(readNotificationSources(f.db, f.reader).observations).toEqual([]);
       failRun(f, 6, "SUBJECT_MISMATCH");
       for (const row of readNotificationSources(f.db, f.reader).observations) await f.inbox.publish(row.event, row.source);
