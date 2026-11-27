@@ -423,4 +423,15 @@ describe("a refused re-check through the real client", () => {
     assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /The response did not match the request\./u);
     assert.equal(dialog.disabled("Start run"), true);
   });
+
+  it("explains an invalid successful rerun response and keeps Start disabled", async () => {
+    const { client, reports } = await served(200, {
+      state: "completed", commandId: "00000000-0000-4000-8000-000000000002", report: {},
+    });
+    const { dialog } = await openSettled(client, reports);
+    await toChecks(dialog);
+    const alerts = [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "");
+    assert.deepEqual(alerts, ["Relay received an invalid readiness response.Check again"]);
+    assert.equal(dialog.disabled("Start run"), true);
+  });
 });
