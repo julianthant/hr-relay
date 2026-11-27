@@ -100,6 +100,7 @@ export const WorkbookCreateRequestSchema = z.strictObject({ workbook: EditableWo
 export const WorkbookImportRequestSchema = z.strictObject({ workbook: EditableWorkbookWireSchema });
 export const WorkbookImportResultSchema = z.strictObject({ workbook: SavedWorkbookWireSchema });
 export const WorkbookSaveRequestSchema = z.strictObject({ expectedVersion: z.number().int().positive(), workbook: EditableWorkbookWireSchema });
+export const WorkbookCopyMappingRequestSchema = z.strictObject({ expectedVersion: z.number().int().positive(), worksheetId: WorkbookIdSchema });
 export const WorkbookIntakeRequestSchema = z.strictObject({ expectedVersion: z.number().int().positive(), workflowId: WorkflowIdSchema });
 export const WorkbookIntakeResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.enum(["created", "joined"]), session: IntakeSessionWireSchema }),

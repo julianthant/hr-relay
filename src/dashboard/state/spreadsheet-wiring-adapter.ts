@@ -12,7 +12,7 @@ import { cellText } from '../../rules/spreadsheets/cell-text.js';
 import type { EditableWorkbook } from '../../rules/spreadsheets/workbook-io.js';
 import { NOT_MAPPED, spreadsheetEditorField, type RegisteredSpreadsheet } from '../surfaces/spreadsheets/spreadsheet-fields-model.js';
 
-type WorkbookLibraryQueries = Pick<DashboardClient, 'workbookList' | 'workbookOpen' | 'workbookRevision' | 'workbookCreate' | 'workbookSave' | 'workbookHistory'
+type WorkbookLibraryQueries = Pick<DashboardClient, 'workbookList' | 'workbookOpen' | 'workbookRevision' | 'workbookCreate' | 'workbookSave' | 'workbookCopyMapping' | 'workbookHistory'
   | 'workbookCatalog' | 'workbookCompatibility' | 'workbookLibraryAction' | 'workbookLibraryActionStatus' | 'workbookLibraryVersion' | 'workbookTypes' | 'workbookPutType' | 'workbookClone' | 'workbookImportSharePoint'>;
 export type LibraryChangeResult = Readonly<{ state: 'confirmed' }> | Readonly<{ state: 'refused' | 'uncertain' | 'recorded'; message: string }>;
 type Snapshot = { files: readonly RegisteredSpreadsheet[]; loading: boolean; refreshing: boolean; opening?: string; openError: string; error: string;
@@ -281,6 +281,22 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         aliases.delete(opened.libraryId);
         publish({ files: snapshot.files.map(file => file.id === key ? withOrigin(libraryRow(opened.libraryId, opened.workbook, opened.createdAt, opened.version), opened.libraryId) : file) });
       } else publish({ files: snapshot.files.filter(file => file.id !== key) });
+    },
+    /** Saves a new version in which the worksheets sharing `worksheetId`'s headers take its column mapping; the draft must hold no unsaved work. */
+    async copyMapping(id: string, worksheetId: string): Promise<LibraryChangeResult> {
+      const key = keyFor(id), draft = drafts.get(key);
+      if (draft?.phase !== 'saved') return { state: 'refused', message: 'Wait for the column changes to save.' };
+      let saved: SavedWorkbook;
+      try { saved = await client.workbookCopyMapping(draft.opened.libraryId, draft.opened.version, worksheetId); }
+      catch (error) {
+        const refused = error instanceof DashboardClientError && error.kind === 'http' && error.status !== undefined && error.status >= 400 && error.status < 500;
+        return { state: refused ? 'refused' : 'uncertain', message: message(error) };
+      }
+      if (drafts.get(key) !== draft) return { state: 'uncertain', message: 'The columns changed while they were copied. Open the spreadsheet again.' };
+      move(key, { type: 'closed' });
+      updateRow(key, step(key, { type: 'opened', opened: saved }));
+      await adapter.refreshCatalog();
+      return { state: 'confirmed' };
     },
     discard() {
       listing++; opening++; pendingList = undefined;

@@ -1,4 +1,4 @@
-import type { createSpreadsheetWiringAdapter } from '../../../state/spreadsheet-wiring-adapter.js';
+import type { createSpreadsheetWiringAdapter, LibraryChangeResult } from '../../../state/spreadsheet-wiring-adapter.js';
 import { draftHasUnsavedWork } from '../../../state/spreadsheet-draft.js';
 import type { SpreadsheetSaveResult } from '../spreadsheet-editor-model.js';
 import type { EditableWorkbook } from '../../../../rules/spreadsheets/workbook-io.js';
@@ -6,16 +6,21 @@ import { withMapping } from './sheets-v2-model.js';
 import { spreadsheetRowsWithoutEid } from '../spreadsheet-column-import-model.js';
 
 type Adapter = ReturnType<typeof createSpreadsheetWiringAdapter>;
-type Held = { key: string; document: EditableWorkbook; running?: Promise<ImportOutcome> };
+type Held = { key: string; draft: string; document: EditableWorkbook; running?: Promise<ImportOutcome> };
 type Writes = { held?: Held; queue: Promise<unknown>; edits: number };
 const sessions = new WeakMap<Adapter, Writes>();
 const writesOf = (adapter: Adapter): Writes => { let writes = sessions.get(adapter); if (!writes) { writes = { queue: Promise.resolve(), edits: 0 }; sessions.set(adapter, writes); } return writes; };
 
 export type ImportOutcome = { state: 'added'; name: string; libraryId?: string; rowsWithoutEid: number } | { state: 'pending' | 'failed'; reason: string };
 
-/** An unconfirmed import is resumed, never created again; it outlives the dialog and the page, and callers during a save join it. */
-export function importWorkbook(adapter: Adapter, document: EditableWorkbook): Promise<ImportOutcome> {
-  const writes = writesOf(adapter), held = writes.held ??= { key: adapter.create(document), document };
+/** An unconfirmed import is resumed by the same draft, never created again; it outlives the page, and callers during a save join it. Another draft never joins it. */
+export function importWorkbook(adapter: Adapter, draft: string, document: EditableWorkbook): Promise<ImportOutcome> {
+  const writes = writesOf(adapter);
+  if (writes.held && writes.held.draft !== draft) {
+    if (writes.held.running) return Promise.resolve({ state: 'pending', reason: 'Another spreadsheet is still being added.' });
+    dropImport(adapter);
+  }
+  const held = writes.held ??= { key: adapter.create(document), draft, document };
   if (held.running) return held.running;
   const settle = (): void => { if (writes.held === held) writes.held = undefined; };
   const running = (async (): Promise<ImportOutcome> => {
@@ -27,6 +32,12 @@ export function importWorkbook(adapter: Adapter, document: EditableWorkbook): Pr
   })().finally(() => { held.running = undefined; });
   held.running = running;
   return running;
+}
+/** Forgets an unconfirmed import that is not saving; if it did land, the refreshed library shows it. */
+export function dropImport(adapter: Adapter): void {
+  const writes = sessions.get(adapter), held = writes?.held;
+  if (!writes || !held || held.running) return;
+  writes.held = undefined; adapter.close(held.key); void adapter.refreshCatalog();
 }
 export const pendingImportName = (adapter: Adapter): string | undefined => sessions.get(adapter)?.held?.document.name;
 
@@ -59,4 +70,11 @@ export async function closeDraft(adapter: Adapter, id: string, discard: boolean)
   if (draft && !discard && draftHasUnsavedWork(draft)) return false;
   adapter.close(id);
   return true;
+}
+
+/** "Use for all" runs after the mapping saves queued before it, so the library copies the columns as saved. */
+export function copyMapping(adapter: Adapter, id: string, worksheet: string): Promise<LibraryChangeResult> {
+  const writes = writesOf(adapter), turn = writes.queue.then(() => adapter.copyMapping(id, worksheet));
+  writes.queue = turn;
+  return turn;
 }

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Context, HonoRequest } from "hono";
 import { etag } from "hono/etag";
-import { WorkbookSummarySchema, WorkbookIdSchema, WorkbookRevisionSchema, WorkbookTypeSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, decodeEditableWorkbook, encodeSavedWorkbook } from "../../../../models/dashboard/workbooks.js";
+import { WorkbookSummarySchema, WorkbookIdSchema, WorkbookRevisionSchema, WorkbookTypeSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookCopyMappingRequestSchema, WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, decodeEditableWorkbook, encodeSavedWorkbook } from "../../../../models/dashboard/workbooks.js";
 import { cellText } from "../../../../rules/spreadsheets/workbook-io.js";
 import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.js";
 import { type WorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
@@ -104,6 +104,11 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
     const { libraryId } = workbookPath(LibraryPathSchema, c.req);
     const request = workbookRequest(WorkbookSaveRequestSchema, await c.req.json());
     return c.json(encodeSavedWorkbook(service().library.save(libraryId, request.expectedVersion, decodeEditableWorkbook(request.workbook))));
+  });
+  app.post("/api/v1/workbooks/:libraryId/copy-mapping", async c => {
+    const { libraryId } = workbookPath(LibraryPathSchema, c.req);
+    const request = workbookRequest(WorkbookCopyMappingRequestSchema, await c.req.json());
+    return c.json(encodeSavedWorkbook(service().library.copyMapping(libraryId, request.expectedVersion, request.worksheetId)));
   });
   app.get("/api/v1/workbooks/:libraryId/history", c => {
     const { libraryId } = workbookPath(LibraryPathSchema, c.req);

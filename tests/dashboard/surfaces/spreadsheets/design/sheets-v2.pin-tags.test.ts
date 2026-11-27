@@ -54,29 +54,41 @@ it('shows pinned spreadsheets in a Pinned group first, with their tags', async (
   await render();
   const lists = [...host.querySelectorAll('ul[aria-label]')].map(list => list.getAttribute('aria-label'));
   assert.deepEqual(lists, ['Pinned', 'Spreadsheets']);
-  assert.deepEqual([...host.querySelectorAll('h2')].map(heading => heading.textContent), ['Pinned', 'Created']);
+  assert.deepEqual([...host.querySelectorAll('h2')].map(heading => heading.textContent), ['Pinned', 'Spreadsheets']);
   assert.ok(host.querySelector('ul[aria-label="Pinned"] li[aria-label="Roster.xlsx"]'));
   assert.ok(host.querySelector('ul[aria-label="Spreadsheets"] li[aria-label="Keys.xlsx"]'));
   assert.match(host.querySelector('li[aria-label="Roster.xlsx"]')?.textContent ?? '', /Fall/u);
 });
 
-it('pins and unpins through the library command', async () => {
+it('pins and unpins with the row pin, filled while pinned', async () => {
   await render();
-  await openMenu('Keys.xlsx'); await click(byText('[role="menuitem"]', 'Pin'));
+  const pin = host.querySelector('button[aria-label="Pin Keys.xlsx"]'), unpin = host.querySelector('button[aria-label="Unpin Roster.xlsx"]');
+  assert.equal(pin?.getAttribute('aria-pressed'), 'false'); assert.equal(unpin?.getAttribute('aria-pressed'), 'true');
+  await click(pin);
   assert.deepEqual(wiring.changeLibrary.mock.calls.at(-1)?.[1], { kind: 'pin' });
-  await openMenu('Roster.xlsx'); await click(byText('[role="menuitem"]', 'Unpin'));
+  await click(unpin);
   assert.deepEqual(wiring.changeLibrary.mock.calls.at(-1)?.[1], { kind: 'unpin' });
+  await openMenu('Keys.xlsx');
+  assert.ok(byText('[role="menuitem"]', 'Download'));
+  assert.ok(!byText('[role="menuitem"]', 'Pin') && !byText('[role="menuitem"]', 'Edit tags'));
 });
 
-it('adds and removes manual tags through set-tags', async () => {
+it('adds a tag from the library\'s tags with the row +', async () => {
   await render();
-  await openMenu('Roster.xlsx'); await click(byText('[role="menuitem"]', 'Edit tags'));
-  const input = document.body.querySelector<HTMLInputElement>('input[aria-label="New tag"]'); assert.ok(input);
-  await type(input, 'HR'); await click(byText('button', 'Add'));
-  await click(byText('button', 'Save'));
+  await click(host.querySelector('button[aria-label="Add a tag to Keys.xlsx"]'));
+  await click(byText('[role="menuitemcheckbox"]', 'Fall'));
+  assert.deepEqual(wiring.changeLibrary.mock.calls.at(-1)?.[1], { kind: 'set-tags', tags: ['Fall'] });
+});
+
+it('creates a typed tag and unchecks one from the row +', async () => {
+  await render();
+  await click(host.querySelector('button[aria-label="Add a tag to Roster.xlsx"]'));
+  const input = document.body.querySelector<HTMLInputElement>('input[aria-label="Find or create a tag"]'); assert.ok(input);
+  await type(input, 'HR');
+  await click(byText('[role="menuitem"]', 'Create “HR”'));
   assert.deepEqual(wiring.changeLibrary.mock.calls.at(-1)?.[1], { kind: 'set-tags', tags: ['Fall', 'HR'] });
-  await openMenu('Roster.xlsx'); await click(byText('[role="menuitem"]', 'Edit tags'));
-  await click(document.body.querySelector('button[aria-label="Remove tag Fall"]')); await click(byText('button', 'Save'));
+  await type(input, '');
+  await click(byText('[role="menuitemcheckbox"]', 'Fall'));
   assert.deepEqual(wiring.changeLibrary.mock.calls.at(-1)?.[1], { kind: 'set-tags', tags: [] });
 });
 
@@ -106,6 +118,6 @@ it('keeps the tag filter and clears a selection whose only tag was removed', asy
 it('shows a toast when the command is refused', async () => {
   wiring.changeLibrary = vi.fn(async () => ({ state: 'refused', message: 'The library changed.' }));
   await render();
-  await openMenu('Keys.xlsx'); await click(byText('[role="menuitem"]', 'Pin'));
+  await click(host.querySelector('button[aria-label="Pin Keys.xlsx"]'));
   assert.match(document.body.textContent ?? '', /Couldn't save the change/u);
 });

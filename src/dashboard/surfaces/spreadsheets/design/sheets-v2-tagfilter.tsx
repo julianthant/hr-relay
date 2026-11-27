@@ -14,7 +14,7 @@ export function TagFilter({ groups, value, onChange }: { groups: { workflows: re
   return <DropdownMenu onOpenChange={open => { if (!open) setQuery(''); }}>
     <DropdownMenuTrigger render={<Picker aria-label="Filter by tag" icon={<TagIcon aria-hidden className={`${dsIcon.md} text-ui-muted`} />}>{value.length ? value.join(', ') : 'All tags'}</Picker>} />
     <DropdownMenuContent align="start" className="flex w-[240px] flex-col overflow-hidden">
-      <div className="mb-1 shrink-0" onKeyDown={event => { if (event.key !== 'Escape') event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a tag" placeholder="Find a tag" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} /></div>
+      <div className="mb-1 shrink-0" onKeyDown={event => { if (!['Escape', 'ArrowDown', 'ArrowUp'].includes(event.key)) event.stopPropagation(); }}><SearchInput variant="menu" aria-label="Find a tag" placeholder="Find a tag" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} /></div>
       <div className={`min-h-0 ${MENU}`}>
         <DropdownMenuCheckboxItem checked={!value.length} onCheckedChange={() => onChange([])} onSelect={event => event.preventDefault()}>All tags</DropdownMenuCheckboxItem>
         {workflows.map(tag => <DropdownMenuCheckboxItem key={tag} checked={value.includes(tag)} onCheckedChange={toggle(tag)} onSelect={event => event.preventDefault()}><WorkflowIcon name={tag} />{tag}</DropdownMenuCheckboxItem>)}

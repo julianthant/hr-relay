@@ -26,7 +26,7 @@ function setup() {
     workbookCompatibility: vi.fn<WorkbookLibraryQueries['workbookCompatibility']>(async () => WorkbookCompatibilitySchema.parse({ workflows: [], libraries: [
       { libraryId: 'saved', versionId: 'original', sheets: [{ sheetId: 'sheet', sheetName: 'People', mappings: [], workflows: [] }] },
     ] })),
-    workbookList: vi.fn(async () => [summaryOf(saved())]), workbookOpen: vi.fn(async () => saved()), workbookCreate: vi.fn(async (workbook: unknown) => saved(1, { ...workbook as ReturnType<typeof book>, libraryId: 'generated' })), workbookSave: vi.fn(async (_id: string, version: number, workbook: unknown) => saved(version + 1, workbook as ReturnType<typeof book>)), workbookRevision: vi.fn(), workbookHistory: vi.fn(), workbookIntake: vi.fn(), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(async () => []), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(async () => []), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>() } satisfies WorkbookLibraryQueries;
+    workbookList: vi.fn(async () => [summaryOf(saved())]), workbookOpen: vi.fn(async () => saved()), workbookCreate: vi.fn(async (workbook: unknown) => saved(1, { ...workbook as ReturnType<typeof book>, libraryId: 'generated' })), workbookSave: vi.fn(async (_id: string, version: number, workbook: unknown) => saved(version + 1, workbook as ReturnType<typeof book>)), workbookRevision: vi.fn(), workbookHistory: vi.fn(), workbookIntake: vi.fn(), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(async () => []), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(async () => []), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>(), workbookCopyMapping: vi.fn<WorkbookLibraryQueries['workbookCopyMapping']>() } satisfies WorkbookLibraryQueries;
   return { client, adapter: createSpreadsheetWiringAdapter(client) };
 }
 describe('served workbook authority', () => {
@@ -319,9 +319,9 @@ describe('spreadsheet page writes', () => {
   it('resumes an uncertain import instead of creating a second workbook, even for an edited document', async () => {
     const { client, adapter } = setup(); const first = newEditableWorkbook(), edited = { ...first, name: 'Renamed.xlsx' };
     client.workbookOpen.mockRejectedValueOnce(new Error('lost'));
-    assert.equal((await importWorkbook(adapter, first)).state, 'pending');
+    assert.equal((await importWorkbook(adapter, 'a', first)).state, 'pending');
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...first, libraryId: 'generated' }));
-    assert.equal((await importWorkbook(adapter, edited)).state, 'added');
+    assert.equal((await importWorkbook(adapter, 'a', edited)).state, 'added');
     assert.equal(client.workbookCreate.mock.calls.length, 1);
   });
   it('counts rows without a usable Employee ID on the import it confirms, not on a later dialog document', async () => {
@@ -329,19 +329,38 @@ describe('spreadsheet page writes', () => {
     const roster = (ids: readonly string[]) => { const blank = newEditableWorkbook(); return prepareSpreadsheetColumns({ ...blank, name: 'Roster.csv', sheets: [{ ...blank.sheets[0], width: 2, hidden: [], rows: [['UCPath ID', 'Legal Name'], ...ids.map(id => [id, 'Example, Avery'])].map((cells, index) => ({ id: `row-${index}`, cells: cells.map(value => ({ value })) })) }] }); };
     const missing = roster(['10000001', 'pending', '']), valid = roster(['10000001', '10000006', '10000001']);
     client.workbookOpen.mockRejectedValueOnce(new Error('lost'));
-    assert.equal((await importWorkbook(adapter, missing)).state, 'pending');
+    assert.equal((await importWorkbook(adapter, 'a', missing)).state, 'pending');
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...missing, libraryId: 'generated' }));
-    assert.deepEqual(await importWorkbook(adapter, valid), { state: 'added', name: 'Roster.csv', libraryId: 'generated', rowsWithoutEid: 2 });
+    assert.deepEqual(await importWorkbook(adapter, 'a', valid), { state: 'added', name: 'Roster.csv', libraryId: 'generated', rowsWithoutEid: 2 });
     client.workbookOpen.mockResolvedValueOnce(saved(1, { ...valid, libraryId: 'generated' }));
-    assert.deepEqual(await importWorkbook(adapter, valid), { state: 'added', name: 'Roster.csv', libraryId: 'generated', rowsWithoutEid: 0 });
+    assert.deepEqual(await importWorkbook(adapter, 'a', valid), { state: 'added', name: 'Roster.csv', libraryId: 'generated', rowsWithoutEid: 0 });
   });
   it('joins an import that is still saving instead of creating again', async () => {
     const { client, adapter } = setup(); const document = newEditableWorkbook();
     let release!: (record: SavedWorkbook) => void; client.workbookCreate.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-    const first = importWorkbook(adapter, document), second = importWorkbook(adapter, { ...document, name: 'Again.xlsx' });
+    const first = importWorkbook(adapter, 'a', document), second = importWorkbook(adapter, 'a', { ...document, name: 'Again.xlsx' });
     client.workbookOpen.mockResolvedValue(saved(1, { ...document, libraryId: 'generated' })); release(saved(1, { ...document, libraryId: 'generated' }));
     assert.deepEqual((await Promise.all([first, second])).map(outcome => outcome.state), ['added', 'added']);
     assert.equal(client.workbookCreate.mock.calls.length, 1);
+  });
+  it('never lets another draft take over an unconfirmed import; that draft is created on its own', async () => {
+    const { client, adapter } = setup(); const first = { ...newEditableWorkbook(), name: 'A.xlsx' }, second = { ...newEditableWorkbook(), name: 'B.xlsx' };
+    client.workbookCatalog.mockResolvedValue([]); client.workbookTypes.mockResolvedValue([]);
+    client.workbookOpen.mockRejectedValueOnce(new Error('lost'));
+    assert.equal((await importWorkbook(adapter, 'a', first)).state, 'pending');
+    client.workbookOpen.mockResolvedValueOnce(saved(1, { ...second, libraryId: 'generated' }));
+    assert.deepEqual(await importWorkbook(adapter, 'b', second), { state: 'added', name: 'B.xlsx', libraryId: 'generated', rowsWithoutEid: 0 });
+    assert.deepEqual(client.workbookCreate.mock.calls.map(([workbook]) => (workbook as { name: string }).name), ['A.xlsx', 'B.xlsx']);
+  });
+  it('refuses "Use for all" on a 4xx, leaves a lost reply uncertain, and does not trust a copy whose draft changed meanwhile', async () => {
+    const { client, adapter } = setup(); await adapter.list(); await adapter.open('saved');
+    client.workbookCopyMapping.mockRejectedValueOnce(new DashboardClientError({ kind: 'http', status: 409, code: 'WORKBOOK_VERSION_CONFLICT', message: 'Conflict' }));
+    assert.equal((await adapter.copyMapping('saved', 'sheet')).state, 'refused');
+    client.workbookCopyMapping.mockRejectedValueOnce(new Error('lost'));
+    assert.equal((await adapter.copyMapping('saved', 'sheet')).state, 'uncertain');
+    client.workbookCopyMapping.mockImplementationOnce(async () => { adapter.change('saved', adapter.draft('saved')!.document, true); return saved(4); });
+    assert.deepEqual(await adapter.copyMapping('saved', 'sheet'), { state: 'uncertain', message: 'The columns changed while they were copied. Open the spreadsheet again.' });
+    assert.equal((await adapter.copyMapping('saved', 'sheet')).state, 'refused', 'the changed draft waits for its save');
   });
   it('sends an edit made while an earlier save is still in flight', async () => {
     const { client, adapter } = setup(); await adapter.list(); await adapter.open('saved');
