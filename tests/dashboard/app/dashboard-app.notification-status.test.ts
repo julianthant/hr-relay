@@ -133,7 +133,7 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
   const listed = () => [...document.querySelectorAll(".notice-title")].map(title => title.textContent);
   const notice = () => document.querySelector(".notice-status")?.textContent ?? "";
   const targetReads = () => requested.filter(path => path.endsWith("/target")).length;
-  return { host, opened, commands, cleared, requested, greet, change, resume, snapshotThenPublication, openBell, open, control, listed, notice, targetReads };
+  return { host, opened, commands, cleared, serve: (next: readonly NotificationWire[]) => { rest = [...next]; }, requested, greet, change, resume, snapshotThenPublication, openBell, open, control, listed, notice, targetReads };
 }
 
 it("confirms read and clear from the command replies without requesting the inbox list", async () => {
@@ -166,6 +166,28 @@ it("clears only the chosen notice through the served command, and a fresh served
   assert.deepEqual(m.listed(), ["Served subject"]);
   await m.change(READY, true);
   assert.deepEqual(m.listed(), ["Served subject"], "the server's fresh list keeps it cleared");
+});
+
+it("keeps a read storage notice under Needs you while it stands, then clears it from Earlier once resolved, and a fresh served read omits it", async () => {
+  const storage = NotificationWireSchema.parse({ ...NOTIFICATION, notificationId: "00000000-0000-4000-8000-000000000444", publicationId: "e".repeat(64), trigger: "storage-degraded",
+    severity: "warning", title: "Storage needs attention", readState: "read", state: "read", link: { kind: "storage" }, context: { state: "unavailable" }, standing: true });
+  const m = await mount(FIXTURE_DAY_WIRE.day, undefined, [storage]);
+  await m.greet(READY);
+  await m.openBell();
+  const group = (label: string) => [...document.querySelectorAll(`section[aria-label="${label}"] .notice-title`)].map(title => title.textContent);
+  const clearOf = () => [...document.querySelectorAll<HTMLElement>("li.notice-row")].find(row => row.dataset.id !== undefined && row.querySelector(".notice-title")?.textContent === "Storage needs attention")?.querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]') ?? null;
+  assert.deepEqual(group("Needs you"), ["Storage needs attention"], "standing and read, it stays under Needs you");
+  assert.equal(clearOf(), null, "a standing notice has no Clear");
+
+  m.serve([NotificationWireSchema.parse({ ...storage, standing: undefined, revision: storage.revision + 1 })]);
+  await m.change(READY, true);
+  assert.deepEqual(group("Earlier").includes("Storage needs attention"), true, "resolved, it lists under Earlier");
+  const clear = clearOf();
+  assert(clear, "a resolved storage notice can be cleared");
+  await act(async () => clear.click()); await settle();
+  assert.deepEqual(m.cleared, [storage.notificationId], "the served command names the storage notice");
+  await m.change(READY, true);
+  assert.deepEqual(m.listed(), ["Served subject"], "a fresh served read omits it");
 });
 
 it("shows another tab's read and clear from actor-keyed stream rows", async () => {
