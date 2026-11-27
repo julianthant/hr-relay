@@ -2,7 +2,7 @@ import { Form } from "@heroui/react";
 import { useRef,useState,type ReactNode } from "react";
 import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
-import {BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Select,Switch, Notice, ResultRow } from "../../../ds/ui.js";
+import {BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Select,Switch, Notice, ResultRow, FailureNotice } from "../../../ds/ui.js";
 import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
 import { settingInput,type SettingsDraftOperation } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
@@ -98,7 +98,7 @@ export function CompactSettingsSection({ editor, appearance }: { editor: Editor;
   return <section className="settings-compact-page">
     <PageHeading title="General" description="Assistant, app, run, and notification preferences." />
     <AssistantSettings />
-    {editor.editor.state === "failed" && <Notice sticky tone="danger" title="Settings unavailable" description="Reopen Settings to try again." />}
+    {editor.editor.state === "failed" && <FailureNotice sentence="Settings unavailable; reopen Settings to try again." />}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} appearance={appearance} />
       : editor.editor.state === "loading" && <SettingsSectionSkeleton section="general" contentOnly />}
   </section>;

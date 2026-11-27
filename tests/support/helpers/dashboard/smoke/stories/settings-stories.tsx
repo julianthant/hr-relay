@@ -209,8 +209,13 @@ const PERMISSION = {
     story: { ready: `${FULL_ACCESS} input:checked:enabled` } }),
 } satisfies Record<"off" | "on", Story>;
 
+/** The Account page when its settings read fails: the credential recovery notice, with one sentence of guidance. */
+const CREDENTIAL_RECOVERY = {
+  "read-failed": scene("Credentials that could not be read", { section: "credentials", server: { read: "fail" }, story: { ready: 'text="Credentials unavailable; reopen Settings to try again."' } }),
+} satisfies Record<"read-failed", Story>;
+
 export const SETTINGS_STORIES = defineSurface("settings", {
-  load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,
+  load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-recovery": CREDENTIAL_RECOVERY, "credential-combo": CREDENTIAL_COMBO,
   save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, "duo-keys": DUO_KEYS, notice: NOTICE,
   permission: PERMISSION,
 });

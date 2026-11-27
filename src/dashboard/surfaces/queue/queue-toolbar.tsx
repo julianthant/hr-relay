@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import {
@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogFooter,
   StatusPill,
+  FailureNotice,
   Notice,
   dsFocus,
   dsIcon,
@@ -43,6 +44,7 @@ function BulkResultRow({ outcome, subject, reason, onOpen }: { outcome: keyof ty
 export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, onSelectRun }: {
   bulkOutcome: BulkBatchOutcome | null; reviewing: boolean; onReviewed: () => void; onSelectRun: (runId: string) => void;
 }) {
+  const [dismissedBatch, setDismissedBatch] = useState<string | undefined>();
   const reviewing = open ? bulkOutcome : null;
   const vector = bulkOutcome?.response.state === "vector" ? bulkOutcome.response : undefined;
   const assurance = useMemo(
@@ -52,7 +54,7 @@ export function BulkCommandFeedback({ bulkOutcome, reviewing: open, onReviewed, 
   const summary = bulkOutcome === null ? undefined : bulkSummary(bulkOutcome);
   const counts = summary?.counts;
   return <>
-    {summary !== undefined && <Notice tone={summary.tone} title={summary.counts === undefined ? summary.title : `${bulkOutcome?.plan.label ?? ""}: ${summary.counts}`} />}
+    {summary !== undefined && bulkOutcome?.commandId !== dismissedBatch && (summary.counts === undefined ? <FailureNotice sentence={summary.title} onDismiss={() => setDismissedBatch(bulkOutcome?.commandId)} /> : <Notice tone="warning" title={`${bulkOutcome?.plan.label ?? ""}: ${summary.counts}`} />)}
     <Dialog open={reviewing !== null} onOpenChange={next => { if (!next) onReviewed(); }}>
       {reviewing !== null && <DialogContent size="md" title={`${reviewing.plan.label} result`} description={counts}>
         <DialogBody><div aria-live="polite" data-queue-bulk-result={reviewing.response.state}>

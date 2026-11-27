@@ -8,7 +8,7 @@ import { CommandExecutor, type CommandExecutionScope } from "../../../../../src/
 import type { DashboardCommandBinding } from "../../../../../src/dashboard/app/dashboard-app-model.js";
 import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../../../src/dashboard/state/client-context.js";
 import { RunReview } from "../../../../../src/dashboard/surfaces/run-detail/review/review.js";
-import { Banner } from "../../../../../src/dashboard/ds/ui.js";
+import { FailureNotice } from "../../../../../src/dashboard/ds/ui.js";
 import { serverLocalDay } from "../../../../../src/dashboard/surfaces/shell/date-navigation-model.js";
 import { LogsSurface } from "./control-surfaces.js";
 import { createRowStore } from "../../../../../src/dashboard/client/index.js";
@@ -46,10 +46,10 @@ export function ControlPreview() {
       dayState: { rows: createRowStore(), request, day: { state: "loaded", value: data.day }, connection: { state: "connecting" }, refresh, subscribePublications: () => () => undefined },
       selection: { route: { start: false }, workflowId: "ocr" } },
   }, [data, epoch, request, scope, executor, refresh]);
-  if (error) return <Banner tone="danger" title="Review unavailable">The fixture data could not be read.</Banner>;
+  if (error) return <FailureNotice sentence="Review unavailable. The fixture data could not be read." />;
   if (data === undefined || binding === undefined) return <p role="status">Loading review…</p>;
   const row = data.day.queueSurfaces.find(row => row.workflowId === "ocr");
-  if (row === undefined) return <Banner tone="danger" title="Review unavailable">The fixture has no OCR run.</Banner>;
+  if (row === undefined) return <FailureNotice sentence="Review unavailable. The fixture has no OCR run." />;
   return <DashboardClientProvider client={client}><DashboardCommandBindingProvider binding={binding}>
     <LogsSurface title={row.title} status={<StatusBadge status={dsStatusOf(row.status)} presentation="queue" />} steps={[]}
       content={<RunReview selection={{ row, workflowLabel: "OCR" }} />} />

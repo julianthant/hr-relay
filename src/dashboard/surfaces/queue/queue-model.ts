@@ -51,10 +51,10 @@ export type QueueSortKey = "attention" | "newest" | "oldest" | "longest";
 export type QueueOrder = Exclude<QueueSortKey, "attention">;
 
 export const QUEUE_SORTS: readonly { key: QueueSortKey; label: string; note: string }[] = [
-  { key: "attention", label: "Attention first", note: "What needs you stays on top — the default." },
+  { key: "attention", label: "Attention first", note: "Needs-you runs stay on top." },
   { key: "newest", label: "Newest first", note: "Most recently started first." },
   { key: "oldest", label: "Oldest first", note: "Earliest started first." },
-  { key: "longest", label: "Longest running", note: "Biggest elapsed or recorded duration first — where the time is going." },
+  { key: "longest", label: "Longest running", note: "Longest duration first." },
 ];
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
