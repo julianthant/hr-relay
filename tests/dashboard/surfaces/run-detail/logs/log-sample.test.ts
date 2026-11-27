@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
-import { act, createElement, type ComponentProps } from 'react';
+import { act, createElement, useState, type ComponentProps } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach,beforeEach,describe,it,vi } from 'vitest';
-import { ToastProvider,TooltipProvider } from '../../../../../src/dashboard/ds/ui.js';
+import { ToastProvider,TooltipProvider,useToasts } from '../../../../../src/dashboard/ds/ui.js';
 import { LogSample } from '../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js';
 import { LogPreview } from '../../../../support/fixtures/dashboard/log-preview/log-preview.js';
 import { initialMockDraft,type MockRun } from '../../../../support/fixtures/dashboard/workflow-mocks/workflow-mock-model.js';
@@ -258,20 +258,32 @@ describe('compact run headers', () => {
     }
   });
 
-  for (const status of ['failed', 'cancelled'] as const) it(`raises no toast each time a ${status} dry run is opened`, async () => {
+  for (const status of ['failed', 'cancelled'] as const) it(`keeps the toast count when a ${status} dry run is closed and reopened`, async () => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: { ...initialMockDraft('person-lookup'), dryRun: true }, approved: true, seeded: true };
     const row = { ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'), dryRun: true, status };
     const dryRunPreview = DryRunPreviewWireSchema.parse({ state: 'unavailable', reason: 'preview-not-completed' });
     useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Dry run' }, availableSections: ['logs'] }, logs: { dryRunPreview }, unavailableEvidence: [] } });
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
-    for (let open = 0; open < 2; open += 1) {
-      const host = document.createElement('div'); document.body.append(host);
-      const root = createRoot(host);
-      await act(async () => root.render(createElement(ToastProvider, null, sample({ selection: { row, workflowLabel: 'Person lookup' } }))));
-      assert.doesNotMatch(document.body.textContent ?? '', /preview unavailable|did not complete/i);
-      assert.equal(document.body.querySelectorAll('[data-sonner-toast],[role="status"] li,[data-radix-toast-root]').length, 0);
-      await act(async () => root.unmount()); host.remove();
+    const session: { toast: ReturnType<typeof useToasts>['toast']; setOpen: (open: boolean) => void } = { toast: () => undefined as never, setOpen: () => undefined };
+    function Session() {
+      const [open, setOpen] = useState(true); session.setOpen = setOpen; session.toast = useToasts().toast;
+      return open ? sample({ selection: { row, workflowLabel: 'Person lookup' } }) : null;
     }
+    const host = document.createElement('div'); document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(createElement(ToastProvider, null, createElement(Session))));
+    const copies = () => (document.body.textContent ?? '').match(/Run failed notice/g)?.length ?? 0;
+    // The failure notice arrives once, through the notification path, while the run is open.
+    await act(async () => { if (status === 'failed') session.toast({ tone: 'danger', title: 'Run failed notice' }); });
+    const delivered = copies();
+    assert.equal(delivered > 0, status === 'failed');
+    for (let open = 0; open < 2; open += 1) {
+      await act(async () => session.setOpen(false));
+      await act(async () => session.setOpen(true));
+      assert.equal(copies(), delivered);
+      assert.doesNotMatch(document.body.textContent ?? '', /preview unavailable|did not complete/i);
+    }
+    await act(async () => root.unmount()); host.remove();
   });
 
   it('says inline why a completed dry run has no preview', () => {
