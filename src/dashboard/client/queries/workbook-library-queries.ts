@@ -1,20 +1,19 @@
 import type { z } from "zod";
 import {
-  WorkbookImportRequestSchema, WorkbookImportResultSchema, SavedWorkbookWireSchema, WorkbookRevisionSchema, WorkbookListWireSchema, WorkbookHistoryWireSchema,
-  WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookCopyMappingRequestSchema, WorkbookIntakeRequestSchema,
-  WorkbookIntakeResultSchema, encodeEditableWorkbook, decodeSavedWorkbook, type SavedWorkbook, type WorkbookSummary,
+  WorkbookImportResultSchema, SavedWorkbookWireSchema, WorkbookRevisionSchema, WorkbookListWireSchema, WorkbookHistoryWireSchema,
+  WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookCopyMappingRequestSchema,
+  encodeEditableWorkbook, decodeSavedWorkbook, type SavedWorkbook, type WorkbookSummary,
   WorkbookTypeSchema,
 } from "../../../models/dashboard/workbooks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { httpError, schemaError } from "../errors.js";
+import { schemaError } from "../errors.js";
 import type { DashboardTransport } from "../transport.js";
 import { parseOrThrow } from "./query-parse.js";
 import { WorkbookCloneRequestSchema, WorkbookSharePointImportRequestSchema, WorkbookCompatibilitySchema, WorkbookLibraryCatalogSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionResultSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryVersionViewSchema,
   type WorkbookLibraryEntry, type WorkbookLibraryAction, type WorkbookLibraryActionResult } from "../../../models/dashboard/workbook-library.js";
 
 export interface WorkbookLibraryQueries {
-  workbookImport(workbook: unknown): Promise<z.infer<typeof WorkbookImportResultSchema>>;
   workbookClone(libraryId: string, request: z.infer<typeof WorkbookCloneRequestSchema>): Promise<z.infer<typeof WorkbookImportResultSchema>>;
   workbookImportSharePoint(request: z.infer<typeof WorkbookSharePointImportRequestSchema>): Promise<z.infer<typeof WorkbookImportResultSchema>>;
   workbookCatalog(): Promise<readonly WorkbookLibraryEntry[]>;
@@ -32,7 +31,6 @@ export interface WorkbookLibraryQueries {
   workbookSave(libraryId: string, expectedVersion: number, workbook: unknown): Promise<SavedWorkbook>;
   workbookCopyMapping(libraryId: string, expectedVersion: number, worksheetId: string): Promise<SavedWorkbook>;
   workbookHistory(libraryId: string): Promise<readonly SavedWorkbook[]>;
-  workbookIntake(libraryId: string, expectedVersion: number, workflowId: string): Promise<z.infer<typeof WorkbookIntakeResultSchema>>;
 }
 
 function encodeWorkbook(value: unknown) {
@@ -46,17 +44,6 @@ function canonicalContent(value: unknown): string {
 
 export function createWorkbookLibraryQueries(transport: DashboardTransport): WorkbookLibraryQueries {
   return Object.freeze({
-    async workbookImport(workbook: unknown) {
-      const path = '/api/v1/workbooks/import';
-      const request = parseOrThrow(WorkbookImportRequestSchema, path, { workbook: encodeWorkbook(workbook) });
-      if (request.workbook.libraryId !== undefined) throw schemaError(path, 'new workbook already has a library identity');
-      const result = parseOrThrow(WorkbookImportResultSchema, path, await transport.requestJson(path, { method: 'POST', body: JSON.stringify(request) }));
-      if (result.workbook.createdAt !== result.workbook.savedAt
-        || result.workbook.version !== 1
-        || canonicalContent(result.workbook.workbook) !== canonicalContent({ ...request.workbook, libraryId: result.workbook.libraryId }))
-        throw schemaError(path, 'imported workbook differs from request');
-      return result;
-    },
     async workbookCatalog() {
       const path = '/api/v1/workbooks/catalog';
       return parseOrThrow(WorkbookLibraryCatalogSchema, path, await transport.requestJson(path));
@@ -156,19 +143,6 @@ export function createWorkbookLibraryQueries(transport: DashboardTransport): Wor
       if (records.some((record, index) => record.libraryId !== libraryId || (index > 0 && record.version < records[index - 1].version)
         || record.createdAt !== records[0].createdAt)) throw schemaError(path, "workbook history identity or revision order mismatch");
       return records.map(decodeSavedWorkbook);
-    },
-    async workbookIntake(libraryId: string, expectedVersion: number, workflowId: string) {
-      const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/intake`;
-      const request = parseOrThrow(WorkbookIntakeRequestSchema, path, { expectedVersion, workflowId });
-      const response = await transport.requestJsonResponse(path, { method: "POST", body: JSON.stringify(request) });
-      if (response.status !== 200 && response.status !== 201 && response.status !== 422) throw httpError(response.status, response.body);
-      const result = parseOrThrow(WorkbookIntakeResultSchema, path, response.body);
-      if (result.state === "refused") {
-        if (response.status !== 422) throw schemaError(path, "workbook intake refusal status mismatch");
-      } else if (response.status !== (result.state === "created" ? 201 : 200)
-        || result.session.workflow !== workflowId || result.session.workbookSource?.libraryId !== libraryId
-        || result.session.workbookSource.version !== expectedVersion) throw schemaError(path, "workbook intake source, workflow or status mismatch");
-      return result;
     },
   });
 }

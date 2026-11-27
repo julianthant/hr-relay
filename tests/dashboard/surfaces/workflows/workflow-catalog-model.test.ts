@@ -25,14 +25,12 @@ describe("frontend workflow catalog", () => {
     const onboarding = served.find(workflow => workflow.workflowId === "onboarding");
     assert.ok(onboarding?.inputRun.state === "present");
     expect(onboarding.inputRun.surface.workbookRows).toEqual({ typeId: "onboarding-roster", inputField: "email" });
-    const features = FIXTURE_START_PICKER_BOOTSTRAP.featureAvailability;
-    expect(features.some(feature => feature.feature === "workflow-start:onboarding")).toBe(false);
     const sources = servedFixtureSources([onboarding]);
-    const entries = buildWorkflowCatalog([onboarding], sources, features);
+    const entries = buildWorkflowCatalog([onboarding], sources);
     expect(entries.find(entry => entry.id === "onboarding")?.launch).toEqual({ state: "served" });
     expect(servedLaunchWorkflows(entries)).toEqual([onboarding]);
     const reason = "Explicit start restriction";
-    const restricted = buildWorkflowCatalog([onboarding], sources, [...features,
+    const restricted = buildWorkflowCatalog([onboarding], sources, [
       { feature: "workflow-start:onboarding", availability: { state: "unavailable", code: "deferred", reason } }]);
     expect(restricted.find(entry => entry.id === "onboarding")?.launch).toEqual({ state: "unavailable", label: "Unavailable", reason });
   });

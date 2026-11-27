@@ -12,7 +12,6 @@ export interface ActivityQueries {
   readActivityPopulation(selection:ActivityPopulationSelection,browse?:ActivityPopulationBrowse,signal?:AbortSignal):Promise<ActivityPopulationSelectedRead>;
   exportActivityPopulationCsv(selection:ActivityPopulationSelection,signal?:AbortSignal):Promise<SelectionDownload>;
   activityReport(from:string,to:string,signal?:AbortSignal):Promise<ActivityReportSelection>;
-  exportActivityCsv(report:ActivityReportSelection,signal?:AbortSignal):Promise<SelectionDownload>;
 }
 function verifyPopulation(selection: ActivityPopulationSelection, from: string, to: string): ActivityPopulationSelection {
   const { snapshot, ...report } = selection.report;
@@ -65,9 +64,5 @@ export function createActivityQueries(transport:DashboardTransport):ActivityQuer
     if(report.from!==from||report.to!==to)throw protocolError("activity-request-identity-mismatch");
     return report;
   },
-  async exportActivityCsv(input:ActivityReportSelection,signal?:AbortSignal) {
-    const report=ActivityReportSelectionSchema.parse(input);
-    const path=`/api/v1/reports/activity.csv?${new URLSearchParams({from:report.from,to:report.to,snapshot:report.snapshot.token})}`;
-    return verifySelectionDownload(await transport.requestBinary(path,{signal}),{path,filename:`activity-${report.from}_${report.to}.csv`,mediaType:"text/csv; charset=utf-8",token:report.snapshot.token});
-  },
+
 });}

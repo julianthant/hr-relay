@@ -331,24 +331,28 @@ it("rejects report token tampering, mismatched range, foreign signer and expiry 
   assert.equal(expiredXlsx.status,409);
 });
 
-it("the client checks range and download filename, MIME, length, digest and selected-token identity before delivering bytes",async()=>{
+it("the retained Activity report and transport check range and download filename, MIME, length, digest and selected-token identity before delivering bytes",async()=>{
   const f=await fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20"),controller=new AbortController();
   let observedSignal:AbortSignal|undefined;
   const client=createActivityQueries(createDashboardTransport({baseUrl:"http://localhost",fetchImpl:(url,init)=>{
     observedSignal=init?.signal??undefined;return Promise.resolve(f.app.request(url,init));
   }}));
   const read=await client.activityReport(report.from,report.to,controller.signal);assert.ok(observedSignal);assert.equal(observedSignal.aborted,false);
-  const valid=await client.exportActivityCsv(read,controller.signal);assert.ok(valid.bytes.byteLength>0);
+  const path=`/api/v1/reports/activity.csv?${new URLSearchParams({from:read.from,to:read.to,snapshot:read.snapshot.token})}`;
+  const expected={path,filename:`activity-${read.from}_${read.to}.csv`,mediaType:"text/csv; charset=utf-8",token:read.snapshot.token};
+  const response=await f.app.request(`http://localhost${path}`);
+  const bytes=await response.arrayBuffer();
+  assert.ok((await verifySelectionDownload({headers:response.headers,bytes},expected)).bytes.byteLength>0);
   for (const operation of ["report", "download"] as const) {
     const cancelled = new AbortController();
     const reason = new Error("caller cancelled");
     let transportSignal: AbortSignal | undefined;
-    const pendingClient = createActivityQueries(createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: (_url, init) => new Promise((_resolve, reject) => {
+    const transport = createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: (_url, init) => new Promise((_resolve, reject) => {
       transportSignal = init?.signal ?? undefined;
       assert.ok(transportSignal);
       transportSignal.addEventListener("abort", () => reject(reason), { once: true });
-    }) }));
-    const pending = operation === "report" ? pendingClient.activityReport(report.from, report.to, cancelled.signal) : pendingClient.exportActivityCsv(read, cancelled.signal);
+    }) });
+    const pending = operation === "report" ? createActivityQueries(transport).activityReport(report.from, report.to, cancelled.signal) : transport.requestBinary(path, { signal: cancelled.signal });
     assert.ok(transportSignal);
     assert.equal(transportSignal.aborted, false);
     const rejected = assert.rejects(pending, /caller cancelled/u);
@@ -357,8 +361,6 @@ it("the client checks range and download filename, MIME, length, digest and sele
     assert.equal(transportSignal.reason, cancelled.signal.reason);
     await rejected;
   }
-  const response=await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({from:read.from,to:read.to,snapshot:read.snapshot.token})}`);
-  const bytes=await response.arrayBuffer(),expected={path:"CSV",filename:valid.filename,mediaType:valid.mediaType,token:read.snapshot.token};
   for(const header of ["content-type","content-disposition","content-length","etag","x-selection-digest"]) {
     const headers=new Headers(response.headers);headers.set(header,"wrong");
     await assert.rejects(verifySelectionDownload({headers,bytes},expected),/mismatch/u);

@@ -29,7 +29,6 @@ import { createDashboardCommandService } from "../../../runs/commands/command-se
 import { createOcrSourceService } from "../../../runs/commands/ocr-source-service.js";
 import { createRunWorkerCapacity, RunWorkerStartupError } from "../../../runs/commands/run-worker-capacity.js";
 import { createStartPlanService } from "../../../runs/commands/start-plan-service.js";
-import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import { createApplicationLifecycle } from "../../../runs/lifecycle/application-lifecycle.js";
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
@@ -434,7 +433,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     ocr: ocrSources,
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workerCommandResult: createWorkerCommandResultQuery(database),
-    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake), workflows: shell.bootstrap.modules.map(module => module.descriptor) },
+    workbooks: { library: workbookLibrary, workflows: shell.bootstrap.modules.map(module => module.descriptor) },
     ...settingsBoundary.routes,
     ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
     runHistory: { status: () => runHistory.status(), clear: request => runHistory.clear(confirmedHistoryCommand(request)),

@@ -6,7 +6,6 @@ import { resolveWriteCommandTarget } from "../../../../src/backend/runs/commands
 import { unusedWorkerPool } from "./unused-worker-pool.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
-import { createWorkbookIntakeBridge } from "../../../../src/backend/runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
 import { queryAssistantUsage } from "../../../../src/backend/assistant/usage-counts.js";
@@ -435,7 +434,7 @@ export async function harness(options: {
     ...(options.notifications === undefined ? {} : { notifications: options.notifications(database) }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workerCommandResult: createWorkerCommandResultQuery(database),
-    workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE), workflows: options.workbookWorkflows ?? [fixtureDescriptor] },
+    workbooks: { library: workbookLibrary, workflows: options.workbookWorkflows ?? [fixtureDescriptor] },
     bootstrap: {
       appVersion: "0.1.0",
       clock,

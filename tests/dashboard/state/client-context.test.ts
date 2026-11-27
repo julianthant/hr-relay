@@ -36,14 +36,11 @@ describe("released surface fixtures", () => {
         baseUrl: "http://127.0.0.1",
         fetchImpl: async (input, init) => await app.request(input, init),
       });
-      assert.deepEqual(await client.settingsFacts(), FIXTURE_SETTINGS_FACTS);
       assert.deepEqual(await client.editableSettings(), FIXTURE_EDITABLE_SETTINGS);
       assert.deepEqual(await client.workflowExplorer(), FIXTURE_EXPLORER_WIRE);
       assert.equal((await client.intakeSession(FIXTURE_INTAKE_IDS.mapping)).intakeSessionId,
         FIXTURE_INTAKE_IDS.mapping);
       await assert.rejects(() => client.intakeSession("missing-session"), /no fixture intake session/u);
-      const upload = await client.uploadIntakeFile({ workflowId: "person-lookup", fileName: "people.csv", mediaType: "text/csv", bytes: new TextEncoder().encode("eid\n12345678").buffer });
-      assert.equal(upload.state, "created");
     }
   });
 

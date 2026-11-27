@@ -77,7 +77,7 @@ export interface DashboardStreamHubDeps {
     /** What `GET /notifications/{id}/target` answers for the publication's row; a throw is sent as a refusal. */
     readonly target: (publication: NotificationPublication) => NotificationTarget;
   };
-  /** The observer status `GET /notifications/status` serves; its row rides every snapshot and handoff, and a change when it moves. */
+  /** The observer status rides every snapshot and handoff, and a change when it moves. */
   readonly notificationStatus?: {
     readonly read: () => NotificationObservationStatus | Promise<NotificationObservationStatus>;
     readonly onChange: (listener: () => void) => () => void;

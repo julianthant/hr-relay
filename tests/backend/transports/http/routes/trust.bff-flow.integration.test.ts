@@ -345,13 +345,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its screenshot");
     const path = `/api/v1/diagnostic-bundles/${bundle.bundleId}`;
-    const metadata = await h.app.request(path);
-    const wire = await json(metadata);
-    assert.deepEqual(wire.contents, [{
-      kind: "screenshot", key: "Screenshot", detail: "image/png · 68 bytes · 1 × 1 px · restricted",
-      artifactId: attachment.artifactId, mediaType: "image/png", byteLength: 68,
-      digest: attachment.digest, width: 1, height: 1, sensitivity: "restricted",
-    }]);
+    assert.equal((await h.app.request(path)).status, 404);
     const response = await h.app.request(`${path}/attachments/${attachment.artifactId}`);
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "image/png");
@@ -359,7 +353,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(Buffer.from(await response.arrayBuffer()).toString("base64"), pngBase64);
   });
 
-  it("marks diagnostic metadata and refused resource responses no-store and nosniff", async () => {
+  it("marks diagnostic downloads and refused resource responses no-store and nosniff", async () => {
     const h = await harness();
     const bundle = await captureDiagnosticBundle(h);
     const attachment = bundle.attachments[0];
@@ -367,7 +361,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const base = `/api/v1/diagnostic-bundles/${bundle.bundleId}`;
 
     for (const [path, status] of [
-      [base, 200],
       [`${base}/manifest`, 200],
       [`${base}/attachments/${attachment.artifactId}`, 200],
       [`${base}/attachments/00000000-0000-4000-8000-000000000099`, 404],
@@ -399,7 +392,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     const attachment = first.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
-    const secondBundleResponse = await h.app.request(`/api/v1/diagnostic-bundles/${second.bundleId}`);
+    const secondBundleResponse = await h.app.request(`/api/v1/diagnostic-bundles/${second.bundleId}/manifest`);
     assert.equal(secondBundleResponse.status, 200);
     await secondBundleResponse.body?.cancel();
     const genericResponse = await h.app.request(`/artifacts/v1/${attachment.artifactId}`);
@@ -423,7 +416,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     h.database.authority.diagnosticBundles.purge(bundle.bundleId, "2027-01-01T00:00:00.000Z");
 
     for (const bundleId of [bundle.bundleId, "00000000-0000-4000-8000-000000000099"]) {
-      for (const suffix of ["", "/manifest", `/attachments/${attachment.artifactId}`]) {
+      for (const suffix of ["/manifest", `/attachments/${attachment.artifactId}`]) {
         const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundleId}${suffix}`);
         assert.equal(response.status, 404);
         const body = await json(response);
@@ -692,7 +685,7 @@ it("admits diagnostic and section parameters before reading their authorities", 
   const logs = await h.app.request(`/api/v1/runs/${RUN_ID}/logs`);
   assert.equal(logs.status, 200);
   assert.equal((await json(logs)).section, "logs");
-  for (const path of ["/api/v1/diagnostic-bundles/malformed", "/api/v1/diagnostic-bundles/malformed/manifest",
+  for (const path of ["/api/v1/diagnostic-bundles/malformed/manifest",
     "/api/v1/diagnostic-bundles/malformed/attachments/00000000-0000-4000-8000-000000000001",
     "/api/v1/diagnostic-bundles/00000000-0000-4000-8000-000000000001/attachments/malformed",
     "/artifacts/v1/malformed", `/api/v1/runs/${RUN_ID}/invalid-section`,

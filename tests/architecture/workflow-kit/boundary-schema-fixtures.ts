@@ -236,7 +236,6 @@ const BOOTSTRAP = {
   workbookCompatibility: { workflows: [], libraries: [] },
   serverClock: { now: NOW, zone: "America/Los_Angeles" },
   storage: { authority: "healthy" }, workflows: [],
-  systemInstances: [], settingsSections: [], featureAvailability: [],
 };
 const DAY = {
   day: "2026-07-31", descriptorHash: HASH_A, projectionGeneration: 1, snapshotCursor: "pc:1",

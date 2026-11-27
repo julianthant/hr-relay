@@ -134,8 +134,7 @@ await _afterEachFixture0();
 
 it_m0("spreadsheet import is a Settings destination and leaves the Run launch focus intact", async () => {
 try {
-  let uploads = 0;
-  await mount({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } });
+  await mount();
   // The assistant panel mounts on first open and stays mounted while closed.
   const launcher = document.querySelector<HTMLButtonElement>("[data-assistant-launcher]"); assert_m0.ok(launcher);
   await click(launcher); await click(launcher);
@@ -155,7 +154,7 @@ try {
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
   const imported = (await savedWorkbooks()).find(record => record.name === "Focus roster"); assert_m0.ok(imported);
   assert_m0.equal((await openedWorkbook(imported.libraryId)).workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
-  assert_m0.equal(uploads, 0); assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
+  assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
 } finally {
 await _afterEachFixture0();
 }

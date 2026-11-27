@@ -1,8 +1,7 @@
 import { ItemAttemptHistoryResponseSchema, type ItemAttemptHistoryResponse } from "../../../models/dashboard/item-attempt-history.js";
-import { DiagnosticBundleWireSchema, type DiagnosticBundleWire } from "../../../models/dashboard/diagnostic-bundle.js";
 import { RunDetailSectionResponseSchema, RunDetailWireSchema, type RunDetailSectionResponse, type RunDetailWire } from "../../../models/dashboard/run-detail.js";
 import { ArtifactIdSchema, DiagnosticBundleIdSchema } from "../../../rules/identity/ids.js";
-import { DashboardClientError, diagnosticBundleIdentityError } from "../errors.js";
+import { DashboardClientError } from "../errors.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "../transport.js";
 
@@ -26,9 +25,6 @@ export interface DetailQueries {
     runId: string,
     options?: Readonly<{ limit?: number; cursor?: string; signal?: AbortSignal }>,
   ): Promise<ItemAttemptHistoryResponse>;
-
-  /** One diagnostic bundle, read by its exact durable id only after the operator asks. */
-  diagnosticBundle(bundleId: string, signal?: AbortSignal): Promise<DiagnosticBundleWire>;
 
   /** The browser downloads the server's canonical durable manifest; no UI reconstruction. */
   diagnosticBundleManifestUrl(bundleId: string): string;
@@ -105,20 +101,6 @@ export function createDetailQueries(transport: DashboardTransport): DetailQuerie
         throw runIdentityError(context, "RUN_ATTEMPT_HISTORY_IDENTITY_MISMATCH", runId);
       }
       return response;
-    },
-
-    async diagnosticBundle(bundleId: string, signal?: AbortSignal): Promise<DiagnosticBundleWire> {
-      const parsedBundleId = DiagnosticBundleIdSchema.parse(bundleId);
-      const path = `/api/v1/diagnostic-bundles/${encodeURIComponent(parsedBundleId)}`;
-      const bundle = parseOrThrow(
-        DiagnosticBundleWireSchema,
-        `GET ${path}`,
-        await transport.requestJson(path, signal === undefined ? undefined : { signal }),
-      );
-      if (bundle.bundleId !== parsedBundleId) {
-        throw diagnosticBundleIdentityError(`GET ${path}`, parsedBundleId);
-      }
-      return bundle;
     },
 
     diagnosticBundleManifestUrl(bundleId: string): string {

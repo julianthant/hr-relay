@@ -1,10 +1,9 @@
 import { z } from "zod";
 import type { HonoRequest } from "hono";
-import { WorkbookSummarySchema, WorkbookIdSchema, WorkbookRevisionSchema, WorkbookTypeSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookCopyMappingRequestSchema, WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, decodeEditableWorkbook, encodeSavedWorkbook } from "../../../../models/dashboard/workbooks.js";
+import { WorkbookSummarySchema, WorkbookIdSchema, WorkbookRevisionSchema, WorkbookTypeSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookCopyMappingRequestSchema, decodeEditableWorkbook, encodeSavedWorkbook } from "../../../../models/dashboard/workbooks.js";
 import { cellText } from "../../../../rules/spreadsheets/workbook-io.js";
 import { WorkbookLibraryError } from "../../../workbooks/workbook-library-error.js";
 import { type WorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
-import type { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import type { DashboardApp } from "./api-types.js";
 import { PositiveIntegerTextSchema } from "./request-parameters.js";
 import { WorkbookCloneRequestSchema, WorkbookLibraryActionSchema, WorkbookLibraryImportRequestSchema } from "../../../../models/dashboard/workbook-library.js";
@@ -16,7 +15,7 @@ const VersionPathSchema = LibraryPathSchema.extend({ versionId: WorkbookIdSchema
 const RevisionPathSchema = LibraryPathSchema.extend({ version: PositiveIntegerTextSchema.pipe(WorkbookRevisionSchema) });
 
 export interface WorkbooksRouteDeps {
-  readonly workbooks?: Readonly<{ library: WorkbookLibraryService; intake: ReturnType<typeof createWorkbookIntakeBridge>; workflows: readonly WorkbookReferenceWorkflow[] }>;
+  readonly workbooks?: Readonly<{ library: WorkbookLibraryService; workflows: readonly WorkbookReferenceWorkflow[] }>;
 }
 function workbookRequest<Value>(schema: z.ZodType<Value>, value: unknown): Value {
   const parsed = schema.safeParse(value);
@@ -97,10 +96,5 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
   app.get("/api/v1/workbooks/:libraryId/history", c => {
     const { libraryId } = workbookPath(LibraryPathSchema, c.req);
     return c.json(service().library.history(libraryId).map(encodeSavedWorkbook));
-  });
-  app.post("/api/v1/workbooks/:libraryId/intake", async c => {
-    const { libraryId } = workbookPath(LibraryPathSchema, c.req);
-    const result = WorkbookIntakeResultSchema.parse(await service().intake(libraryId, workbookRequest(WorkbookIntakeRequestSchema, await c.req.json())));
-    return c.json(result, result.state === "created" ? 201 : result.state === "refused" ? 422 : 200);
   });
 }

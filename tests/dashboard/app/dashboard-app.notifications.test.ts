@@ -172,7 +172,6 @@ it("mounts served inbox controls and reports only the served search authority to
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
     if (path === "/api/v1/notifications") return Response.json(rows);
-    if (path === "/api/v1/notifications/status") return Response.json({ state: "ready", pending: 0 });
     if (path.endsWith("/target")) return Response.json({ kind: "storage" });
     if (path === "/api/v1/commands") {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
@@ -214,7 +213,6 @@ it("opens a storage notice in Settings > General instead of refusing it", async 
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
     if (path === "/api/v1/notifications") return Response.json(rows);
-    if (path === "/api/v1/notifications/status") return Response.json({ state: "ready", pending: 0 });
     if (path.endsWith("/target")) return Response.json({ kind: "storage" });
     return app.request(url, init);
   } });
@@ -258,7 +256,6 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
     if (path === "/api/v1/notifications") return Response.json(rows);
-    if (path === "/api/v1/notifications/status") return Response.json({ state: "ready", pending: 0 });
     if (path.endsWith("/target")) return Response.json({ kind: "run", runId, day: FIXTURE_DAY_WIRE.day });
     if (path === "/api/v1/commands") {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");

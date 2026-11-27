@@ -206,9 +206,6 @@ export function createDashboardModelFixtures() {
     serverClock: { now: NOW, zone: "America/Los_Angeles" },
     storage: { authority: "healthy" },
     workflows: [WORKFLOW_PRIMITIVE],
-    systemInstances: [{ system: "ucpath", prod: "available", test: { state: "unavailable", code: "not-configured", reason: "test URL not configured" } }],
-    settingsSections: [{ id: "general", label: "General", revision: 1 }],
-    featureAvailability: [{ feature: "ocr", availability: { state: "available" } }],
   };
   return { WORKFLOW_PRIMITIVE, BOOTSTRAP, RUN_1, RUN_2, NOTE_1, RECORD_1, HASH_A, HASH_B, NOW, QUEUE, DAY, DETAIL, NOTE_PAGE, REVIEW_PAGE, PEOPLE_PAGE, ARTIFACT, ARTIFACT_1 };
 }

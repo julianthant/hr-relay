@@ -13,7 +13,7 @@ import { EditableSettingsLeafWireSchema } from "../../../src/models/dashboard/se
 {
 
 describe("complete Settings catalog projection", () => {
-  for (const mutation of ["missing", "duplicate", "classification", "wrong-section", "wrong-type", "wrong-control", "wrong-current-year", "legacy-readback"] as const) {
+  for (const mutation of ["missing", "duplicate", "legacy-catalog", "wrong-section", "wrong-type", "wrong-control", "wrong-current-year", "legacy-readback"] as const) {
     it(`rejects ${mutation} payloads`, () => {
       const document = fixtureSettingsDocument();
       const general = document.sections.find(section => section.id === "general");
@@ -22,7 +22,7 @@ describe("complete Settings catalog projection", () => {
       switch (mutation) {
         case "missing": general.leaves.splice(general.leaves.indexOf(label), 1); break;
         case "duplicate": general.leaves.push(label); break;
-        case "classification": document.catalog[0].sourceClass = "ordinary-settings"; break;
+        case "legacy-catalog": Reflect.set(document, "catalog", []); break;
         case "wrong-section": document.sections.find(section => section.id === "paths")?.leaves.push(general.leaves.shift()!); break;
         case "wrong-type": label.effectiveValue = 42; break;
         case "wrong-control": label.control = { input: "number", minimum: 0 }; break;
