@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { successfulActivityTiming } from "./activity-timing.js";
 import type { z } from "zod";
 import { ActivityPopulationRangeSchema, ActivityPopulationRunSchema, ActivityPopulationIdentitySchema, ActivityPopulationSelectionSchema, ActivityPopulationBrowseSchema, ActivityPopulationBrowseResultSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema, type ActivityPopulationRun, type ActivityPopulationSelection, type ActivityPopulationBrowseResult, type ActivityPopulationSelectedRead, type ActivityPopulationExport } from "../../../models/dashboard/activity-population.js";
@@ -51,15 +52,20 @@ function browseSelection(selection: ActivityPopulationSelection, input: unknown)
 }
 
 export function createActivityPopulationService(input: {
-  database: AuthorityDatabase; clock: Clock;
+  database: AuthorityDatabase; clock: Pick<Clock, "now" | "nowMs">;
+  /** One key signs both the report and the population tokens, so a read lane can issue and validate them for this runtime. */
+  signingKey?: Uint8Array;
+  sourceIdentity?: string;
   descriptors: Parameters<typeof queryActivitySummaries>[2]["descriptors"];
   ledger: Parameters<typeof queryActivitySummaries>[2]["ledger"];
 }) {
   const { database, clock } = input;
+  const signingKey = input.signingKey ?? randomBytes(32);
   type VisitSummary = NonNullable<Parameters<typeof queryActivitySummaries>[3]>;
-  const reports = createActivitySelectionService<VisitSummary>({ database, clock,
+  const reports = createActivitySelectionService<VisitSummary>({ database, clock, signingKey,
+    ...(input.sourceIdentity === undefined ? {} : { sourceIdentity: input.sourceIdentity }),
     read: (from, to, generatedAt, visit) => queryActivitySummaries(database, { from, to, generatedAt }, input, visit) });
-  const signer = createActivitySnapshotSigner(ActivityPopulationIdentitySchema, "ap1", clock);
+  const signer = createActivitySnapshotSigner(ActivityPopulationIdentitySchema, "ap1", clock, signingKey);
   const read = (rangeInput: unknown, selected?: z.infer<typeof ActivityPopulationIdentitySchema>): ActivityPopulationSelection => {
     const bounds = ActivityPopulationRangeSchema.safeParse(rangeInput);
     if (!bounds.success) throw new ActivityPopulationError("ACTIVITY_POPULATION_RANGE_INVALID");
@@ -99,4 +105,11 @@ export function createActivityPopulationService(input: {
     },
   });
 }
-export type ActivityPopulationService = ReturnType<typeof createActivityPopulationService>;
+type Awaitable<T> = T | Promise<T>;
+/** What the population routes serve: answered now on the request thread, or later from a read lane. */
+export interface ActivityPopulationService {
+  /** A lane answers the two reads with the served body, built and validated there. */
+  read(range: unknown): ActivityPopulationSelection | Promise<string>;
+  readSelected(range: unknown, token: unknown, browse?: unknown): ActivityPopulationSelectedRead | Promise<string>;
+  exportSelected(range: unknown, token: unknown): Awaitable<ActivityPopulationExport>;
+}

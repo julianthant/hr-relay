@@ -32,6 +32,7 @@ import { ownedDiagnostics } from "./notification-health.js";
 import { DashboardFrontendModeSchema,PackageVersionSchema,type DashboardComposeInput,type StartupCleanup,type StartupCustody } from "./runtime-contracts.js";
 import { composeSettings } from "./settings.js";
 import { createDashboardReadHost, ReadLaneStartError } from "../../../storage/sqlite/dashboard-read-host.js";
+import { assertRetainedProfileBrowserRoot } from "../../../storage/maintenance/profile-custody.js";
 
 export function createComposedDashboardReadHost(input: Omit<Parameters<typeof createDashboardReadHost>[0], "entry">) {
   return createDashboardReadHost({ ...input, entry: new URL("./read-lane-entry.js", import.meta.url) });
@@ -154,7 +155,8 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   const settingsBoundary = composeSettings({ database, readLanes, hostFacts, clock, active: activeSettingsRuntimeIdentity,
     environment: env, credentials: protectedSettingsAuthority,
     runtimeStoragePair,
-    resolveSettings: settings => { assertCurrent(); const result = context.resolveSettings(settings); assertCurrent(); return result; }, assertCurrent });
+    resolveSettings: settings => { assertCurrent(); const result = context.resolveSettings(settings); assertCurrent(); return result; }, assertCurrent,
+    assertBrowserRoot: path => { assertRetainedProfileBrowserRoot(context.admission, path); } });
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();

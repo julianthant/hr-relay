@@ -26,7 +26,7 @@ it("independent Setup consumer reads production readiness and reruns/replays the
   const app: DashboardApp = new Hono();
   app.use("*", async (c, next) => { c.set("requestActorId", ActorIdSchema.parse("local-operator")); await next(); });
   registerSettingsPreflightRoutes(app, { preflight });
-  app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap({ appVersion: "0.1.0", clock, modules: [], descriptorSetHash: fingerprint,
+  app.get("/api/v1/bootstrap", async (c) => c.json(await buildBootstrap({ appVersion: "0.1.0", clock, modules: [], descriptorSetHash: fingerprint,
     settingsSchemaHash: fingerprint, projection: { generation: () => 1 }, actorLabel: () => "Fixture Operator",
     authorityMeta: () => ({ schemaVersion: 53, authorityGeneration: 1 }),
     workbookCompatibility: workflows => projectWorkbookCompatibility(workflows, []), preflightReport: () => preflight.readLatest(), })));

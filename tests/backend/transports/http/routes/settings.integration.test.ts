@@ -1,7 +1,12 @@
-
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
+import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
+import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { settingsSetOperations } from "../../../../support/fixtures/settings-operation-fixtures.js";
+import { releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
 import { EditableSettingsWireSchema } from "../../../../../src/models/dashboard/settings-editor.js";
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
@@ -52,3 +57,28 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);
+
+const portWorld = createDashboardPortTestWorld(() => {}, releaseAdmissionFixtures);
+afterEach(portWorld.cleanup);
+
+it("applies a settings revision and reads it back through the composed runtime's read lane", async () => {
+  const profile = await portWorld.createProfileFixture(manualClock(new Date()));
+  const runtime = await portWorld.composeDashboardRuntime({ lifetimeLock: profile.lifetime, ...profile.dashboardInput,
+    frontendPortOverride: 0, backendPortOverride: 0, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: profile.workspace });
+  try {
+    const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+    const before = await client.editableSettings();
+    assert.equal(before.revision, 1);
+    // The lane's cached store part must not outlive the write.
+    assert.deepEqual(await client.editableSettings(), before);
+    const patch = settingsSetOperations({ display: { screenWidth: 1980, screenHeight: 1080 } });
+    const applied = await client.applySettings({ commandId: "64646464-6464-4464-8464-646464646464", requestedAt: new Date().toISOString(),
+      requestedBy: "local-operator", source: "settings-surface", family: "settings", type: "apply-settings", target: { expectedRevision: 1 },
+      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
+    assert.equal(applied.state, "applied");
+    const readback = await client.editableSettings();
+    assert.equal(readback.revision, 2);
+    assert.equal(readback.runtimeStatus.state, "current");
+    assert.equal(readback.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "display.screenWidth")?.settingsValue, 1980);
+  } finally { await runtime.stop(); }
+});
