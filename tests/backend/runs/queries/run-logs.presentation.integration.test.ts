@@ -75,7 +75,7 @@ it("groups the normal registered Person Lookup helper nodes into walkthrough hea
   const section = buildRunLogsSection(deps, run.envelope.runId, w.projection.runFold(run.envelope.runId), run); assert.ok(section.section === "logs");
   const projected = projectRunLogs({ detail, logs: section.payload, sections: [], unavailableEvidence: [] }, { artifactUrl: () => "unused" });
   assert.deepEqual(projected.steps.map(step => [step.title, step.system]), [["Search for person", "UCPath"], ["Cross-check identity", "CRM"],
-    ["Read employment status", undefined]]);
+    ["Read employment status", undefined], ["Check reference spreadsheets", undefined]]);
   assert.equal(projected.timeline.some(stage => stage.label === "Read CRM dates"), false);
   assert.doesNotMatch(logPlainText(projected.steps), /Skipped|Not needed for this run/u);
   assert.doesNotMatch(logPlainText(projected.steps), /Run note|\bdone\b|condition-false|search-identity|crm-identity|crm-only-recovery|workflow:person-lookup/u);
