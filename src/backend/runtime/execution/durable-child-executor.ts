@@ -1,11 +1,13 @@
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { z } from "zod";
 import { RunRecordSchema, runClaim, type RunRecord } from "../../../models/run/record.js";
-import { resolveDelegationEvidenceOutput, readRunPreviewResult, DelegationTerminalEvidenceSchema, RunResultRecordSchema, type DelegationTerminalEvidence } from "../../../models/run/result.js";
+import { resolveDelegationEvidenceOutput, readRunPreviewResult, DelegationOutcomePolicyUnsatisfiedError, DelegationTerminalEvidenceSchema, RunResultRecordSchema, type DelegationTerminalEvidence } from "../../../models/run/result.js";
+import type { FailureRecord } from "../../../models/trust/failure.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
 import { assertDelegationReplayMatches, type DelegationPlan } from "../../../models/workflow/delegation.js";
 import { DelegationManifestRefSchema, type AnyWorkflowRef } from "../../../models/workflow/graph.js";
+import { OcrPageOutcomeSchema } from "../../../models/workflows/ocr/page-accounting.js";
 import { CommandIdSchema, DelegationManifestIdSchema, RunIdSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { DelegationManifestSchema, type DelegationManifest } from "../../../rules/workflow/dependencies.js";
@@ -126,6 +128,7 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
             values[node.id] = DelegationManifestRefSchema.parse({ manifestId: manifest.manifestId, edgeId: manifest.edgeId, childCount: children.length });
             continue;
           }
+          const failures: FailureRecord[] = [];
           const settled = children.map(({ child: currentChild, dependency, terminal }) => {
             const child = terminal?.run ?? currentChild;
             if (child.lifecycle.state !== "terminal") throw new Error("delegation-child-not-terminal");
@@ -150,6 +153,7 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
                 const failure = authority.authority.failures.get(failureId);
                 if (dependency.state !== "failed" || failure === undefined || failure.runId !== child.envelope.runId
                   || failure.attempt !== child.envelope.attempt || failure.workflowId !== child.envelope.workflow) throw new Error("delegation-child-failure-mismatch");
+                failures.push(failure);
                 return { run: child, result };
               }
               case "cancelled": {
@@ -164,7 +168,22 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
           const evidence = DelegationTerminalEvidenceSchema.parse({ state: "delegation-resolved", nodeId: node.id,
             parentRunId: parent.envelope.runId, edgeId: manifest.edgeId, invocationCommandId: authenticated.invocation.commandId,
             manifest, children: settled });
-          values[node.id] = resolveDelegationEvidenceOutput(evidence, node.target.result, authority.evidenceSchemaHash?.bind(authority)).output;
+          const [firstFailure] = failures;
+          try {
+            const resolution = resolveDelegationEvidenceOutput(evidence, node.target.result, authority.evidenceSchemaHash?.bind(authority));
+            if (firstFailure !== undefined && resolution.kind === "ordinary" && node.edgeId === "ocr-pages"
+              && parent.envelope.parent?.edgeId === "document-ocr"
+              && !OcrPageOutcomeSchema.array().parse(resolution.output).some(page => page.state === "done" && page.output.extraction.record !== null)) {
+              throw Object.assign(new Error(firstFailure.summary), { code: firstFailure.code });
+            }
+            values[node.id] = resolution.output;
+          } catch (error) {
+            if (firstFailure !== undefined && node.edgeId === "document-ocr"
+              && error instanceof DelegationOutcomePolicyUnsatisfiedError) {
+              throw Object.assign(new Error(firstFailure.summary), { code: firstFailure.code });
+            }
+            throw error;
+          }
         }
         if (admitted.state === "released") {
           const wait = authority.authority.dependencies.wait(parent.envelope.runId, batch.descriptor);
