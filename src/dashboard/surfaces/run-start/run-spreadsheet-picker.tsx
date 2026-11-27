@@ -3,7 +3,6 @@ import { ChevronDown, Plus, Table2, X } from "lucide-react";
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, SearchInput, Select, dsIcon } from "../../ds/ui.js";
 import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../ds/primitives/dropdown-menu.js";
 import { RunHeading, RunList, RunListRow } from "../../ds/primitives/run-list.js";
-import { MAX_SELECTED_WORKBOOK_SOURCES } from "../../../rules/spreadsheets/workbook-size.js";
 import { formatMonthDay } from "../../lib/date-format.js";
 
 export interface SheetVersion { readonly id: string; readonly name: string; readonly savedAt: string }

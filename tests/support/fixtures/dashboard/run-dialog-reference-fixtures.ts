@@ -5,7 +5,7 @@ import { CRM_DOCUMENT_ROSTER_FIELDS } from "../../../../src/models/workflows/crm
 import { RUN_DIALOG_CRM, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW } from "./run-dialog-story-fixtures.js";
 
 /** What the library serves when one saved spreadsheet is bound to the reference workflow's key field: the Spreadsheets field works. */
-export interface ReferenceShape { readonly workflowId: string; readonly label: string; readonly keyFieldId: string; readonly fields: readonly string[]; readonly row: readonly string[] }
+export interface ReferenceShape { readonly workflowId: string; readonly label: string; readonly keyFieldId: string; readonly fields: readonly string[]; readonly row: readonly (string | null)[] }
 const PERSON_LOOKUP: ReferenceShape = { workflowId: RUN_DIALOG_WORKFLOW, label: "Person Lookup", keyFieldId: "eid", fields: ["eid"], row: [RUN_DIALOG_TYPED] };
 export function runDialogReferenceReads(names: readonly string[] = ["First"], typeId = "roster-type", shape: ReferenceShape = PERSON_LOOKUP): Partial<DashboardClient> {
   const entry = WorkbookLibraryEntrySchema.parse({ libraryId: "roster", name: "Roster", version: 1, updatedAt: "2026-11-01T00:00:00Z", rowCount: 2,
@@ -15,7 +15,7 @@ export function runDialogReferenceReads(names: readonly string[] = ["First"], ty
       versions: [{ id: "version", name: "Reviewed", snapshotId: "snapshot", version: 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" }] } });
   const view = WorkbookLibraryVersionViewSchema.parse({ libraryId: "roster", version: entry.state.versions[0], workbook: {
     name: "Roster", libraryId: "roster", themes: [], hasFormulas: false,
-    sheets: entry.worksheets.map(sheet => ({ ...sheet, width: 1, hidden: [],
+    sheets: entry.worksheets.map(sheet => ({ ...sheet, width: shape.fields.length, hidden: [],
       columnBindings: shape.fields.map((field, column) => ({ id: `column-${column}`, sourceColumn: column, sourceHeader: field, fieldId: field, basis: "manual" as const })),
       rows: [{ id: "header", cells: shape.fields.map(value => ({ value })) }, { id: "row-1", cells: shape.row.map(value => ({ value })) }] })),
   } });
@@ -30,4 +30,4 @@ export function runDialogReferenceReads(names: readonly string[] = ["First"], ty
 export const RUN_DIALOG_REFERENCE_READS = runDialogReferenceReads();
 /** A roster the CRM descriptor can read: its required fields, one person's row on every worksheet. */
 export const RUN_DIALOG_CRM_SHAPE: ReferenceShape = { workflowId: RUN_DIALOG_CRM, label: "CRM Document Download", keyFieldId: "email", fields: CRM_DOCUMENT_ROSTER_FIELDS,
-  row: ["fixture@example.test", "Ada", "Lovelace", "", "Ada", "Lovelace", ""] };
+  row: ["fixture@example.test", "Ada", "Lovelace", null, "Ada", "Lovelace", null] };
