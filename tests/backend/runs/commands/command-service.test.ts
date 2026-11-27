@@ -1,10 +1,38 @@
 import { randomUUID } from "node:crypto";
 import { RunWorkerStartupError, type RunWorkerCapacity } from "../../../../src/backend/runs/commands/run-worker-capacity.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardCommandService } from "../../../../src/backend/runs/commands/command-service.js";
 import { CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
+
+it("awaits the selected ordinary Settings worker and leaves protected commands with the kernel", async () => {
+  const base = { family: "settings", source: "settings-surface", requestedBy: "local-operator",
+    requestedAt: "2026-11-02T12:00:00.000Z", target: { expectedRevision: 1 } };
+  const patch = { "preferences.notifications.sound": { set: "none" } };
+  const ordinary = CommandRequestSchema.parse({ ...base, commandId: randomUUID(), type: "apply-settings",
+    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
+  const protectedCommand = CommandRequestSchema.parse({ ...base, commandId: randomUUID(), type: "apply-protected-settings",
+    payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { sharepointOnboardingRosterUrl: { clear: true } } } });
+  const result = CommandResultSchema.parse({ state: "applied", commandId: ordinary.commandId, affectedTargets: [{ family: "settings", revision: 2 }] });
+  const protectedResult = CommandResultSchema.parse({ state: "rejected", commandId: protectedCommand.commandId, code: "invalid-state", message: "Refused" });
+  const held = Promise.withResolvers<typeof result>();
+  const unexpected = () => { throw new Error("unexpected command route"); };
+  const service = createDashboardCommandService({
+    kernel: { execute(input) { assert.deepEqual(input, protectedCommand); return protectedResult; },
+      assistantAvailability: unexpected, assistantManifest: unexpected, executeStart: unexpected, executeWorkerPool: unexpected,
+      executeAssistantModelPreference: unexpected },
+    projection: { ingestFromTimeline: unexpected, refreshRun: unexpected },
+    executeOrdinarySettings(command) { assert.deepEqual(command, ordinary); return held.promise; },
+  });
+
+  const submitted = service.submit(ordinary);
+  assert.deepEqual(await service.submit(protectedCommand), protectedResult);
+  held.resolve(result);
+  assert.deepEqual(await submitted, result);
+});
 
 for (const type of ["pause-all", "pause-all-and-quit"] as const) it(`${type} refreshes every acknowledged run before notifying quit`, async () => {
   const commandId = "a1000000-0000-4000-8000-000000000001";

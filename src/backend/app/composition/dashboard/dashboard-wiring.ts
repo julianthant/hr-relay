@@ -104,7 +104,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
 
   const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle);
-  const { protectedEditor } = resources;
+  const { settingsProcesses } = resources;
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority, readLanes } = resources;
   const history = database.dashboardHistory();
   // A copy profile serves its sample runs and Sessions cards from the history archive; production never attaches one.
@@ -209,6 +209,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   startupCleanups.push(() => applicationLifecycle.dispose());
   // The kernel is made before the hub, so its ordinary settings commits reach the hub through this source.
   const settingsChanges = new Set<() => void>();
+  const publishSettingsChanged = () => { for (const listener of [...settingsChanges]) listener(); };
   const nativeKernel = createCommandKernel({
     commandNotices: notificationInbox,
     ensureReceipt: runId => trustReads.trust.ensureReceipt(runId),
@@ -236,7 +237,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     settings: settingsBoundary.executor,
-    settingsCommitted: () => { for (const listener of [...settingsChanges]) listener(); },
+    settingsCommitted: publishSettingsChanged,
     authorityProfileId: admission.profileBinding.profileId,
     authorityInstallationId: admission.profileBinding.installationId,
     prepareAssistantModelPreference: async request => {
@@ -272,6 +273,13 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     kernel,
     projection,
     startWorkerCapacity,
+    ...(settingsProcesses === undefined ? {} : { async executeOrdinarySettings(command) {
+      composedAssistant.assertEffect(command.commandId, command);
+      const result = await settingsProcesses.execute(command);
+      assertCurrent();
+      if (result.state === "applied") publishSettingsChanged();
+      return result;
+    } }),
   });
 
   const nativeStartPlans = createStartPlanService({
@@ -475,5 +483,5 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   startupCleanups.push(() => clearInterval(historyTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, shutdownRequested, noteWriter, stopTimeline, readLanes, protectedEditor, diagnosticRetentionTimer, hub, stopWorkerControl, takeWorkerStopFailures: workers.pool.takeShutdownStopFailures, server, gateParkTimer, historyTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, shutdownRequested, noteWriter, stopTimeline, readLanes, settingsProcesses, diagnosticRetentionTimer, hub, stopWorkerControl, takeWorkerStopFailures: workers.pool.takeShutdownStopFailures, server, gateParkTimer, historyTimer, custody });
 }
