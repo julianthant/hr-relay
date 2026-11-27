@@ -23,13 +23,13 @@ export function RunReview({ selection, focus }: { selection: LogSelection; focus
     && (focus.runId !== selection.row.runId || !cards.some(card => card.record.id === focus.recordId));
   if (resource.page !== undefined && resource.page.ocr === undefined) return <FailureNotice sentence="Review unavailable. OCR review authority is unavailable." />;
   if (missing) return <FailureNotice sentence="Record unavailable. Not part of this review." />;
-  if (cards === undefined) return resource.state === "failed" ? <FailureNotice sentence={`Review unavailable. ${resource.error}`} /> : <LogSkeleton />;
+  if (cards === undefined) return resource.state === "failed" ? <FailureNotice sentence={resource.error} /> : <LogSkeleton />;
   const review = resource.page?.ocr;
   const discarded = resource.discarded;
   const selected = review?.revision.records.filter(record => (resource.includes[record.recordId] ?? !record.discarded));
   const ready = selected?.filter(record => record.assertedEid !== null && record.fields.blockingPaths.length === 0).length ?? 0;
   return <>
-    {resource.state === "failed" ? <FailureNotice sentence={`Review unavailable. ${resource.error}`} /> : resource.state === "loading" ? <Badge tone="neutral">Refreshing</Badge> : undefined}
+    {resource.state === "failed" ? <FailureNotice sentence={resource.error} /> : resource.state === "loading" ? <Badge tone="neutral">Refreshing</Badge> : undefined}
     {resource.feedback && <Notice tone="warning" title={resource.feedback} />}
     {resource.feedback && (resource.check ?? resource.reload) && <Button variant="secondary" className="self-start" onClick={resource.check ?? resource.reload}>{resource.check ? "Check result" : "Discard local changes"}</Button>}
     <RecordReview runId={selection.row.runId} subject={selection.row.title} cards={cards.map(card => ({ ...card,

@@ -124,10 +124,10 @@ function Arriving({ children }: { children: ReactNode }) {
 }
 
 function ProblemNotice({ problem }: { problem: CommandProblem }) {
-  if (problem.kind === "rejected") return <FailureNotice sentence={`Request refused. ${problem.message}`} />;
+  if (problem.kind === "rejected") return <FailureNotice sentence={problem.message} />;
   if (problem.kind === "confirmation-required") return <Notice tone="warning" title="Confirmation required" description={problem.message} />;
   if (problem.kind === "conflict") return <Notice tone="warning" title="Session changed" description={problem.message} />;
-  return <FailureNotice sentence={`Result not confirmed. ${problem.message}`} />;
+  return <FailureNotice sentence={problem.message} />;
 }
 
 /** Why a picker cannot act now; a locked picker shows its value and this reason instead of a switched-off control. */
