@@ -1,5 +1,5 @@
 import { DashboardPageBoundary } from "./dashboard-page-boundary.js";
-import { runStartRefusalToast } from "./commands/command-result.js";
+import { runStartRefusalToast, sampleRunRefusalToast } from "./commands/command-result.js";
 import { attemptUnresolved, commandAttemptView } from "./commands/command-outcome.js";
 import { type PersonPreferencesOwner } from "../state/person-preferences-model.js";
 import { useConfirmCloseDuringRun } from "./confirm-close-during-run.js";
@@ -202,18 +202,17 @@ export function LoadedApp({
   const application = lifecycle.resource.state === "loaded" ? lifecycle.resource.value : undefined;
   const [quitRequested, setQuitRequested] = useState(false);
   const clock = useMemo(() => createServedClock(boot.serverClock.now), [boot.serverClock.now]);
-  const snoozes = useRef<readonly string[]>([]);
-  // The app renders on a new day or a passed snooze expiry, never on a plain tick; leaves tick on their own.
+  // The app renders on a new day; timed views tick on their own.
   const today = useClockView(clock, boot.serverClock.now, now => serverLocalDay({ ...boot.serverClock, now }));
-  useClockView(clock, boot.serverClock.now, now => snoozes.current.filter(until => until <= now).length);
   const nowIso = clock.now();
   const dateSelection = resolveDateSelection(route.day, today);
   const day = dateSelection.state === "valid" ? dateSelection.day : dateSelection.requested;
   const dateError = dateSelection.state === "valid" ? undefined : dateSelection.reason === "future"
     ? `Date ${day} is after Today (${today}).` : `Invalid date: ${day || "(empty)"}.`;
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
-  const workflowComposition = useMemo(() => composeWorkflows(launchWorkflows(workflows, boot.workbookCompatibility)), [composeWorkflows, workflows, boot.workbookCompatibility]);
-  const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows, boot.workbookCompatibility), workflowComposition.sources, boot.featureAvailability), [workflows, workflowComposition, boot.featureAvailability, boot.workbookCompatibility]);
+  const launchableWorkflows = useMemo(() => launchWorkflows(workflows), [workflows]);
+  const workflowComposition = useMemo(() => composeWorkflows(launchableWorkflows), [composeWorkflows, launchableWorkflows]);
+  const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchableWorkflows, workflowComposition.sources, boot.featureAvailability), [launchableWorkflows, workflowComposition, boot.featureAvailability]);
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
   const dayRequested = (hasServedWorkflows || workflowComposition.sessionsHarness === undefined) && dateSelection.state === "valid" ? day : undefined;
@@ -225,13 +224,11 @@ export function LoadedApp({
   const priorRows = knownRows.current ?? (dayRequested === undefined ? undefined : keptDayFrame(client, authorityEpoch, boot.actor.id, dayRequested)?.queueSurfaces);
   const panelRow = route.run === undefined || logPreview !== "top-level" ? undefined : priorRows?.find(row => row.runId === route.run);
   const panelRun = logPreview === "none" || panelRow !== undefined && panelRow.parent !== null ? route.run : undefined;
-  const dayState = useDashboardDay(dayRequested, nowIso, authorityEpoch, boot.actor.id, panelRun);
+  const dayState = useDashboardDay(dayRequested, authorityEpoch, boot.actor.id, panelRun);
   // A queue date that opens no day stream, such as a future or malformed link, leaves the served inbox a stream of today.
   const inboxDay = dayRequested === undefined && workflowComposition.harness?.useInbox === undefined ? today : undefined;
-  const inboxDayState = useDashboardDay(inboxDay, nowIso, authorityEpoch, boot.actor.id);
+  const inboxDayState = useDashboardDay(inboxDay, authorityEpoch, boot.actor.id);
   const dayResource = dayState.day;
-  snoozes.current = dayResource.state === "loaded" ? dayResource.value.notifications
-    .flatMap(row => row.kind === "notification" && row.state === "snoozed" && row.snoozedUntil !== undefined ? [new Date(row.snoozedUntil).toISOString()] : []) : [];
   const streamDown = dayState.connection.state === "stopped" || dayState.connection.state === "reconnecting";
   const dayFailureText = useMemo(() => {
     if (dayResource.state !== "failed") return undefined;
@@ -324,7 +321,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     }
     const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
     if (original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")) return; // the Settings models toast these
-    toast(original?.family === "start" && (outcome.kind === "refused" || outcome.kind === "conflict")
+    if (outcome.kind === "refused" && outcome.feedback.code === "SAMPLE_RUN_REFUSED") toast(sampleRunRefusalToast());
+    else toast(original?.family === "start" && (outcome.kind === "refused" || outcome.kind === "conflict")
       ? runStartRefusalToast(outcome.feedback.text) : { tone: outcome.kind === "conflict" ? "warning" : "danger", title: outcome.feedback.text });
   }, [executor, toast]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
@@ -502,6 +500,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       publish: outcome => {
         refreshCommandRecovery(value => value + 1);
         commandFeedback(outcome);
+        if ("targets" in request && outcome.kind === "refused" && outcome.feedback.code === "SAMPLE_RUN_REFUSED") return;
         if ("targets" in request && plan !== undefined && outcome.reply !== undefined && "state" in outcome.reply && outcome.reply.state === "refused") {
           setBulkOutcome({ commandId: request.commandId, plan, subjects: bulkSubjectsOf(plan), response: { state: "refused", code: outcome.reply.code, message: outcome.kind === "confirmed" ? "Command confirmed." : outcome.feedback.text } });
         }
@@ -782,7 +781,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const searchTitles = useMemo(() => new Map(queueRows.map(row => [String(row.runId), row.title])), [queueRows]);
   const servedSearchData = useSearchWiring({ client, enabled: harnessSearch === undefined && route.view?.search === true,
     query: route.view?.searchQuery ?? "", today, epoch: authorityEpoch, workflows, titles: searchTitles });
-  const librarySheets = useLibrarySheets(client, harnessSearch === undefined && route.view?.search === true);
+  const librarySheets = useLibrarySheets(client, harnessSearch === undefined && route.view?.search === true, authorityEpoch);
   const searchData = useMemo(() => harnessSearch !== undefined ? { ...harnessSearch, sheets: harness?.paletteSheets } : { ...servedSearchData, sheets: librarySheets.sheets, sheetsUnavailable: librarySheets.unavailable }, [harnessSearch, harness, servedSearchData, librarySheets]);
   const harnessInbox = (harness?.useInbox ?? noHarnessInbox)({
     day, nowIso, anchorIso: boot.serverClock.now, rows: !hasServedWorkflows || dayWire ? queueRows : undefined,

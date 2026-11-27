@@ -8,7 +8,6 @@ import { createTransactionHistory } from "../../../storage/sqlite/transaction-hi
 import type { Clock } from "../../../../rules/time/clock.js";
 import { FingerprintSchema } from "../../../../rules/identity/ids.js";
 import { ErrorCatalogCodeSchema, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
-import { ActivityReportSelectionSchema } from "../../../../models/dashboard/activity-selection.js";
 import { ActivityPopulationExportSchema } from "../../../../models/dashboard/activity-population.js";
 import type { queryActivitySummaries } from "../../../runs/queries/activity-summaries.js";
 import type { ActivityRouteDeps } from "../../../transports/http/routes/activity-types.js";
@@ -25,7 +24,6 @@ type LocalActivity = { activity: LocalPopulation["reports"]; activityPopulation:
 
 const ActivityLaneRequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("report"), from: z.string(), to: z.string() }),
-  z.strictObject({ kind: z.literal("report-selected"), from: z.string(), to: z.string(), token: z.unknown() }),
   z.strictObject({ kind: z.literal("population"), range: z.unknown() }),
   z.strictObject({ kind: z.literal("population-selected"), range: z.unknown(), token: z.unknown(), browse: z.unknown().optional() }),
   z.strictObject({ kind: z.literal("population-export"), range: z.unknown(), token: z.unknown() }),
@@ -51,11 +49,10 @@ const activityLaneRead = defineLaneRead(import.meta.url, "activity", {
       descriptors: { resolve: workflowId => SERVER_REGISTRY[workflowId]?.descriptor } });
     try {
       const served = request.kind === "report" ? service.reports.read(request.from, request.to)
-        : request.kind === "report-selected" ? service.reports.readSelected(request.from, request.to, request.token)
-          : request.kind === "population" ? service.read(request.range)
-            : request.kind === "population-selected" ? service.readSelected(request.range, request.token, request.browse)
-              : request.kind === "population-export" ? service.exportSelected(request.range, request.token)
-                : xlsxDocument(sourceIdentity, service, OperatorXlsxActivityExportRequestSelectionSchema.parse(request.selection));
+        : request.kind === "population" ? service.read(request.range)
+          : request.kind === "population-selected" ? service.readSelected(request.range, request.token, request.browse)
+            : request.kind === "population-export" ? service.exportSelected(request.range, request.token)
+              : xlsxDocument(sourceIdentity, service, OperatorXlsxActivityExportRequestSelectionSchema.parse(request.selection));
       return { state: "served", body: JSON.stringify(served) };
     } catch (error) {
       if (error instanceof ActivitySnapshotError) return { state: "snapshot-refused", code: error.code };
@@ -80,10 +77,6 @@ function laneActivity(lanes: Pick<DashboardReadLanes, "read">, key: Uint8Array):
   return {
     activity: {
       read: (from, to) => { ActivityRangeSchema.parse({ from, to }); return read({ kind: "report", from, to }); },
-      readSelected: async (from, to, token) => {
-        ActivityRangeSchema.parse({ from, to });
-        return ActivityReportSelectionSchema.parse(JSON.parse(await read({ kind: "report-selected", from, to, token })));
-      },
     },
     activityPopulation: {
       read: range => read({ kind: "population", range }),
@@ -97,6 +90,7 @@ function laneActivity(lanes: Pick<DashboardReadLanes, "read">, key: Uint8Array):
 /** `reports` is the request-thread report the queue projection's summaries read; the routes use `activity`, on a lane when one is given. */
 export function composeActivity(input: ActivityInput): LocalActivity;
 export function composeActivity(input: ActivityInput & { readLanes: Pick<DashboardReadLanes, "read"> }): ActivityRouteDeps & Pick<LocalActivity, "reports"> & LaneXlsx;
+export function composeActivity(input: ActivityInput & { readLanes?: Pick<DashboardReadLanes, "read"> }): ActivityRouteDeps & Pick<LocalActivity, "reports"> & Partial<LaneXlsx>;
 export function composeActivity(input: ActivityInput & { readLanes?: Pick<DashboardReadLanes, "read"> }): ActivityRouteDeps & Pick<LocalActivity, "reports"> & Partial<LaneXlsx> {
   // One key for this runtime: the lane issues and validates the same tokens as the request-thread service.
   const signingKey = randomBytes(32);

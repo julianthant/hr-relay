@@ -2,11 +2,10 @@ import { debugEventLevel } from "../../../../../src/models/events/timeline.js";
 
 import assert from "node:assert/strict";
 import { afterEach, describe, it, vi } from "vitest";
-import { activityReportCsv } from "../../../../../src/backend/runs/queries/activity-export.js";
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema } from "../../../../../src/models/dashboard/activity-population.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboard/activity-selection.js";
-import { ACTIVITY_MEDIAN_ABSENT_REASON, activityReportCaveats } from "../../../../../src/models/dashboard/activity.js";
+import { ACTIVITY_MEDIAN_ABSENT_REASON } from "../../../../../src/models/dashboard/activity.js";
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 
 async function startFixtureRun(h: Awaited<ReturnType<typeof harness>>) {
@@ -35,13 +34,6 @@ async function startFixtureRun(h: Awaited<ReturnType<typeof harness>>) {
   });
 
   assert.equal(started.status, 200, await started.text());
-}
-
-// A missing range is an unexpected request failure: the wire carries the catalog's fixed text, never the thrown message.
-async function assertInternalFailure(response: Response) {
-  const body = await json(response);
-  assert.equal(body.code, "INTERNAL_FAILURE");
-  assert.equal(body.message, ERROR_CATALOG.INTERNAL_FAILURE.text);
 }
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
@@ -93,13 +85,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(report.terminalRuns, 0);
     assert.equal(report.durations.medianMs.state, "absent");
 
-    const halfRange = await h.app.request(`/api/v1/reports/activity?from=${DAY}`);
-    assert.equal(halfRange.ok, false);
-    await assertInternalFailure(halfRange);
-
-    const noRange = await h.app.request("/api/v1/reports/activity");
-    assert.equal(noRange.ok, false);
-    await assertInternalFailure(noRange);
+    for (const path of ["/api/v1/reports/activity", `/api/v1/reports/activity?from=${DAY}`]) {
+      const missing = await h.app.request(path);
+      assert.equal(missing.status, 400);
+      const failure = await json(missing);
+      assert.equal(failure.code, "SCHEMA_INVALID");
+      assert.match(String(failure.message), /requires both from= and to=/u);
+    }
 
     // A malformed bound is refused by the wire schema, by name.
     const badBound = await h.app.request(`/api/v1/reports/activity?from=today&to=${DAY}`);
@@ -111,49 +103,19 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(inverted.ok, false);
     assert.match(String((await json(inverted)).message), /ends before it starts/);
   });
-
-  it("serves the Activity report as a CSV that carries its own caveats", async () => {
-    const h = await harness();
-    const activityReport = ActivityReportSelectionSchema.parse(
-      await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
-    );
-    const report = h.projection.buildActivityReportWire(DAY, DAY);
-
-    const response = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=${DAY}&snapshot=${activityReport.snapshot.token}`);
-    assert.equal(response.status, 200);
-    assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
-    assert.equal(
-      response.headers.get("content-disposition"),
-      `attachment; filename="activity-${DAY}_${DAY}.csv"`,
-    );
-    const csv = await response.text();
-    // The bytes are the builder's, so the route cannot serve a second rendering.
-    assert.equal(csv, activityReportCsv(report));
-    // Every rule the panel shows behind its ⓘ is IN the file, verbatim.
-    for (const caveat of activityReportCaveats(report)) {
-      assert.ok(csv.includes(caveat.includes(",") ? `"${caveat}"` : caveat), `the export carries: ${caveat}`);
-    }
-    assert.ok(csv.includes(`Window from,${DAY}`));
-    assert.ok(csv.includes("Write ledger — what was actually filed"));
-
-    const halfRange = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&snapshot=${activityReport.snapshot.token}`);
-    assert.equal(halfRange.ok, false);
-    await assertInternalFailure(halfRange);
-
-    const noRange = await h.app.request("/api/v1/reports/activity.csv");
-    assert.equal(noRange.ok, false);
-    await assertInternalFailure(noRange);
-
-    const inverted = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=2026-08-01&snapshot=${activityReport.snapshot.token}`);
-    assert.equal(inverted.ok, false);
-    assert.match(String((await json(inverted)).message), /ends before it starts/);
-  });
-
-
 });
 
 import { OPERATOR_JSON_HEADERS, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);
+
+it("returns 404 for the three retired dashboard reads", async () => {
+  const { app } = await harness();
+  for (const path of ["/api/v1/settings/facts", "/api/v1/storage/run-history", "/api/v1/reports/activity.csv"]) {
+    const response = await app.request(path);
+    assert.equal(response.status, 404, path);
+    assert.equal((await json(response)).code, "ROUTE_NOT_FOUND");
+  }
+});
 
 it("serves selected population reads and maps malformed, foreign and stale selections to catalog refusals", async () => {
   const h = await harness();
@@ -173,6 +135,8 @@ it("serves selected population reads and maps malformed, foreign and stale selec
     [h.app, `${path}/selected?${new URLSearchParams({ ...query, browse: JSON.stringify({ metric: "completed", page: -1 }) })}`, "ACTIVITY_POPULATION_BROWSE_INVALID", 400],
     [h.app, `${path}/selected?${new URLSearchParams({ ...query, snapshot: selected.report.snapshot.token })}`, "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED", 409],
     [foreign.app, `${path}/selected?${new URLSearchParams(query)}`, "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED", 409],
+    [h.app, `${path}.csv`, "ACTIVITY_POPULATION_RANGE_INVALID", 400],
+    [h.app, `${path}.csv?from=${DAY}`, "ACTIVITY_POPULATION_RANGE_INVALID", 400],
     [h.app, `${path}.csv?${new URLSearchParams({ ...query, to: "2026-09-10" })}`, "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH", 409],
   ] as const;
   for (const [app, url, code, status] of cases) {

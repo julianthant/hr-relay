@@ -51,7 +51,7 @@ it("projects editable native records, persists corrections/exclusions and freeze
     assert.equal(ocr.role.kind, "composition");
     assert.equal(ocr.start.inputRun, undefined);
     assert.equal(ocr.start.uploadRun, undefined);
-    assert.equal(bootstrap.featureAvailability.some(feature => feature.feature === "ocr"), false);
+    assert.equal(Object.hasOwn(bootstrap, "featureAvailability"), false);
     assert.equal(workflows.some(workflow => workflow.id === "ocr-page"), false);
     for (const { descriptor } of WORKFLOW_MODULES) assert.equal(workflows.filter(workflow => workflow.id === descriptor.id).length, 1);
   } finally { shell.hub.close(); }

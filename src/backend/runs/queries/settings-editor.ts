@@ -10,7 +10,7 @@ import type { StoredConfig } from "../../../models/config/snapshot.js";
 import type { SettingsOverride } from "../../../models/config/schema.js";
 import { ProtectedSettingsNameSchema } from "../../../models/config/protected-settings.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../models/dashboard/settings-editor.js";
-import { EditableSettingsSectionIdSchema, settingsCatalogEntry, settingsControlFor, settingsSectionFor } from "../../../models/dashboard/settings-catalog.js";
+import { EditableSettingsSectionIdSchema, settingsControlFor, settingsSectionFor } from "../../../models/dashboard/settings-catalog.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { ProtectedSettingsRuntimeSnapshot, SettingsRuntimeSnapshot } from "../../runtime/settings/settings-runtime.js";
 
@@ -120,7 +120,6 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
   return EditableSettingsWireSchema.parse({
     revision: record.revision, settingsSchemaHash: record.settingsSchemaHash, settingsFingerprint: record.settingsFingerprint,
     activeConfigFingerprint: active.configFingerprint, runtimeStatus,
-    catalog: SETTINGS_CATALOG.map(settingsCatalogEntry),
     sections: EditableSettingsSectionIdSchema.options.map(id => ({ id, label: SECTION_LABELS[id], description: "Ordinary settings · SQLite", leaves: leaves.filter(value => settingsSectionFor(value.path) === id) })),
     currentFiscalYear,
     protectedSettings, host: hostConfigFacts(deps.environment), deployment,

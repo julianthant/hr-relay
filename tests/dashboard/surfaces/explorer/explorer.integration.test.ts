@@ -19,7 +19,7 @@ let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); });
 
 const versions = new Map(FIXTURE_EXPLORER_WIRE.workflows.map(workflow => [String(workflow.id), workflow.version]));
-const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows), FIXTURE_START_PICKER_BOOTSTRAP.workbookCompatibility);
+const served = launchWorkflows(parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows));
 const catalog = buildWorkflowCatalog(served).map(entry => entry.served === undefined ? entry : { ...entry, served: { ...entry.served, version: versions.get(entry.id) ?? entry.served.version } });
 const client = { workflowExplorer: async () => FIXTURE_EXPLORER_WIRE } as never;
 

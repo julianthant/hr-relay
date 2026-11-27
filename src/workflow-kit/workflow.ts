@@ -921,7 +921,10 @@ function deriveStepOmissions(
       if (!members.has(skipped)) throw new Error(`${id}: ${owner} skips node "${skipped}", which is not a member of that step`);
       if (Object.hasOwn(manual.produces, skipped)) throw new Error(`${id}: ${owner} both produces and skips node "${skipped}"`);
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(skipped), owner);
-      if (node.kind !== "task") {
+      if (node.kind !== "task" && node.kind !== "gate" && node.kind !== "transaction") {
+        throw new Error(`${id}: ${owner} skips ${node.kind} node "${skipped}"; only a task, gate or transaction is ever skipped`);
+      }
+      if (node.kind !== "task" && manual.skipsGatesAndTransactions !== true) {
         throw new Error(`${id}: ${owner} skips ${node.kind} node "${skipped}"; a gate or transaction always runs`);
       }
       if (node.kind === "task" && node.dryRun === "stop-before-publish") {
@@ -937,6 +940,12 @@ function deriveStepOmissions(
       if (read !== undefined) throw new Error(`${id}: ${owner} runs node "${member}", which reads skipped node "${String(read)}"`);
       if (switchable && (isPreviewBoundary(node) || node.kind === "gate")) {
         throw new Error(`${id}: ${owner} keeps ${node.kind} node "${member}" running, so the step cannot also be switched off`);
+      }
+    }
+    for (const reader of manual.orderOnlyReaders ?? []) {
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(reader), owner);
+      if (members.has(reader) || !node.dependsOn.some((dependency) => skipped.has(String(dependency)))) {
+        throw new Error(`${id}: ${owner} names order-only reader "${reader}", which is not a node of another step that waits on a skipped member`);
       }
     }
     for (const field of form.fields) {
@@ -966,6 +975,8 @@ function deriveStepOmissions(
       step: category.key, form, produces: Object.freeze({ ...manual.produces }),
       ...(manual.skips === undefined ? {} : { skips: Object.freeze([...manual.skips]) }),
       ...(manual.refine === undefined ? {} : { refine: manual.refine }),
+      ...(manual.skipsGatesAndTransactions === undefined ? {} : { skipsGatesAndTransactions: manual.skipsGatesAndTransactions }),
+      ...(manual.orderOnlyReaders === undefined ? {} : { orderOnlyReaders: Object.freeze([...manual.orderOnlyReaders]) }),
     }));
   }
   return Object.freeze(specs);

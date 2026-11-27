@@ -6,7 +6,6 @@ import "./write-safety.js";
 import "./activity.js";
 import "./notification-wiring.js";
 import "./settings.js";
-import "../../../runs/commands/run-history-service.js";
 import { runReadLaneWorker } from "../../../storage/sqlite/dashboard-read-host.js";
 
 runReadLaneWorker();

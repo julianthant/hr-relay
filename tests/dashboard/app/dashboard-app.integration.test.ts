@@ -35,7 +35,7 @@ import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection
 import { LocalDateSchema as LocalDateSchema_m1 } from "../../../src/rules/identity/ids.js";
 import { FIXTURE_BOOTSTRAP as FIXTURE_BOOTSTRAP_m1 } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1,FIXTURE_IDS as FIXTURE_IDS_m1 } from "../../support/fixtures/dashboard/fixture-queue.js";
-import { serveReadyNotificationStatus, streamingRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
+import { serveNotificationList, serveReadyNotificationStatus, streamingRunPanel } from "../../support/helpers/dashboard/serve-run-panel.js";
 import { createFixtureBff as createFixtureBff_m1 } from "../../support/helpers/dashboard/served-fixtures/fixture-bff.js";
 import { queueParentFixture } from "../../support/helpers/dashboard/queue-parent-fixture.js";
 import { FIXTURE_RUN_DETAILS } from "../../support/fixtures/dashboard/fixture-detail.js";
@@ -103,14 +103,18 @@ async function chooseSpreadsheet() {
   const bytes = new TextEncoder().encode("Name,Employee ID\nJordan Lee,10800000\n");
   const file = new File([bytes], "Focus roster.csv", { type: "text/csv" });
   Object.defineProperty(file, "arrayBuffer", { value: async () => bytes.buffer });
-  const input = document.querySelector<HTMLInputElement>('[role="dialog"] input[type="file"][accept=".xlsx,.csv"]'); assert_m0.ok(input);
+  const input = document.querySelector<HTMLInputElement>('input[type="file"][aria-label="Spreadsheet file"]'); assert_m0.ok(input);
+  await click(button("Import"));
+  const localFile = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent?.startsWith("From this computer"));
+  assert_m0.ok(localFile);
+  await click(localFile);
   Object.defineProperty(input, "files", { configurable: true, value: [file] });
   await act_m0(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
   await settle();
-  assert_m0.ok(document.querySelector('[role="dialog"]'));
+  assert_m0.equal(document.querySelector<HTMLInputElement>('input[aria-label="Name"]')?.value, "Focus roster");
 }
 for (const launch of ["external button", "keyboard shortcut"] as const) {
-  for (const dismissal of ["Cancel", "Escape", "Close"] as const) {
+  for (const dismissal of ["Escape", "Close"] as const) {
     it_m0(`${launch}: ${dismissal} restores the Run launch control after the real dialog unmounts`,async () => {
 try {
 
@@ -134,8 +138,7 @@ await _afterEachFixture0();
 
 it_m0("spreadsheet import is a Settings destination and leaves the Run launch focus intact", async () => {
 try {
-  let uploads = 0;
-  await mount({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } });
+  await mount();
   // The assistant panel mounts on first open and stays mounted while closed.
   const launcher = document.querySelector<HTMLButtonElement>("[data-assistant-launcher]"); assert_m0.ok(launcher);
   await click(launcher); await click(launcher);
@@ -147,29 +150,27 @@ try {
   await click(button("Settings"));
   const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link);
   await click(link);
-  await click(button("Import"));
   await chooseSpreadsheet();
-  await click(button("Next"));
+  await vi.waitFor(() => assert_m0.equal(button("Add to library").disabled, false));
   await click(button("Add to library"));
   await settle();
-  assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
+  assert_m0.ok(document.querySelector('input[aria-label="Name"]') === null);
   const imported = (await savedWorkbooks()).find(record => record.name === "Focus roster"); assert_m0.ok(imported);
   assert_m0.equal((await openedWorkbook(imported.libraryId)).workbook.sheets[0].rows[1].cells[0].value, "Jordan Lee");
-  assert_m0.equal(uploads, 0); assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
+  assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
 } finally {
 await _afterEachFixture0();
 }
 });
-it_m0.each(["Cancel", "Escape"])("standalone spreadsheet import: %s closes without registering or starting a run", async dismissal => {
+it_m0.each(["Discard", "Spreadsheets"])("standalone spreadsheet import: %s closes the draft without registering or starting a run", async dismissal => {
 try {
   let starts = 0;
   await mount({ submitStartPlan: async () => { starts++; throw new Error("unexpected start"); } }); await click(button("Settings"));
   const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert_m0.ok(link); await click(link);
   const before = (await savedWorkbooks()).map(record => record.name);
-  await click(button("Import"));
   await chooseSpreadsheet();
-  if (dismissal === "Escape") await key("Escape"); else await click(button("Cancel"));
-  assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
+  await click(button(dismissal));
+  assert_m0.ok(document.querySelector('input[aria-label="Name"]') === null);
   assert_m0.deepEqual((await savedWorkbooks()).map(record => record.name), before);
   assert_m0.equal(starts, 0);
   assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
@@ -341,7 +342,7 @@ afterEach_m1(_afterEachFixture0);
     const linkedDay = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1,
       queueSurfaces: FIXTURE_DAY_WIRE_m1.queueSurfaces.map(item => item === row ? { ...item, workflowId: "separations", title } : item) });
     await mount(`?day=${FIXTURE_DAY_WIRE_m1.day}&settings=general`, {
-      subscribeDay(input) { input.onDay({ ...linkedDay, notifications: [NotificationWireSchema.parse({ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title, occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Canonical history", workflow: "Separations" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId: row.runId } })] }); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" }); return { select() {}, close() {} }; },
+      subscribeDay(input) { input.onDay(linkedDay); serveNotificationList(input.rows, [NotificationWireSchema.parse({ kind: "notification", notificationId: "00000000-0000-4000-8000-000000000111", actorId: "local-operator", channel: "ping", count: 1, publicationId: "a".repeat(64), trigger: "failed", readState: "unread", state: "unread", severity: "error", title, occurredAt: "2026-08-03T17:00:00Z", revision: 1, context: { state: "available", subject: "Canonical history", workflow: "Separations" }, sourceEvent: { state: "available", kind: "run-failed" }, link: { kind: "run", runId: row.runId } })]); serveReadyNotificationStatus(input.rows); input.onState({ state: "live" }); return { select() {}, close() {} }; },
       notificationTarget: async () => ({ kind: "run" as const, runId: row.runId, day: linkedDay.day }),
     }, workflows => {
       const composition = MOCK_WORKFLOW_COMPOSITION_m1(workflows);
@@ -357,7 +358,7 @@ afterEach_m1(_afterEachFixture0);
     const preference = shellPreferences.snapshot().value.selectedWorkflowId;
     const target = surface === "search"
       ? [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent?.includes(title))
-      : [...document.querySelectorAll<HTMLButtonElement>('.notice-main')].find(item => item.querySelector(".notice-title")?.textContent === title);
+      : [...document.querySelectorAll<HTMLButtonElement>('.notice-main')].find(item => item.querySelector(".notice-title")?.textContent === "Canonical history");
     assert_m1.ok(target);
     await click(target);
     assert_m1.equal(document.body.textContent?.includes("Discard changes?"), false);
@@ -544,7 +545,7 @@ it_m1("keeps served Logs failures while explicit mock composition selects mock L
     assert_m1.equal(reads, failedReads, "mock Logs ask for no panel");
     assert_m1.match(document.body.textContent ?? "", /Is this the right person\?/);
     assert_m1.doesNotMatch(document.body.textContent ?? "", /Could not load logs|Logs unavailable|cross-source chronology unavailable/);
-    const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows), FIXTURE_BOOTSTRAP_m1.workbookCompatibility)[0];
+    const workflow = launchWorkflows(parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows))[0];
     assert_m1.ok(workflow);
     const composition = MOCK_WORKFLOW_COMPOSITION_m1([{ ...workflow, workflowId: "generic-served-workflow" }]);
     assert_m1.equal(composition.sources["person-lookup"], "hidden");

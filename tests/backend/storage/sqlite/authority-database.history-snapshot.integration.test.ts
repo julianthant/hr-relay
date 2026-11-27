@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
-import { composeNotificationReads } from "../../../../src/backend/app/composition/dashboard/notification-wiring.js";
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
@@ -54,11 +53,12 @@ it("opens the queue stream while a worker commits during its day read", async ()
   const { activity } = composeActivity({ database: history, clock, descriptors, ledger });
   const service = new RunRecordService({ database: history, clock, ids: { uuid: randomUUID }, publishQueued: () => {} });
   const reader = { read: service.read.bind(service), list: service.list.bind(service), withRunTreeSnapshot: service.withRunTreeSnapshot.bind(service),
-    summaries: { ...composeQueueSummaries(history), activity: (from: string, to: string) => activity.read(from, to) } };
-  const { list } = composeNotificationReads(copy.database, history);
+    summaries: { ...composeQueueSummaries(history), queue(input: Parameters<ReturnType<typeof composeQueueSummaries>["queue"]>[0]) {
+      commit(); commits += 1; return composeQueueSummaries(history).queue(input);
+    }, activity: (from: string, to: string) => activity.read(from, to) } };
   let commits = 0;
   const projection = createOperatorProjection({ database: history, reader, clock, stateRoot: copy.stateRoot, appVersion: "0.1.0",
-    descriptorSetHash: DESCRIPTOR_SET_HASH, descriptors, ledger, listNotifications: actor => { commit(); commits += 1; return list(actor); } });
+    descriptorSetHash: DESCRIPTOR_SET_HASH, descriptors, ledger });
   projection.rebuildFromTimeline();
   expect(projection.health().state).toBe("live");
   const hub = createDashboardStreamHub({ projection, backfillGaps: { detected: () => Promise.reject(new Error("unexpected-backfill-gap")) } });

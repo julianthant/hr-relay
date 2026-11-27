@@ -17,7 +17,7 @@ import { DATES_NODE, separationsKronosTimecardDefinition } from "./steps/kronos-
 import { ACTION_NODE, TERMINATION_TYPE_NODE, separationsKualiReadDefinition } from "./steps/kuali-extraction/step.js";
 import { FINALIZE_NODE, KUALI_FINALIZATION_STEP, separationsKualiFinalizationDefinition } from "./steps/kuali-finalization/step.js";
 import { separationsReferenceCheckDefinition } from "./steps/reference-check/step.js";
-import { PENDING_SET_NODE, RECEIPT_NODE, SWEEP_NODE, TERMINATION_NODE, UCPATH_TRANSACTION_STEP, separationsUcpathTerminationDefinition } from "./steps/ucpath-transaction/step.js";
+import { PENDING_TERMINATION_STEP, RECEIPT_NODE, SWEEP_NODE, separationsUcpathTerminationDefinition } from "./steps/ucpath-transaction/step.js";
 export { KRONOS_TIMECARD_OMISSION } from "./steps/kronos-timecard/step.js";
 const SEARCH_TIMEOUT_DEFAULT_MS = 15_000;
 
@@ -103,7 +103,7 @@ export const separationsWorkflow = defineWorkflow({
   actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {
     inputRun: {
-      placeholder: "Enter Kuali document numbers separated by a semicolon or Shift+Enter (e.g. 4502; 4510)",
+      placeholder: "e.g. 4502; 4510",
       parser: {
         split: { kind: "delimited", delimiters: [";", "\n"] },
         rules: [
@@ -174,13 +174,13 @@ export const separationsWorkflow = defineWorkflow({
     {
       key: "transaction-id",
       label: "Transaction",
-      source: { nodeId: TERMINATION_NODE, fieldPath: "receipt.transactionId" },
+      source: { nodeId: RECEIPT_NODE, fieldPath: "transactionNumber" },
       display: "text",
     },
     {
       key: "approval-status",
       label: "Transaction status",
-      source: { nodeId: TERMINATION_NODE, fieldPath: "receipt.approvalStatus" },
+      source: { nodeId: RECEIPT_NODE, fieldPath: "approvalStatus" },
       display: "text",
     },
   ],
@@ -200,13 +200,13 @@ export const separationsWorkflow = defineWorkflow({
   role: defineWorkflowRole({ kind: "composition" }),
   // The reference check reads the Employee ID the subject node resolves, so it shows under Verify employee identity.
   rows: [
-    { key: "kuali-extraction", label: "Read Kuali document", members: [{ step: "kuali-extraction" }] },
-    { key: "identity-check", label: "Verify employee identity", members: [{ step: "identity-check" }, { step: "reference-check" }] },
+    { key: "kuali-extraction", label: "Read Kuali document", members: [{ step: "kuali-extraction" }], target: { step: "kuali-extraction" } },
+    { key: "identity-check", label: "Verify employee identity", members: [{ step: "identity-check" }, { step: "reference-check" }], target: { step: "identity-check" } },
     { key: "kronos-timecard", label: "Read timecard", members: [{ step: "kronos-timecard" }], target: { step: "kronos-timecard" } },
-    { key: "identity-review", label: "Approve identity", members: [{ step: "identity-review" }] },
-    { key: "pending-termination", label: "Check pending termination", members: [{ step: "ucpath-transaction", nodes: [PENDING_SET_NODE, SWEEP_NODE] }] },
-    { key: "submit-termination", label: "Submit termination", members: [{ step: "ucpath-transaction", nodes: [TERMINATION_NODE, RECEIPT_NODE] }] },
-    { key: "kuali-finalization", label: "Finalize Kuali document", members: [{ step: "kuali-finalization" }] },
+    { key: "identity-review", label: "Approve identity", members: [{ step: "identity-review" }], target: { step: "identity-review" } },
+    { key: "pending-termination", label: "Check pending termination", members: [{ step: "pending-termination" }], target: { step: "pending-termination" } },
+    { key: "submit-termination", label: "Submit termination", members: [{ step: "ucpath-transaction" }], target: { step: "ucpath-transaction" } },
+    { key: "kuali-finalization", label: "Finalize Kuali document", members: [{ step: "kuali-finalization" }], target: { step: "kuali-finalization" } },
   ],
   scenarios: [
     "separations/action-resolved",
@@ -270,7 +270,7 @@ export const separationsWorkflow = defineWorkflow({
             lastDayWorkedChanged: outputs[DATES_NODE].lastDayWorkedChanged,
             separationDateChanged: outputs[DATES_NODE].separationDateChanged,
           },
-          pendingSweep: omittedOr(outputs[SWEEP_NODE], UCPATH_TRANSACTION_STEP.key, (sweep) => ({
+          pendingSweep: omittedOr(outputs[SWEEP_NODE], PENDING_TERMINATION_STEP.key, (sweep) => ({
             disposition: sweep.disposition,
             proof: sweep.output.cleared,
           })),

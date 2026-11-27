@@ -77,4 +77,5 @@ node --import tsx scripts/bench/settings-editor.ts development --runs 20
 
 It reads the Settings editor as the dashboard does: the store part on the navigation lane, the protected facts and the
 document on main. Each read alternates the fiscal year so the document is built every time. It reports main-thread CPU
-per read (p50, p95, max) and wall time; G6 passes when every read's main-thread CPU is at most 5 ms.
+per read (p50, p95, max) and wall time. For G6, use the p50 and max of `buildCpuMs`, which times
+`buildSettingsEditor` alone. The gate requires every sample to build the editor and the max to be at most 5 ms.

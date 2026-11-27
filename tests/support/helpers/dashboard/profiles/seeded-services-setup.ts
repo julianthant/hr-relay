@@ -29,7 +29,6 @@ import { createTrustNotifications } from "../../../../../src/backend/app/composi
 import { composeNotificationPublications, composeNotificationRoutes } from "../../../../../src/backend/app/composition/dashboard/notification-wiring.js";
 import { ocrHostRun } from "../../../../../src/backend/runs/queries/ocr-record-members.js";
 import { createNotificationTargetQuery } from "../../../../../src/backend/runs/queries/notifications.js";
-import { createWorkbookIntakeBridge } from "../../../../../src/backend/runs/commands/workbook-intake-service.js";
 import { createWorkbookLibraryService } from "../../../../../src/backend/workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../../../../src/backend/workbooks/workbook-library-error.js";
 import type { AssistantService } from "../../../../../src/backend/assistant/service.js";
@@ -186,7 +185,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       : [{ descriptor: personLookupDescriptor, role: defineWorkflowRole({ kind: "standalone" }) }];
     const strictDescriptors = { resolve: (id: string) => { const descriptor = descriptors.resolve(id); if (descriptor === undefined) throw new Error(`seeded-descriptor-missing:${id}`); return descriptor; } };
     const trustNotifications = productWorkflows === true ? createTrustNotifications({ database, clock, ids: sequentialIdFactory("b"), reader: lifecycle }) : undefined;
-    const productAppDeps = ({ observer }: NonNullable<typeof trustNotifications>): Pick<DashboardAppDeps, "notifications" | "workbooks" | "assistant"> => {
+    const productAppDeps = ({ observer }: NonNullable<typeof trustNotifications>) => {
       const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get,
         host: run => database.withAuthorityReadSnapshot(() => ocrHostRun(database.authority, run)),
         command: commandId => database.authority.commands.readForNotice(commandId),
@@ -201,7 +200,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       };
       return {
         notifications: composeNotificationRoutes({ database, clock, lifecycle, runDetailDeps, descriptors: strictDescriptors, assertCurrent: () => undefined, notificationObserver: observer, notificationTarget }),
-        workbooks: { library, intake: createWorkbookIntakeBridge(library, UNWIRED_INTAKE_SERVICE), workflows: modules.map(module => module.descriptor) },
+        workbooks: { library, workflows: modules.map(module => module.descriptor) },
         assistant,
       };
     };
@@ -224,6 +223,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       ...(trustNotifications === undefined || notificationRoutes === undefined ? {} : {
         notificationPublications: composeNotificationPublications({
           database, clock, lifecycle, descriptors: strictDescriptors, runDetailDeps, notificationInbox: trustNotifications.inbox, target: notificationRoutes.target }),
+        notificationList: notificationRoutes.streamList,
         notificationStatus: { read: () => notificationRoutes.status(), onChange: listener => trustNotifications.observer.onStatusChange(listener) },
       }),
       ...(liveSettings === true ? { settings: { read: () => buildSettingsEditor(settingsEditor),
@@ -284,7 +284,6 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       hub,
     }, {
 
-      settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [personLookupDescriptor] },
       settingsEditor,
       storage: {
         admission: syntheticStateRoot(stateRoot),

@@ -67,8 +67,19 @@ export const StreamRowSchema = z.discriminatedUnion("model", [
   z.strictObject({ model: z.literal("run-panel"), key: RunIdSchema, value: RunPanelSchema }).superRefine((row, context) => {
     if (row.value.state === "available" && row.value.detail.runId !== row.key) context.addIssue({ code: "custom", path: ["value"], message: "run panel must belong to its key" });
   }),
-  /** What `GET /notifications/status` answers for the actor. */
+  /** The notification observation status for the actor. */
   z.strictObject({ model: z.literal("notification-status"), key: ActorIdSchema, value: ReadSchema(NotificationObservationStatusSchema) }),
+  z.strictObject({ model: z.literal("notification-list"), key: ActorIdSchema, value: ReadSchema(z.array(NotificationWireSchema)) }).superRefine((row, context) => {
+    if (row.value.state !== "available") return;
+    const ids = new Set<string>();
+    for (const notice of row.value.value) {
+      if (notice.actorId !== row.key || ids.has(notice.notificationId)) {
+        context.addIssue({ code: "custom", path: ["value"], message: "notification list must hold distinct rows for its actor" });
+        return;
+      }
+      ids.add(notice.notificationId);
+    }
+  }),
   /** What `GET /settings/editable` answers; the document carries its `revision`. */
   z.strictObject({ model: z.literal("settings"), key: z.literal("editable"), value: ReadSchema(EditableSettingsWireSchema) }),
 ]);
@@ -125,10 +136,8 @@ const NotificationPublicationEnvelopeSchema = z.strictObject({
   if (!holds || listed.actorId !== actorId) context.addIssue({ code: "custom", path: ["listed"], message: "a publication's listed row must hold its notification" });
 });
 
-/** A publication as the client admits it: the row, the destination the server resolved for it, and the `snapshotCursor` of the day
- * the stream held when it arrived, which the day's next snapshot replaces. */
-export type NotificationArrival = Readonly<{ publication: NotificationPublicationWire; listed: NotificationWire; target: NotificationTarget;
-  snapshotCursor: z.infer<typeof ProjectionCursorSchema> }>;
+/** A publication as the client admits it and the destination the server resolved for it. */
+export type NotificationArrival = Readonly<{ publication: NotificationPublicationWire; listed: NotificationWire; target: NotificationTarget }>;
 
 export const DashboardStreamEnvelopeSchema = z.union([
   HelloEnvelopeSchema,

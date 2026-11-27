@@ -53,7 +53,6 @@ const STORAGE_EVENT = { kind: "storage-degraded", concern: "disk-space", state: 
 
 interface LaneRead {
   readonly day: string;
-  readonly publications: readonly string[];
   readonly signal: AbortSignal | undefined;
   /** The lane's body as its replica builds the day now, at the current process-facts revision. */
   capture(): Readonly<{ body: string; processRevision: number }>;
@@ -83,13 +82,11 @@ async function laneHarness(options: Readonly<{ maxPending?: number; status?: tru
     processRevision: () => state.revision,
     read(day, request) {
       const reply = Promise.withResolvers<Readonly<{ body: string; processRevision: number }>>();
-      reads.push({ day, publications: request.publications, signal: request.signal,
+      reads.push({ day, signal: request.signal,
         capture: () => {
           replica.ingestFromTimeline();
           const built = replica.buildLaneDay(day);
-          const held = new Set<string>(w.database.authority.notificationPublications.list().map(record => record.sourceId));
-          const missing = request.publications.filter(sourceId => !held.has(sourceId));
-          return { body: JSON.stringify({ d: built.d, f: { ...built.f, missingPublications: missing } }), processRevision: state.revision };
+          return { body: JSON.stringify(built), processRevision: state.revision };
         },
         answer: answered => reply.resolve(answered) });
       return reply.promise;
@@ -108,6 +105,8 @@ async function laneHarness(options: Readonly<{ maxPending?: number; status?: tru
           { actorId: publication.notification.actorId, notificationId: publication.notification.notificationId, event: publication.event, adopted: false })) });
       return { publication: wire, listed: wire.notification };
     }, target: () => STORAGE_TARGET },
+    notificationList: { read: () => w.database.authority.notifications.listByActor("local-operator").map(record => notificationWireOf(record, w.clock.nowMs())),
+      onChange: () => () => undefined },
     // With `status`, the observer status answers later: each read waits until the test settles it.
     ...options.status === undefined ? {} : {
       notificationStatus: {
@@ -265,11 +264,8 @@ describe("a stream snapshot read on the navigation lane", () => {
     const position = main.position();
     await publish("a");
     assert.equal(main.position(), position, "the publication is at the same timeline position");
-    const read = lastRead(reads);
-    assert.deepEqual(read.publications, [], "nothing was retained at dispatch");
     await answerAll(reads);
     assert.equal(reads.length, 2, "a day read under the publication may or may not hold it, so it is asked again");
-    assert.equal(lastRead(reads).publications.length, 1, "the second ask names the publication");
     const connection = await connecting;
     const envelopes = [...connection.initial, ...await drain(connection)];
     assertConverges(main, envelopes);
@@ -374,22 +370,21 @@ describe("a stream snapshot read on the navigation lane", () => {
     connection.close();
   });
 
-  it("asks again when the lane's snapshot lacks a publication main retained at dispatch", async () => {
+  it("serves a retained notification in its independent handoff row without asking the day lane to prove it", async () => {
     const { hub, reads, publish, main } = await laneHarness();
     await publish("b");
     const connecting = hub.connect({ day: DAY });
-    const first = lastRead(reads);
-    assert.equal(first.publications.length, 1);
-    const reply = first.capture();
-    const decoded = JSON.parse(reply.body) as { d: unknown; f: { missingPublications: string[] } };
-    first.answer({ ...reply, body: JSON.stringify({ d: decoded.d, f: { ...decoded.f, missingPublications: [...first.publications] } }) });
-    await tick();
-    assert.equal(reads.length, 2, "the read is asked again");
-    const second = lastRead(reads);
-    second.answer(second.capture());
+    const read = lastRead(reads);
+    read.answer(read.capture());
     const connection = await connecting;
-    assertConverges(main, [...connection.initial, ...await drain(connection)]);
-    assert.equal(connection.initial.some(envelope => envelope.type === "notification-publication"), false, "a fresh snapshot replays no retained arrival");
+    assert.equal(reads.length, 1, "the day lane reads only the day");
+    const snapshot = assertConverges(main, [...connection.initial, ...await drain(connection)]);
+    assert.equal("notifications" in snapshot.payload, false);
+    const inbox = snapshot.rows.find(row => row.model === "notification-list");
+    assert.ok(inbox?.value.state === "available");
+    assert.equal(inbox.value.value.length, 1);
+    assert.equal(connection.initial.some(envelope => envelope.type === "notification-publication"), false, "a fresh handoff plays no retained arrival");
+    connection.close();
   });
 
   it("asks again when the process facts moved while the read was pending", async () => {

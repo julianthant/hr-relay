@@ -4,11 +4,12 @@ import { ActivityPopulationError } from "../../../runs/queries/activity-populati
 import { ActivitySnapshotError } from "../../../runs/queries/activity-selection.js";
 import { DashboardReadFailedError } from "../../../runs/commands/refusals.js";
 import { selectionDownload } from "../../../runs/exports/selection-download.js";
-import { ActivitySnapshotTokenSchema } from "../../../../models/dashboard/activity-selection.js";
-import { activityReportCsv, activityReportCsvFileName } from "../../../runs/queries/activity-export.js";
 
 import type { DashboardApp } from "./api-types.js";
 import type { ActivityRouteDeps } from "./activity-types.js";
+
+const reportBound = z.iso.date({ error: (issue) => issue.input === undefined ? "an activity report requires both from= and to= as YYYY-MM-DD" : undefined });
+const reportRange = { from: reportBound, to: reportBound };
 
 function populationParameters(url: string): Record<string, string> {
   const parameters = [...new URL(url).searchParams];
@@ -25,30 +26,11 @@ const laneJson = (body: string) => new Response(body, { headers: { "content-type
 
 export function registerActivityRoutes(app: DashboardApp, deps: ActivityRouteDeps): void {
   app.get("/api/v1/reports/activity", async (c) => {
-    const from = c.req.query("from");
-    const to = c.req.query("to");
-    if (from === undefined || to === undefined) {
-      throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
-    }
     const parameters=[...new URL(c.req.url).searchParams];
     if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new Error("activity-report-duplicate-query");
-    z.strictObject({from:z.iso.date(),to:z.iso.date()}).parse(Object.fromEntries(parameters));
+    const {from,to}=z.strictObject(reportRange).parse(Object.fromEntries(parameters));
     const report = await deps.activity.read(from, to);
     return typeof report === "string" ? laneJson(report) : c.json(report);
-  });
-
-
-  app.get("/api/v1/reports/activity.csv", async (c) => {
-    const from = c.req.query("from");
-    const to = c.req.query("to");
-    if (from === undefined || to === undefined) {
-      throw new Error("an activity report requires both from= and to= as YYYY-MM-DD");
-    }
-    const parameters=[...new URL(c.req.url).searchParams];
-    if(new Set(parameters.map(([key])=>key)).size!==parameters.length)throw new Error("activity-export-duplicate-query");
-    const selection=z.strictObject({from:z.iso.date(),to:z.iso.date(),snapshot:ActivitySnapshotTokenSchema}).parse(Object.fromEntries(parameters));
-    const report = await deps.activity.readSelected(from, to, selection.snapshot);
-    return selectionDownload(activityReportCsv(report),activityReportCsvFileName(report),"text/csv; charset=utf-8",selection.snapshot);
   });
 
   app.get("/api/v1/reports/activity/population", async (c) => {

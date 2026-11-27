@@ -221,11 +221,6 @@ describe("composed Activity and Queue boundaries", () => {
       const response = await app.request(`/api/v1/reports/activity?from=${from}&to=${to}`);
       assert.equal(response.status, 200);
       assert.deepEqual(ActivityReportSelectionSchema.parse(await response.json()), expected);
-      const csv = await app.request(`/api/v1/reports/activity.csv?${new URLSearchParams({ from, to, snapshot: expected.snapshot.token })}`);
-      assert.equal(csv.status, 200);
-      assert.equal(csv.headers.get("cache-control"), "no-store");
-      assert.match(csv.headers.get("content-disposition") ?? "", /attachment; filename="activity-/u);
-      assert.match(await csv.text(), /2026-09-09/u);
       const seen: string[] = [];
       let after: { localDay: string; runId: string } | undefined;
       do {
@@ -236,7 +231,7 @@ describe("composed Activity and Queue boundaries", () => {
       } while (after !== undefined);
       assert.deepEqual(seen, Array.from({ length: 7 }, (_, n) => id_m1(4100 + n)));
       assert.deepEqual(activity.read(from, to), expected, "Queue reads cannot alter Activity authority or totals");
-      for (const path of ["/api/v1/reports/activity", "/api/v1/reports/activity.csv?from=2026-09-09", "/api/v1/reports/activity?from=2026-09-10&to=2026-09-09"]) {
+      for (const path of ["/api/v1/reports/activity", "/api/v1/reports/activity?from=2026-09-10&to=2026-09-09"]) {
         assert.notEqual((await app.request(path)).status, 200, "a missing or reversed range cannot become a default report");
       }
       assert.throws(() => queue.queue({ fromDay: to, toDay: "2026-09-08", limit: 2, topLevel: true }), /range-invalid/u);

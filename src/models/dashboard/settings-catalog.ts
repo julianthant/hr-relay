@@ -1,7 +1,6 @@
 /** Settings-only presentation contracts, derived from the canonical catalog and executable schemas. */
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import { SETTINGS_CATALOG, SettingsCatalogKeySchema, settingsCatalogRow, type SettingsCatalogRow } from "../config/catalog.js";
+import { SETTINGS_CATALOG } from "../config/catalog.js";
 import { ConfigSchema, EditableSettingsOverrideSchema } from "../config/schema.js";
 
 export const EditableSettingsSectionIdSchema = z.enum(["general", "display", "performance", "paths", "routes", "annual-dates", "providers"]);
@@ -74,25 +73,3 @@ export function settingsControlFor(key: string): SettingsControl {
   if (schema instanceof z.ZodArray) return { input: "models" };
   return scalarControl(schema, key);
 }
-
-export const SettingsCatalogEntryWireSchema = z.strictObject({
-  key: SettingsCatalogKeySchema,
-  schema: z.string().min(1),
-  sourceClass: z.enum(["ordinary-settings", "protected-store", "derived-host", "runtime-isolation"]),
-  editability: z.enum(["operator", "deployment", "derived", "machine"]),
-  sensitivity: z.enum(["ordinary", "protected-identifier", "protected-secret", "derived-host"]),
-  activationScope: z.enum(["new-runs", "next-idle", "next-use", "process"]),
-}).superRefine((row, context) => {
-  if (canonicalJsonStringify(row) !== canonicalJsonStringify(settingsCatalogEntry(settingsCatalogRow(row.key)))) {
-    context.addIssue({ code: "custom", message: "settings catalog classification mismatch" });
-  }
-});
-export function settingsCatalogEntry(row: SettingsCatalogRow) {
-  return { key: row.key, schema: row.schema, sourceClass: row.sourceClass, editability: row.editability,
-    sensitivity: row.sensitivity, activationScope: row.sourceClass === "ordinary-settings"
-      ? row.key.startsWith("daemon.") ? "next-idle" as const : "new-runs" as const
-      : row.sourceClass === "protected-store" ? "next-use" as const : "process" as const };
-}
-export const SettingsCatalogWireSchema = z.array(SettingsCatalogEntryWireSchema).length(SETTINGS_CATALOG.length).superRefine((rows, context) => {
-  if (new Set(rows.map(row => row.key)).size !== SETTINGS_CATALOG.length) context.addIssue({ code: "custom", message: "settings catalog membership mismatch" });
-});

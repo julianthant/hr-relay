@@ -17,7 +17,6 @@ export function createDashboardModelFixtures() {
 
   const ARTIFACT_1 = "66666666-6666-4666-8666-666666666666";
 
-  const NOTIFICATION_1 = "77777777-7777-4777-8777-777777777777";
 
   const SESSION_1 = "88888888-8888-4888-8888-888888888888";
 
@@ -107,7 +106,6 @@ export function createDashboardModelFixtures() {
       controls: { basis: { state: "present", value: { lifetimeId: "aaaaaaaa-0001-4000-8000-000100000000", version: 3 } } },
       revision: 1,
     }],
-    notifications: [{ kind: "notification", channel: "inbox", count: 1, publicationId: "a".repeat(64), trigger: "verified-done", readState: "unread", notificationId: NOTIFICATION_1, actorId: "local-operator", severity: "info", title: "Run started", state: "unread", occurredAt: NOW, revision: 1, context: { state: "available", workflow: "Onboarding", subject: "Onboard employee" } }],
   };
 
   const DETAIL = {
@@ -198,7 +196,6 @@ export function createDashboardModelFixtures() {
 
   const BOOTSTRAP = {
     wireVersion: 1,
-    workbookCompatibility: { workflows: [], libraries: [] },
     appVersion: "1.0.0",
     descriptorHash: HASH_A,
     settingsSchemaHash: HASH_B,
@@ -208,9 +205,6 @@ export function createDashboardModelFixtures() {
     serverClock: { now: NOW, zone: "America/Los_Angeles" },
     storage: { authority: "healthy" },
     workflows: [WORKFLOW_PRIMITIVE],
-    systemInstances: [{ system: "ucpath", prod: "available", test: { state: "unavailable", code: "not-configured", reason: "test URL not configured" } }],
-    settingsSections: [{ id: "general", label: "General", revision: 1 }],
-    featureAvailability: [{ feature: "ocr", availability: { state: "available" } }],
   };
   return { WORKFLOW_PRIMITIVE, BOOTSTRAP, RUN_1, RUN_2, NOTE_1, RECORD_1, HASH_A, HASH_B, NOW, QUEUE, DAY, DETAIL, NOTE_PAGE, REVIEW_PAGE, PEOPLE_PAGE, ARTIFACT, ARTIFACT_1 };
 }

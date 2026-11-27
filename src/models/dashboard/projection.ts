@@ -473,6 +473,8 @@ export const UnavailableWorkerCardWireSchema = z.strictObject({
 export const WorkerCardWireSchema = z.strictObject({
   member: WorkerPoolMemberSchema,
   workerId: WorkerIdSchema,
+  /** A copy profile's sample card: drawn on Sessions, never a pool member. */
+  sample: z.literal(true).optional(),
   /** The one workflow this worker claims for (ref execution-and-sessions ) — from its slot, never guessed. */
   workflowId: WorkflowIdSchema,
   state: z.enum(["running", "starting", "idle", "waiting", "paused", "failed"]),
@@ -808,7 +810,6 @@ export const DashboardDayWireSchema = z.strictObject({
   ]),
   /** One entry per workflow that HAS a pool row; see `WorkerPoolWireSchema`. */
   workerPools: z.array(WorkerPoolWireSchema),
-  notifications: z.array(NotificationWireSchema),
 }).superRefine((day, context) => {
   requireUnique(day.monthCounts.map(({ day: value }) => value), "monthCounts", context);
   requireUnique(day.workflowCounts.map(({ workflowId }) => workflowId), "workflowCounts", context);
@@ -830,17 +831,40 @@ export const DashboardDayWireSchema = z.strictObject({
   const cards = [...day.workerCards, ...day.unavailableWorkerCards ?? []];
   requireUnique(cards.map(({ workerId }) => workerId), "workerCards", context);
   requireUnique(day.workerAuthority.members.map(({ workerId }) => workerId), "workerAuthority", context);
-  if (day.workerAuthority.state === "present" && (day.workerAuthority.members.length !== cards.length
-    || day.workerAuthority.members.some(member => member.retiredAt !== null || !cards.some(card =>
+  const memberCards = cards.filter(card => !("sample" in card) || card.sample !== true);
+  if (day.workerAuthority.state === "present" && (day.workerAuthority.members.length !== memberCards.length
+    || day.workerAuthority.members.some(member => member.retiredAt !== null || !memberCards.some(card =>
       card.workerId === member.workerId
       && card.member.ordinal === member.ordinal && card.member.poolIndex === member.poolIndex && card.member.workflowId === member.workflow)))) {
     context.addIssue({ code: "custom", path: ["workerAuthority"], message: "available worker authority requires every exact standing member card" });
   }
   requireUnique(day.workerPools.map(({ workflowId }) => workflowId), "workerPools", context);
-  requireUnique(day.notifications.map(({ notificationId }) => notificationId), "notifications", context);
 });
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 export type DashboardDayWire = z.infer<typeof DashboardDayWireSchema>;
 
 export type NotificationWire = z.infer<typeof NotificationWireSchema>;
+
+/** Each durable notification a listed row stands for, with its revision: a storage group stands for its members. */
+function memberRevisions(row: NotificationWire): ReadonlyMap<string, number> {
+  if (row.kind === "notification" && row.group !== undefined) return new Map(row.group.members.map(member => [member.notificationId, member.revision]));
+  return new Map([[row.notificationId, row.kind === "backfill-gap" ? 0 : row.revision]]);
+}
+
+/** Whether a listed row is ahead of the held rows: newer for one of its notifications, or holding one they lack, and older for none. */
+export function listedAhead(rows: readonly NotificationWire[], listed: NotificationWire, requireOverlap = false): boolean {
+  const held = new Map(rows.flatMap(row => [...memberRevisions(row)]));
+  const entries = [...memberRevisions(listed)];
+  return (!requireOverlap || entries.some(([id]) => held.has(id)))
+    && entries.some(([id, revision]) => (held.get(id) ?? -1) < revision)
+    && entries.every(([id, revision]) => (held.get(id) ?? -1) <= revision);
+}
+
+/** Puts a listed row in place of every held row it stands for, when it is ahead of them; otherwise the held rows stand. */
+export function upsertListedRow(rows: readonly NotificationWire[], listed: NotificationWire): readonly NotificationWire[] {
+  const incoming = memberRevisions(listed);
+  const covered = rows.filter(row => [...memberRevisions(row).keys()].some(id => incoming.has(id)));
+  if (!listedAhead(covered, listed)) return rows;
+  return [...rows.filter(row => !covered.includes(row)), listed];
+}

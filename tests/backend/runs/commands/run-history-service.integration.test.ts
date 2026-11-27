@@ -12,17 +12,13 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { createComposedDashboardReadHost } from "../../../../src/backend/app/composition/dashboard/runtime-resources.js";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { createRunHistoryService } from "../../../../src/backend/runs/commands/run-history-service.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
-import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
 import { createContentAddressedArtifactWriter, removeArtifactDeletionFile } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { RunHistoryCommandSchema } from "../../../../src/models/dashboard/run-history.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { capturedInstantClock, manualClock } from "../../../../src/rules/time/clock.js";
+import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-database-admission.js";
 import { CONFIG_SNAPSHOT, HASH_A, NOW, UUID_3, UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -51,14 +47,11 @@ async function fixture() {
   let refreshed = 0;
   const lifecycle = () => new RunRecordService({ database, clock: capturedInstantClock(NOW), ids: sequentialIdFactory(), publishQueued() {} });
   const service = () => createRunHistoryService({ database, lifecycle: lifecycle(), afterClear() { refreshed++; } });
-  // queuedSpan records the run.queued span a served enqueue writes, which the read lane's queue fold requires.
-  const seed = (id = randomUUID(), parent?: ReturnType<typeof RunRecordSchema.parse>, terminal = true, queuedSpan = false) => {
+  const seed = (id = randomUUID(), parent?: ReturnType<typeof RunRecordSchema.parse>, terminal = true) => {
     const run = RunRecordSchema.parse({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId: id, itemId: id,
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint,
       ...(parent === undefined ? {} : { parent: { runId: parent.envelope.runId, tracePrefix: parent.envelope.traceId, edgeId: "child-probe" } }) } });
     database.authority.runs.enqueue(run);
-    if (queuedSpan) createTimelineEmitter({ repository: database.authority.timelineEvents, clock: capturedInstantClock(NOW), pid: 4242 })
-      .emit(runQueuedSpanEvent({ run, title: "History probe", actorId: ActorIdSchema.parse("synthetic-operator") }));
     if (!terminal) return run;
     const result = lifecycle().transition({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version,
       lifecycle: { state: "terminal", outcome: "discarded", endedAt: NOW } });
@@ -114,7 +107,7 @@ describe("clear all run history", () => {
     const account = f.profile.machine.readProfileRegistry();
     const before = retained.map(table => [table, f.rows(table)]);
     const command = request();
-    expect(f.service().status()).toEqual({ state: "available", finishedRuns: 3, activeRuns: 0 });
+    expect(f.database.authority.runs.countByTerminal()).toEqual({ finished: 3, active: 0 });
     expect(f.service().clear(command)).toEqual({ state: "cleared", commandId: command.commandId, deletedRuns: 3 });
     expect(f.refreshed).toBe(1);
     expect(existsSync(file)).toBe(false);
@@ -130,7 +123,7 @@ describe("clear all run history", () => {
     using raw = new DatabaseSync(f.profile.path, { readOnly: true });
     expect(raw.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     f.reopen();
-    expect(f.service().status()).toEqual({ state: "available", finishedRuns: 0, activeRuns: 0 });
+    expect(f.database.authority.runs.countByTerminal()).toEqual({ finished: 0, active: 0 });
     const generation = f.database.getMeta().authorityGeneration;
     expect(f.service().clear(command)).toEqual({ state: "cleared", commandId: command.commandId, deletedRuns: 3 });
     expect(f.database.getMeta().authorityGeneration).toBe(generation);
@@ -141,7 +134,7 @@ describe("clear all run history", () => {
 
   it("refuses the whole operation if an active run appears after the status read", async () => {
     const f = await fixture(); const finished = f.seed();
-    expect(f.service().status()).toMatchObject({ activeRuns: 0 });
+    expect(f.database.authority.runs.countByTerminal()).toMatchObject({ active: 0 });
     f.seed(undefined, finished, false);
     const command = request(), before = f.rows("runs"), generation = f.database.getMeta().authorityGeneration;
     expect(f.service().clear(command)).toEqual({ state: "refused", commandId: command.commandId, reason: "active-runs" });
@@ -237,9 +230,7 @@ describe("clear all run history", () => {
         expect(removeArtifactDeletionFile(admission, first)).toBe("removed");
         expect(existsSync(join(admission.artifactRoot, `${second.ref.sha256}.artifact`))).toBe(true);
         w.reopen();
-        const reconstructed = createRunHistoryService({database: w.database,
-          lifecycle: new RunRecordService({ database: w.database, clock: capturedInstantClock(HISTORY_NOW), ids: sequentialIdFactory(), publishQueued() {} }), afterClear() {}});
-        expect(reconstructed.status()).toEqual({state: "available", finishedRuns: 0, activeRuns: 0});
+        expect(w.database.authority.runs.countByTerminal()).toEqual({ finished: 0, active: 0 });
         for (const file of files) expect(existsSync(join(admission.artifactRoot, `${file.ref.sha256}.artifact`))).toBe(false);
       } else {
         const service = createRunHistoryService({ database: w.database, lifecycle, afterClear() {} });
@@ -405,8 +396,7 @@ it.each(["before-unlink", "partly-removed"])("recovers %s manifests on runtime r
   const later = f.seed(); const laterFile = await f.ordinary(later); await f.ordinary(later, retained.ref, "shared-library");
   const before = ["runs", "commands", "command_audits", "artifacts", "workbook_library"].map(table => [table, f.rows(table)]);
   f.reopen();
-  const reconstructed = f.service();
-  expect(reconstructed.status()).toEqual({state: "available", finishedRuns: 1, activeRuns: 0});
+  expect(f.database.authority.runs.countByTerminal()).toEqual({ finished: 1, active: 0 });
   expect([first, second].every(artifact => !existsSync(artifact.file))).toBe(true);
   expect(existsSync(retained.file)).toBe(true); expect(existsSync(laterFile.file)).toBe(true);
   expect(["runs", "commands", "command_audits", "artifacts", "workbook_library"].map(table => [table, f.rows(table)])).toEqual(before);
@@ -416,7 +406,7 @@ it.each(["before-unlink", "partly-removed"])("recovers %s manifests on runtime r
   const inventory = f.database.readProfileResourceCustody().artifactReferences;
   expect(inventory).toContainEqual(retained.ref); expect(inventory).toContainEqual(laterFile.ref);
   expect(inventory).not.toContainEqual(first.ref); expect(inventory).not.toContainEqual(second.ref);
-  f.reopen(); expect(f.service().status()).toMatchObject({finishedRuns: 1});
+  f.reopen(); expect(f.database.authority.runs.countByTerminal()).toMatchObject({ finished: 1 });
 });
 
 it("inventories only still-present pending files after a partial unlink, preserving the exact manifest", async () => {
@@ -449,36 +439,6 @@ it("keeps read-only inspection passive and never sweeps unowned files during rec
   expect(() => enumerateProfileCredentialMembership(f.profile.admission, f.database.readProfileResourceCustody(), join(f.profile.stateRoot, "browsers"), {
     workerDirectory() { throw new Error("no fixture browser membership"); },
   })).toThrow("profile-inventory-artifact-unowned");
-});
-
-it("reads the run-history counts on a read lane with the main read connection disabled", async () => {
-  const f = await fixture();
-  f.seed(undefined, undefined, true, true); f.seed(undefined, undefined, false, true);
-  const lanes = createComposedDashboardReadHost({ admission: f.profile.admission, database: f.database, clock: manualClock(new Date(NOW)) });
-  try {
-    const service = createRunHistoryService({ database: f.database, lifecycle: f.lifecycle(), readLanes: lanes, afterClear() {} });
-    // The pending-cleanup sweep before the counts is write custody and stays on main; it reads no snapshot.
-    const snapshot = vi.spyOn(f.database, "withAuthorityReadSnapshot").mockImplementation(() => { throw new Error("main-connection read"); });
-    try {
-      expect(await service.status()).toEqual({ state: "available", finishedRuns: 1, activeRuns: 1 });
-      expect(snapshot).not.toHaveBeenCalled();
-    } finally { snapshot.mockRestore(); }
-  } finally { await lanes.close(); }
-});
-
-it("discovers pending cleanup from status after browser request state is discarded", async () => {
-  const f = await fixture(), root = f.seed();
-  const first = await f.ordinary(root, undefined, "first"), second = await f.ordinary(root, undefined, "second");
-  f.fileFault(true); expect(() => f.service().clear(request())).toThrow("history-file-fault");
-  expect(() => f.service().status()).toThrow("history-file-fault");
-  const before = ["commands", "command_audits"].map(table => f.rows(table)), refreshed = f.refreshed;
-  expect([first, second].filter(artifact => existsSync(artifact.file))).toHaveLength(1);
-  f.fileFault(false);
-  expect(f.service().status()).toEqual({state: "available", finishedRuns: 0, activeRuns: 0});
-  expect(f.refreshed).toBe(refreshed + 1);
-  expect([first, second].every(artifact => !existsSync(artifact.file))).toBe(true);
-  expect(f.rows("deleted_runs").map(deletedRunFromRow).every(manifest => manifest.cleanupState === "complete")).toBe(true);
-  expect(["commands", "command_audits"].map(table => f.rows(table))).toEqual(before);
 });
 
 it("does not reuse completed removal metadata for a later file with identical content", async () => {

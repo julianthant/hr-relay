@@ -13,7 +13,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("serves the resolver-owned editor inventory and reads the persisted settings revision back", async () => {
     const h = await harness();
-    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    const body = await json(await h.app.request("/api/v1/settings/editable"));
+    assert.equal(Object.hasOwn(body, "catalog"), false);
+    const initial = EditableSettingsWireSchema.parse(body);
     assert.equal(initial.revision, 1);
     assert.deepEqual(initial.sections.map((section) => section.id), ["general", "display", "performance", "paths", "routes", "annual-dates", "providers"]);
     const initialWidth = initial.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");

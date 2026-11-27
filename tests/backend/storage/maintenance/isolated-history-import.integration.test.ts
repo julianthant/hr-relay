@@ -32,7 +32,7 @@ import { readonlyAuthorityCopyPrefix, withReadonlyAuthoritySnapshot } from "../.
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { verifyShellCommandEffect } from "../../../../src/dashboard/app/commands/command-dispatch.js";
-import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+import { createDashboardClient, createRowStore } from "../../../../src/dashboard/client/index.js";
 import { searchPartitionDay } from "../../../../src/models/dashboard/search-calendar.js";
 import { DASHBOARD_REQUEST_REPORT_MESSAGE, debugFailureOutcome } from "../../../../src/models/events/debug-report.js";
 import { OcrPageReadingSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
@@ -253,7 +253,16 @@ it("serves archived notices as read alongside actionable copy notices", async ()
   const { client } = await openCopyDashboard(copy, clock);
   const day = searchPartitionDay(clock.now());
   const archived = { notificationId: archivedId, readState: "read", state: "read", readOnlyHistory: true };
-  for (const rows of [await client.notificationSnapshot(), (await client.dashboardDay(day)).notifications]) {
+  const streamRows = createRowStore();
+  const live = Promise.withResolvers<void>();
+  const stream = client.subscribeDay({ day, rows: streamRows, onDay: () => undefined, onState: state => {
+    if (state.state === "live") live.resolve();
+    if (state.state === "stopped") live.reject(state.error ?? new Error("inbox stream stopped"));
+  } });
+  try { await live.promise; } finally { stream.close(); }
+  const streamed = streamRows.notificationList(LOCAL_OPERATOR_ACTOR_ID)?.rows;
+  assert.ok(streamed);
+  for (const rows of [await client.notificationSnapshot(), streamed]) {
     expect(rows.find(row => row.notificationId === archivedId)).toMatchObject(archived);
     const local = rows.find(row => row.notificationId === localId);
     expect(local).toMatchObject({ readState: "unread", state: "unread", revision: 1 });
@@ -264,7 +273,8 @@ it("serves archived notices as read alongside actionable copy notices", async ()
   expect(target).toEqual({ actorId: LOCAL_OPERATOR_ACTOR_ID, members: [{ notificationId: localId, expectedVersion: 1 }], matchingCount: 1 });
   const readAll = NotificationCommandRequestSchema.parse({ ...command, commandId: randomUUID(), type: "notification-read-all", target });
   const applied = await client.executeCommand(readAll);
-  expect(applied).toMatchObject({ state: "applied", affectedTargets: [{ family: "notification", notificationId: localId }] });
+  const receipt = { actorId: LOCAL_OPERATOR_ACTOR_ID, changes: [{ notificationId: localId, revision: 2 }] };
+  expect(applied).toMatchObject({ state: "applied", affectedTargets: [{ family: "notification", notificationId: localId }], notificationReceipt: receipt });
   expect(await verifyShellCommandEffect(client, day, readAll, applied)).toMatchObject({ state: "matched" });
 
   const unread = NotificationCommandRequestSchema.parse({ ...command, commandId: randomUUID(), type: "notification-unread",
@@ -272,6 +282,9 @@ it("serves archived notices as read alongside actionable copy notices", async ()
   const toggled = await client.executeCommand(unread);
   expect(toggled.state).toBe("applied");
   expect(await verifyShellCommandEffect(client, day, unread, toggled)).toMatchObject({ state: "matched" });
+  const replay = await client.executeCommand(readAll);
+  expect(replay).toMatchObject({ state: "already-applied", notificationReceipt: receipt });
+  expect(await verifyShellCommandEffect(client, day, readAll, replay)).toMatchObject({ state: "matched" });
   expect((await client.notificationSnapshot()).find(row => row.notificationId === archivedId)).toMatchObject(archived);
   expect(readFileSync(archivePath)).toEqual(archive);
 });

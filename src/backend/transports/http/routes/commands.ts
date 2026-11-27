@@ -36,6 +36,8 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
     const body = await readCommandJson(c.req);
     const command = DashboardCommandRequestSchema.safeParse(body);
     if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
+    const sample = command.success ? deps.refuseSampleCommand?.(command.data) : undefined;
+    if (sample !== undefined) return c.json(sample, 422);
     const result = await operatorCommands.submit(body, async (accepted) => {
       try {
         const resolved = deps.resolveWriteCommand(accepted);

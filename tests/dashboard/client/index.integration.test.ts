@@ -10,7 +10,7 @@ import type { DashboardApp as DashboardApp_m3 } from "../../../src/backend/trans
 import { registerDataRoutes as registerDataRoutes_m3 } from "../../../src/backend/transports/http/routes/data.js";
 import { failureStatus as failureStatus_m3 } from "../../../src/backend/transports/http/routes/failure-status.js";
 import { registerQueueRoutes as registerQueueRoutes_m3 } from "../../../src/backend/transports/http/routes/queue.js";
-import { createDashboardClient as createDashboardClient_m0,createDashboardClient as createDashboardClient_m1,createDashboardClient as createDashboardClient_m2,createDashboardClient as createDashboardClient_m3,createDashboardClient as createDashboardClient_m5,DashboardClientError as DashboardClientError_m0,StartPlanRefusalError as StartPlanRefusalError_m3 } from "../../../src/dashboard/client/index.js";
+import { createDashboardClient as createDashboardClient_m0,createDashboardClient as createDashboardClient_m1,createDashboardClient as createDashboardClient_m2,createDashboardClient as createDashboardClient_m3,createDashboardClient as createDashboardClient_m5,StartPlanRefusalError as StartPlanRefusalError_m3 } from "../../../src/dashboard/client/index.js";
 import { appendLogPage as appendLogPage_m5 } from "../../../src/dashboard/surfaces/run-detail/logs-model.js";
 import { createRunLaunchService as createRunLaunchService_m3 } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { DiagnosticBundleWireSchema as DiagnosticBundleWireSchema_m0 } from "../../../src/models/dashboard/diagnostic-bundle.js";
@@ -52,21 +52,6 @@ function fixtureClient() {
 }
 
 describe_m0("diagnostic bundle client and fixture route", () => {
-  it_m0("forwards an optional diagnostic read signal without adding one to ordinary reads", async () => {
-    const supplied = new AbortController();
-    const observed: (AbortSignal | null | undefined)[] = [];
-    const client = createDashboardClient_m0({
-      baseUrl: "http://fixture.test",
-      fetchImpl: (_url, init) => {
-        observed.push(init?.signal);
-        return Promise.resolve(Response.json(FIXTURE_DIAGNOSTIC_BUNDLE_m0));
-      },
-    });
-    assert_m0.deepEqual(await client.diagnosticBundle(FIXTURE_DIAGNOSTIC_BUNDLE_m0.bundleId), FIXTURE_DIAGNOSTIC_BUNDLE_m0);
-    assert_m0.deepEqual(await client.diagnosticBundle(FIXTURE_DIAGNOSTIC_BUNDLE_m0.bundleId, supplied.signal), FIXTURE_DIAGNOSTIC_BUNDLE_m0);
-    assert_m0.deepEqual(observed, [undefined, supplied.signal]);
-  });
-
   it_m0.each(["http://127.0.0.1:3938", "https://dashboard.example/owned-base/"])(
     "keeps manifest and attachment links owned by transport base %s", (baseUrl) => {
       const client = createDashboardClient_m0({ baseUrl });
@@ -89,31 +74,8 @@ describe_m0("diagnostic bundle client and fixture route", () => {
     },
   );
 
-  it_m0.each([
-    [404, "TARGET_NOT_FOUND"],
-    [500, "DIAGNOSTIC_BUNDLE_CORRUPT"],
-    [500, "DIAGNOSTIC_BUNDLE_BYTES_MISSING"],
-  ] as const)("preserves HTTP %s %s without parsing error prose", async (status, code) => {
-    const client = createDashboardClient_m0({
-      baseUrl: "http://fixture.test",
-      fetchImpl: () => Promise.resolve(Response.json({
-        state: "error", code, message: "identical non-classifying message", retryable: false,
-      }, { status })),
-    });
-    await assert_m0.rejects(() => client.diagnosticBundle(FIXTURE_DIAGNOSTIC_BUNDLE_m0.bundleId), (error: unknown) => {
-      assert_m0.ok(error instanceof DashboardClientError_m0);
-      assert_m0.equal(error.kind, "http");
-      assert_m0.equal(error.status, status);
-      assert_m0.equal(error.code, code);
-      assert_m0.equal(error.retryable, false);
-      return true;
-    });
-  });
-
-  it_m0("GETs one strict bundle by its exact id and gives the browser the manifest route", async () => {
+  it_m0("gives the browser the manifest and screenshot routes for one exact bundle", async () => {
     const client = fixtureClient();
-    const bundle = await client.diagnosticBundle(FIXTURE_DIAGNOSTIC_BUNDLE_m0.bundleId);
-    assert_m0.deepEqual(bundle, FIXTURE_DIAGNOSTIC_BUNDLE_m0);
     assert_m0.equal(
       client.diagnosticBundleManifestUrl(FIXTURE_DIAGNOSTIC_BUNDLE_m0.bundleId),
       `http://fixture.test/api/v1/diagnostic-bundles/${FIXTURE_DIAGNOSTIC_BUNDLE_m0.bundleId}/manifest`,
@@ -126,7 +88,7 @@ describe_m0("diagnostic bundle client and fixture route", () => {
     );
   });
 
-  it_m0("serves the fixture's actual download response and rejects wrong ids and malformed wire bodies", async () => {
+  it_m0("serves the fixture's actual download response and rejects wrong ids", async () => {
     const { app } = createFixtureBff_m0();
     const manifest = await app.request(
       `http://fixture.test/api/v1/diagnostic-bundles/${FIXTURE_DIAGNOSTIC_BUNDLE_m0.bundleId}/manifest`,
@@ -137,14 +99,9 @@ describe_m0("diagnostic bundle client and fixture route", () => {
     assert_m0.equal(manifestText, canonicalJsonStringify_m0(FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST_m0));
     assert_m0.deepEqual(JSON.parse(manifestText), FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST_m0);
 
-    const missing = await app.request("http://fixture.test/api/v1/diagnostic-bundles/00000000-0000-4000-8000-000000000099");
+    const missing = await app.request("http://fixture.test/api/v1/diagnostic-bundles/00000000-0000-4000-8000-000000000099/manifest");
     assert_m0.equal(missing.status, 404);
 
-    const malformedClient = createDashboardClient_m0({
-      baseUrl: "http://fixture.test",
-      fetchImpl: () => Promise.resolve(Response.json({ bundleId: FIXTURE_DIAGNOSTIC_BUNDLE_m0.bundleId }, { status: 200 })),
-    });
-    await assert_m0.rejects(() => malformedClient.diagnosticBundle(FIXTURE_DIAGNOSTIC_BUNDLE_m0.bundleId), DashboardClientError_m0);
     assert_m0.equal(
       DiagnosticBundleWireSchema_m0.safeParse({ ...FIXTURE_DIAGNOSTIC_BUNDLE_m0, addedByMutation: true }).success,
       false,
@@ -152,29 +109,7 @@ describe_m0("diagnostic bundle client and fixture route", () => {
     );
   });
 
-  it_m0("rejects a strict response whose bundle identity differs from the requested id", async () => {
-    const requestedBundleId = FIXTURE_DIAGNOSTIC_BUNDLE_m0.bundleId;
-    const foreignBundleId = "00000000-0999-4000-8000-000000000999";
-    const client = createDashboardClient_m0({
-      baseUrl: "http://fixture.test",
-      fetchImpl: () => Promise.resolve(Response.json({
-        ...FIXTURE_DIAGNOSTIC_BUNDLE_m0,
-        bundleId: foreignBundleId,
-      })),
-    });
 
-    await assert_m0.rejects(
-      () => client.diagnosticBundle(requestedBundleId),
-      (error: unknown) => {
-        assert_m0.ok(error instanceof DashboardClientError_m0);
-        assert_m0.equal(error.kind, "schema");
-        assert_m0.equal(error.code, "DIAGNOSTIC_BUNDLE_IDENTITY_MISMATCH");
-        assert_m0.match(error.message, new RegExp(requestedBundleId, "u"));
-        assert_m0.doesNotMatch(error.message, new RegExp(foreignBundleId, "u"));
-        return true;
-      },
-    );
-  });
 });
 }
 
@@ -241,17 +176,11 @@ describe_m1("diagnostic fixture over real HTTP", () => {
       });
       assert_m1.deepEqual(manifest, { ...FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST_m1, attachments: [expectedAttachment], contentDigest: expectedDigest });
       assert_m1.equal(text, canonicalJsonStringify_m1(manifest));
-      assert_m1.deepEqual(await client.diagnosticBundle(FIXTURE_DIAGNOSTIC_BUNDLE_m1.bundleId), {
-        ...FIXTURE_DIAGNOSTIC_BUNDLE_m1, contentDigest: expectedDigest, byteSize: bytes.byteLength,
-        contents: [{ ...expectedAttachment, key: "Screenshot", detail: "image/jpeg · 16 × 12 px · restricted" }],
-      });
     });
   });
 
-  it_m1("leaves the default PNG, wire and manifest byte-exact and does not leak the JPEG variant", async () => {
+  it_m1("leaves the default PNG and manifest byte-exact and does not leak the JPEG variant", async () => {
     await withFixture(undefined, async (server) => {
-      const bundle = await fetch(`${server.baseUrl}${BUNDLE_PATH}`);
-      assert_m1.equal(await bundle.text(), JSON.stringify(FIXTURE_DIAGNOSTIC_BUNDLE_m1));
       const manifest = await fetch(`${server.baseUrl}${BUNDLE_PATH}/manifest`);
       assert_m1.equal(await manifest.text(), canonicalJsonStringify_m1(FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST_m1));
       const screenshot = FIXTURE_DIAGNOSTIC_BUNDLE_m1.contents.find((content) => content.kind === "screenshot");
@@ -270,7 +199,7 @@ describe_m1("diagnostic fixture over real HTTP", () => {
       const foreign = "/api/v1/diagnostic-bundles/00000000-0999-4000-8000-000000000999";
       const wrongArtifact = variant === undefined ? JPEG_ARTIFACT_ID : FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST_m1.attachments[0]?.artifactId;
       assert_m1.ok(wrongArtifact);
-      for (const path of [foreign, `${foreign}/manifest`, `${foreign}/attachments/${JPEG_ARTIFACT_ID}`, `${BUNDLE_PATH}/attachments/${wrongArtifact}`]) {
+      for (const path of [`${foreign}/manifest`, `${foreign}/attachments/${JPEG_ARTIFACT_ID}`, `${BUNDLE_PATH}/attachments/${wrongArtifact}`]) {
         const response = await fetch(`${server.baseUrl}${path}`);
         assert_m1.equal(response.status, 404, path);
         assert_m1.match(await response.text(), /"code":"TARGET_NOT_FOUND"/u);
@@ -326,8 +255,7 @@ describe_m2("diagnostic gallery fixture origin", () => {
       baseUrl: binding.baseUrl,
       fetchImpl: (url, init) => Promise.resolve(app.request(binding.forwardUrl(url), init)),
     });
-    const bundle = await client.diagnosticBundle(FIXTURE_DIAGNOSTIC_BUNDLE_m2.bundleId);
-    assert_m2.deepEqual(bundle, FIXTURE_DIAGNOSTIC_BUNDLE_m2);
+    const bundle = FIXTURE_DIAGNOSTIC_BUNDLE_m2;
     const screenshot = bundle.contents.find((content) => content.kind === "screenshot");
     assert_m2.ok(screenshot);
     const manifestUrl = client.diagnosticBundleManifestUrl(bundle.bundleId);

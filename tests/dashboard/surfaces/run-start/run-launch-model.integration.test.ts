@@ -35,6 +35,20 @@ const planIdentityError = (error: unknown) => {
 };
 
 describe("Start enqueue verification through the actual command and day transports", () => {
+  it("verifies the served named reference when a preview leaves the version to the server", async () => {
+    const w = await setup();
+    const request = { workflowId: w.h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: true, browserMode: "headless", captureBrowserScreenshots: false,
+      workbookReferences: [{ entry: 1, libraryId: "roster", sheetId: "people", expectedVersion: 2 }] };
+    const plan = w.h.proposal(undefined, undefined, true);
+    const reference = { libraryId: "roster", version: 2, versionId: "reviewed", versionName: "Reviewed",
+      worksheets: [{ sheetId: "people", name: "People" }],
+      type: { id: "roster", name: "Roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null } };
+    w.client.submitStartPlan = async () => StartPlanWireSchema.parse({ ...plan,
+      planned: [{ ...plan.planned[0], workbookReferences: [reference] }] });
+    assert.deepEqual((await w.launch.preview(request)).planned[0]?.workbookReferences, [reference]);
+    await assert.rejects(() => w.launch.preview({ ...request, workbookReferences: [{ ...request.workbookReferences[0], versionId: "other" }] }), planIdentityError);
+  });
+
   it("binds plan previews to the current actor and submitted options without losing partial refusals", async () => {
     const w = await setup();
     const request = { workflowId: w.h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: true,

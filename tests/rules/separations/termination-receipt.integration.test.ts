@@ -192,16 +192,16 @@ describe_m1("separations omittable write steps", () => {
   it_m1("rebuilds a receipt from a typed number and status, and refuses what a live receipt would refuse", () => {
     const receipt = assertTerminationReceipt_m1({
       transactionNumber: "T002204014", approvalStatus: "Approved",
-      approvedEmplId: "10800000", approvedName: "Deterministic Person", expectedEffectiveDate: "06/20/2026",
+      approvedEmplId: "10800000", approvedName: "Deterministic Person", effectiveDate: "06/20/2026",
     });
     assert_m1.equal(receipt.disposition, "operator-asserted");
     assert_m1.equal(receipt.effectiveDate, "06/20/2026");
     assert_m1.throws(
-      () => assertTerminationReceipt_m1({ transactionNumber: "2204014", approvalStatus: "Approved", approvedEmplId: "10800000", approvedName: "x", expectedEffectiveDate: "06/20/2026" }),
+      () => assertTerminationReceipt_m1({ transactionNumber: "2204014", approvalStatus: "Approved", approvedEmplId: "10800000", approvedName: "x", effectiveDate: "06/20/2026" }),
       /T followed by 6–12 digits/u,
     );
     assert_m1.throws(
-      () => assertTerminationReceipt_m1({ transactionNumber: "T002204014", approvalStatus: "Denied", approvedEmplId: "10800000", approvedName: "x", expectedEffectiveDate: "06/20/2026" }),
+      () => assertTerminationReceipt_m1({ transactionNumber: "T002204014", approvalStatus: "Denied", approvedEmplId: "10800000", approvedName: "x", effectiveDate: "06/20/2026" }),
       /termination-not-in-effect/u,
     );
   });

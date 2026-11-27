@@ -28,6 +28,7 @@ const NOTIFICATION = NotificationWireSchema.parse({ kind: "notification", notifi
 const READY = { state: "available", value: { state: "ready", pending: 0 } } as const;
 const UNAVAILABLE = { state: "unavailable", error: { state: "error", code: "DASHBOARD_READ_FAILED", message: "Relay could not load this.", retryable: true } } as const;
 const statusRow = (value: typeof READY | typeof UNAVAILABLE) => ({ model: "notification-status", key: "local-operator", value });
+const listRow = (value: readonly NotificationWire[]) => ({ model: "notification-list", key: "local-operator", value: { state: "available", value } });
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
 
 /** The app on `?day=`, its day stream answered by envelopes the test pushes; every other read is the fixture BFF's. */
@@ -36,18 +37,21 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
   const opened: { day: string; lastEventId: string | undefined; push: (envelope: unknown) => void; end: () => void }[] = [];
   const commands: string[] = [];
   const requested: string[] = [];
-  /** The row the server lists; an accepted mark-read moves it to read at the next revision, as the readback reads it. */
-  let served: NotificationWire = NOTIFICATION;
+  /** The row the server can deliver on the stream after accepting a command. */
+  let served: NotificationWire | undefined = NOTIFICATION;
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
     requested.push(path);
-    if (path === "/api/v1/notifications") return Response.json([served]);
+    if (path === "/api/v1/notifications") return Response.json(served === undefined ? [] : [served]);
     if (path === `/api/v1/notifications/${NOTIFICATION.notificationId}/target`) return Response.json({ kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: FIXTURE_DAY_WIRE.day });
     if (path === "/api/v1/commands") {
       const body = init?.body; if (typeof body !== "string") throw new Error("command body must be JSON text");
       const command = NotificationCommandRequestSchema.parse(JSON.parse(body)); commands.push(command.type);
-      if (command.type === "notification-read" && served.kind === "notification") served = NotificationWireSchema.parse({ ...served, readState: "read", state: "read", revision: served.revision + 1 });
-      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "notification", notificationId: NOTIFICATION.notificationId }] });
+      if (command.type === "notification-read" && served?.kind === "notification") served = NotificationWireSchema.parse({ ...served, readState: "read", state: "read", revision: served.revision + 1 });
+      if (command.type === "notification-clear") served = undefined;
+      const members = "members" in command.target ? command.target.members : [command.target];
+      return Response.json({ state: "applied", commandId: command.commandId, affectedTargets: members.map(({ notificationId }) => ({ family: "notification", notificationId })),
+        notificationReceipt: { actorId: command.target.actorId, changes: members.map(({ notificationId, expectedVersion }) => ({ notificationId, revision: expectedVersion + 1 })) } });
     }
     return app.request(url, init);
   } });
@@ -73,8 +77,8 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
     const { day: streamed, push } = stream();
     await act(async () => {
       push({ type: "hello", wireVersion: 1, descriptorHash: FIXTURE_DAY_WIRE.descriptorHash, projectionGeneration: FIXTURE_DAY_WIRE.projectionGeneration, cursor: "pc:1" });
-      push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", position: 0, rows: [statusRow(status)],
-        payload: { ...FIXTURE_DAY_WIRE, day: streamed, snapshotCursor: "pc:1", notifications: [NOTIFICATION] } });
+      push({ type: "snapshot", topic: "dashboard-day", cursor: "pc:1", position: 0, rows: [statusRow(status), listRow([NOTIFICATION])],
+        payload: { ...FIXTURE_DAY_WIRE, day: streamed, snapshotCursor: "pc:1" } });
       push({ type: "health", state: "live" });
     });
     await settle();
@@ -94,9 +98,10 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
   };
   let cursor = 1;
   /** A rows-only change carrying the status row, as the hub sends when the status moves or its retry reads it. */
-  const change = async (status: typeof READY | typeof UNAVAILABLE) => {
+  const change = async (status: typeof READY | typeof UNAVAILABLE, handoff = false, rows = served === undefined ? [] : [served]) => {
     const after = `pc:${cursor}`; cursor += 1;
-    await act(async () => { stream().push({ type: "change", topic: "dashboard-day", cursor: `pc:${cursor}`, after, position: 0, rows: [statusRow(status)] }); });
+    await act(async () => { stream().push({ type: "change", topic: "dashboard-day", cursor: `pc:${cursor}`, after, position: 0,
+      rows: [statusRow(status), ...(handoff ? [listRow(rows)] : [])] }); });
     await settle();
   };
   const openBell = async () => {
@@ -109,7 +114,7 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
     const snapshotAt = `pc:${cursor + 1}`, publishedAt = `pc:${cursor + 2}`; cursor += 2;
     await act(async () => {
       push({ type: "snapshot", topic: "dashboard-day", cursor: snapshotAt, position: 0, rows: [statusRow(READY)],
-        payload: { ...FIXTURE_DAY_WIRE, day: streamed, snapshotCursor: snapshotAt, notifications: [NOTIFICATION] } });
+        payload: { ...FIXTURE_DAY_WIRE, day: streamed, snapshotCursor: snapshotAt } });
       push({ type: "notification-publication", cursor: publishedAt, day: streamed, descriptorHash: FIXTURE_DAY_WIRE.descriptorHash, projectionGeneration: FIXTURE_DAY_WIRE.projectionGeneration,
         publication: { sourceId: "b".repeat(64), actorId: row.actorId, durable: "created", notification: row }, listed: row,
         target: { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: streamed } });
@@ -121,14 +126,42 @@ async function mount(day: string = FIXTURE_DAY_WIRE.day, bulkOutcome?: BulkBatch
   const listed = () => [...document.querySelectorAll(".notice-title")].map(title => title.textContent);
   const notice = () => document.querySelector(".notice-status")?.textContent ?? "";
   const targetReads = () => requested.filter(path => path.endsWith("/target")).length;
-  return { host, opened, commands, greet, change, resume, snapshotThenPublication, openBell, open, control, listed, notice, targetReads };
+  return { host, opened, commands, requested, greet, change, resume, snapshotThenPublication, openBell, open, control, listed, notice, targetReads };
 }
+
+it("confirms read and clear from the command replies without requesting the inbox list", async () => {
+  const m = await mount();
+  await m.greet(READY);
+  await m.openBell();
+
+  await act(async () => m.control("Mark as read").click()); await settle();
+  assert.equal(m.control("Mark as unread").disabled, false);
+  await act(async () => m.control("Clear notification").click()); await settle();
+  assert.deepEqual(m.listed(), []);
+  assert.deepEqual(m.commands, ["notification-read", "notification-clear"]);
+  assert(!m.requested.includes("/api/v1/notifications"));
+  assert.doesNotMatch(m.notice(), /could not|replaced|pending/iu);
+});
+
+it("shows another tab's read and clear from actor-keyed stream rows", async () => {
+  const m = await mount();
+  await m.greet(READY);
+  await m.openBell();
+  assert.equal(m.control("Mark as read").disabled, false);
+
+  await m.change(READY, true, [NotificationWireSchema.parse({ ...NOTIFICATION, readState: "read", state: "read", revision: 2 })]);
+  assert.equal(m.control("Mark as unread").disabled, false);
+  await m.change(READY, true, []);
+  assert.deepEqual(m.listed(), []);
+  assert.deepEqual(m.commands, []);
+  assert(!m.requested.includes("/api/v1/notifications"));
+});
 
 it("shows a first snapshot whose status could not be read as display-only rows, then restores the controls when a change delivers it", async () => {
   const m = await mount();
   await m.greet(UNAVAILABLE);
   await m.openBell();
-  assert.deepEqual(m.listed(), ["Run completed"], "the day's rows show while the status is unavailable");
+  assert.deepEqual(m.listed(), ["Served subject"], "the day's rows show while the status is unavailable");
   assert.match(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, true);
   assert.equal(m.open().disabled, true, "Open cannot act or take focus while the status is unavailable");
@@ -152,7 +185,7 @@ it("turns the controls off when a status update cannot be read, and back on when
 
   await m.change(UNAVAILABLE);
 
-  assert.deepEqual(m.listed(), ["Run completed"], "the held rows stay");
+  assert.deepEqual(m.listed(), ["Served subject"], "the held rows stay");
   assert.match(m.notice(), /could not load/u);
   assert.equal(m.control("Mark as read").disabled, true);
   assert.equal(m.open().disabled, true, "Open cannot act or take focus while the status is unavailable");
@@ -182,22 +215,24 @@ it("keeps served clears off when a resumed stream is live before its status row,
     const rows = [...document.querySelectorAll<HTMLElement>("li.notice-row")].filter(row => row.querySelector(".notice-title")?.textContent === title);
     const found = rows[0]?.querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]'); assert(found, title); return found;
   };
-  assert.deepEqual([...m.listed()].sort(), ["Resume: nothing was sent", "Run completed"]);
-  assert.equal(clearOf("Run completed").disabled, false);
+  assert.deepEqual([...m.listed()].sort(), ["Resume: nothing was sent", "Served subject"]);
+  assert.equal(clearOf("Served subject").disabled, false);
 
   await m.resume();
 
-  assert.equal(clearOf("Run completed").disabled, true);
+  assert.equal(clearOf("Served subject").disabled, true);
   assert.equal(clearOf("Resume: nothing was sent").disabled, false);
   assert.equal(clearAll().disabled, false, "Clear all still takes the local result");
   await act(async () => clearAll().click()); await settle();
-  assert.deepEqual(m.listed(), ["Run completed"], "only the local result is cleared");
+  assert.deepEqual(m.listed(), ["Served subject"], "only the local result is cleared");
   assert.equal(clearAll().disabled, true);
   assert.deepEqual(m.commands, []);
 
   await m.change(READY);
+  assert.equal(clearOf("Served subject").disabled, true, "the held list remains stale");
+  await m.change(READY, true);
 
-  assert.equal(clearOf("Run completed").disabled, false);
+  assert.equal(clearOf("Served subject").disabled, false);
   assert.equal(clearAll().disabled, false);
 });
 
@@ -206,11 +241,11 @@ it("keeps a publication that arrives in the same delivery as the snapshot before
   await m.greet(READY);
   await m.openBell();
   const published = NotificationWireSchema.parse({ ...NOTIFICATION, notificationId: "00000000-0000-4000-8000-000000000222", publicationId: "c".repeat(64),
-    title: "Second run completed", occurredAt: "2026-08-03T17:05:00Z" });
+    title: "Second run completed", context: { state: "available", subject: "Second subject", workflow: "Person Lookup" }, occurredAt: "2026-08-03T17:05:00Z" });
 
   await m.snapshotThenPublication(published);
 
-  assert.deepEqual(m.listed(), ["Second run completed", "Run completed"], "the publication stands over the snapshot the stream accepted before it");
+  assert.deepEqual(m.listed(), ["Second subject", "Served subject"], "the publication stands over the snapshot the stream accepted before it");
 });
 
 for (const link of ["2099-01-01", "not-a-date"]) it(`loads the inbox from today's stream on a cold link to ${link}`, async () => {
@@ -219,7 +254,7 @@ for (const link of ["2099-01-01", "not-a-date"]) it(`loads the inbox from today'
   assert.notEqual(m.opened[0]?.day, link);
   await m.greet(READY);
   await m.openBell();
-  assert.deepEqual(m.listed(), ["Run completed"]);
+  assert.deepEqual(m.listed(), ["Served subject"]);
   assert.equal(m.control("Mark as read").disabled, false);
 
   await act(async () => m.control("Mark as read").click()); await settle();

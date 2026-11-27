@@ -1,7 +1,7 @@
 import { etag } from "hono/etag";
 import { z } from "zod";
 import { NotificationWireSchema } from "../../../../models/dashboard/projection.js";
-import { NotificationCollectionOperationSchema, NotificationCollectionTargetSchema, NotificationObservationStatusSchema } from "../../../../models/notifications/notifications.js";
+import { NotificationCollectionOperationSchema, NotificationCollectionTargetSchema } from "../../../../models/notifications/notifications.js";
 import { NotificationTargetSchema } from "../../../../models/notifications/notification-target.js";
 import { SectionUnavailableError } from "../../../runs/commands/refusals.js";
 import { createPositionedReadResponse } from "../read-reuse.js";
@@ -18,11 +18,6 @@ export function registerNotificationRoutes(app: DashboardApp, deps: Pick<Dashboa
     if (deps.notifications.withSnapshot) return deps.notifications.withSnapshot(actor, snapshotResponse);
     c.header("Cache-Control", "no-store");
     return c.json(rows.parse(deps.notifications.snapshot(actor)));
-  });
-  app.get("/api/v1/notifications/status", c => {
-    if (deps.notifications === undefined) throw new SectionUnavailableError("Notification observation is unavailable");
-    c.header("Cache-Control", "no-store");
-    return c.json(NotificationObservationStatusSchema.parse(deps.notifications.status()));
   });
   app.get("/api/v1/notifications/collection", async c => {
     if (deps.notifications?.collection === undefined) throw new SectionUnavailableError("Notification collection is unavailable");

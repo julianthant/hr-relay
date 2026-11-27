@@ -196,16 +196,16 @@ it("shares the parent's review lookup with its member links within each rebuilt 
   assert.equal(warmReads.filter(id => id === target.runId).length, 2);
 });
 
-it("reuses independent rows and notices and derives the selected day count during a rename", async () => {
+it("reuses independent rows and derives the selected day count during a rename", async () => {
   const { w, warm, cold, warmCounts, independent, warmReads, warmSummaries, rename } = await fixture({ withWorkerAndNotices: true });
   queuedEventOf(w, { seed: 5, shape: "operation", descriptor: personLookupDescriptor });
   const member = queuedEventOf(w, { seed: 6, parentSeed: 5, shape: "operation-member", descriptor: personLookupDescriptor });
-  const before = warm.buildDashboardDayWire(DAY);
+  warm.buildDashboardDayWire(DAY);
   assert.equal(rename().state, "applied");
   warmCounts.length = warmReads.length = warmSummaries.length = 0;
   const after = warm.buildDashboardDayWire(DAY);
   assert.equal(JSON.stringify(after), JSON.stringify(cold.buildDashboardDayWire(DAY)));
-  assert.notDeepEqual(after.notifications, before.notifications, "the renamed run also changes its notice");
+  assert.equal("notifications" in after, false);
   assert.deepEqual(warmCounts, []);
   assert.ok(!warmSummaries.includes(independent.runId));
   assert.ok(!warmReads.includes(independent.runId));

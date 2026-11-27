@@ -2,9 +2,8 @@ import { deriveSchemaHash, schemaBoundValueSchema, type SchemaBoundCanonicalValu
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
 import { CANONICAL_FIELD_IDS } from "../fields/registry.js";
-import { IsoInstantSchema, WorkflowIdSchema, RunIdSchema, LOCAL_OPERATOR_ACTOR_ID, FingerprintSchema } from "../../rules/identity/ids.js";
+import { IsoInstantSchema, RunIdSchema, LOCAL_OPERATOR_ACTOR_ID, FingerprintSchema } from "../../rules/identity/ids.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { IntakeSessionWireSchema } from "../intake/wire.js";
 import { IntakeCommandRequestSchema, CommandResultSchema } from "../../rules/commands/commands.js";
 import { populatedSpreadsheetValue, workbookSizeIssue } from "../../rules/spreadsheets/workbook-size.js";
 
@@ -100,11 +99,7 @@ export const WorkbookCreateRequestSchema = z.strictObject({ workbook: EditableWo
 export const WorkbookImportRequestSchema = z.strictObject({ workbook: EditableWorkbookWireSchema });
 export const WorkbookImportResultSchema = z.strictObject({ workbook: SavedWorkbookWireSchema });
 export const WorkbookSaveRequestSchema = z.strictObject({ expectedVersion: z.number().int().positive(), workbook: EditableWorkbookWireSchema });
-export const WorkbookIntakeRequestSchema = z.strictObject({ expectedVersion: z.number().int().positive(), workflowId: WorkflowIdSchema });
-export const WorkbookIntakeResultSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.enum(["created", "joined"]), session: IntakeSessionWireSchema }),
-  z.strictObject({ state: z.literal("refused"), code: z.string().min(1), message: z.string().min(1) }),
-]);
+export const WorkbookCopyMappingRequestSchema = z.strictObject({ expectedVersion: z.number().int().positive(), worksheetId: WorkbookIdSchema });
 export const IntakeCommandResultWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("unavailable") }),
   z.strictObject({ state: z.literal("recorded"), request: IntakeCommandRequestSchema, result: CommandResultSchema }).superRefine((record, context) => {

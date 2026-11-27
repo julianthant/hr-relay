@@ -76,6 +76,8 @@ export function workerCardOf(input: Readonly<{
   view: WorkerMemberView | undefined;
   /** A capacity step for this workflow has not settled, so a member with no live process is still starting, not failed. */
   startupPending?: boolean;
+  /** A copy's sample card, served beside the pool's members. */
+  sample?: boolean;
   /** Span events folded for this worker; a patch cursor, never a CAS token. */
   foldRevision: number;
   resolveRun: (runId: string) => RunRecord | undefined;
@@ -89,7 +91,7 @@ export function workerCardOf(input: Readonly<{
   if (slot.retiredAt !== null || (view !== undefined && (view.member.workerId !== slot.workerId || view.member.workflowId !== slot.workflow))) {
     throw new Error("worker-member-authority-unavailable");
   }
-  const base = { member: workerPoolMember(slot), workerId: slot.workerId, workflowId: slot.workflow,
+  const base = { member: workerPoolMember(slot), workerId: slot.workerId, ...(input.sample === true ? { sample: true } : {}), workflowId: slot.workflow,
     directive: view?.state === "stopping" ? "stop" : slot.paused ? "pause" : "run",
     ...(input.lastRun === undefined ? {} : { lastRun: input.lastRun }), ...(input.timeline === undefined ? {} : { timeline: input.timeline }),
     availability: { state: "available" } } as const;

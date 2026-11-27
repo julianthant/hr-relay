@@ -43,7 +43,7 @@ A binding records `targetFieldId`, `canonicalFieldId`, `sourceColumnId`, and `co
 
 ### 2.2 Upload and durable preparation
 
-`POST /api/v1/intake/files?workflow=<id>&filename=<name>` accepts bytes rather than a command envelope. `src/backend/transports/http/routes/intake.ts` returns 201 for `created`, 200 for `joined`, and 422 with `INTAKE_<CODE>` for a parser refusal.
+The dashboard reads existing intake sessions and command results through the intake routes. The intake service owns durable session preparation.
 
 `createIntakeService` validates these upload limits before publication:
 

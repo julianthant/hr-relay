@@ -19,7 +19,6 @@ import { composeDashboardRuntime } from "../../../../src/backend/app/composition
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { EditableSettingsWireSchema } from "../../../../src/models/dashboard/settings-editor.js";
-import { SettingsFactsWireSchema } from "../../../../src/models/dashboard/settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { createBoundProfileFixture, AuthorityDatabase } from "../../../support/helpers/admission-fixture.js";
@@ -307,7 +306,7 @@ const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?
   const editor = EditableSettingsWireSchema.parse(await response.json());
   assert.equal(editor.runtimeStatus.state, "current");
   assert.equal(editor.revision, record.revision);
-  // Facts must follow the active snapshot as well; a synthetic endpoint is never contacted.
+  // The editor must follow the changed active snapshot.
   const config = structuredClone(resolved.config);
   config.urls.crm.prod.entry = "https://synthetic.example.invalid/";
   const nextId = "83000000-0000-4000-8000-000000000098";
@@ -315,10 +314,9 @@ const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?
   database.authority.configSnapshots.insert({ ...snapshot, configSnapshotId: nextId, config, fingerprint });
   database.authority.runtimeConfig.activate({ settingsRevision: record.revision, settingsFingerprint: record.settingsFingerprint,
    configSnapshotId: nextId, configFingerprint: fingerprint, activatedAt: NOW });
-  const factsResponse = await fetch(`http://127.0.0.1:${String(dashboard.port)}/api/v1/settings/facts`);
-  assert.equal(factsResponse.status, 200);
-  const facts = SettingsFactsWireSchema.parse(await factsResponse.json());
-  assert.equal(facts.systemHosts.find(entry => entry.system === "crm")?.production, "https://synthetic.example.invalid/");
+  const changed = await fetch(`http://127.0.0.1:${String(dashboard.port)}/api/v1/settings/editable`);
+  assert.equal(changed.status, 200);
+  assert.equal(EditableSettingsWireSchema.parse(await changed.json()).activeConfigFingerprint, fingerprint);
  } finally {
    for (const database of openDatabases.splice(0)) database.close();
    await dashboard.stop();

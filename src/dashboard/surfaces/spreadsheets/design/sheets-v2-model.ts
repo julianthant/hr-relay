@@ -2,7 +2,7 @@ import type { WorkbookCompatibility, WorkbookLibraryEntry, WorkbookLibrarySyncSt
 import { ERROR_CATALOG } from '../../../../models/failures/error-catalog.js';
 import { spreadsheetField } from '../../../../models/fields/workbook-fields.js';
 import { cellText } from '../../../../rules/spreadsheets/cell-text.js';
-import type { EditableSheet } from '../../../../rules/spreadsheets/workbook-io.js';
+import type { EditableSheet, EditableWorkbook } from '../../../../rules/spreadsheets/workbook-io.js';
 import { columnName } from '../spreadsheet-editor-model.js';
 import { setSpreadsheetColumnField, spreadsheetHeaderRow } from '../spreadsheet-column-import-model.js';
 import { formatDayTime } from '../../../lib/date-format.js';
@@ -18,6 +18,8 @@ export interface Sheet {
   readonly sync?: WorkbookLibrarySyncStatus;
   readonly updatedAt: string; readonly version: number; readonly currentVersionId: string; readonly versions: readonly VersionEntry[];
 }
+/** A picked file before it joins the library; `id` is unique to one pick for the session, and `document` is absent while the file is read. */
+export interface ImportDraft { readonly id: string; readonly name: string; readonly tags: readonly string[]; readonly document?: EditableWorkbook }
 export type Mapping = Readonly<Record<string, string | null>>;
 export interface Cell { readonly text: string; readonly fill?: string; readonly align?: 'right' }
 export interface Dataset { readonly headers: readonly string[]; readonly rows: readonly (readonly Cell[])[] }
@@ -41,11 +43,12 @@ export function syncFailureWhy(sheet: Sheet): string | undefined {
   return ERROR_CATALOG[code].text;
 }
 
-export const tableOf = (sheet: Sheet): 'Pinned' | 'SharePoint' | 'Spreadsheets' => sheet.pinned ? 'Pinned' : sheet.sharePoint ? 'SharePoint' : 'Spreadsheets';
+export const tableOf = (sheet: Sheet): 'Pinned' | 'Spreadsheets' => sheet.pinned ? 'Pinned' : 'Spreadsheets';
 export const newestFirst = (sheets: readonly Sheet[]): readonly Sheet[] => sheets.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 /** A run's workflow is an automatic tag, always first; the operator's own tags follow. */
 export const tagsOf = (sheet: Sheet): readonly string[] => sheet.workflow ? [sheet.workflow, ...sheet.tags] : sheet.tags;
 export const workflowTags = (sheets: readonly Sheet[]): readonly string[] => [...new Set(sheets.flatMap(sheet => sheet.workflow ? [sheet.workflow] : []))].toSorted();
+/** The library's tag bank: every tag a spreadsheet carries, A-Z. */
 export const operatorTags = (sheets: readonly Sheet[]): readonly string[] => [...new Set(sheets.flatMap(sheet => sheet.tags))].toSorted();
 export const MAX_TAGS = 20, MAX_TAG_LENGTH = 40;
 /** The list with `text` added, or undefined when the library would refuse it: blank, too long, a duplicate (any case) or past 20 tags. */
@@ -87,5 +90,5 @@ export function withMapping(sheet: EditableSheet, patch: Readonly<Record<string,
   }, sheet);
 }
 export const samplesOf = (dataset: Dataset, header: string): string => { const column = dataset.headers.indexOf(header); return column < 0 ? '' : dataset.rows.map(row => row[column].text).filter(Boolean).slice(0, 2).join(', '); };
-export const missingFields = (fields: readonly Field[], mapping: Mapping): readonly Field[] => fields.filter(field => !mapping[field.key]);
-export const notMatchedNote = (missing: readonly Field[]): string => missing.length === 0 ? '' : missing.length > 2 ? `${missing.length} fields not matched` : `${missing.map(field => field.label).join(' and ')} not matched`;
+/** How many of the fields have a column. */
+export const matchedCount = (fields: readonly Field[], mapping: Mapping): number => fields.filter(field => mapping[field.key]).length;

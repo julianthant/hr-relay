@@ -106,8 +106,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/exports/search", operatorMutationIngressGuard);
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
   app.use("/api/v1/rerun-warnings", operatorMutationIngressGuard);
-  // Intake bytes use the file media type; Host/Origin admission still applies.
-  app.use("/api/v1/intake/files", operatorOpaqueIngressGuard);
+  // OCR bytes use the file media type; Host/Origin admission still applies.
   app.use("/api/v1/ocr/files", operatorOpaqueIngressGuard);
   app.use("/api/v1/workbooks", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/types", operatorMutationIngressGuard);
@@ -115,7 +114,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/workbooks/:libraryId/clone", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/library-actions", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/save", operatorMutationIngressGuard);
-  app.use("/api/v1/workbooks/:libraryId/intake", operatorMutationIngressGuard);
+  app.use("/api/v1/workbooks/:libraryId/copy-mapping", operatorMutationIngressGuard);
 
   app.post("/api/v1/debug/errors", async c => {
     const now = deps.bootstrap.clock.nowMs();
@@ -162,7 +161,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerAssistantRoutes(app, deps.assistant);
   registerStorageRoutes(app, deps);
   registerExplorerRoutes(app, deps);
-  registerActivityRoutes(app, { activityPopulation: deps.activityPopulation, activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); }, readSelected: () => { throw new Error("activity-service-not-configured"); } } });
+  registerActivityRoutes(app, { activityPopulation: deps.activityPopulation, activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); } } });
   registerQueueRoutes(app, { startPlans: deps.startPlans, queue: { day: (day, request) => deps.projection.servedDashboardDay(day, {
     signal: request.signal, ...(request.tab === undefined ? {} : { slot: { subscriberId: request.tab, slot: "queue-day" } }) }) } });
   registerIntakeRoutes(app, deps);
@@ -172,7 +171,8 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     bulkCommandAcceptances: deps.bulkCommandAcceptances, protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
     intake: deps.intake, resolveIdentityGateAnswer: (answer, journaled) => resolveIdentityGateAnswer(deps.runDetail, answer, journaled),
     resolveGateArmAnswer: (answer, journaled) => resolveGateArmAnswer(deps.runDetail, answer, journaled),
-    ...(deps.workerCommandResult === undefined ? {} : { workerCommandResult: deps.workerCommandResult }) });
+    ...(deps.workerCommandResult === undefined ? {} : { workerCommandResult: deps.workerCommandResult }),
+    ...(deps.refuseSampleCommand === undefined ? {} : { refuseSampleCommand: deps.refuseSampleCommand }) });
   if (deps.staticBundle !== undefined) app.use("*", staticBundleHandler(deps.staticBundle));
 
   app.notFound((c) => c.json(wireError("ROUTE_NOT_FOUND", `no route serves ${c.req.method} ${c.req.path}`, false), 404));

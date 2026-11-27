@@ -8,7 +8,7 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { SpanAuthorityReconciliationSchema } from "../../../src/models/storage/storage-status.js";
-import { ClearRunHistoryRequestSchema, RunHistoryStatusSchema, ClearRunHistoryResultSchema } from "../../../src/models/dashboard/run-history.js";
+import { ClearRunHistoryRequestSchema, ClearRunHistoryResultSchema } from "../../../src/models/dashboard/run-history.js";
 import { redactDiagnosticFields, redactValue } from "../../../src/rules/redaction/redaction.js";
 import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
@@ -69,7 +69,6 @@ describe("redaction surface scan — the declaration audit", () => {
   it("audits the real history request/status/result as closed loopback surfaces", () => {
     const surfaces = [
       ["request/clear-run-history", ClearRunHistoryRequestSchema, ["commandId", "target.epoch", "target.profileId"]],
-      ["wire/run-history-status", RunHistoryStatusSchema, ["activeRuns", "finishedRuns", "state"]],
       ["wire/clear-run-history-result", ClearRunHistoryResultSchema, ["commandId", "deletedRuns", "reason", "state"]],
     ] as const;
     assert.equal(SURFACE_MODULE_DISPOSITIONS.find(entry => entry.module === "src/models/dashboard/run-history.ts")?.state, "audited");
@@ -85,21 +84,17 @@ describe("redaction surface scan — the declaration audit", () => {
     assert.deepEqual(ClearRunHistoryRequestSchema.parse(confirmed), confirmed);
     assert.equal(ClearRunHistoryRequestSchema.safeParse({commandId: UUID_1}).success, false);
     for (const epoch of [0, -1, 0.5, Infinity]) assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, target: {...confirmed.target, epoch}}).success, false);
-    for (const value of [{state: "unavailable"}, {state: "available", finishedRuns: 0, activeRuns: 3}]) assert.deepEqual(RunHistoryStatusSchema.parse(value), value);
     for (const value of [{state: "not-recorded", commandId: UUID_1}, {state: "cleared", commandId: UUID_1, deletedRuns: 3},
       ...["active-runs", "shared-checkpoint", "unresolved-write", "replay-divergent", "unavailable"].map(reason => ({state: "refused", commandId: UUID_1, reason}))]) {
       assert.deepEqual(ClearRunHistoryResultSchema.parse(value), value);
     }
     for (const count of [-1, 0.5, Infinity]) {
-      assert.equal(RunHistoryStatusSchema.safeParse({state: "available", finishedRuns: count, activeRuns: 0}).success, false);
-      assert.equal(RunHistoryStatusSchema.safeParse({state: "available", finishedRuns: 0, activeRuns: count}).success, false);
       assert.equal(ClearRunHistoryResultSchema.safeParse({state: "cleared", commandId: UUID_1, deletedRuns: count}).success, false);
     }
     for (const canary of Object.values(REDACTION_CANARIES)) {
       assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, commandId: canary}).success, false);
       assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, note: canary}).success, false);
       assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, target: {profileId: canary, epoch: 1}}).success, false);
-      assert.equal(RunHistoryStatusSchema.safeParse({state: canary}).success, false);
       assert.equal(ClearRunHistoryResultSchema.safeParse({state: "refused", commandId: UUID_1, reason: canary}).success, false);
       assert.equal(ClearRunHistoryResultSchema.safeParse({state: "not-recorded", commandId: canary}).success, false);
       assert.equal(ClearRunHistoryResultSchema.safeParse({state: "cleared", commandId: UUID_1, deletedRuns: 0, note: canary}).success, false);
@@ -383,10 +378,8 @@ describe("redaction surface scan — the declaration audit", () => {
       "durable/failure-record|debug.causes[]",
       "wire/run-detail-section|payload.value.display.observation",
       "wire/run-detail-section|payload.value.display.title",
-      "wire/dashboard-day|notifications[].context.subject",
-      "wire/dashboard-day|notifications[].context.workflow",
-      "wire/stream-envelope|payload.notifications[].context.subject",
-      "wire/stream-envelope|payload.notifications[].context.workflow",
+      "wire/stream-envelope|rows[].value.value[].context.subject",
+      "wire/stream-envelope|rows[].value.value[].context.workflow",
       "wire/workflow-explorer|workflows[].definitionPreview.groups[].key",
       "wire/workflow-explorer|workflows[].definitionPreview.groups[].label",
       "wire/workflow-explorer|workflows[].definitionPreview.reason",
@@ -405,9 +398,9 @@ describe("redaction surface scan — the declaration audit", () => {
     const module = "src/models/dashboard/workbooks.ts";
     const surfaces = REDACTION_SURFACES.filter(surface => surface.module === module);
     assert.deepEqual(surfaces.map(surface => surface.id).sort(), [
-      "durable/editable-workbook", "durable/saved-workbook", "durable/workbook-operation", "request/workbook-create", "request/workbook-intake",
+      "durable/editable-workbook", "durable/saved-workbook", "durable/workbook-operation", "request/workbook-create",
       "request/workbook-operation", "request/workbook-reference", "request/workbook-save", "wire/editable-workbook", "wire/intake-command-result", "wire/saved-workbook",
-      "wire/workbook-history", "wire/workbook-import-result", "wire/workbook-intake", "wire/workbook-list", "wire/workbook-metadata", "wire/workbook-named-version",
+      "wire/workbook-history", "wire/workbook-import-result", "wire/workbook-list", "wire/workbook-metadata", "wire/workbook-named-version",
       "wire/workbook-operation-receipt", "wire/workbook-reference", "wire/workbook-type",
     ]);
     assert.equal(SURFACE_MODULE_DISPOSITIONS.find(entry => entry.module === module)?.state, "audited");
@@ -464,7 +457,7 @@ describe("redaction surface scan — the declaration audit", () => {
       const path = `${surface.startsWith("request/") ? "workbook." : ""}libraryId`;
       assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "captured-hr-value");
     }
-    for (const [surface, path] of [["wire/intake-session", "exclusions[].reason"], ["wire/workbook-intake", "session.exclusions[].reason"], ["wire/intake-command-result", "request.payload.reason"], ["wire/intake-command-result", "request.reason"], ["wire/worker-command-result", "request.reason"]]) {
+    for (const [surface, path] of [["wire/intake-session", "exclusions[].reason"], ["wire/intake-command-result", "request.payload.reason"], ["wire/intake-command-result", "request.reason"], ["wire/worker-command-result", "request.reason"]]) {
       assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "operator-authored", `${surface}|${path}`);
     }
     for (const surface of ["durable/saved-workbook", "wire/saved-workbook", "wire/workbook-history"]) {
@@ -473,7 +466,6 @@ describe("redaction surface scan — the declaration audit", () => {
         assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, "repository-authored", `${surface}|${path}`);
       }
     }
-    assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === "wire/workbook-intake" && entry.path === "message")?.origin, "captured-hr-value");
     const origins = SURFACE_LEAF_ORIGINS.filter(entry => surfaces.some(surface => surface.id === entry.surface));
     for (const egress of ["process-egress", "os-notification"] as const) {
       const violations = auditSurfaceOrigins(surfaces.map(surface => ({ ...surface, egress })), origins);

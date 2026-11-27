@@ -57,8 +57,7 @@ export function createClientDayFixtures(DAY: string, HASH_D: string) {
       queueSurfaces: surfaces,
       workerCards: [], workerAuthority: { state: "present", members: [] },
       workerPools: [],
-      notifications: [],
-    });
+      });
   }
   return { surfaceOf, dayOf };
 }
