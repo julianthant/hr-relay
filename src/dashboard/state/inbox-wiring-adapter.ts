@@ -26,7 +26,7 @@ const policies = {
   "bulk-incomplete": { trigger: "command", tone: "warning", detail: "Some items in this batch were not done. Open it to see each one." },
 } as const satisfies Readonly<Record<Exclude<NotificationTriggerEvent["kind"], "backfill-gap">, { trigger: string; tone: NotificationItem["tone"]; detail: string }>>;
 
-export const inboxMessage = (code: "DASHBOARD_READ_FAILED" | "NOTIFICATION_SOURCE_UNAVAILABLE" | "NOTIFICATION_HISTORY_INCOMPLETE" | "NOTIFICATION_OBSERVATION_FAILED" | "NOTIFICATION_COMMAND_PENDING" | "NOTIFICATION_TARGET_UNAVAILABLE" | "NOTIFICATION_REFRESH_PENDING") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
+export const inboxMessage = (code: "DASHBOARD_READ_FAILED" | "NOTIFICATION_SOURCE_UNAVAILABLE" | "NOTIFICATION_OBSERVATION_FAILED" | "NOTIFICATION_COMMAND_PENDING" | "NOTIFICATION_TARGET_UNAVAILABLE" | "NOTIFICATION_REFRESH_PENDING") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 export function notificationPolicy(row: NotificationWire) {
   if (row.kind === "backfill-gap") return undefined;
@@ -323,7 +323,7 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
   const statusNotice = list?.unavailable === true || status?.unavailable === true ? inboxMessage("DASHBOARD_READ_FAILED")
     : observation === undefined || observation.state === "ready" ? ""
     : observation.code === "NOTIFICATION_RECEIPT_MISSING"
-      ? `${inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE")} Completion receipts are missing for one or more completed runs.`
+      ? "Notification history is incomplete. Missing completion receipts."
       : inboxMessage(observation.code ?? "NOTIFICATION_OBSERVATION_FAILED");
   const state: NotificationsState = rows !== undefined
     ? inboxProjection(rows, binding.authority.now(), gone?.request === request ? gone.ids : undefined, clearedIds).state

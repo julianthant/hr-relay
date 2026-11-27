@@ -328,7 +328,7 @@ it("shows stored notifications without a history warning after a dashboard strea
 it("names missing completion receipts and clears the warning when notification sources recover", async () => {
   const h = await harness();
   await h.status({ state: "available", value: { state: "failed", code: "NOTIFICATION_RECEIPT_MISSING", pending: 1 } });
-  assert.equal(h.value.notice, "Notification history is incomplete. Check the affected work. Completion receipts are missing for one or more completed runs.");
+  assert.equal(h.value.notice, "Notification history is incomplete. Missing completion receipts.");
   assert.equal(firstItem(h.value).id, id);
 
   await h.status({ state: "available", value: { state: "ready", pending: 0 } });
