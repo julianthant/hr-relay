@@ -11,11 +11,13 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
-import { createElement, type ReactElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { QueueRow } from "../../../../../src/dashboard/surfaces/queue/queue.js";
-import { RunStateChips } from "../../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
-import { OperatorLabelContext } from "../../../../../src/dashboard/state/operator-label.js";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { FIXTURE_ACTIVE_PROFILE_STATE } from "../../../../support/helpers/dashboard/profiles/fixture-profile-setup.js";
+import { JSDOM } from "jsdom";
+import { populateGlobal } from "vitest/runtime";
+import { DashboardApp } from "../../../../../src/dashboard/app/dashboard-app.js";
+import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import * as workerCapacity from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
 
 import * as assistantComposition from "../../../../../src/backend/app/composition/dashboard/assistant.js";
@@ -439,11 +441,27 @@ it('recovers a served read-only session after a lost reply, serves it in Queue a
     const day = await client.dashboardDay(searchPartitionDay(new Date(clock.now().toISOString())));
     const row = day.queueSurfaces.find(surface => surface.runId === runId); assert.ok(row, 'queue row');
     assert.deepEqual(row.startedBy, { kind: 'assistant', readOnly: true });
-    // The dashboard's own Queue row and Logs header draw that served row with the signed-in operator's label.
+    // The real dashboard app, mounted over the composed backend, selects the served run and shows the line in its Queue and its Logs header.
     const { actor } = await served.bootstrap(), line = `Started by the assistant for ${actor.label} · read only`;
-    const drawn = (node: ReactElement) => renderToStaticMarkup(createElement(OperatorLabelContext.Provider, { value: actor.label }, node));
-    assert.match(drawn(createElement(QueueRow, { surface: row, state: { nowIso: clock.now().toISOString(), openWells: new Set<string>() }, handlers: { onSelect() {} }, workflowLabelOf: () => 'Person Lookup' })), new RegExp(line));
-    assert.match(drawn(createElement(RunStateChips, { row })), new RegExp(line));
+    const dom = new JSDOM('<!doctype html><body><div id="root"></div></body>', { url: `${origin}/?day=${day.day}`, pretendToBeVisual: true });
+    const globals = populateGlobal(globalThis, dom.window, { bindFunctions: true });
+    Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
+    Reflect.set(dom.window.navigator, 'locks', { request: async (_name: string, run: () => unknown) => run() });
+    Reflect.set(globalThis, 'ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+    // This composition serves no profile routes; the app's sign-in gate reads the one fixture state and everything else is the composed backend.
+    const appClient = createDashboardClient({ baseUrl: origin, fetchImpl: async (input, init) => new URL(input).pathname === '/api/v1/profile/state'
+      ? Response.json(FIXTURE_ACTIVE_PROFILE_STATE) : originalFetch(input, init) });
+    const root = createRoot(dom.window.document.getElementById('root')!);
+    try {
+      await act(async () => root.render(createElement(DashboardClientProvider, { client: appClient, children: createElement(DashboardApp) })));
+      await vi.waitFor(() => assert.match(dom.window.document.querySelector('.dashboard-queue-column')?.textContent ?? '', new RegExp(line)), { timeout: 20_000, interval: 100 });
+      await act(async () => { dom.window.document.querySelector<HTMLElement>(`[data-queue-open]`)?.click(); });
+      await vi.waitFor(() => assert.match(dom.window.document.querySelector('.dashboard-log-column')?.textContent ?? '', new RegExp(line)), { timeout: 30_000, interval: 100 });
+    } finally {
+      await act(async () => root.unmount());
+      dom.window.close();
+      for (const key of globals.keys) { const original = globals.originals.get(key); if (original === undefined) Reflect.deleteProperty(globalThis, key); else Object.defineProperty(globalThis, key, original); }
+    }
     const logs = await originalFetch(`${origin}/api/v1/runs/${runId}`, { headers: { [DASHBOARD_TAB_HEADER]: randomUUID() } });
     assert.equal(logs.status, 200); assert.equal(RunDetailWireSchema.parse(await logs.json()).header.runId, runId);
 

@@ -886,7 +886,7 @@ export function QueueRow({
               </div>
             )}
 
-            <StartedByLine surface={batch?.members.find(member => member.startedBy !== undefined) ?? (batch === undefined ? surface : {})} />
+            <StartedByLine surface={(batch === undefined ? surface : selectedBatchMember ?? (batch.members.every(member => member.startedBy !== undefined) ? batch.members[0] : undefined)) ?? {}} />
 
             {/* Render only served links and receipt facts; never infer an extracted-person count from arbitrary output arrays. */}
             {batch === undefined && (parent !== undefined || surface.linkedRuns.length > 0 || surface.facts.state === "present") && (
