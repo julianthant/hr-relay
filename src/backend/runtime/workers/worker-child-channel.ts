@@ -28,7 +28,7 @@ export function createWorkerChildChannel(input: Readonly<{
   handlers: WorkerChildControlHandlers;
   onStop(reason: WorkerStopReason): void;
 }>) {
-  let turn: "free" | "run" | "control" = "free";
+  let turn: "free" | "run" | "control" | "awaiting-stop" = "free";
   let lastRequestSequence = 0;
   let workAvailable = new AbortController();
 
@@ -48,7 +48,11 @@ export function createWorkerChildChannel(input: Readonly<{
       const parsed = WorkerParentMessageSchema.safeParse(raw);
       if (!parsed.success) throw new WorkerIpcProtocolError(typeof raw === "object" && raw !== null && "kind" in raw ? String(raw.kind) : "invalid");
       const message = parsed.data;
-      if (message.kind === "worker-stop") { input.onStop(message.reason); return; }
+      if (message.kind === "worker-stop") {
+        input.onStop(message.reason);
+        if (turn === "awaiting-stop") workAvailable.abort();
+        return;
+      }
       if (message.kind === "worker-work-available") { workAvailable.abort(); return; }
       const reply = (outcome: WorkerReplyOutcome): void => { input.send({ kind: "worker-reply", requestId: message.requestId, outcome }); };
       if (message.sequence <= lastRequestSequence) { reply(refused("WORKER_IPC_PROTOCOL_INVALID")); return; }
@@ -64,19 +68,22 @@ export function createWorkerChildChannel(input: Readonly<{
       if (input.clock.nowMs() >= Date.parse(message.sentAt) + message.deadlineMs) { reply(refused("WORKER_REQUEST_EXPIRED")); return; }
       if (turn !== "free") { reply(refused("WORKER_BUSY")); return; }
       turn = "control";
-      void run(message.request).then(result => { reply({ state: "done", result }); }, error => { reply(outcomeOf(error)); })
-        .finally(() => {
-          turn = "free";
-          // The parent sends Stop after closing browsers for removal.
-          if (message.request.type !== "close-for-removal") workAvailable.abort();
-        });
+      const settle = (outcome: WorkerReplyOutcome): void => {
+        try { reply(outcome); }
+        finally {
+          // The parent sends Stop only after a successful removal close.
+          turn = message.request.type === "close-for-removal" && outcome.state === "done" ? "awaiting-stop" : "free";
+          workAvailable.abort();
+        }
+      };
+      void run(message.request).then(result => settle({ state: "done", result }), error => settle(outcomeOf(error)));
     },
     /** Capture before claiming so a wake during an empty claim also interrupts the next idle wait. */
     watchForWork(): AbortSignal {
       if (workAvailable.signal.aborted) workAvailable = new AbortController();
       return workAvailable.signal;
     },
-    /** The claim loop asks before each claim; false while a control runs. */
+    /** The claim loop asks before each claim. A control or removal can hold the turn. */
     beginRun(): boolean {
       if (turn !== "free") return false;
       turn = "run";
