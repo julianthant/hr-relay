@@ -36,7 +36,7 @@ export const ReadWorksheetRowChoice = defineTaskContract({
   id: taskId("workbooks/read-worksheet-row-choice"), title: "Retain the worksheet row decision", effect: "read",
   input: worksheetChoiceEvidence, output: worksheetChoiceEvidence, errorCodes: ["WORKBOOK_INVALID"],
   subject: { kind: "none", reason: "Retains the operator's row choice or the absence of a conflict for a delegated read" },
-  freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" },
+  freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "live" },
   scenarios: ["workbooks/read-reference"], example: { choice: null },
 });
 
