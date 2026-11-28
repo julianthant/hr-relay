@@ -23,12 +23,12 @@ const TextPatternSchema = z.strictObject({
   source: z.string().min(1),
   example: z.string().trim().min(1),
   message: z.string().min(1),
-}).refine(({ source, example }) => {
-  try { return new RegExp(source, "u").test(example); } catch (error) {
+}).superRefine(({ source, example }, context) => {
+  try { if (new RegExp(source, "u").test(example)) return; } catch (error) {
     if (!(error instanceof SyntaxError)) throw error;
-    return false;
   }
-}, "a text field pattern must compile and accept its example");
+  context.addIssue({ code: "custom", message: "a text field pattern must compile and accept its example" });
+});
 
 /** The closed field vocabulary the Steps screen draws; each kind owns its parser. */
 export const StepOmissionFieldSchema = z.discriminatedUnion("kind", [

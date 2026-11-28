@@ -10,10 +10,10 @@ import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { CrmSearchDocumentRecords } from "../../../../models/systems/crm/search-document-records.js";
 
 const identityFields = CrmDocumentIdentitySchema.shape;
-const eid = EID_PATTERN.source.slice(1, -1);
+const employeeIdPattern = EID_PATTERN.source.slice(1, -1);
 const email = `(?:${z.regexes.email.source.slice(1, -1)})`;
 const emails = String.raw`(?:${email}\s*\|\s*${email}?|\|\s*${email})`;
-const record = String.raw`\s*[^\s|;][^|;]*\|\s*(?:${eid})?\s*\|\s*${emails}\s*`;
+const record = String.raw`\s*[^\s|;][^|;]*\|\s*(?:${employeeIdPattern})?\s*\|\s*${emails}\s*`;
 const manualRecords = z.string().transform(text => text.split(";").map(row =>
   row.split("|").map(value => value.trim() || null),
 )).pipe(z.array(z.tuple([identityFields.recordId, identityFields.eid, identityFields.workEmail, identityFields.personalEmail]))
