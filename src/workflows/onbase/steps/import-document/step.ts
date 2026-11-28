@@ -7,10 +7,12 @@ import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, t
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { buildSource } from "../source-page/step.js";
 
-export const OnbaseResultSchema = z.union([
-  z.strictObject({ disposition: z.enum(["committed", "already-present"]), savedDocument: OnbaseSavedDocumentSchema }),
-  z.strictObject({ disposition: z.literal("omitted") }),
-]);
+export const OnbaseResultSchema = z.strictObject({
+  disposition: z.enum(["committed", "already-present", "omitted"]),
+  savedDocument: OnbaseSavedDocumentSchema.optional(),
+}).refine(({ disposition, savedDocument }) => (disposition === "omitted") === (savedDocument === undefined), {
+  path: ["savedDocument"], message: "A saved document is required only for a committed or already-present import.",
+});
 const importManual: StepManualDeclaration = {
   form: { fields: [] },
   produces: {},
