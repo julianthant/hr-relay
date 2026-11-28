@@ -1,5 +1,6 @@
 /** Opaque `[[K<n>.g<generation>]]` references: the model sees tokens, never the personal values behind them. */
-export type AssistantReferenceKind = "P" | "E" | "R" | "N" | "S" | "A" | "T" | "V";
+export const ASSISTANT_REFERENCE_KINDS = ["P", "E", "R", "N", "S", "A", "T", "V", "U"] as const;
+export type AssistantReferenceKind = typeof ASSISTANT_REFERENCE_KINDS[number];
 export interface AssistantReferenceEntry {
   readonly kind: AssistantReferenceKind;
   readonly target: string;
@@ -14,9 +15,9 @@ export class AssistantReferenceError extends Error {
   constructor(readonly reason: "reference-unknown" | "reference-expired" | "reference-kind" | "reference-limit") { super(reason); this.name = "AssistantReferenceError"; }
 }
 
-const TOKEN = /\[\[([PERNSATV])([1-9][0-9]{0,3})\.g([1-9][0-9]{0,8})\]\]/gu;
+const TOKEN = /\[\[([PERNSATVU])([1-9][0-9]{0,3})\.g([1-9][0-9]{0,8})\]\]/gu;
 const TOKEN_SHAPED = /\[\[[A-Za-z][0-9]+\.g[0-9]+\]\]/gu;
-const EXACT_TOKEN = /^\[\[([PERNSATV])([1-9][0-9]{0,3})\.g([1-9][0-9]{0,8})\]\]$/u;
+const EXACT_TOKEN = /^\[\[([PERNSATVU])([1-9][0-9]{0,3})\.g([1-9][0-9]{0,8})\]\]$/u;
 const MAX_ENTRIES = 500;
 
 export function createAssistantReferenceTable(generation: number) {
@@ -77,7 +78,7 @@ export function createAssistantReferenceTable(generation: number) {
       let at = 0;
       for (const match of text.matchAll(TOKEN_SHAPED)) {
         if (match.index > at) segments.push({ kind: "text", text: text.slice(at, match.index) });
-        segments.push({ kind: "reference", token: match[0], entry: resolve(match[0], ["P", "E", "R", "N", "S", "A", "T", "V"]) });
+        segments.push({ kind: "reference", token: match[0], entry: resolve(match[0], ASSISTANT_REFERENCE_KINDS) });
         at = match.index + match[0].length;
       }
       if (at < text.length) segments.push({ kind: "text", text: text.slice(at) });
@@ -141,7 +142,7 @@ export function operatorValueSpans(masked: string): readonly string[] {
   return masked.split(/\[redacted [a-z]+\]|\[\[[^\r\n]*?\]\]|\[ \[|\] \]/giu);
 }
 
-const STORED_SSN = new RegExp([/(?<token>\[\[[PERNSATV][1-9][0-9]{0,3}\.g[1-9][0-9]{0,8}\]\])/u.source, UUID, SSN].join("|"), "giu");
+const STORED_SSN = new RegExp([/(?<token>\[\[[PERNSATVU][1-9][0-9]{0,3}\.g[1-9][0-9]{0,8}\]\])/u.source, UUID, SSN].join("|"), "giu");
 /** Stored operator model text as it replays: any SSN form an earlier mask let through is masked; issued tokens and UUIDs stay as stored. */
 export function maskStoredSsn(text: string): string {
   return text.replace(STORED_SSN, (whole, ...rest: unknown[]) => (rest.at(-1) as Record<string, string | undefined>).ssn === undefined ? whole : "[redacted SSN]");
