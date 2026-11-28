@@ -27,7 +27,7 @@ type NoticeEdit = Extract<AssistantEditDetails, { kind: "notifications" }>;
 type UndoDeps = Pick<AssistantPluginDeps, "edits" | "appliedEdits" | "settingsRecord" | "workbooks">;
 
 const MAX_CHOICES = 20;
-const List = z.strictObject({});
+const List = z.strictObject({}).meta({ required: [] });
 const Selection = z.strictObject({ edit: referenceSchema("U") });
 const Labels = { spreadsheets: "Spreadsheet edit", settings: "Setting edit", notifications: "Notification edit" } as const;
 const Listed = z.strictObject({ items: z.array(Selection.extend({ label: z.enum(Object.values(Labels)) })).max(MAX_CHOICES) });

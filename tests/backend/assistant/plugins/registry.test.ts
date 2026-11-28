@@ -26,6 +26,7 @@ it("fits the full served tool set (18 tools) exactly at the cap", () => {
   const registry = assistantToolRegistry([...plugins(true), proposals.plugin, sessionsPlugin()]);
   assert.equal(registry.tools.length, 18);
   assert.deepEqual(registry.tools.filter(tool => ["list_today_edits", "undo_edit"].includes(tool.name)).map(tool => tool.name), ["list_today_edits", "undo_edit"]);
+  assert.deepEqual(registry.namespace.tools.find(tool => tool.name === "list_today_edits")?.parameters.required, []);
   // Strict function schemas refuse `oneOf` (discriminated unions); unions must emit `anyOf`.
   for (const tool of registry.namespace.tools) assert.doesNotMatch(JSON.stringify(tool.parameters), /"oneOf"/u, tool.name);
   assert.deepEqual(proposals.plugin.tools.map(tool => tool.name), ["propose_workflow_start", "propose_rerun", "propose_run_action"]);
