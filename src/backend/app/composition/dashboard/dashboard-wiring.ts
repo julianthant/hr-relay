@@ -105,7 +105,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
 
   let wakeForWork: (workflowId: string) => void = () => undefined;
-  const resources = await prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle, workflowId => wakeForWork(workflowId));
+  const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle, workflowId => wakeForWork(workflowId));
   const { settingsProcesses } = resources;
   const { logWriter, stopLogWriter } = resources;
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority, readLanes } = resources;
@@ -397,6 +397,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   startupCleanups.push(requiredClosure(() => hub.close()));
 
   const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
+  await resources.bootImport;
+  assertCurrent();
   input.onInitialPreflight?.(initialPreflight);
   // Boot spawns the standing members; each one that fails shows on its card with its cause.
   void workers.startActive();

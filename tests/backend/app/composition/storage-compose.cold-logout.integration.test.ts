@@ -165,10 +165,19 @@ it("serves the unfinished logout after restart, truthfully refuses signup, conti
       status: 200, body: { state: "refused", code: "PROFILE_LOGOUT_INCOMPLETE" },
     });
     assert.equal((await post("sign-in", { email: fields.email, password: fields.password })).body.state, "cancelling");
-    await vi.waitFor(async () => {
-      const result = await post("sign-in", { email: fields.email, password: fields.password });
-      assert.equal(result.status, 200); assert.equal(result.body.state, "active");
-    });
+    const loginStart = performance.now();
+    let pendingSignIn: ReturnType<typeof post> | undefined;
+    try {
+      await vi.waitFor(async () => {
+        pendingSignIn = post("sign-in", { email: fields.email, password: fields.password });
+        const result = await pendingSignIn;
+        assert.equal(result.status, 200); assert.equal(result.body.state, "active");
+      });
+    } catch (cause) {
+      const result = await pendingSignIn?.catch(() => undefined);
+      const resultCode = result?.body.state === "refused" ? result.body.code : result?.body.state;
+      throw new Error(`cold logout sign-in after ${Math.round(performance.now() - loginStart)} ms returned ${result?.status ?? "no status"} ${resultCode ?? "no result"}`, { cause });
+    }
     assert.equal(existsSync(f.operationPath), false); f.assertRetained();
     await app.stop(); app = undefined;
   } finally { await app?.stop(); await stopped.close(); }

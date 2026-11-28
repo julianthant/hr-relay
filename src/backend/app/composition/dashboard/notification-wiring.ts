@@ -21,7 +21,7 @@ import type { composeShell } from "./shell.js";
 import type { composeWriteSafety } from "./write-safety.js";
 import { AuthoritySnapshotChangedError } from "../../../storage/sqlite/authority-errors.js";
 
-type NotificationWiringInput = Pick<Awaited<ReturnType<typeof prepareDashboardRuntime>>, "database" | "clock" | "lifecycle" | "descriptors"> & Pick<ReturnType<typeof composeWriteSafety>, "runDetailDeps">;
+type NotificationWiringInput = Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "clock" | "lifecycle" | "descriptors"> & Pick<ReturnType<typeof composeWriteSafety>, "runDetailDeps">;
 const RUN_EVIDENCE = ["runs", "deleted_runs", "run_checkpoints", "run_receipts", "gate_results", "timeline_events"] as const;
 const SHARED_ROW_EVIDENCE = ["notification_states", "commands", "command_audits"] as const;
 const LIST_SOURCES = ["notifications", ...SHARED_ROW_EVIDENCE, ...RUN_EVIDENCE] as const;
@@ -99,7 +99,7 @@ function createProjectionDependencies({ database, lifecycle, descriptors, runDet
 /** `target` is the read `GET /notifications/{id}/target` serves; each publication carries its answer.
  * `listed` is the row as `GET /notifications` lists it in the same read snapshot: a storage notice inside its concern's group.
  * A publication its actor's list does not hold is a named failure, never sent as its own row. */
-export function composeNotificationPublications(input: NotificationWiringInput & Pick<Awaited<ReturnType<typeof prepareDashboardRuntime>>, "notificationInbox">
+export function composeNotificationPublications(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "notificationInbox">
   & { target: ReturnType<typeof composeNotificationRoutes>["target"] }): NonNullable<Parameters<typeof composeShell>[0]["notificationPublications"]> {
   const { database, clock, notificationInbox, target } = input;
   const projectionDependencies = createProjectionDependencies(input);
@@ -206,7 +206,7 @@ const notificationLaneRead = defineLaneRead(import.meta.url, "notifications", {
 type NotificationRoutes = NonNullable<Parameters<typeof createDashboardApp>[0]["notifications"]>;
 type NotificationListSource = NonNullable<Parameters<typeof composeShell>[0]["notificationList"]>;
 
-export function composeNotificationRoutes(input: NotificationWiringInput & Pick<Awaited<ReturnType<typeof prepareDashboardRuntime>>, "assertCurrent" | "notificationObserver"> & {
+export function composeNotificationRoutes(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "assertCurrent" | "notificationObserver"> & {
   notificationTarget: ReturnType<typeof createNotificationTargetQuery>;
   notificationReads?: ReturnType<typeof composeNotificationReads>;
   readLanes?: Pick<DashboardReadLanes, "read">;

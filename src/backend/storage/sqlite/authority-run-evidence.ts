@@ -17,7 +17,7 @@ import { NativeCommandAuditSchema, commandFromRow, settledRunDeletionIds } from 
 import { deletedRunFromRow } from "./deleted-run-row.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { predecessorCommandFromRow, predecessorCustodyRunFromRow, predecessorCustodyRunRow, predecessorLifecycleRequest } from "./worker-custody-predecessor.js";
-import { predecessorRunRecordFromRow, runRecordFromRow } from "./run-record-row.js";
+import { predecessorRunRecordFromRow, requireTimelineRunOwner, runRecordFromRow } from "./run-record-row.js";
 import { timelineEventFromRow } from "./timeline-repository.js";
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createWorkbookLibraryRepository } from "./workbook-library-repository.js";
@@ -145,9 +145,7 @@ export function assertTimelineOwner(database: DatabaseSync, record: TimelineAppe
   readOwner = (runId: string) => readTimelineRun(database, runId, read)): void {
     const refuse = appending ? Error : authorityIntegrityError;
     if (record.scope.kind !== "run") return;
-    const run = readOwner(record.scope.runId);
-    if (run === undefined) throw refuse("timeline-event-owner-missing");
-    if (run.envelope.workflow !== record.workflow) throw refuse("timeline-event-owner-mismatch");
+    const run = requireTimelineRunOwner(record.workflow, readOwner(record.scope.runId), refuse);
     if (record.payload.kind === "workbook-write-recorded") {
       const event = record.payload, repositories = timelineEvidenceRepositories(database, read);
       const entry = repositories.workbooks.runOperations(run.envelope.runId).find(entry => entry.libraryId === event.libraryId && entry.operation.operationId === event.operationId);

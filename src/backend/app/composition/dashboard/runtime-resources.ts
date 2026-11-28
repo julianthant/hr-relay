@@ -73,7 +73,7 @@ export function prepareDashboardEnvironment(input: DashboardComposeInput, custod
   return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend };
 }
 
-export async function prepareDashboardRuntime(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody, environment: ReturnType<typeof prepareDashboardEnvironment>, staticBundle: Awaited<ReturnType<typeof openStaticBundle>> | undefined, wakeForWork: (workflowId: string) => void) {
+export function prepareDashboardRuntime(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody, environment: ReturnType<typeof prepareDashboardEnvironment>, staticBundle: Awaited<ReturnType<typeof openStaticBundle>> | undefined, wakeForWork: (workflowId: string) => void) {
   const { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend } = environment;
   const hostFacts = hostConfigFacts(env);
   let databaseClosed = true;
@@ -142,13 +142,7 @@ export async function prepareDashboardRuntime(input: DashboardComposeInput, star
     return logWriter.close();
   };
   startupCleanups.push(stopLogWriter);
-  await Promise.all([
-    importLocalDebugLogViaWriter(stateRoot, logWriter.appendDebug),
-    importLocalDebugLogViaWriter(machineAdmission.stateRoot, logWriter.appendDebug),
-    logWriter.flush(),
-  ]);
-  assertCurrent();
-  // The boot import changes the WAL. Finish it before opening the read lanes' startup image.
+  // Read lanes start while the writer reconciles the log files.
   const readLanes = (() => {
     try { return createComposedDashboardReadHost({ admission, database, clock }); }
     catch (error) {
@@ -212,6 +206,12 @@ export async function prepareDashboardRuntime(input: DashboardComposeInput, star
   });
 
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
+  const bootImport = Promise.all([
+    importLocalDebugLogViaWriter(stateRoot, logWriter.appendDebug),
+    importLocalDebugLogViaWriter(machineAdmission.stateRoot, logWriter.appendDebug),
+    logWriter.flush(),
+  ]);
+  void bootImport.catch(() => {});
   const debugEvents = createDebugEventWriter({ enqueue: logWriter.appendDebug, clock, build: appVersion, development: frontend === "vite-dev" });
   context.attachSlowOperations(debugEvents);
   context.sessionBackups.start(debugEvents);
@@ -273,5 +273,5 @@ export async function prepareDashboardRuntime(input: DashboardComposeInput, star
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, readLanes, logWriter, stopLogWriter, settingsProcesses, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, readLanes, logWriter, stopLogWriter, bootImport, settingsProcesses, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }

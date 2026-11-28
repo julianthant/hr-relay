@@ -2,8 +2,8 @@ import { TimelineDiagnosticBudgetError, type TimelineEventRecord } from "../../.
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { assertSameClientDebugReport, DebugAppendRefusalSchema, type DebugAppendResult, type DebugTimelineAppend, type LogMutation } from "../events/log-mutations.js";
 import { createTimelineRepository, debugEventFromRow, timelineEventColumns, timelineEventFromRow } from "./timeline-repository.js";
-import { assertTimelineOwner } from "./authority-run-evidence.js";
 import { configureWritableConnection, existingDatabaseLocation } from "./authority-connection.js";
+import { requireTimelineRunOwner, runRecordFromRow } from "./run-record-row.js";
 import { fileModified, fileChanged, fileStatus } from "../file-identity.js";
 import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
 import { posixPrivatePathRejects, privatePathRejects } from "../private-path.js";
@@ -443,10 +443,14 @@ export function openLogDatabases(statePath: string, root: string, liveWriter = f
       }
       configureWritableConnection(state, 5000);
     }
-    const debugRepository = createTimelineRepository({
+    const debugRepository = liveWriter ? createTimelineRepository({
       database: state, read: work => work(), mutate: work => work().result,
-      assertOwner: (record, appending) => assertTimelineOwner(state, record, appending),
-    });
+      assertOwner(record) {
+        if (record.scope.kind !== "run") return;
+        const row = state.prepare("SELECT * FROM runs WHERE id=?").get(record.scope.runId);
+        requireTimelineRunOwner(record.workflow, row === undefined ? undefined : runRecordFromRow(row), Error);
+      },
+    }) : undefined;
     opened.push(openSidecar(root, timeline, binding));
     opened.push(openSidecar(root, dashboard, binding));
     const tables = opened.map(sidecar => ({
@@ -496,7 +500,7 @@ export function openLogDatabases(statePath: string, root: string, liveWriter = f
         }
       }),
       commitDebug(records: readonly DebugTimelineAppend[]): readonly { result: DebugAppendResult; row?: TimelineEventRecord }[] {
-        if (!liveWriter) throw new Error("debug-log-writer-thread-required");
+        if (debugRepository === undefined) throw new Error("debug-log-writer-thread-required");
         return inTransaction(state, "BEGIN IMMEDIATE", () => records.map(record => {
           try {
             const existing = record.payload.event.category === "client" ? debugRepository.get(record.eventId) : undefined;

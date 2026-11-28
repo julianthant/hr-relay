@@ -4,6 +4,7 @@ import { PredecessorRunRecordSchema, RunRecordSchema, runClaim, runTransitionVio
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import { interruptTransition } from "../../../rules/runs/run-interrupt.js";
+import type { TimelineAppend } from "../../../models/events/timeline.js";
 
 export const RUN_RECORD_JSON_SQL = "json_set(lifecycle_json, '$.envelope', json(envelope_json))";
 
@@ -120,6 +121,13 @@ const RowSchema = z.record(z.string(), ScalarSchema);
 export function runRecordFromRow(input: unknown): RunRecord {
   const row = RowSchema.parse(input);
   return Object.freeze(readRunRecord(row, () => readRunRow(row, RunRecordSchema)));
+}
+
+export function requireTimelineRunOwner(workflow: TimelineAppend["workflow"], run: PredecessorRunRecord | undefined,
+  refuse: (reason: string) => Error): PredecessorRunRecord {
+  if (run === undefined) throw refuse("timeline-event-owner-missing");
+  if (run.envelope.workflow !== workflow) throw refuse("timeline-event-owner-mismatch");
+  return run;
 }
 
 /** Reads a run stored before envelopes carried a build id, for the stopped upgrade that deletes it. */

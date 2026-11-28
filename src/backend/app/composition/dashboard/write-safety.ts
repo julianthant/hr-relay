@@ -16,7 +16,7 @@ import type { RunRecordService } from "../../../runs/lifecycle/run-record-servic
 import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import type { WorkerMemberView } from "../../../runtime/workers/worker-pool.js";
 
-export function prepareWriteSafety(input: Pick<Awaited<ReturnType<typeof prepareDashboardRuntime>>, "database" | "admission" | "lifecycle" | "descriptors" | "ids">) {
+export function prepareWriteSafety(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "admission" | "lifecycle" | "descriptors" | "ids">) {
   const { admission, lifecycle, descriptors, ids } = input;
 
   const writeResolution: WriteResolutionExecutor = createWriteResolutionExecutor({
@@ -31,7 +31,7 @@ export function prepareWriteSafety(input: Pick<Awaited<ReturnType<typeof prepare
   return { writeResolution, artifacts };
 }
 
-export function composeWriteSafety(input: Pick<Awaited<ReturnType<typeof prepareDashboardRuntime>>, "database" | "lifecycle" | "stateRoot"> & { history: AuthorityDatabase; reader: RunRecordService; projection: ReturnType<typeof createOperatorProjection>; workerMembers: () => readonly WorkerMemberView[]; operatorName: () => string; artifacts: ReturnType<typeof createContentAddressedArtifactWriter>; artifactReader: ReturnType<typeof createServerVerifiedArtifactReader>;
+export function composeWriteSafety(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "lifecycle" | "stateRoot"> & { history: AuthorityDatabase; reader: RunRecordService; projection: ReturnType<typeof createOperatorProjection>; workerMembers: () => readonly WorkerMemberView[]; operatorName: () => string; artifacts: ReturnType<typeof createContentAddressedArtifactWriter>; artifactReader: ReturnType<typeof createServerVerifiedArtifactReader>;
   /** Seam for the run detail, logs and run panel lane reads. */
   readLanes?: DashboardReadLanes }) {
   const { database, lifecycle, stateRoot, projection, workerMembers, operatorName, artifacts, artifactReader } = input;
