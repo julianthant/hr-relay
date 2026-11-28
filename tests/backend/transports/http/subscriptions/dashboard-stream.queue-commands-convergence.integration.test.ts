@@ -2,22 +2,30 @@
 import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
 
+import { createOperatorProjection } from "../../../../../src/backend/app/composition/dashboard/queue.js";
+import { composeQueueSummaries } from "../../../../../src/backend/app/composition/dashboard/queue-summaries.js";
+import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { BackfillGapObservationSchema } from "../../../../../src/backend/runs/notifications/backfill-gap.js";
+import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import {
-createDashboardStreamHub,
-type DashboardStreamHub,
+  createDashboardStreamHub,
+  type DashboardStreamHub,
 } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
+import { sseSerialize } from "../../../../../src/backend/transports/http/subscriptions/sse-response.js";
 import { applyDashboardDayPatch } from "../../../../../src/dashboard/client/index.js";
 import type { DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
-import type { DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
+import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import {
-claimEventOf,
-DAY,
-makeWorld,
-queuedEventOf,
-runRecordOf,
-taskEventsOf,
-type DashboardWorld,
+  APP_VERSION,
+  claimEventOf,
+  DAY,
+  DESCRIPTOR_SET_HASH,
+  makeWorld,
+  queuedEventOf,
+  runRecordOf,
+  taskEventsOf,
+  type DashboardWorld,
+  uuidOf,
 } from "../../../../support/helpers/backend/dashboard-harness.js";
 
 const worlds: DashboardWorld[] = [];
@@ -77,7 +85,78 @@ function applyEnvelope(
   return day;
 }
 
+function onWire(envelope: DashboardStreamEnvelope): DashboardStreamEnvelope {
+  const data = sseSerialize(envelope).split("\n").find(line => line.startsWith("data: "));
+  assert.ok(data);
+  return DashboardStreamEnvelopeSchema.parse(JSON.parse(data.slice(6)));
+}
+
 describe("Stream convergence: authoritative snapshots across create, delete, and terminalization", () => {
+  it.each(["one row", "multiple rows", "shared facts"] as const)("serves authoritative status counts after changes to %s", async (scenario) => {
+    const w = await makeWorld();
+    worlds.push(w);
+    const target = queuedEventOf(w, { seed: 1 });
+    const peer = queuedEventOf(w, { seed: 2 });
+    const unexpected = (): never => assert.fail("unexpected service effect");
+    const service = new RunRecordService({ database: w.database, clock: w.clock, ids: { uuid: unexpected }, publishQueued: unexpected });
+    const projection = createOperatorProjection({
+      database: w.database, stateRoot: w.stateRoot, clock: w.clock, appVersion: APP_VERSION, descriptorSetHash: DESCRIPTOR_SET_HASH,
+      ledger: createTransactionHistory(w.database.authority), workerMembers: () => [], descriptors: { resolve: () => undefined },
+      reader: {
+        read: runId => service.read(runId), list: query => service.list(query),
+        withRunTreeSnapshot: (ids, read) => service.withRunTreeSnapshot(ids, read),
+        summaries: { ...composeQueueSummaries(w.database), activity: unexpected },
+      },
+    });
+    projection.rebuildFromTimeline();
+    const hub = createDashboardStreamHub({ projection, backfillGaps: VALIDATING_BACKFILL_GAPS });
+    hubs.push(hub);
+    const connection = await hub.connect({ day: DAY });
+    const initial = connection.initial.map(onWire).find(envelope => envelope.type === "snapshot");
+    assert.ok(initial);
+    assert.deepEqual(initial.payload.statusCounts, [{ status: "queued", count: 2 }]);
+
+    if (scenario === "multiple rows") {
+      assert.equal(w.database.authority.runs.updatePresentation({ runId: peer.runId,
+        expectedVersion: 1, displayName: "Peer title changed", now: peer.ts }).state, "applied");
+    }
+    if (scenario === "shared facts") {
+      w.database.authority.workerPools.plan({ workflow: target.workflow, expectedVersion: 0, desiredWorkers: 1,
+        requestedBy: "local-operator", now: target.ts });
+    }
+    assert.equal(service.transition({ commandId: uuidOf(3), runId: target.runId, expectedVersion: 1,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: target.ts } }).state, "applied");
+    // The timeline still only claims these runs were queued. The new status comes from state.db.
+    projection.refreshRun(target.runId);
+    const updates = await drain(connection);
+    assert.equal(updates.length, 1);
+    const [update] = updates;
+    assert.ok(update);
+    const freshConnection = await hub.connect({ day: DAY });
+    const fresh = freshConnection.initial.map(onWire).find(envelope => envelope.type === "snapshot");
+    freshConnection.close();
+    assert.ok(fresh);
+    if (scenario === "one row") {
+      assert.ok(update.type === "change" && update.day?.operation === "replace-queue-surface");
+      assert.equal(update.after, initial.cursor);
+      assert.equal(update.day.replacement.runId, target.runId);
+      assert.equal(update.day.replacement.status, "cancelled");
+      assert.deepEqual(update.day.counts, {
+        monthCounts: [{ day: DAY, count: 2 }],
+        workflowCounts: [{ workflowId: target.workflow, count: 2, statusCounts: [{ status: "cancelled", count: 1 }, { status: "queued", count: 1 }] }],
+        statusCounts: [{ status: "cancelled", count: 1 }, { status: "queued", count: 1 }],
+      });
+      connection.close();
+      const resumed = await hub.connect({ day: DAY, lastEventId: initial.cursor, lastProjectionGeneration: projection.generation() });
+      assert.equal(resumed.initial[1]?.type, "snapshot", "the previous connection's count patch has no verified replay basis");
+      resumed.close();
+    } else {
+      assert.equal(update.type, "snapshot");
+    }
+    const applied = applyEnvelope(initial.payload, onWire(update));
+    assert.deepEqual({ ...applied, snapshotCursor: fresh.cursor }, fresh.payload);
+  });
+
   it("converges to authoritative snapshot on create, status transition, delete, and terminalization", async () => {
     const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
@@ -119,7 +198,7 @@ describe("Stream convergence: authoritative snapshots across create, delete, and
     );
     w.projection.refreshRun(runRecordOf({ seed: 2 }).envelope.runId);
     const transitionEnvelopes = await take();
-    assert.ok(transitionEnvelopes.some((e) => e.type === "snapshot"));
+    assert.ok(transitionEnvelopes.some(e => e.type === "change" && e.day?.operation === "replace-queue-surface" && e.day.counts !== undefined));
     const freshAfterComplete = w.projection.buildDashboardDayWire(DAY);
     assert.deepEqual(
       { ...local, snapshotCursor: "pc:1" },
