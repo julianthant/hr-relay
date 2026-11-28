@@ -43,7 +43,7 @@ export function authenticateStoredParkedWriteRecheck(
     repositories.writeAttempts.get(intent.currentAttemptId),
     repositories.commands.get(recheck.commandId),
     repositories.commandAudits.get(recheck.auditId),
-  ).intent;
+  );
 }
 
 export const JsonRowSchema = z.strictObject({ payload_json: z.string() });

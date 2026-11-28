@@ -92,6 +92,24 @@ describe("served notification alerts", () => {
     assert.deepEqual(probe.alerts, []);
   });
 
+  it("announces a failure once, when it fails away from Logs", async () => {
+    const { probe, show, publish } = await mount(ready());
+    const failed = item("failed", "Run failed", "danger");
+    await show(ready(failed));
+    await publish(failed);
+    assert.deepEqual(probe.alerts.map(alert => alert.id), ["failed"]);
+    assert.equal(probe.unread, 1);
+    assert.match(document.body.textContent ?? "", /Run failed/);
+  });
+
+  it("raises no failure notice for a cancelled run, which publishes nothing", async () => {
+    const { probe, show } = await mount(ready());
+    await show(ready());
+    assert.deepEqual(probe.alerts, []);
+    assert.equal(probe.unread, 0);
+    assert.doesNotMatch(document.body.textContent ?? "", /failed|did not complete/i);
+  });
+
   it("raises nothing for an already read item or a notice no switch governs", async () => {
     const { probe, publish } = await mount(ready());
     await publish(item("read", "Run completed", "positive", true));

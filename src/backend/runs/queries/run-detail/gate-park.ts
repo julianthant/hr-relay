@@ -54,7 +54,7 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import { timelineCheckpointReference } from "../../../../models/events/timeline.js";
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
 import type { DecisionInputWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
-import { IDENTITY_REVIEW_TEXT, PARKED_WRITE_RECORDS, REFERENCE_CHECK_REVIEW_TEXT, parkedWriteRecordId, type ParkedWriteRecord } from "../../decisions/decision-catalog.js";
+import { IDENTITY_REVIEW_TEXT, PARKED_WRITE_RECORDS, READ_BACK_SAVED_LABEL, REFERENCE_CHECK_REVIEW_TEXT, parkedWriteRecordId, type ParkedWriteRecord } from "../../decisions/decision-catalog.js";
 import { projectDecision, rowActionOption, type ServedOption } from "../../decisions/project-decision.js";
 import { decisionAnswerer, type DecisionAnswerer } from "../../decisions/decision-answer.js";
 
@@ -417,7 +417,7 @@ function parkedWriteActions(
     {
       key: "resolve-write-absent",
       label: "I confirmed it is NOT there",
-      detail: "Allows one more attempt.",
+      detail: "Relay checks the system before filing again.",
       intent: "primary",
       icon: "resolve",
       placement: ["banner", "footer"],
@@ -426,7 +426,7 @@ function parkedWriteActions(
       expectedVersion: authority.version,
       confirm: {
         title: "Confirm the transaction is absent",
-        body: `If it is in ${intent.system}, the retry submits it a second time.`,
+        body: `Relay reads ${intent.system} again and files only if the write is absent.`,
         confirmLabel: "It is not there",
         tone: "destructive",
       },
@@ -873,7 +873,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
   });
 }
 
-/** D5/D6: "Did the <record> save in <system>?" — Check again (held check only), Saved (Relay re-reads; a typed transaction number where the verifier takes one), Not saved (confirmed absence). */
+/** D5/D6: "Did the <record> save in <system>?" — Check again (held check only), Saved (read-back), Not saved (read before retry). */
 export function parkedWriteDecision(parked: Readonly<{ taskId: string; parkedCode: string; readBack: boolean; acceptsTransactionId: boolean; recordId?: string }>,
   actions: readonly ActionDescriptorWire[]): RunDecisionWire {
   const find = (command: string) => actions.find(action => action.kind === "command" && action.command === command);
@@ -885,8 +885,11 @@ export function parkedWriteDecision(parked: Readonly<{ taskId: string; parkedCod
   const transaction = parked.acceptsTransactionId ? { kind: "text" as const, label: "Transaction number", placeholder: "T00000000", pattern: "^T\\d+$" } : undefined;
   return projectDecision(parked.parkedCode === "unknown" ? "write-unknown" : "write-parked", [
     ...sending("check-again", find("check-parked-write"), {}),
-    ...sending("saved", find("recheck-write"), record === undefined ? {} : { label: `Saved in ${record.system}`,
-      ...(transaction === undefined ? {} : { hint: "Relay verifies this number first." }) }, transaction),
+    ...sending("saved", find("recheck-write"), {
+      ...(record === undefined ? {} : { label: `Saved in ${record.system}`,
+        ...(transaction === undefined ? {} : { hint: "Relay verifies this number first." }) }),
+      ...(parked.readBack ? { label: READ_BACK_SAVED_LABEL } : {}),
+    }, transaction),
     ...sending("not-saved", find("resolve-write-absent"), record === undefined ? {} : { label: `Not saved, ${record.again}` }),
   ], { ...(record === undefined ? {} : parkedWriteText(record, parked.readBack, parked.recordId)),
     // After a failed read-back the frame preselects the read that files nothing.

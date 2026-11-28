@@ -1,3 +1,4 @@
+import { recordHistoricalRecover } from "../../../support/helpers/backend/record-historical-recover.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
@@ -45,7 +46,7 @@ it("offers the dry run's reference checkpoint only for the same captured workboo
 });
 
 function recover(h: Awaited<ReturnType<typeof sourceBoundHarness>>, source: ReturnType<typeof h.fresh>) {
-  const result = h.kernel.execute({ commandId: h.ids.uuid(), family: "run", type: "recover-run", source: "dashboard",
+  const result = recordHistoricalRecover(h, h.descriptor, { commandId: h.ids.uuid(), family: "run", type: "recover-run", source: "dashboard",
     requestedBy: "local-operator", requestedAt: h.clock.now().toISOString(), target: { runId: source.envelope.runId, expectedVersion: source.version } });
   assert.ok(result.state === "applied");
   const target = result.affectedTargets[0]; assert.ok(target?.family === "run");

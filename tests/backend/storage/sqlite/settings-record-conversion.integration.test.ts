@@ -13,15 +13,15 @@ import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapsh
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { preRunsNotificationsSettingsRow, restorePreRunsNotificationsSettingsRows } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
-import { restoreSchema32CommandRows } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { preRunsNotificationsSettingsRow, restorePreAssistantFullAccessSettingsRows, restorePreRunsNotificationsSettingsRows } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
+import { restoreSchema32CommandRows, restoreSchema45RunSearch } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const world = createSettingsAuthorityTestWorld();
 afterEach(world.cleanup);
 
-const ADDED_DEFAULTS = { preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run", notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" }, sendShortcut: "enter" };
+const ADDED_DEFAULTS = { preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run", notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" }, sendShortcut: "enter", assistantFullAccess: false };
 const SAVED_BEFORE = { "concurrency.defaultWorkers": { set: 3 }, "preferences.theme": { set: "light" } };
 const CONVERTED_TABLES = ["settings_snapshots", "settings", "commands", "command_audits"];
 const PayloadSchema = z.object({ payload_json: z.string() });
@@ -39,14 +39,45 @@ function triggers(database: DatabaseSync) {
 function snapshots(database: DatabaseSync) {
   return database.prepare("SELECT payload_json FROM settings_snapshots ORDER BY id").all().map(row => z.record(z.string(), z.unknown()).parse(JSON.parse(PayloadSchema.parse(row).payload_json)));
 }
-function upgrade(database: DatabaseSync) {
+function upgrade(database: DatabaseSync, from = 31) {
   database.exec("BEGIN EXCLUSIVE");
   try {
-    applyAuthorityMigrationsAfter(database, 31, { now: "2026-11-16T00:00:00.000Z", captureFile: () => { throw new Error("artifact-unexpected"); } });
+    applyAuthorityMigrationsAfter(database, from, { now: "2026-11-16T00:00:00.000Z", captureFile: () => { throw new Error("artifact-unexpected"); } });
     database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
     database.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}; COMMIT`);
   } catch (error) { database.exec("ROLLBACK"); throw error; }
 }
+
+it("upgrades schema 44, leaves Full access off, and persists an explicit opt-in only in its own store", async () => {
+  const f = await world.fixture();
+  assert.equal(f.execute(save(1, SAVED_BEFORE)).state, "applied");
+  world.databases.splice(world.databases.indexOf(f.database), 1)[0]?.close();
+  {
+    using raw = new DatabaseSync(f.path);
+    restoreSchema45RunSearch(raw);
+    restorePreAssistantFullAccessSettingsRows(raw);
+    raw.exec("UPDATE database_states SET schema_version=44; PRAGMA user_version=44");
+    const prior = snapshots(raw), priorTriggers = triggers(raw);
+    assert.equal(inspectNativeAuthority(raw, 44).schemaVersion, 44);
+    upgrade(raw, 44);
+    assert.equal(inspectNormalAuthority(raw).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.deepEqual(triggers(raw), priorTriggers);
+    assert.equal(readAppSettings(raw)?.saved?.settings.preferences?.assistantFullAccess, undefined);
+    assert.deepEqual(snapshots(raw).map(snapshot => ConfigSnapshotRecordSchema.parse(snapshot).preferences),
+      prior.map(snapshot => ({ ...z.record(z.string(), z.unknown()).parse(snapshot.preferences), assistantFullAccess: false })));
+  }
+  const open = () => {
+    const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "settings-test" }, f.clock);
+    world.databases.push(database);
+    return database;
+  };
+  const database = open();
+  assert.equal(f.execute(save(2, { "preferences.assistantFullAccess": { set: true } }), database).state, "applied");
+  world.databases.splice(world.databases.indexOf(database), 1)[0]?.close();
+  assert.deepEqual(open().authority.settingsCurrent.get()?.settings, { concurrency: { defaultWorkers: 3 }, preferences: { theme: "light", assistantFullAccess: true } });
+  const other = await world.fixture();
+  assert.equal(other.database.authority.settingsCurrent.get()?.settings.preferences?.assistantFullAccess, undefined);
+});
 
 /** A store an older build wrote at schema 31: one saved settings revision, every settings row at the previous settings schema. */
 async function schema31Store() {

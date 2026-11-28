@@ -3,7 +3,7 @@ import { chatGptStatusFixture } from "../../../support/helpers/chatgpt-status-fi
 import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
 import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
-import { ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantRequest, type AssistantResult, type AssistantActionResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantM1Request } from '../../../../src/models/dashboard/assistant.js';
 import { AssistantPanel as ShellAssistantPanel } from '../../../../src/dashboard/surfaces/shell/assistant-panel.js';
 import { TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
@@ -12,12 +12,11 @@ import assert from 'node:assert/strict';
 import { afterEach, it, vi } from 'vitest';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { ASSISTANT_PROPOSAL_CAPTION, createAssistantHistory } from '../../../../src/dashboard/surfaces/assistant/assistant-history-model.js';
-import { ASSISTANT_PAUSE_PROPOSAL, ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
-import { resultClient } from '../../../support/helpers/dashboard/assistant-served-client.js';
+import { createAssistantHistory } from '../../../../src/dashboard/surfaces/assistant/assistant-history-model.js';
+import { resultClient, type ScriptedReply } from '../../../support/helpers/dashboard/assistant-served-client.js';
 import { assistantHistoryServer } from '../../../support/helpers/dashboard/assistant-history-server.js';
 import { MeasurementFreeResizeObserver } from '../../../support/helpers/settings-storage-doctor-fixtures.js';
-import { assistantProposalDigest, useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
+import { useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { ChatGptAccountContext, createPreviewChatGptAccountPort, createServedChatGptAccountPort, type ChatGptAccountPort, type ChatGptAccountSnapshot } from '../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js';
 import { type ComposerDraft, useComposer } from '../../../../src/dashboard/surfaces/shell/composer-model.js';
 
@@ -25,8 +24,8 @@ Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); vi.unstubAllGlobals(); document.body.replaceChildren(); });
 it('isolates retained chats, cancels cross-chat replies and invalidates every chat on account or authority changes', async () => {
-  const pending: { signal?: AbortSignal; settle: (value: AssistantResult) => void }[] = [];
-  const client = resultClient({ assistantRespond: (_request: unknown, signal?: AbortSignal) => new Promise<AssistantResult>(settle => pending.push({ signal, settle })) });
+  const pending: { signal?: AbortSignal; settle: (value: ScriptedReply) => void }[] = [];
+  const client = resultClient({ assistantRespond: (_request: unknown, signal?: AbortSignal) => new Promise<ScriptedReply>(settle => pending.push({ signal, settle })) });
   const listeners = new Set<() => void>();
   let snapshot: ChatGptAccountSnapshot = { state: 'connected', name: 'Synthetic', email: 'synthetic@example.com', planUsage: 'enabled' };
   const account: ChatGptAccountPort = { mode: 'live', getSnapshot: () => snapshot, subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
@@ -44,7 +43,7 @@ it('isolates retained chats, cancels cross-chat replies and invalidates every ch
   await act(async () => { pending[0].settle({ state: 'answered', text: 'Late A' }); });
   assert.equal(current.state.messages.length, 0);
   await act(async () => { current.onAction({ type: 'edit', value: 'B request' }); current.onAction({ type: 'send' }); });
-  await act(async () => { pending[1].settle({ state: 'refused', code: 'ASSISTANT_SUBJECT_REQUIRED', message: 'Synthetic refusal' }); });
+  await act(async () => { pending[1].settle({ state: 'no-reply', reason: 'ASSISTANT_SUBJECT_REQUIRED' }); });
   assert.equal(current.state.messages.at(-1)?.text, 'Select one person before preparing a proposal.');
   await render('a'); assert.equal(current.state.draft, '  Exact Unicode Ω\nrequest  '); assert.equal(current.state.turn.state, 'unknown');
   assert.equal(current.state.messages.some(message => message.text === 'Late A'), false);
@@ -74,8 +73,8 @@ it('isolates retained chats, cancels cross-chat replies and invalidates every ch
 });
 
 it('clears only the submitted composer version on a valid reply and retains newer edits, files, failures and cancellation', async () => {
-  const replies: { resolve: (value: AssistantResult) => void; reject: (error: Error) => void }[] = [];
-  const client = resultClient({ assistantRespond: () => new Promise<AssistantResult>((resolve, reject) => replies.push({ resolve, reject })) });
+  const replies: { resolve: (value: ScriptedReply) => void; reject: (error: Error) => void }[] = [];
+  const client = resultClient({ assistantRespond: () => new Promise<ScriptedReply>((resolve, reject) => replies.push({ resolve, reject })) });
   let controller!: ReturnType<typeof useAssistantController>, composer!: ReturnType<typeof useComposer>;
   function Harness({ chat, authority }: { chat: string; authority: number }) {
     controller = useAssistantController(client, authority, undefined, false, chat);
@@ -134,7 +133,7 @@ it('gives the automatic chat title only after the first reply settles, never rac
   const { AssistantPanel } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel.js');
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   const account = { ...preview, mode: 'live' as const };
-  const reply = Promise.withResolvers<AssistantResult>(), titles: string[] = [];
+  const reply = Promise.withResolvers<ScriptedReply>(), titles: string[] = [];
   const client = resultClient({ assistantRespond: () => reply.promise });
   let current!: ReturnType<typeof useAssistantController>;
   function Harness() {
@@ -150,48 +149,6 @@ it('gives the automatic chat title only after the first reply settles, never rac
   await vi.waitFor(() => assert.deepEqual(titles, ['Who ran today?']));
 });
 
-it.each(['run-action', 'workflow'] as const)('renders the existing served %s card with truthful local facts and confirms only its server identity', async kind => {
-  const { AssistantPanel } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel.js');
-  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
-  const account = { ...preview, mode: 'live' as const };
-  let current!: ReturnType<typeof useAssistantController>, confirmations = 0;
-  const proposal = kind === 'workflow' ? ASSISTANT_START_PROPOSAL : ASSISTANT_PAUSE_PROPOSAL;
-  const identity = { chatId: proposal.chatId, actionId: proposal.actionId, revision: proposal.revision };
-  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal }; },
-    async assistantDecide(input: { chatId: string; actionId: string; revision: number; decision: 'confirm' | 'cancel'; reviewedDigest?: string }) {
-      const { reviewedDigest, ...decision } = input;
-      assert.deepEqual(decision, { ...identity, decision: 'confirm' });
-      assert.equal(reviewedDigest, await assistantProposalDigest(proposal)); confirmations++;
-      return { state: 'applied' as const, actionId: input.actionId };
-    } });
-  const producer = { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) };
-  function Harness() {
-    current = useAssistantController(client, 1, undefined, false);
-    return createElement(AssistantPanel, { conversationPort: producer, served: current, title: 'New chat' });
-  }
-  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
-  await act(async () => { current.onAction({ type: 'edit', value: 'mark notifications read' }); current.onAction({ type: 'send' }); });
-  const card = host.querySelector('article[aria-label^="Proposed "]'); assert.ok(card);
-  assert.ok(card.textContent?.includes(proposal.label));
-  assert.equal([...host.querySelectorAll('button')].some(button => button.textContent === 'Test assistant'), false);
-  assert.match(host.textContent ?? '', /Review this proposal. No action has been applied/u);
-  assert.doesNotMatch(host.textContent ?? '', /start selected workflow|Model, effort and voice controls are unavailable/u);
-  assert.doesNotMatch(current.footnote, /Workflow execution requires dashboard Run/u);
-  if (kind === 'workflow') {
-    for (const fact of ['Sample, Avery', '10101010', 'Read only']) assert.ok(card.textContent?.includes(fact));
-    for (const hidden of ['Headed', 'Captures', 'Effects and stop points']) assert.equal(card.textContent?.includes(hidden), false);
-    assert.match(current.footnote, /Workflow starts require a confirmed plan/u);
-  } else assert.match(card.textContent ?? '', /Local change/u);
-  assert.equal(card.textContent?.includes('Dry run'), false); assert.equal(card.textContent?.includes('Alex Rivera'), false);
-  const confirm = [...card.querySelectorAll('button')].find(button => button.textContent === 'Confirm'); assert.ok(confirm); assert.equal(confirm.disabled, false);
-  assert.equal(confirmations, 0);
-  await act(async () => { confirm.click(); confirm.click(); });
-  await vi.waitFor(() => assert.equal(confirmations, 1));
-  await act(async () => { await vi.waitFor(() => assert.match(host.textContent ?? '', kind === 'workflow' ? /Started/u : /Done/u)); });
-  assert.equal(host.querySelector('article[aria-label^="Proposed "]') === null, true);
-});
-
 function setupAccount() {
   let reads = 0;
   const unavailable = ChatGptAccountStateSchema.parse({ state: "unavailable", code: 'CHATGPT_USAGE_UNAVAILABLE',
@@ -202,7 +159,7 @@ function setupAccount() {
 }
 it('treats an unreadable usage meter as a working sign-in with no test gate', async () => {
   const account = setupAccount(); let calls = 0, current!: ReturnType<typeof useAssistantController>;
-  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { calls++; return { state: 'answered', text: 'Answered' }; } });
+  const client = resultClient({ async assistantRespond(): Promise<ScriptedReply> { calls++; return { state: 'answered', text: 'Answered' }; } });
   function Harness() { current = useAssistantController(client, 'profile', undefined, false); return null; }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   try {
@@ -220,7 +177,7 @@ it('reads the model list again for each account the guarded check settles, inclu
   const listeners = new Set<() => void>();
   const account: ChatGptAccountPort = { mode: 'live', getSnapshot: () => snapshot, subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     signIn: async () => {}, cancelSignIn: async () => {}, signOut: async () => undefined };
-  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { return { state: 'answered', text: 'Unused' }; },
+  const client = resultClient({ async assistantRespond(): Promise<ScriptedReply> { return { state: 'answered', text: 'Unused' }; },
     async assistantModels() { reads++; if (!observed) throw new Error('synthetic unobserved catalog'); return { models: [{ slug: 'synthetic-model', displayName: 'Synthetic model' }] }; } });
   function Harness() { current = useAssistantController(client, 'profile', undefined, false); return null; }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
@@ -244,7 +201,7 @@ it('holds composing through the expiry check and shows only the accepted account
   vi.useFakeTimers();
   let now = Date.parse('2026-10-12T12:59:59.000Z'), requests = 0, preferenceReads = 0, current!: ReturnType<typeof useAssistantController>;
   const account = delayedAccount(() => now), lists: PromiseWithResolvers<{ models: { slug: string; displayName: string }[] }>[] = [];
-  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected' }; },
+  const client = resultClient({ async assistantRespond(): Promise<ScriptedReply> { requests++; return { state: 'answered', text: 'Unexpected' }; },
     assistantModels: () => { const list = Promise.withResolvers<{ models: { slug: string; displayName: string }[] }>(); lists.push(list); return list.promise; },
     assistantModelPreference: async () => { preferenceReads++; throw new Error('unexpected preference read'); } });
   function Harness() { current = useAssistantController(client, 'profile', undefined, false); return null; }
@@ -277,7 +234,7 @@ it('holds composing through a Retry check and offers Retry again when that check
   let current!: ReturnType<typeof useAssistantController>;
   const account = delayedAccount(() => Date.parse('2026-10-12T12:00:00.000Z'));
   const unread = { state: 'unavailable', code: 'CHATGPT_USAGE_UNAVAILABLE', message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text };
-  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { return { state: 'answered', text: 'Unused' }; } });
+  const client = resultClient({ async assistantRespond(): Promise<ScriptedReply> { return { state: 'answered', text: 'Unused' }; } });
   function Harness() { current = useAssistantController(client, 'profile', undefined, false); return null; }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   try {
@@ -302,7 +259,7 @@ it('refuses setup attachments before send callbacks, file readers and registrati
     let retained: ComposerDraft = { text, files: [file] };
     const draft = { read: () => retained, retain(value: ComposerDraft) { retained = value; } };
     const producer = { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) };
-    const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected' }; } });
+    const client = resultClient({ async assistantRespond(): Promise<ScriptedReply> { requests++; return { state: 'answered', text: 'Unexpected' }; } });
     function Harness() {
       current = useAssistantController(client, 'profile', undefined, false);
       return createElement(ShellAssistantPanel, { conversationPort: producer, served: current, draft,
@@ -325,66 +282,10 @@ it('refuses setup attachments before send callbacks, file readers and registrati
   }
 });
 
-it.each([
-  { decision: 'confirm', fail: false }, { decision: 'confirm', fail: true },
-  { decision: 'cancel', fail: false }, { decision: 'cancel', fail: true },
-] as const)('retires a deleted retained chat before deferred $decision settles (failure=$fail)', async ({ decision, fail }) => {
-  const server = assistantHistoryServer();
-  const history = await createAssistantHistory(server.client, { getItem: () => null, removeItem() {} }, server.profileId, new AbortController().signal);
-  const oldId = history.chats.read()[0].id, replacementId = (await history.chats.create()).id;
-  const held = Promise.withResolvers<AssistantActionResult>();
-  let decisions = 0, requests = 0, signal: AbortSignal | undefined;
-  const action = { chatId: crypto.randomUUID(), actionId: crypto.randomUUID(), revision: 1 };
-  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'action-proposal', proposal: { ...ASSISTANT_PAUSE_PROPOSAL, ...action } }; },
-    assistantDecide(_input: unknown, abort?: AbortSignal) { decisions++; signal = abort; return held.promise; } });
-  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
-  const account = { ...preview, mode: 'live' as const };
-  let current!: ReturnType<typeof useAssistantController>;
-  function Harness({ id }: { id: string }) { current = useAssistantController(client, 'current-person', undefined, false, id, undefined, { history }); return null; }
-  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  async function render(id: string) { await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness, { id }) }))); }
-  await render(oldId);
-  await act(async () => { current.onAction({ type: 'edit', value: 'mark notifications read' }); current.onAction({ type: 'send' }); });
-  const forgottenAction = current.onAction;
-  await act(async () => { current.onAction({ type: decision }); await vi.waitFor(() => assert.equal(decisions, 1)); });
-  assert.equal(decisions, 1);
-  const retain = vi.spyOn(history, 'retain');
-  await act(async () => {
-    current.forgetSession(oldId);
-    const retired = retain.mock.calls.at(-1)?.[1];
-    assert.equal(retired?.turn.state, 'proposal');
-    if (retired?.turn.state !== 'proposal') throw Error('pending decision must remain represented');
-    assert.equal(retired.turn.disposition, 'unknown');
-    assert.equal(signal?.aborted, true);
-    await history.chats.remove(oldId);
-  });
-  await render(replacementId);
-  const replacement = current.state, retained = server.writes.length;
-  retain.mockClear();
-  await act(async () => {
-    if (fail) held.reject(Error('lost deferred decision response'));
-    else held.resolve({ state: decision === 'confirm' ? 'applied' : 'cancelled', actionId: action.actionId });
-    await held.promise.catch(() => {});
-    await Promise.resolve();
-  });
-  assert.equal(signal?.aborted, true);
-  assert.equal(retain.mock.calls.length, 0);
-  assert.equal(current.state === replacement, true);
-  assert.equal(server.writes.length, retained);
-  assert.equal(history.has(oldId), false); assert.equal(history.read(oldId), undefined);
-  await act(async () => {
-    for (const type of ['confirm', 'cancel', 'retry', 'new-chat', 'send'] as const) forgottenAction({ type });
-    forgottenAction({ type: 'edit', value: 'do not revive the forgotten controller' });
-  });
-  assert.equal(decisions, 1); assert.equal(requests, 1);
-  assert.equal(retain.mock.calls.length, 0); assert.equal(current.state === replacement, true);
-  retain.mockRestore(); server.close();
-});
-
 it('shows one retryable failure after a lost chat response', async () => {
   vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
   let current!: ReturnType<typeof useAssistantController>, calls = 0;
-  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { calls++; throw Error('lost workflow proposal response'); } });
+  const client = resultClient({ async assistantRespond(): Promise<ScriptedReply> { calls++; throw Error('lost workflow proposal response'); } });
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   const account = { ...preview, mode: 'live' as const }, producer = { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) };
   function Harness() {
@@ -397,16 +298,33 @@ it('shows one retryable failure after a lost chat response', async () => {
   assert.equal(current.state.turn.state, 'failed');
   assert.match(document.body.textContent ?? '', /Reply unavailable\./u);
   assert.equal(document.body.textContent?.includes('lost workflow proposal response'), false);
-  await act(async () => { current.onAction({ type: 'confirm' }); });
   assert.equal(calls, 1);
   await act(async () => { [...document.querySelectorAll('button')].find(button => button.textContent === 'Retry')?.click(); });
   assert.equal(calls, 2);
 });
 
-it('shows a refused reply as one failure notice whose Retry sends the kept prompt again', async () => {
+it('offers no Retry for a recorded refusal the server marked not resendable, so a turn that may have started a run is never sent twice', async () => {
   vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
   let current!: ReturnType<typeof useAssistantController>, calls = 0;
-  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { calls++; return { state: 'refused', code: 'ASSISTANT_RESPONSE_FAILED', message: 'raw server text' }; } });
+  const client = resultClient({ async assistantRespond(): Promise<ScriptedReply> { calls++; return { state: 'no-reply', reason: 'ASSISTANT_RESPONSE_FAILED', recorded: true }; } });
+  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
+  const account = { ...preview, mode: 'live' as const }, producer = { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) };
+  function Harness() {
+    current = useAssistantController(client, 'current', undefined, false);
+    return createElement(ShellAssistantPanel, { conversationPort: producer, served: current });
+  }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));
+  await act(async () => { current.onAction({ type: 'edit', value: 'check UCPath for 10000001' }); current.onAction({ type: 'send' }); });
+  assert.match(document.body.textContent ?? '', /The assistant could not reply\./u);
+  assert.equal([...document.querySelectorAll('button')].some(button => button.textContent === 'Retry'), false);
+  assert.equal(calls, 1);
+});
+
+it('shows a refused reply as one failure notice with no button, so nothing resends it', async () => {
+  vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
+  let current!: ReturnType<typeof useAssistantController>, calls = 0;
+  const client = resultClient({ async assistantRespond(): Promise<ScriptedReply> { calls++; return { state: 'no-reply', reason: 'ASSISTANT_RESPONSE_FAILED' }; } });
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   const account = { ...preview, mode: 'live' as const }, producer = { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) };
   function Harness() {
@@ -418,59 +336,33 @@ it('shows a refused reply as one failure notice whose Retry sends the kept promp
   await act(async () => { current.onAction({ type: 'edit', value: 'start selected workflow' }); current.onAction({ type: 'send' }); });
   assert.equal(current.state.turn.state, 'idle');
   assert.match(document.body.textContent ?? '', /The assistant could not reply\./u);
-  assert.equal(document.body.textContent?.includes('raw server text'), false);
   assert.equal(document.querySelectorAll('.hub-assistant-line').length, 0);
-  await act(async () => { [...document.querySelectorAll('button')].find(button => button.textContent === 'Retry')?.click(); });
-  assert.equal(calls, 2);
-  assert.equal(document.querySelectorAll('.hub-assistant-line').length, 0);
+  assert.ok(document.querySelector('.hub-transcript [role="alert"] button, .hub-transcript .failure-notice button') === null);
+  assert.equal([...document.querySelectorAll('.hub-transcript button')].some(button => button.textContent === 'Retry' || button.textContent === 'Open Settings'), false);
+  assert.equal(calls, 1);
   assert.equal((document.body.textContent?.match(/The assistant could not reply\./gu) ?? []).length, 1);
-  assert.equal(document.body.textContent?.includes('Restored chat'), false);
-  assert.equal(current.state.messages.filter(message => message.role === 'operator' && message.text === 'start selected workflow').length, 2);
-});
-
-it('disables Cancel and Confirm once a refused decision leaves the issued card stale', async () => {
-  const { AssistantPanel } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel.js');
-  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
-  let current!: ReturnType<typeof useAssistantController>, decisions = 0;
-  const proposal = ASSISTANT_PAUSE_PROPOSAL;
-  const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal }; },
-    async assistantDecide() { decisions++; return { state: 'refused' as const, code: 'ASSISTANT_UNAVAILABLE' as const }; } });
-  function Harness() {
-    current = useAssistantController(client, 1, undefined, false);
-    return createElement(AssistantPanel, { conversationPort: { initial: () => ({ id: 'chat', title: 'New chat', files: [] }) }, served: current, title: 'New chat' });
-  }
-  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: { ...preview, mode: 'live' as const }, children: createElement(Harness) })));
-  await act(async () => { current.onAction({ type: 'edit', value: 'mark notifications read' }); current.onAction({ type: 'send' }); });
-  const button = (name: string) => [...host.querySelectorAll('article[aria-label^="Proposed "] button')].find(item => item.textContent === name) as HTMLButtonElement;
-  assert.equal(button('Cancel').disabled, false); assert.equal(button('Confirm').disabled, false);
-  await act(async () => { button('Confirm').click(); await vi.waitFor(() => assert.equal(decisions, 1)); });
-  assert.equal(decisions, 1); assert.equal((current.state.turn as { disposition?: string }).disposition, 'stale');
-  assert.equal(button('Cancel').disabled, true); assert.equal(button('Confirm').disabled, true);
-  await act(async () => { button('Cancel').click(); button('Confirm').click(); });
-  assert.equal(decisions, 1);
 });
 
 it.each([
   { name: 'a saved answer whose response is lost', reply: 'answer', lost: true, shown: 'Stored answer.' },
   { name: 'an answered delivery receipt', reply: 'answer', lost: false, shown: 'Stored answer.' },
-  { name: 'a saved proposal whose response is lost', reply: 'proposal', lost: true, shown: 'This earlier request is no longer available. Ask again.' },
-] as const)('presents the stored outcome of $name with one send and no restored Confirm', async ({ reply, lost, shown }) => {
+] as const)('presents the stored outcome of $name with one send', async ({ lost, shown }) => {
   const server = assistantHistoryServer();
   const history = await createAssistantHistory(server.client, { getItem: () => null, removeItem() {} }, server.profileId, new AbortController().signal);
   const id = history.chats.read()[0].id;
   let sends = 0;
-  const client = { ...server.client, async assistantRespond(input: AssistantRequest) {
+  const client = { ...server.client, async assistantRespond(input: AssistantM1Request) {
     sends++;
     const accepted = server.repository.accept({ conversationId: input.conversationId, expectedRevision: input.expectedRevision, messageId: input.messageId,
-      text: input.message, modelText: input.message, subjectRef: null, attachments: [], now: server.now() });
-    assert.equal(accepted.state, 'accepted');
-    const revision = server.repository.settle(input.conversationId, input.messageId, { delivery: 'answered', reply: reply === 'answer'
-      ? { id: crypto.randomUUID(), kind: 'answer', text: 'Stored answer.', modelText: 'Stored answer.' }
-      : { id: crypto.randomUUID(), kind: 'proposal', actionId: crypto.randomUUID(), text: ASSISTANT_PROPOSAL_CAPTION, modelText: 'I prepared a confirmation card.' } }, server.now());
+      text: input.message, modelText: input.message, subjectRef: null, attachments: [], proposalAnswer: null, now: server.now() });
+    if (accepted.state !== 'accepted') assert.fail('the turn was not accepted');
+    const usage = { state: 'measured', callCount: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2 } as const;
+    const revision = server.repository.settle(accepted, { delivery: 'answered', usage,
+      reply: { id: crypto.randomUUID(), kind: 'answer', parts: [{ kind: 'text', runs: [{ kind: 'plain', text: 'Stored answer.' }] }], modelText: 'Stored answer.' } }, server.now());
     assert.ok(revision !== undefined);
     if (lost) throw Error('synthetic lost response after the server saved the outcome');
-    return { kind: 'delivery' as const, receipt: { conversationId: input.conversationId, messageId: input.messageId, ordinal: accepted.ordinal, revision, delivery: 'answered' as const } };
+    return { kind: 'delivery' as const, receipt: { conversationId: input.conversationId, messageId: input.messageId, ordinal: accepted.ordinal, revision, delivery: 'answered' as const },
+      acceptedTurn: accepted.acceptedTurn, usage, history: { state: 'observed' as const } };
   } };
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   const account = { ...preview, mode: 'live' as const };
@@ -481,7 +373,6 @@ it.each([
   await act(async () => { current.onAction({ type: 'edit', value: 'Explain' }); current.onAction({ type: 'send' }); });
   await act(async () => { await vi.waitFor(() => { assert.equal(current.state.messages.at(-1)?.text, shown); }); });
   assert.equal(sends, 1);
-  assert.notEqual(current.state.turn.state, 'proposal', 'readback never restores a Confirm');
   assert.equal(current.state.messages.some(message => message.text === 'The reply was not saved. Do not resend it; ask again as a new message.'), false);
   server.close();
 });

@@ -1,7 +1,7 @@
 import { useViewState } from "../../../app/navigation/view-route-model.js";
 import { useState } from 'react';
 import { Pencil, Trash2, Undo2 } from 'lucide-react';
-import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, FormGroup, IconButton, Input, Kbd, PageHeading, ResultRow, SearchInput, Select, dsIcon } from '../../../ds/ui.js';
+import { Button, FailureNotice, Dialog, DialogBody, DialogContent, DialogFooter, FormGroup, IconButton, Input, Kbd, PageHeading, ResultRow, SearchInput, Select, dsIcon } from '../../../ds/ui.js';
 import { usePersonPreferences } from "../../../lib/person-preferences.js";
 import type { SettingsSaveListener } from "../editor/settings-attempt-model.js";
 import { DEFAULT_SHORTCUT_PREFERENCES, SEND_SHORTCUT_OPTIONS, SEND_SHORTCUT_TERMS, SHORTCUT_ACTIONS, useSaveShortcutPreferences, shortcutChord, shortcutLabel, useShortcutPreferences, ShortcutRefusedError, type ShortcutAction, type ShortcutPreferences } from './keyboard-preferences-model.js';
@@ -38,8 +38,8 @@ export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener })
   const resetAll = async () => { if (await commit(DEFAULT_SHORTCUT_PREFERENCES) === true) onSaved?.({ title: 'Shortcuts reset to defaults' }); };
   return <section className="settings-compact-page settings-keyboard-page">
     <PageHeading title="Keyboard" description="Shortcuts for moving around and sending in Relay." actions={<Button variant="muted" onClick={() => { void resetAll(); }}>Reset all to defaults</Button>} />
-    <SearchInput variant="field" aria-label="Search shortcuts" placeholder="Search shortcuts" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} />
-    {!editing && error && <Banner tone="danger" title={error} />}
+    <SearchInput aria-label="Search shortcuts" placeholder="Search shortcuts" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} />
+    {!editing && error && <FailureNotice sentence={error} />}
     <FormGroup label="Keyboard bindings">
       {actions.map(action => {
         const chords = preferences.bindings[action.id];
@@ -62,6 +62,6 @@ export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener })
         {SEND_SHORTCUT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</Select>} />}
       {actions.length === 0 && !sendShown && <p role="status" className="p-5 text-ui-muted">No shortcuts match your search.</p>}
     </FormGroup>
-    <Dialog open={editing !== null} onOpenChange={open => { if (!open) setEditing(null); }}><DialogContent title="Edit shortcut" description="Press the new keys." size="sm"><DialogBody>{error && <Banner className="mb-[var(--ds-space-heading-content)]" tone="danger" title={error} />}<Input name="shortcutKeys" autoComplete="off" autoFocus readOnly aria-label="Shortcut keys" value={captured ? shortcutLabel(captured) : ''} placeholder="Press shortcut…" onKeyDown={event => { if (event.key === 'Escape' || event.key === 'Tab') return; event.preventDefault(); const chord = shortcutChord(event.nativeEvent); if (chord) { setCaptured(chord); setError(''); } }} /></DialogBody><DialogFooter><Button variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button disabled={!captured} onClick={save}>Save</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={editing !== null} onOpenChange={open => { if (!open) setEditing(null); }}><DialogContent title="Edit shortcut" description="Press the new keys." size="sm"><DialogBody>{error && <FailureNotice className="mb-[var(--ds-space-heading-content)]" sentence={error} />}<Input name="shortcutKeys" autoComplete="off" autoFocus readOnly aria-label="Shortcut keys" value={captured ? shortcutLabel(captured) : ''} placeholder="Press shortcut…" onKeyDown={event => { if (event.key === 'Escape' || event.key === 'Tab') return; event.preventDefault(); const chord = shortcutChord(event.nativeEvent); if (chord) { setCaptured(chord); setError(''); } }} /></DialogBody><DialogFooter><Button variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button disabled={!captured} onClick={save}>Save</Button></DialogFooter></DialogContent></Dialog>
   </section>;
 }

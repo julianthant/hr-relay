@@ -346,6 +346,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     const association = row.kind === "note" ? row.note.screenshot : undefined;
     if (association !== undefined) {
       const native = requireNative(row.native);
+      if (captures === undefined && detail.captures?.state === "error"
+        && detail.captures.code === "DIAGNOSTIC_BUNDLE_BYTES_MISSING") return [];
       if (captures?.section !== "captures" || captures.payload.runId !== native.runId) throw new RunLogIdentityError("RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH");
       const matches = captures.payload.artifacts.flatMap(capture => {
         const artifact = capture.artifact;
@@ -391,7 +393,8 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         : screenshots.length > 0 ? { kind: "decision", id: `${row.logId}:captures`, time, decision: { title: "Screenshot", state: "recorded", screenshots } } : undefined;
     }
     else if (row.kind === "transaction-fenced") entry = { kind: "note", id: row.logId, time, message: "Write fenced; submission is not confirmed." };
-    else if (row.note.screenshot !== undefined) entry = undefined;
+    else if (row.note.screenshot !== undefined) entry = screenshots.length === 0
+      ? { kind: "note", id: row.logId, time, message: "Screenshot unavailable." } : undefined;
     else if (row.note.operatorAction !== undefined) entry = row.note.operatorAction.kind === "screenshot"
       ? { kind: "note", id: row.logId, time, message: "No screenshot: it could not be saved." } : undefined;
     else if (row.note.level === "info" && row.note.fields !== undefined) entry = undefined;

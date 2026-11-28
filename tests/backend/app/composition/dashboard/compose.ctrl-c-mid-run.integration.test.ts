@@ -9,10 +9,11 @@ import { afterEach, it } from "vitest";
 import { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { StoppedAuthorityBackupManifestSchema } from "../../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { ApplicationLifecycleSchema } from "../../../../../src/models/dashboard/application-lifecycle.js";
+import { DashboardDayWireSchema } from "../../../../../src/models/dashboard/projection.js";
 import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
-import { systemClock } from "../../../../../src/rules/time/clock.js";
+import { localDatePart, systemClock } from "../../../../../src/rules/time/clock.js";
 import { testProcessImport } from "../../../../support/compiled-process.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { credentialKeychainTestEnvironment } from "../../../../support/helpers/credential-keychain-fake.js";
@@ -161,6 +162,57 @@ async function startIdleWorkers(post: Awaited<ReturnType<typeof startDashboard>>
     target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: count } }, credential)).json());
   assert.equal(result.state, "applied", JSON.stringify(result));
 }
+
+it("an idle Person Lookup worker claims and starts a task within two seconds of admission", async () => {
+  const { f, barrier, child, exited, post, origin, credential, diagnostics } = await startDashboard();
+  const headers = { "x-relay-session": credential };
+  const day = localDatePart(systemClock.now());
+  const stream = await fetch(`${origin}/events/v1?topics=dashboard-day:${day}`, { headers });
+  const db = new DatabaseSync(f.path, { readOnly: true });
+  try {
+    assert.equal(stream.status, 200);
+    const plan = StartPlanWireSchema.parse(await (await post("start-plans", {
+      workflowId: "person-lookup", submissions: [{ emplId: EXECUTOR_EID }], dryRun: false,
+    }, credential)).json());
+    assert.deepEqual(plan.refused, []);
+    await startIdleWorkers(post, credential, 1);
+    const idle = db.prepare("SELECT 1 FROM debug_events WHERE json_extract(payload_json,'$.payload.event.reason')='worker-idle' LIMIT 1");
+    await until(() => idle.get(), "the worker to finish its empty claim", diagnostics);
+
+    const started = CommandResultSchema.parse(await (await post("commands", {
+      commandId: randomUUID(), family: "start", type: "start-run", requestedAt: systemClock.now().toISOString(),
+      requestedBy: "local-operator", source: "run-start",
+      target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion },
+      payload: plan.fingerprints,
+    }, credential)).json());
+    assert.equal(started.state, "applied", JSON.stringify(started));
+    const run = started.affectedTargets.find(target => target.family === "run");
+    assert.ok(run);
+    const milestone = db.prepare(`SELECT MIN(occurred_at) AS instant FROM timeline_events
+      WHERE run_id=? AND kind=? AND (? != 'span.started' OR json_extract(payload_json,'$.payload.event.kind')='task')`);
+    const at = (kind: string) => {
+      const instant = milestone.get(run.runId, kind, kind)?.instant;
+      return typeof instant === "string" ? instant : undefined;
+    };
+    const firstTask = await until(() => at("span.started"), "the first task span", diagnostics, 40_000);
+    const queued = at("run.queued"), claimed = at("run.claimed");
+    assert.ok(queued !== undefined && claimed !== undefined);
+    const claimMs = Date.parse(claimed) - Date.parse(queued);
+    const firstTaskMs = Date.parse(firstTask) - Date.parse(queued);
+    const timing = JSON.stringify({ queued, claimed, firstTask, claimMs, firstTaskMs });
+    assert.ok(0 <= claimMs && claimMs <= firstTaskMs && firstTaskMs <= 2_000, timing);
+
+    const queue = DashboardDayWireSchema.parse(await (await fetch(`${origin}/api/v1/dashboard?day=${localDatePart(new Date(queued))}`, { headers })).json());
+    assert.equal(queue.queueSurfaces.find(row => row.runId === run.runId)?.status, "running", timing);
+    process.stdout.write(`Person Lookup startup ${timing}\n`);
+  } finally {
+    db.close();
+    await stream.body?.cancel();
+    writeFileSync(join(barrier, "release"), "");
+    child.kill("SIGINT");
+    assert.deepEqual(await exited, { code: 0, signal: null }, diagnostics());
+  }
+}, 180_000);
 
 it.skipIf(process.platform === "win32")("one terminal SIGINT drains two idle worker children and logs every shutdown phase through exit 0", async () => {
   const { child, post, origin, credential, markers, diagnostics, exited, output } = await startDashboard(true);

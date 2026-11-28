@@ -12,11 +12,11 @@ import { ERROR_CATALOG } from "../../../../../../src/models/failures/error-catal
 import type { StartRefusalCode } from "../../../../../../src/models/run/start-refusal.js";
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
-  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_PDF_REFERENCE_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_CATALOG, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
+  RUN_DIALOG_ACTOR, RUN_DIALOG_APPLIED, RUN_DIALOG_CHECK_CATALOG, RUN_DIALOG_DRY_RUN_CATALOG, RUN_DIALOG_PDF_CATALOG, RUN_DIALOG_PDF_REFERENCE_CATALOG, RUN_DIALOG_REFERENCE_CATALOG, RUN_DIALOG_CRM, RUN_DIALOG_SEVERAL_SHEETS_CATALOG, runDialogUpload, RUN_DIALOG_CATALOG, RUN_DIALOG_CONFLICT, RUN_DIALOG_RERUN_CATALOG, RUN_DIALOG_RERUN_SOURCE, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW,
   never, runDialogClient, runDialogPlan, runDialogReadiness, runDialogRerunSnapshot, runDialogRerunWarning, runDialogWriteRerunSnapshot, runDialogWriteRerunWarning, RUN_DIALOG_WRITE_RERUN_CATALOG, RUN_DIALOG_WORK_STUDY, type ServedCheck,
   RUN_DIALOG_SEPARATIONS, RUN_DIALOG_SEPARATIONS_CATALOG, RUN_DIALOG_SEPARATIONS_TYPED, runDialogSeparationsRerunSnapshot,
 } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
-import { RUN_DIALOG_REFERENCE_READS, runDialogReferenceReads } from "../../../../fixtures/dashboard/run-dialog-reference-fixtures.js";
+import { RUN_DIALOG_CRM_SHAPE, RUN_DIALOG_REFERENCE_READS, runDialogReferenceReads } from "../../../../fixtures/dashboard/run-dialog-reference-fixtures.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
 import { SceneBinding } from "./scene-binding.js";
 import { StoryFrame } from "./story-frame.js";
@@ -175,7 +175,7 @@ const PDF = {
 } satisfies Record<PdfInputState, Story>;
 
 /** What the dialog shows when the reference spreadsheets a workflow reads cannot be read or checked. */
-type ReferenceState = "none-added" | "pdfs-none-added" | "loading" | "catalog-failed" | "compatibility-failed" | "unchecked" | "check-loading" | "check-failed" | "chosen" | "worksheet-menu" | "start";
+type ReferenceState = "none-added" | "pdfs-none-added" | "loading" | "catalog-failed" | "compatibility-failed" | "unchecked" | "check-loading" | "check-failed" | "chosen" | "spreadsheet-menu" | "worksheet-menu" | "one-of-several" | "three-worksheets" | "several-menu" | "start";
 const unreadable = () => { throw new Error("The spreadsheets could not be read."); };
 const reference = (title: string, served: Partial<DashboardClient>, catalog = RUN_DIALOG_REFERENCE_CATALOG, extra: Partial<Story> & SceneOptions = {}): Story =>
   stage(title, () => runDialogClient({ workbookTypes: async () => [], ...served }), "Input", { catalog, ...extra });
@@ -186,6 +186,12 @@ const chooseRoster = async (page: Page) => {
   await page.getByRole("menuitem").filter({ hasText: "Roster" }).first().click();
   await dialog(page).getByText("Roster").first().waitFor();
 };
+const SHEETS = ["Oct. 19", "Oct 26", "Nov 2", "Nov 9", "Nov. 16", "Nov. 30"];
+const worksheetSearch = (page: Page) => page.getByRole("searchbox", { name: "Find a worksheet" });
+const chooseThree = async (page: Page) => { await chooseRoster(page);
+  await dialog(page).getByRole("button", { name: /worksheets, /u }).click(); await worksheetSearch(page).waitFor();
+  for (const name of ["Nov. 16", "Nov 9"]) await page.getByRole("menuitemcheckbox", { name }).click(); };
+const several = (title: string, then: (page: Page) => Promise<void>) => reference(title, runDialogReferenceReads(SHEETS, "onboarding-roster", RUN_DIALOG_CRM_SHAPE), RUN_DIALOG_SEVERAL_SHEETS_CATALOG, { then, workflowId: RUN_DIALOG_CRM });
 const REFERENCE = {
   "none-added": reference("The reference field before any spreadsheet is picked", RUN_DIALOG_REFERENCE_READS),
   "pdfs-none-added": reference("PDFs chosen, the reference field still empty", { ...RUN_DIALOG_REFERENCE_READS, uploadOcrSource: runDialogUpload }, RUN_DIALOG_PDF_REFERENCE_CATALOG, { then: afterAttach(pdfFile("first.pdf"), pdfFile("second.pdf", "%PDF-1.4 two")) }),
@@ -196,8 +202,13 @@ const REFERENCE = {
   "check-loading": reference("The optional check still loading", { workbookCatalog: never, workbookCompatibility: never }, RUN_DIALOG_CHECK_CATALOG, READING),
   "check-failed": reference("The optional check's list could not be read", { workbookCatalog: async () => unreadable(), workbookCompatibility: async () => ({ workflows: [], libraries: [] }) }, RUN_DIALOG_CHECK_CATALOG),
   chosen: reference("A saved spreadsheet chosen for the reference field", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: chooseRoster }),
-  "worksheet-menu": reference("The chosen spreadsheet's worksheet menu open", runDialogReferenceReads(["Oct. 19", "Oct 26", "Nov 2", "Nov 9", "Nov. 16", "Nov. 30"]), RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page);
+  "spreadsheet-menu": reference("The Add spreadsheet menu open, searching Roster", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { knownFailures: { "named-and-focusable": "#532" }, then: async page => {
+    await dialog(page).getByRole("button", { name: /Add spreadsheet|Change spreadsheet/u }).click(); await page.getByRole("searchbox", { name: "Find a spreadsheet" }).fill("Roster"); await page.getByRole("menuitem").filter({ hasText: "Roster" }).first().waitFor(); } }),
+  "worksheet-menu": reference("The chosen spreadsheet's worksheet menu open", runDialogReferenceReads(SHEETS), RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page);
     await dialog(page).getByRole("button", { name: /worksheet, /u }).click(); await page.getByRole("searchbox", { name: "Find a worksheet" }).waitFor(); } }),
+  "one-of-several": several("A reference that takes several worksheets, one chosen", chooseRoster),
+  "three-worksheets": several("Three reference worksheets chosen, the menu closed", async page => { await chooseThree(page); await page.keyboard.press("Escape"); await worksheetSearch(page).waitFor({ state: "hidden" }); }),
+  "several-menu": several("The worksheet menu of a several-worksheet reference, three checked", chooseThree),
   start: reference("Start, with the chosen spreadsheet", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page); await dialog(page).locator("textarea").first().fill(RUN_DIALOG_TYPED); await press(page, "Next"); await at(page, "Start"); } }),
 } satisfies Record<ReferenceState, Story>;
 

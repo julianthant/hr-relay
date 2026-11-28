@@ -9,12 +9,6 @@ export type RunHistoryTarget = z.infer<typeof RunHistoryTargetSchema>;
 export const ClearRunHistoryRequestSchema = RunHistoryCommandSchema.extend({ target: RunHistoryTargetSchema });
 export type ClearRunHistoryRequest = z.infer<typeof ClearRunHistoryRequestSchema>;
 
-export const RunHistoryStatusSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("available"), finishedRuns: z.number().int().nonnegative(), activeRuns: z.number().int().nonnegative() }),
-  z.strictObject({ state: z.literal("unavailable") }),
-]);
-export type RunHistoryStatus = z.infer<typeof RunHistoryStatusSchema>;
-
 export const ClearRunHistoryResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("not-recorded"), commandId: CommandIdSchema }),
   z.strictObject({ state: z.literal("cleared"), commandId: CommandIdSchema, deletedRuns: z.number().int().nonnegative() }),

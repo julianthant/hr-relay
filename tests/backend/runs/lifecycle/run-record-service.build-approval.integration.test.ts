@@ -1,3 +1,4 @@
+import { recordHistoricalRecover } from "../../../support/helpers/backend/record-historical-recover.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, it, vi } from "vitest";
@@ -63,7 +64,7 @@ describe("read-only admission across builds", () => {
     assert.ok(checkpoint);
     const frozen = canonicalJsonStringify(checkpoint);
     build.id = BUILD_Y;
-    const applied = h.kernel.execute({
+    const applied = recordHistoricalRecover(h, h.descriptor, {
       commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
       source: "dashboard", family: "run", type: "recover-run",
       target: { runId: source.envelope.runId, expectedVersion: source.version },

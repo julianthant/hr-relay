@@ -32,6 +32,7 @@ import { ownedDiagnostics } from "./notification-health.js";
 import { DashboardFrontendModeSchema,PackageVersionSchema,type DashboardComposeInput,type StartupCleanup,type StartupCustody } from "./runtime-contracts.js";
 import { composeSettings } from "./settings.js";
 import { createDashboardReadHost, ReadLaneStartError } from "../../../storage/sqlite/dashboard-read-host.js";
+import { assertRetainedProfileBrowserRoot } from "../../../storage/maintenance/profile-custody.js";
 
 export function createComposedDashboardReadHost(input: Omit<Parameters<typeof createDashboardReadHost>[0], "entry">) {
   return createDashboardReadHost({ ...input, entry: new URL("./read-lane-entry.js", import.meta.url) });
@@ -72,7 +73,7 @@ export function prepareDashboardEnvironment(input: DashboardComposeInput, custod
   return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend };
 }
 
-export function prepareDashboardRuntime(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody, environment: ReturnType<typeof prepareDashboardEnvironment>, staticBundle: Awaited<ReturnType<typeof openStaticBundle>> | undefined) {
+export function prepareDashboardRuntime(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody, environment: ReturnType<typeof prepareDashboardEnvironment>, staticBundle: Awaited<ReturnType<typeof openStaticBundle>> | undefined, wakeForWork: (workflowId: string) => void) {
   const { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend } = environment;
   const hostFacts = hostConfigFacts(env);
   let databaseClosed = true;
@@ -154,7 +155,8 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   const settingsBoundary = composeSettings({ database, readLanes, hostFacts, clock, active: activeSettingsRuntimeIdentity,
     environment: env, credentials: protectedSettingsAuthority,
     runtimeStoragePair,
-    resolveSettings: settings => { assertCurrent(); const result = context.resolveSettings(settings); assertCurrent(); return result; }, assertCurrent });
+    resolveSettings: settings => { assertCurrent(); const result = context.resolveSettings(settings); assertCurrent(); return result; }, assertCurrent,
+    assertBrowserRoot: path => { assertRetainedProfileBrowserRoot(context.admission, path); } });
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();
@@ -211,6 +213,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     publishQueued: (run, publication) => {
       if (publication === undefined) throw new Error("queued run is missing its publication context");
       spanWriter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
+      database.afterAuthorityCommit(() => { wakeForWork(run.envelope.workflow); });
     },
   });
   try {

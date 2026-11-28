@@ -88,11 +88,11 @@ export function useRunStartWorkbookRows(
   const rowLibrary = library.catalog.find(entry => entry.libraryId === rowReference?.libraryId && entry.state.origin.kind === "local" && !entry.state.removed);
   const rowVersion = rowLibrary?.state.versions.find(version => version.id === rowReference?.versionId);
   const rowReadReady = !library.catalogLoading && !library.catalogRefreshing && !library.catalogError && rowLibrary !== undefined && rowVersion !== undefined
-    && versionSources.state === 'ready' && versionSources.sources.some(source => source.libraryId === rowReference?.libraryId && source.versionId === rowReference?.versionId && source.sheetId === rowReference?.sheetId);
+    && versionSources.state === 'ready' && versionSources.sources.some(source => source.libraryId === rowReference?.libraryId && source.versionId === rowReference?.versionId && source.sheetId === rowReference?.sheetIds[0]);
   const rowIdentity = canonicalJsonStringify([actorId, workflowId, workflow?.version ?? null, inputRun, rowReference ?? null, rowLibrary?.state.revision ?? null]);
   const workbookRows = useWorkbookRows(client, rowIdentity, commandBinding?.authority.epoch ?? client, open && rowCapability !== undefined,
-    rowReadReady, rowReference?.libraryId ?? "", rowVersion, workbookReference?.keyFieldId, rowReference?.sheetId);
-  const rowSource = canonicalJsonStringify([rowReference?.libraryId ?? null, rowReference?.versionId ?? null, rowReference?.sheetId ?? null]);
+    rowReadReady, rowReference?.libraryId ?? "", rowVersion, workbookReference?.keyFieldId, rowReference?.sheetIds[0]);
+  const rowSource = canonicalJsonStringify([rowReference?.libraryId ?? null, rowReference?.versionId ?? null, rowReference?.sheetIds[0] ?? null]);
   const rowSelectionFresh = selectedWorkbookRows === undefined || selectedWorkbookRows.source === rowSource;
   const rowChoices = rowSelectionFresh ? workbookRows.choices : selectedWorkbookRows?.choices ?? [];
   return { rowCapability, rowReference, rowIdentity, workbookRows, rowSource, rowSelectionFresh, rowChoices };
@@ -103,13 +103,16 @@ export function runStartSpreadsheetReadiness(
     referenceId, checkSelections, checkPending, requiredTypes }: ReturnType<typeof useRunStartSpreadsheets>,
   referenceSelections: launchDraft.LaunchDraft["referenceSelections"], isRerun: boolean, snapshot: RerunValuesSnapshot | null,
 ) {
+  if (snapshot?.retainedSteps !== undefined) return {
+    spreadsheetsError: false, spreadsheetsReading: false, spreadsheetGone: false, referencesUnavailable: false,
+  };
   const usesSpreadsheets = workbookReference !== undefined || workbookCheck !== undefined;
   const spreadsheetsError = isRerun && usesSpreadsheets && (Boolean(library.catalogError) || compatibilityMissing);
   const spreadsheetsReading = usesSpreadsheets && !spreadsheetsError && (library.catalogLoading || library.catalogRefreshing || library.compatibility === undefined
     || selectedDraft !== undefined && versionSources.state === "loading" || checkSheets.some(sheet => sheet.pickedSheetIds !== undefined && sheet.worksheetsState === "loading"));
   const reference = referenceId === undefined ? undefined : referenceSelections[referenceId];
   const spreadsheetGone = usesSpreadsheets && !spreadsheetsReading && !spreadsheetsError && (workbookReference !== undefined
-    && !versionSources.sources.some(source => source.libraryId === reference?.libraryId && source.versionId === reference.versionId && source.sheetId === reference.sheetId)
+    && (reference === undefined || !reference.sheetIds.every(sheetId => versionSources.sources.some(source => source.libraryId === reference.libraryId && source.versionId === reference.versionId && source.sheetId === sheetId)))
     || checkSelections.length !== (snapshot?.spreadsheets ?? []).filter(pick => pick.typeId === workbookCheck?.id).length);
   const referencesUnavailable = checkPending || compatibilityMissing || requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || Boolean(library.catalogError) || library.compatibility === undefined || versionSources.state !== "ready");
   return { spreadsheetsError, spreadsheetsReading, spreadsheetGone, referencesUnavailable };

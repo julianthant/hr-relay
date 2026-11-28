@@ -9,7 +9,7 @@ import { NEUTRAL_PERSON_PREFERENCES } from '../../../../src/models/config/person
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from '../../../../src/dashboard/app/commands/command-executor.js';
 import { createAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { publishAssistantModelChoice } from '../../../../src/dashboard/surfaces/shell/assistant-approval-model.js';
-import { AssistantModelPreferenceViewSchema, type AssistantRespondEnvelope } from '../../../../src/models/dashboard/assistant.js';
+import { AssistantModelPreferenceViewSchema, type AssistantApprovalMode, type AssistantM1RespondEnvelope } from '../../../../src/models/dashboard/assistant.js';
 import { AssistantModelPreferenceCommandRequestSchema, CommandResultSchema, type CommandResult } from '../../../../src/rules/commands/commands.js';
 import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
 
@@ -59,10 +59,12 @@ let mounted: Root | undefined;
 afterEach(async () => { await act(async () => { mounted?.unmount(); publishAssistantModelChoice(undefined); }); document.body.replaceChildren(); });
 
 const servedPreference = { slug: 'gpt-6.1-sol', effort: 'medium' } as const;
-async function mount(props: { preview: boolean; connected?: boolean }) {
+async function mount(props: { preview: boolean; connected?: boolean; initialText?: string; onSend?: Parameters<typeof ComposerInput>[0]['onSend']; preferences?: ReturnType<typeof createPersonPreferences> }) {
   const host = document.createElement('div'); document.body.append(host); mounted = createRoot(host);
   const served = props.preview ? {} : props.connected === false ? {} : { modelPreference: servedPreference };
-  await act(async () => mounted?.render(createElement(ComposerInput, { preview: props.preview, onSend: async () => true, ...served } as Parameters<typeof ComposerInput>[0])));
+  await act(async () => mounted?.render(createElement(PersonPreferencesContext.Provider, { value: props.preferences }, createElement(ComposerInput, {
+    preview: props.preview, initialText: props.initialText, onSend: props.onSend ?? (async () => true), ...served
+  }))));
   return host;
 }
 const button = (host: HTMLElement, name: string) => host.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`);
@@ -80,6 +82,28 @@ describe('served composer menus', () => {
     expect(menu?.getAttribute('data-menu')).toBe('approval');
     expect([...menu!.querySelectorAll('[role="menuitemradio"]')].map(item => item.textContent)).toEqual(['Ask before every actionConfirm each proposed change.']);
     expect(menu!.textContent).not.toContain('Full access');
+  });
+  it('sends the selected approval mode and returns to Ask when Full access is turned off', async () => {
+    const sent: AssistantApprovalMode[] = [];
+    const preferences = createPersonPreferences('preview', { ...NEUTRAL_PERSON_PREFERENCES, assistantFullAccess: true });
+    const setFullAccess = (enabled: boolean) => act(async () => { await preferences.change({ 'preferences.assistantFullAccess': { set: enabled } }); });
+    const host = await mount({ preview: false, preferences, initialText: 'Start a dry run', onSend: value => { sent.push(value.approvalMode); return Promise.resolve(false); } });
+    const send = () => act(async () => {
+      host.querySelector('textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    });
+    await send();
+    const menu = await open(button(host, 'Ask before every action')!);
+    const fullAccess = [...menu!.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.startsWith('Full access'));
+    expect(fullAccess).toBeDefined();
+    await act(async () => { fullAccess!.click(); });
+    expect(button(host, 'Full access')?.classList.contains('hub-full-access')).toBe(true);
+    await send();
+    await setFullAccess(false);
+    expect(button(host, 'Ask before every action')).not.toBeNull();
+    await send();
+    await setFullAccess(true);
+    expect(button(host, 'Ask before every action')).not.toBeNull();
+    expect(sent).toEqual(['ask', 'full-access', 'ask']);
   });
   it('shows the served model and effort as plain text while no model choices are served', async () => {
     const host = await mount({ preview: false });
@@ -119,7 +143,7 @@ function preferenceServer() {
   const feedback: CommandOutcome[] = [];
   const held = { gate: undefined as Promise<void> | undefined, refuse: false, unreadable: false };
   const client = {
-    async assistantRespond(): Promise<AssistantRespondEnvelope> { throw new Error('a pick sends no chat turn'); },
+    async assistantRespond(): Promise<AssistantM1RespondEnvelope> { throw new Error('a pick sends no chat turn'); },
     async assistantModelPreference() { if (held.unreadable) throw new TypeError('Failed to fetch'); return view; },
     async executeCommand(input: unknown): Promise<CommandResult> {
       const command = AssistantModelPreferenceCommandRequestSchema.parse(input);

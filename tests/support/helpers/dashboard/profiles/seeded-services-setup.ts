@@ -69,7 +69,7 @@ import { buildSettingsEditor, type SettingsEditorQueryDeps } from "../../../../.
 import { createCredentialStore } from "../../synthetic-storage-admission.js";
 
 export function createSeededServicesSetup({ createFixtureDashboardApp }: {
-createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
+createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
 }) {
   function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices, productWorkflows, scripting, liveSettings }: {
    /** Opt-in: ordinary settings save through the production executor, the editor reads the store, and each commit rides the stream. */
@@ -192,10 +192,10 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
         bulk: bulkCommandId => { const acceptance = database.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: database.authority.commands.listBulkChildren(bulkCommandId) }; } });
       const profileId = "00000000-0000-4000-8000-000000000001";
       const assistant: AssistantService = {
-        respond: () => Promise.resolve({ kind: "result", result: { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: "The assistant is unavailable. Check the ChatGPT connection." } }),
+        respond: () => Promise.resolve({ kind: "result", result: { state: "no-reply", reason: "ASSISTANT_UNAVAILABLE", canRetry: false, turn: null } }),
         modelPreference: () => ({ profileId, epoch: 1, revision: 1, preference: { slug: "gpt-5.4", effort: "medium" } }),
-        historyView: () => database.authority.assistantHistory.list(clock.now().toISOString()),
-        conversation: id => database.authority.assistantHistory.conversation(id, clock.now().toISOString()),
+        historyView: () => { const now = clock.now().toISOString(); return { ...database.authority.assistantHistory.list(now), needsYou: database.authority.assistantProposals.needsYou(now) }; },
+        conversation: id => { const view = database.authority.assistantHistory.conversation(id, clock.now().toISOString()); return view && { ...view, sessions: [] }; },
         history: input => database.authority.assistantHistory.apply(AssistantHistoryOperationSchema.parse(input), clock.now().toISOString()),
       };
       return {
@@ -284,7 +284,6 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "setting
       hub,
     }, {
 
-      settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [personLookupDescriptor] },
       settingsEditor,
       storage: {
         admission: syntheticStateRoot(stateRoot),

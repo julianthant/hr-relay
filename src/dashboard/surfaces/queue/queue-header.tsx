@@ -64,21 +64,21 @@ export function QueueHeader({ title, ask, startId, onStartRun, day, today, onDay
           </DropdownMenuSub>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger><ArrowDownUp aria-hidden />Sort by<span className="queue-options-value">{ORDERS.find(entry => entry.key === order)?.label}</span></DropdownMenuSubTrigger>
-            <DropdownMenuSubContent aria-label="Sort by" className="w-[260px]">
+            <DropdownMenuSubContent aria-label="Sort by" className="queue-options-sub w-[260px]">
               <DropdownMenuRadioGroup value={order} onValueChange={value => { const next = value as QueueOrder; onSort(sort === "attention" ? "attention" : next, next); }}>
                 {ORDERS.map(entry => <DropdownMenuRadioItem key={entry.key} value={entry.key}>{entry.label}</DropdownMenuRadioItem>)}
               </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
-              <p className="queue-options-note">With Attention first on, runs that need you and failures stay on top; this order applies within each group.</p>
+              <p className="queue-options-note">Attention first keeps runs that need you on top.</p>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger><ListFilter aria-hidden />Status<span className="queue-options-value">{statusFilterValue(active, label)}</span></DropdownMenuSubTrigger>
-            <DropdownMenuSubContent aria-label="Filter by status" className="w-[280px]">
+            <DropdownMenuSubContent aria-label="Filter by status" className="queue-options-sub w-[280px]">
               {GROUPS.map((group, index) => <DropdownMenuGroup key={group.label}>
                 {index > 0 && <DropdownMenuSeparator />}<DropdownMenuLabel>{group.label}</DropdownMenuLabel>
                 {shownStatuses(group.statuses, active, count).map(status => <DropdownMenuCheckboxItem key={status} closeOnClick={false} checked={active.includes(status)} onCheckedChange={() => onFilter(toggleQueueFilter(active, status))}>
-                  <span className="flex-1">{label(status)}</span><span className="tabular-nums text-muted-foreground">{count(status)}</span>
+                  <span className="flex-1">{label(status)}</span><span className="queue-options-count">{count(status)}</span>
                 </DropdownMenuCheckboxItem>)}
               </DropdownMenuGroup>)}
             </DropdownMenuSubContent>

@@ -42,6 +42,22 @@ it("lists unread failures and waits under Needs you and everything read under Ea
   assert(view.host.querySelector(".notice-bell-dot"), "an unread dot sits with the count");
 });
 
+it("keeps a standing notice under Needs you and archive rows out of Earlier, and clears an Earlier row by keyboard through the served command", async () => {
+  const items = [item("storage", { kind: "storage", title: "Storage needs attention", tone: "warning", read: true, standing: true }), item("old", { read: true }), item("archive", { read: true, readOnlyHistory: true })];
+  const view = await draw({ state: "ready", items, pinned: [] });
+  assert.deepEqual(view.groups(), [["Needs you", 1], ["Earlier", 1], ["History", 1]]);
+  assert.ok(view.row(0).querySelector('button[aria-label="Clear notification"]') === null);
+  const clear = view.row(1).querySelector<HTMLButtonElement>('button[aria-label="Clear notification"]');
+  assert(clear, "an Earlier row has Clear");
+  await act(async () => clear.focus());
+  assert.ok(document.activeElement === clear, "Clear takes keyboard focus");
+  // A browser turns Enter on a focused button into a click.
+  await act(async () => { clear.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); clear.click(); });
+  assert.deepEqual(view.calls, ["clear:old"]);
+  await view.rerender({ state: "ready", items: [items[0], items[2]], pinned: [] });
+  assert.deepEqual(view.groups(), [["Needs you", 1], ["History", 1]]);
+});
+
 it("draws no dot and no number on the bell with nothing unread", async () => {
   const view = await draw({ state: "ready", items: [item("read", { read: true })], pinned: [] });
   assert(view.host.querySelector('button[aria-label="Notifications, 0 unread"]'));
@@ -89,7 +105,7 @@ it("shows history without a toggle or bell count even when it matches a native n
     occurredAt: now, readOnlyHistory: true });
   const view = await draw(inboxProjection([archived, local], now).state);
   assert(view.host.querySelector('button[aria-label="Notifications, 1 unread"]'));
-  assert.deepEqual(view.groups(), [["Needs you", 1], ["Earlier", 1]]);
+  assert.deepEqual(view.groups(), [["Needs you", 1], ["History", 1]]);
   assert.ok(view.row(1).querySelector(".notice-action") === null);
   await act(async () => view.row(1).querySelector<HTMLButtonElement>("button.notice-main")?.click());
   await act(async () => view.row(0).querySelector<HTMLButtonElement>('button[aria-label="Mark as read"]')?.click());

@@ -118,7 +118,8 @@ import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegation
 import { newDelegationAuthenticationMemo,type DelegationAuthenticationMemo,currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,memoizedDelegationGroup,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
-import { createAssistantHistoryRepository } from "./assistant-history.js";
+import { createAssistantM1HistoryRepository, type AssistantM1HistoryRepository } from "./assistant-history.js";
+import { createAssistantProposalRepository, type AssistantProposalRepository } from "./assistant-proposals.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, deriveAuthorityUpgradePlanDigest, isCurrentAuthoritySchemaVersion, migrationTableNames, OPENABLE_AUTHORITY_SCHEMA_VERSIONS, UPGRADEABLE_AUTHORITY_SCHEMA_VERSIONS, tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, type FailureTerminalizationReport, type SuccessTerminalizationReport } from "./run-terminal-contracts.js";
@@ -246,6 +247,8 @@ export class AuthorityDatabase implements Disposable {
   readonly #admission: RuntimeAdmission;
   readonly #admitMutation: () => void;
   #database: DatabaseSync;
+  /** The selected account session epoch the assistant stamps on accepted turns; composition binds it. */
+  #assistantEpoch: () => number = () => { throw new Error("assistant-epoch-unbound"); };
   #clock: Clock;
   #path: string;
   #busyTimeoutMs: number;
@@ -839,7 +842,7 @@ export class AuthorityDatabase implements Disposable {
       timeout: 250, readBigInts: false, returnArrays: false, allowBareNamedParameters: false, allowUnknownNamedParameters: false, defensive: true });
     let open = false;
     try {
-      database.exec("PRAGMA synchronous=FULL; BEGIN IMMEDIATE"); open = true;
+      database.exec("PRAGMA synchronous=FULL; PRAGMA secure_delete=ON; BEGIN IMMEDIATE"); open = true;
       const version = readIntPragma(database, "user_version");
       if (!OPENABLE_AUTHORITY_SCHEMA_VERSIONS.includes(version) || normalizedNativeSchema(database) !== expectedNativeSchema(version, true)) throw new Error("run-search-projection-repair-shape-changed");
       const before = nonProjectionFingerprint(database);
@@ -2285,8 +2288,15 @@ export class AuthorityDatabase implements Disposable {
   }
 
   queryRunSummaries(query: Parameters<ReturnType<typeof createRunSummaries>["query"]>[1]) {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId),
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.#readDelegationWaitState(run),
       envelopes => this.authority.dependencies.parents(envelopes)).query(this.getMeta().authorityGeneration,query) });
+  }
+
+  /** A retained summary read still admits the current source, and never serves from a write transaction. */
+  runSummaryReadPosition() {
+    if (this.#transactionMode !== "read") return undefined;
+    this.#validateExternalQuerySources();
+    return { authorityGeneration: this.getMeta().authorityGeneration, ...this.capturedChangeKey() };
   }
 
   queryRunCalendar(query: Parameters<ReturnType<typeof createRunSummaries>["calendar"]>[1]) {
@@ -2295,7 +2305,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   readRunSummaries() {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId),
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.#readDelegationWaitState(run),
       envelopes => this.authority.dependencies.parents(envelopes)).read(this.getMeta().authorityGeneration) });
   }
 
@@ -2838,9 +2848,19 @@ export class AuthorityDatabase implements Disposable {
       const next = this.#transitionWrite(request.writeIntentId,{generation:request.generation,version:request.expectedIntentVersion},{type:"resolve-absent",resolution:request.resolution});
       const {intent:current,attempt} = next;
       const run = this.#readRunRow(current.runId);
-      if (current.status !== "parked" || run === undefined || run.version !== request.resolution.expectedRunVersion
-        || run.lifecycle.state !== "parked-write" || run.lifecycle.writeIntentId !== current.writeIntentId
-        || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-resolution-run-cas-mismatch");
+      if (current.status !== "parked" || run?.lifecycle.state !== "running" || run.cancelRequested === true || run.envelope.dryRun
+        || run.envelope.attempt !== current.runAttempt || current.recheck?.commandId !== request.resolution.commandId
+        || current.recheck.auditId !== request.resolution.auditId || current.recheck.nodeId !== run.envelope.startAt
+        || current.recheck.nodeId !== run.lifecycle.currentNodeId) {
+        throw new Error("parked-write-resolution-run-cas-mismatch");
+      }
+      this.#assertCurrentExecution(current.runId, request.claim);
+      const checked = authenticateParkedWriteRecheck(current, attempt, this.authority.commands.get(current.recheck.commandId),
+        this.authority.commandAudits.get(current.recheck.auditId));
+      if (checked.command.type !== "resolve-write-absent") throw new Error("parked-write-absence-request-required");
+      if (Date.parse(request.settlement.evidence.observedAt) < Date.parse(run.lifecycle.claimedAt)) {
+        throw new Error("parked-write-resolution-absence-proof-mismatch");
+      }
       const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,recheck:_recheck,...base} = current;
       const intent = WriteIntentRecordSchema.parse({...base,status:next.status,settlement:request.settlement,
         resolvedAt:request.resolution.resolvedAt,version:current.version+1,updatedAt:request.resolution.resolvedAt,resolution:request.resolution});
@@ -3455,6 +3475,17 @@ export class AuthorityDatabase implements Disposable {
     return structuredClone(memoizedDelegationGroup(memo, manifest) ?? authenticateDelegationGroup(this.authority, manifest, new Set(), memo));
   }
 
+  #readDelegationWaitState(run: RunRecord | string) {
+    const runId = typeof run === "string" ? run : run.envelope.runId;
+    const cached = this.#delegationReadSnapshot?.waits.get(runId);
+    if (cached !== undefined) return cached === null ? null : { ...cached };
+    const parent = typeof run === "string" ? this.authority.runs.get(runId) : run;
+    if (parent === undefined) throw new Error("delegation-parent-unavailable");
+    const state = readDelegationWaitState(this.authority, parent);
+    this.#delegationReadSnapshot?.waits.set(runId, state === null ? null : { ...state });
+    return state;
+  }
+
   // Any row change, trigger rows included, advances total_changes() and drops every cached read; a savepoint rollback drops them too.
   #operationDelegationReads(): DelegationOperationReads | undefined {
     if (this.#delegationReadSnapshot !== undefined) return this.#delegationReadSnapshot;
@@ -3940,7 +3971,16 @@ export class AuthorityDatabase implements Disposable {
   }
 
 
+  bindAssistantEpoch(epoch: () => number): void { this.#assistantEpoch = epoch; }
+
   #buildAuthorityRepositories(): AuthorityRepositories {
+    const assistantPorts = { database: this.#database, read: <T>(work: () => T) => this.#withReadSnapshot(work),
+      mutate: <T>(table: AuthorityTableName, work: () => Readonly<{ result: T; changes: number }>) => this.#authorityWrite(table, work),
+      profileId: () => z.object({ profile_id: z.uuid() }).parse(this.#database.prepare("SELECT profile_id FROM database_states WHERE id=1").get()).profile_id };
+    // Built on first use: the profile row exists only after the store is bound.
+    let history: AssistantM1HistoryRepository | undefined, proposals: AssistantProposalRepository | undefined;
+    const assistantHistory = () => history ??= createAssistantM1HistoryRepository({ ...assistantPorts, epoch: () => this.#assistantEpoch(),
+      afterCommit: publish => { this.afterAuthorityCommit(publish); } });
     const settings = createSettingsActivationRepositories({ database: this.#database,
       mutate: (work) => this.#authorityWrite("settings", work),
       readRecord: (table,key,schema) => this.#readRecord(table,key,schema) });
@@ -3950,8 +3990,8 @@ export class AuthorityDatabase implements Disposable {
     return Object.freeze({
       assistantModelPreference: createAssistantModelPreferenceRepository({ database: this.#database, read: work => this.#withReadSnapshot(work), mutate: (table, work) => this.#authorityWrite(table, work) }),
       assistantAuthorization: createAssistantAuthorizationRepository({ database: this.#database, mutate: (table, work) => this.#authorityWrite(table, work) }),
-      assistantHistory: createAssistantHistoryRepository({ database: this.#database, read: work => this.#withReadSnapshot(work), mutate: (table, work) => this.#authorityWrite(table, work),
-        profileId: () => z.object({ profile_id: z.uuid() }).parse(this.#database.prepare("SELECT profile_id FROM database_states WHERE id=1").get()).profile_id }),
+      get assistantHistory() { return assistantHistory(); },
+      get assistantProposals() { return proposals ??= createAssistantProposalRepository({ ...assistantPorts, accepted: assistantHistory() }); },
       workbooks: createWorkbookLibraryRepository({ database: this.#database,
         changeKey: () => this.#transactionDepth > 0 && this.#transactionMode !== "read" ? undefined : this.changeKey(),
         mutate: work => this.#authorityWrite("workbook_library", work),
@@ -4540,13 +4580,7 @@ export class AuthorityDatabase implements Disposable {
           if (parent === undefined) throw new Error("delegation-parent-unavailable");
           return AuthenticatedRunContinuation.authenticate(this.authority, parent.envelope).delegation(nodeId, edgeId);
         },
-        waitState: (parentRunId: string) => {
-          const cached = this.#delegationReadSnapshot?.waits.get(parentRunId);
-          if (cached !== undefined) return cached === null ? null : { ...cached };
-          const state = readDelegationWaitState(this.authority, parentRunId);
-          this.#delegationReadSnapshot?.waits.set(parentRunId, state === null ? null : { ...state });
-          return state;
-        },
+        waitState: (parentRunId: string) => this.#readDelegationWaitState(parentRunId),
         wait: (parentRunId: string, descriptor: AnyWorkflowDescriptor) => {
           const parent = this.authority.runs.get(parentRunId);
           if (parent === undefined) throw new Error("delegation-parent-unavailable");
@@ -5412,7 +5446,7 @@ export class AuthorityDatabase implements Disposable {
       get: (runId: string) => this.#readRunRow(runId),
       search: (input: unknown) => this.withAuthorityReadSnapshot(() => {
         this.#validateExternalQuerySources();
-        return createRunSearchIndex(this.#database).search(input, this.getMeta().authorityGeneration);
+        return createRunSearchIndex(this.#database).search(input, this.getMeta().authorityGeneration, this.#historyOwner !== undefined);
       }),
 
       listPage: (input: Readonly<{ workflow?: string; offset: number; limit: number }>) => {

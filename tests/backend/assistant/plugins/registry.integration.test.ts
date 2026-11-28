@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, it } from "vitest";
 import { z } from "zod";
 import { CanonicalListRunsRequestSchema } from "../../../../src/backend/storage/sqlite/run-store-contracts.js";
-import { createAssistantService } from "../../../../src/backend/assistant/service.js";
+import { createAssistantM1Service } from "../../../../src/backend/assistant/service.js";
+import { replyText } from "../../../../src/dashboard/surfaces/assistant/assistant-reply-parts-model.js";
 import { AssistantToolRefusal } from "../../../../src/backend/assistant/plugins/plugin.js";
 import { createAssistantReferenceTable } from "../../../../src/backend/assistant/references.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
@@ -12,7 +13,7 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { EXECUTOR_EID, personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 import { createAssistantPlugins } from "../../../../src/backend/assistant/plugins/registry.js";
 import { assistantWorkflowFacts } from "../../../../src/backend/assistant/plugins/workflows/facts.js";
-import { createAssistantPluginDeps } from "../../../../src/backend/app/composition/dashboard/assistant.js";
+import { assistantValueBindings, createAssistantPluginDeps } from "../../../../src/backend/app/composition/dashboard/assistant.js";
 import { composeNotificationRoutes } from "../../../../src/backend/app/composition/dashboard/notification-wiring.js";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
 import { createNotificationTargetQuery } from "../../../../src/backend/runs/queries/notifications.js";
@@ -137,8 +138,10 @@ it("keeps every seeded personal value out of the provider requests across all pr
       return new Response(completedResponseStream(output, request.model, `resp_${String(step)}`), { headers: { "Content-Type": "text/event-stream" } });
     });
     const debug: unknown[] = [];
-    const service = createAssistantService({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => owners.facts, plugins: owners.plugins,
-      owner: () => ({ profileId: "11111111-1111-4111-8111-111111111111", epoch: 1 }), debugEvents: { emit: event => { debug.push(event); } },
+    owners.w.database.bindAssistantEpoch(() => 1);
+    const service = createAssistantM1Service({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => owners.facts,
+      tools: () => ({ plugins: owners.plugins(), bindings: assistantValueBindings }),
+      owner: () => ({ profileId: owners.w.database.getMeta().profileId, epoch: 1 }), debugEvents: { emit: event => { debug.push(event); } },
       selectedModel: () => ({ preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent: () => {} }), runReferenceLabel: (id, version) => owners.deps.runReferenceLabel(id, version), history: () => owners.w.database.authority.assistantHistory });
     const conversationId = randomUUID();
     assert.equal(service.history({ operation: "create", conversationId, title: "Chat" }).state, "saved");
@@ -146,7 +149,7 @@ it("keeps every seeded personal value out of the provider requests across all pr
     assert.equal(envelope.kind, "result"); if (envelope.kind !== "result") throw new Error("result required");
     const { result } = envelope;
     assert.equal(result.state, "answered", JSON.stringify(result)); if (result.state !== "answered") throw new Error("answer required");
-    assert.match(result.text, new RegExp(`^Found ${CANARIES.subject} in Person Lookup run, \\d{4}-\\d{2}-\\d{2}\\.$`, "u"));
+    assert.match(replyText(result.reply.parts), new RegExp(`^Found ${CANARIES.subject} in Person Lookup run, \\d{4}-\\d{2}-\\d{2}\\.$`, "u"));
     assert.ok(envelope.receipt);
     const library = await service.respond({ conversationId, expectedRevision: envelope.receipt.revision, messageId: randomUUID(), message: "What is in the Spreadsheets library?" }, new AbortController().signal);
     assert.equal(library.kind === "result" ? library.result.state : library.kind, "answered");
@@ -284,16 +287,17 @@ it("keeps queued exact-EID relationships token-only in provider requests, includ
         content: [{ type: "output_text", text: results.join("; ") }] }];
       return new Response(completedResponseStream(output, request.model, `resp_${step}`), { headers: { "Content-Type": "text/event-stream" } });
     });
-    const service = createAssistantService({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => o.deps.facts(),
-      plugins: () => createAssistantPlugins(o.deps), runReferenceLabel: (id, version) => o.deps.runReferenceLabel(id, version),
-      owner: () => ({ profileId: "11111111-1111-4111-8111-111111111111", epoch: 1 }), selectedModel: () => ({
+    o.w.database.bindAssistantEpoch(() => 1);
+    const service = createAssistantM1Service({ account: f.service, clock: f.clock, actorId: "local-operator", facts: () => o.deps.facts(),
+      tools: () => ({ plugins: createAssistantPlugins(o.deps), bindings: assistantValueBindings }), runReferenceLabel: (id, version) => o.deps.runReferenceLabel(id, version),
+      debugEvents: { emit() {} }, owner: () => ({ profileId: o.w.database.getMeta().profileId, epoch: 1 }), selectedModel: () => ({
         preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent() {} }), history: () => o.w.database.authority.assistantHistory });
     const conversationId = randomUUID(), selected = rows[0]; assert.ok(selected);
     service.history({ operation: "create", conversationId, title: "Lookup" });
     const response = await service.respond({ conversationId, expectedRevision: 1, messageId: randomUUID(), message: `Find ${eids.join(", ")}`,
       subjectRef: `run_${selected.envelope.runId}_${selected.version}` }, new AbortController().signal);
     assert.ok(response.kind === "result" && response.result.state === "answered");
-    for (const eid of eids) { assert.ok(response.result.text.includes(`EID ${eid}`)); assert.equal(bodies.join().includes(eid), false); }
+    for (const eid of eids) { assert.ok(replyText(response.result.reply.parts).includes(`EID ${eid}`)); assert.equal(bodies.join().includes(eid), false); }
     assert.equal(new Set(results).size, 3);
     for (const row of rows) assert.equal(bodies.join().includes(row.envelope.runId), false);
   } finally { await f.cleanup(); }

@@ -10,12 +10,10 @@ import { ERROR_CATALOG, ErrorCatalogCodeSchema, type ErrorCatalogCode } from "..
 import { LogoutOperationSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
 import { runClaim } from "../../../models/run/record.js";
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
-import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
 import { ProfileSessionRefusedError } from "../../profiles/profile-errors.js";
 import { createProfileSession } from "../../profiles/profile-session.js";
 import { createProfileRegistry } from "../../profiles/registry.js";
-import type { CommandKernel } from "../../runs/commands/command-kernel.js";
 import { requireLifecycleApplied,RunRecordService } from "../../runs/lifecycle/run-record-service.js";
 import { reconcileExitedWorker,reconcileStoppedLogout,reconcileStoppedStartupCrash,StartupCrashRecoveryRefusedError } from "../../runs/lifecycle/startup-crash-recovery.js";
 import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
@@ -1847,16 +1845,4 @@ export async function composeStorageCommand(
         ...(ready.length > 1 ? notChecked.map(({ profileId }) => `person ${profileId}: not checked, signed out`) : [])].join("\n\n"),
     exitCode: profiles.every(({ report }) => healthy(report)) ? 0 : 1,
   };
-}
-
-export function composeProfileAssistantAuthorization(
-  runtime: ReturnType<typeof composeProfileRuntime>, token: string, kernel: CommandKernel, clock: Clock,
-) {
-  runtime.assertCurrent(token);
-  const context = runtime.selectedContext(token);
-  return createAssistantAuthorization({ database: context.database, kernel, clock, current: () => {
-    runtime.assertCurrent(token);
-    if (runtime.selectedContext(token) !== context) throw new Error("assistant-profile-owner-changed");
-    return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch };
-  } });
 }

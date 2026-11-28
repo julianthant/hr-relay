@@ -9,12 +9,10 @@ Run and item Pause/Resume, exact-membership Pause all, and confirmed Pause all a
 canonical typed command facade. The application lifecycle query supplies runtime generation,
 current target versions and update availability. Application pause commands refresh every affected
 run in the served projection before quit notification. Queue producers retain the orthogonal pause
-state and available pause command. Ordinary Rerun accepts done, failed, interrupted and cancelled
-sources and starts fresh; native Retry retains its lifecycle semantics. A separate server-authored
-Recover completed steps action composes `run/recover-run` through the same client and confirmation
-flow. The server derives its checkpoint recovery plan from an exact failed or interrupted source.
-Readback verifies the new item attempt while the source remains unchanged. Incompatible contracts,
-uncertain writes and unavailable retained evidence show the named recovery refusal. Host updater installation has no
+state and available pause command. Rerun accepts done, failed, interrupted and cancelled sources.
+An interrupted source opens the Rerun dialog with unfinished steps selected. The Start plan
+authenticates the retained work and refuses uncertain writes. Readback verifies the new attempt.
+The command journal can still read recorded Recover outcomes. Host updater installation has no
 production dispatch; its absence remains explicit in the lifecycle query.
 
 ## Client facade and boundaries
@@ -181,11 +179,11 @@ field membership and discriminated states. The client checks identity as well as
 | Lazy run sections and rerun values | `queries/detail-queries.ts`, `queries/rerun-queries.ts` | `data.ts`, `trust.ts`: `GET /api/v1/runs/:runId/:section`; `data.ts`: `/rerun-values` |
 | Verified diagnostic bytes | `queries/detail-queries.ts` | `trust.ts`: `GET /api/v1/diagnostic-bundles/:bundleId/manifest` and `/attachments/:artifactId` under the bundle path; verified artifact URL `/artifacts/v1/:artifactId` |
 | ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /check`, `/sign-in`, `/sign-in/:attemptId/cancel` under the account path |
-| Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/facts`, `/editable`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
+| Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/editable`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
 | Preflight | `queries/preflight-queries.ts`, `queries/chatgpt-account-queries.ts` | `settings-preflight.ts`: `GET /api/v1/preflight`, `POST /api/v1/preflight/rerun`; explicit diagnostic through the existing `chatgpt-account.ts`: `POST /api/v1/settings/chatgpt-account/test-ocr` |
-| Clear run history | `queries/storage-queries.ts`, `commands/settings-commands.ts` | `storage.ts`: `GET /api/v1/storage/run-history`, confirmed `POST /api/v1/storage/run-history/clear`, result-only `POST /api/v1/storage/run-history/result` (never starts an unrecorded command); requires the selected-person `runHistory` service in composition; Clear/result carry the confirmed profile ID and session epoch, admitted before effects and stripped from the internal journal request |
+| Clear run history | `commands/settings-commands.ts` | `storage.ts`: confirmed `POST /api/v1/storage/run-history/clear`, result-only `POST /api/v1/storage/run-history/result` (never starts an unrecorded command); requires the selected-person `runHistory` service in composition; Clear/result carry the confirmed profile ID and session epoch, admitted before effects and stripped from the internal journal request |
 | Notifications | `queries/notification-queries.ts` | `notifications.ts`: `GET /api/v1/notifications`, `/:notificationId/target` and `/collection` under the notifications path |
-| Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity.csv`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
+| Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
 | Explorer | `queries/explorer-queries.ts` | `explorer.ts`: read-only `GET /api/v1/explorer` |
 | Intake | `queries/intake-queries.ts` | `intake.ts`: `GET /api/v1/intake/:sessionId` and `/commands/:commandId` under the session path |
 | Workbook revisions | `queries/workbook-library-queries.ts` | `workbooks.ts`: read-only `GET /api/v1/workbooks/:libraryId/revisions/:version`; exact CAS revision for attachment open/download, independent of named-version history |
@@ -283,7 +281,7 @@ and marker claims for other requests refuse validation.
 A Start's applied result returns once its runs commit and never carries `workerStartup`; worker
 startup runs after the reply. Confirmed readback closes the Start dialog, clears the retained
 submission and shows the started toast. A startup that fails later shows on the workflow's worker
-cards and in the sticky queued-run notice. A queueing Resume, Retry or Recover keeps its applied result
+cards and in the sticky queued-run notice. A queueing Resume or Retry keeps its applied result
 and run targets when worker startup fails; its `workerStartup` field distinguishes refused startup from
 unknown startup without changing enqueue authority. Startup failure remains a terminal diagnostic.
 
@@ -590,6 +588,10 @@ become independent runs with `shape: single` through the existing fanout under o
 deduplicates entries. Public `planned[].workbookReferences[].selectedRow` comes from the retained request.
 The client verifies unique, in-range refusal indices, complete entry coverage and matching references for
 each accepted entry before confirmation.
+
+Interrupted Rerun submits the source run ID, revision and step selection with no submissions or
+workbook picks. Planning and Start authenticate the retained input, manual values and workbook
+references against that run. These plans describe one subject.
 
 A workflow declares `plannedOutputs(input, references)` to project output facts from parsed input and captured references. These become `planned[].outputs` in the retained plan and public response and are bound into its input fingerprint. `src/models/dashboard/run-outputs.ts` owns the closed vocabulary: `workbook` with a known row count or `after-review`, a concrete `worksheet-archive` with its worksheet/row membership, or `worksheet-archives` with `after-row-choice` when packaging membership is unresolved. Confirm renders those served facts; absence never creates an output placeholder. A plan describes intended output, not a produced artifact.
 

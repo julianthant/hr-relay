@@ -180,6 +180,34 @@ it("binds the exact selected worksheet and revision through real planning and st
   expect(parseRunWorkbookReference(selectedBound)).toMatchObject({ request: { libraryId: f.id }, snapshot: { libraryId: f.id, version: 3 } });
 });
 
+it("continues an interrupted run from the retained input and workbook after the library changes", async () => {
+  const f = await fixture();
+  const source = f.start();
+  const profile = world.profiles.at(-1); assert.ok(profile);
+  const ports = testWorkerPorts(f.database, f.clock, { path: profile.path, descriptor, poolIndex: 1 });
+  const worker = f.database.authority.workerSlots.active(descriptor.id)[0]; assert.ok(worker);
+  const claimed = ports.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: worker.workerId });
+  assert.ok(claimed.state === "applied"); assert.equal(claimed.run.envelope.runId, source.envelope.runId);
+  const endedAt = f.clock.now().toISOString();
+  const interrupted = f.database.withAuthorityTransaction(repositories => repositories.runs.transition({
+    runId: source.envelope.runId, expectedVersion: claimed.run.version, now: endedAt,
+    claim: { workerId: worker.workerId, claimGeneration: claimed.run.claimGeneration },
+    lifecycle: { state: "terminal", outcome: "interrupted", endedAt },
+  }));
+  assert.ok(interrupted.state === "applied");
+  f.edit(workbook => { workbook.sheets[0].rows[1].cells[1].value = "Changed before planning"; });
+  const selectedStepKeys = descriptor.timeline.map(step => step.key);
+  const request = { workflowId: descriptor.id, dryRun: false, submissions: [], selectedStepKeys,
+    rerunSource: { runId: source.envelope.runId, expectedVersion: interrupted.run.version, intent: "rerun", selectedStepKeys } };
+  const wire = f.planner.plan(request);
+  assert.equal(wire.planned[0]?.workbookReferences?.[0]?.version, f.selection.expectedVersion);
+  const record = f.database.authority.startPlans.get(wire.startPlanId); assert.ok(record);
+  f.edit(workbook => { workbook.sheets[0].rows[1].cells[1].value = "Changed before starting"; });
+  const continued = f.start(record);
+  assert.deepEqual(continued.input, source.input);
+  assert.equal(continued.envelope.continuation?.sources[0]?.runId, source.envelope.runId);
+});
+
 it("records a source only for a nonempty confirmed Start and keeps the latest accepted command on replay", async () => {
   const f = await fixture();
   const first = f.plan();
@@ -418,4 +446,14 @@ it("loads each selected source once in each planning and confirmation scope acro
   expect(read).toHaveBeenCalledTimes(2);
   f.plan();
   expect(read).toHaveBeenCalledTimes(3);
+});
+
+it("captures the rows of every selected worksheet into the started run's references", async () => {
+  const f = await fixture();
+  const sheets = ["people", "archive"];
+  const wire = f.planner.plan({ ...f.request, workbookReferences: sheets.map(sheetId => ({ ...f.selection, sheetId })) });
+  const record = f.database.authority.startPlans.get(wire.startPlanId); assert.ok(record);
+  const references = (f.start(record).input.workbookReferences ?? []).map(bound => parseRunWorkbookReference(bound));
+  expect(references.map(reference => reference.snapshot.worksheets.map(sheet => sheet.sheetId))).toEqual([["people"], ["archive"]]);
+  expect(references.map(reference => reference.snapshot.rows[0]?.matches.map(match => match.rowId))).toEqual([["people-person"], []]);
 });

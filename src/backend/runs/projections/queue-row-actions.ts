@@ -19,8 +19,7 @@ type QueueStatus = QueueSurfaceWire["status"];
 export interface QueueRowActionFacts {
   readonly pauseControl?: QueueSurfaceWire["pauseControl"];
   readonly status: QueueStatus;
-  readonly recoverySource?: "failed" | "interrupted";
-  readonly crashed?: boolean;
+  readonly interrupted?: boolean;
   /** the run ended by an operator or system cancel; a discarded or superseded row shows "cancelled" too but never reruns */
   readonly cancelled?: boolean;
   /** the CAS target every served command binds to */
@@ -157,14 +156,8 @@ export function queueRowActions(
     && policyEnables(policy, "retry", facts)
     ? [ActionDescriptorWireSchema.parse({ key: "retry-batch-member", label: "Retry", kind: "command", command: "retry",
       expectedVersion: facts.rowRevision, intent: "neutral", icon: "retry", placement: ["banner"] })] : [];
-  const recover = facts.recoverySource !== undefined && !facts.isChild && !facts.parkedWrite
-    && policyEnables(policy, "recover-run", facts)
-    ? [ActionDescriptorWireSchema.parse({ key: "recover-run", label: facts.crashed ? "Rerun" : "Recover completed steps", kind: "command",
-      command: "recover-run", expectedVersion: facts.rowRevision, intent: "neutral", icon: facts.crashed ? "retry" : "resume", placement: ["footer", "menu"],
-      confirm: { title: "Recover completed steps", body: "Unfinished steps run again; uncertain writes stay parked.",
-        confirmLabel: "Recover", tone: "neutral" } })] : [];
-  const rerun = (!facts.crashed || recover.length === 0) && !facts.isChild && !facts.parkedWrite
-    && (["done", "failed", "partial"].includes(facts.status) || facts.status === "cancelled" && facts.cancelled === true)
+  const rerun = !facts.isChild && !facts.parkedWrite
+    && (facts.interrupted || ["done", "failed", "partial"].includes(facts.status) || facts.status === "cancelled" && facts.cancelled === true)
     && (policyEnables(policy, "retry", facts) || policyEnables(policy, "restart", facts))
     ? [ActionDescriptorWireSchema.parse({ key: "rerun", label: "Rerun", kind: "navigation",
       navigate: { kind: "rerun", expectedVersion: facts.rowRevision },
@@ -172,9 +165,9 @@ export function queueRowActions(
   const pause = facts.pauseControl?.command;
   const pauseActions = pause === undefined ? [] : [ActionDescriptorWireSchema.parse({
     key: pause, kind: "command", command: pause, expectedVersion: facts.pauseControl?.expectedVersion,
-    label: pause === "pause" ? "Pause after this step" : "Resume", intent: "neutral", icon: pause, placement: ["footer"],
+    label: pause === "pause" ? "Pause" : "Resume", intent: "neutral", icon: pause, placement: ["footer"],
   })];
-  return [...pauseActions, ...memberRetry, ...retry, ...rerun, ...recover, ...SERVED_ORDER
+  return [...pauseActions, ...memberRetry, ...retry, ...rerun, ...SERVED_ORDER
     .filter((command) => policyEnables(policy, command, facts) && KERNEL_ADMITS[command](facts))
     .map((command) => ActionDescriptorWireSchema.parse(describe(command, facts)))];
 }

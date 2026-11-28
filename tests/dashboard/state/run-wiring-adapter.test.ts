@@ -264,7 +264,7 @@ describe("served Logs wiring", () => {
       children: createElement(LogSample, { selection: selected }) }) }));
     const text = document.body.textContent ?? "";
     assert.ok(text.indexOf("Authoritative note 0") >= 0);
-    assert.ok(text.indexOf("Approve the Duo sign-in") > text.indexOf("Authoritative note 0"), text);
+    assert.ok(text.indexOf("Approving Duo for") > text.indexOf("Authoritative note 0"), text);
   });
   it("retains exact parked UNKNOWN identity with no submission control", async () => {
     let writes = 0;

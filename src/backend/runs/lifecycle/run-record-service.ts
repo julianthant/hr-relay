@@ -2,7 +2,7 @@ import { ReadApprovedOcrRecord } from "../../../models/processing/ocr/read-appro
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { RunClaimToken } from "../../../models/run/worker.js";
 import { z } from "zod";
-import { RunHistoryCommandSchema, type ClearRunHistoryResult, type RunHistoryStatus } from "../../../models/dashboard/run-history.js";
+import { RunHistoryCommandSchema, type ClearRunHistoryResult } from "../../../models/dashboard/run-history.js";
 import {
 RunExistenceSchema,
 type RunExistence,
@@ -333,10 +333,15 @@ export class RunRecordService {
       if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
       if (repositories.runs.get(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
       const itemId = deriveItemId(request.workflow, request.matchKey);
+      let buildId = approvalBuildId(repositories, request.parent);
       if (request.retryOf !== undefined) {
         const source = this.read(request.retryOf);
         if (source.state !== "present" || source.run.envelope.workflow !== request.workflow
           || source.run.envelope.itemId !== itemId) return refused({ reason: "retry-of-missing" });
+        if (request.continuation !== undefined && request.sourceBound?.source.runId === request.retryOf) {
+          if (source.disposition !== "live" || source.run.version !== request.sourceBound.source.expectedVersion) return refused({ reason: "invalid-state" });
+          buildId = source.run.envelope.buildId;
+        }
       }
       if (request.sessionId !== undefined) {
         const session = repositories.runSessions.get(request.sessionId);
@@ -352,7 +357,7 @@ export class RunRecordService {
         envelope: {
           ...(configSelection === "retained" ? envelope : selectNewRunIdentity(repositories, envelope)),
           runId, itemId, traceId: deriveTraceId(code, runId, this.dependencies.clock),
-          buildId: approvalBuildId(repositories, envelope.parent),
+          buildId,
           attempt: repositories.runs.nextItemAttempt({ workflow: request.workflow, itemId }),
           enqueuedAt: now,
         },
@@ -1280,13 +1285,6 @@ export class RunRecordService {
       if (error instanceof RunDeletionRefusedError) return refused({ reason: error.reason });
       throw error;
     }
-  }
-
-  historyStatus(): RunHistoryStatus {
-    return this.dependencies.database.withAuthorityReadSnapshot(() => {
-      const { finished, active } = this.dependencies.database.authority.runs.countByTerminal();
-      return { state: "available", finishedRuns: finished, activeRuns: active };
-    });
   }
 
   clearHistory(input: unknown): ClearRunHistoryResult {

@@ -25,6 +25,7 @@ const LABELS: Readonly<Record<string, string>> = {
   "preferences.notifications.runFinished": "Run finished", "preferences.notifications.needsYou": "Needs you",
   "preferences.notifications.failures": "Failures", "preferences.notifications.sound": "Notification sound",
   "preferences.sendShortcut": "Send shortcut",
+  "preferences.assistantFullAccess": "Full access",
 };
 const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "preferences.preventSleepWhileRunning": "Keep this Mac awake while a run is going.",
@@ -34,6 +35,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "preferences.notifications.failures": "Alert when a run fails.",
   "preferences.notifications.sound": "Sound for finished runs, failures and runs that need you.",
   "preferences.sendShortcut": "Choose which keys send a message in the assistant.",
+  "preferences.assistantFullAccess": "Let Relay start supported dry runs without asking.",
 };
 function settingsLabel(key: string): string {
   return LABELS[key] ?? key.split(".").map(part => part.replace(/([a-z])([A-Z])/gu, "$1 $2")).join(" · ");
@@ -54,6 +56,8 @@ export interface SettingsEditorQueryDeps {
   readonly clock: Clock;
   /** Injected resolution stays Settings-local; tests supply deterministic synthetic path facts. */
   readonly resolve?: (settings: SettingsOverride) => ResolvedConfig;
+  /** The record's and the defaults' resolutions, when a read lane already resolved them; `resolve` is then not called. */
+  readonly resolutions?: Readonly<{ record: ResolvedConfig; defaults: ResolvedConfig }>;
 }
 
 export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSettingsWire {
@@ -61,8 +65,8 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
   const { record } = snapshot;
   const runtimeStatus = SettingsRuntimeStatusSchema.parse(snapshot.runtimeStatus);
   const resolve = deps.resolve ?? ((settings: SettingsOverride) => resolveConfigWithProvenance(settings, hostConfigFacts(deps.environment), deps.clock));
-  const resolved = resolve(record.settings);
-  const defaultResolution = resolve({});
+  const resolved = deps.resolutions?.record ?? resolve(record.settings);
+  const defaultResolution = deps.resolutions?.defaults ?? resolve({});
   const defaults = { ...defaultResolution.config, preferences: defaultResolution.preferences };
   const persisted = runtimeStatus.state === "current" ? runtimeStatus.identity : runtimeStatus.persisted;
   const active = runtimeStatus.state === "current" ? runtimeStatus.identity : runtimeStatus.active;

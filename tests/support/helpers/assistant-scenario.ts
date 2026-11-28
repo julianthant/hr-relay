@@ -4,20 +4,20 @@ import { z } from "zod";
 import { createChatGptAccountService } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { AssistantToolRefusal, referenceSchema, type AssistantReadTool } from "../../../src/backend/assistant/plugins/plugin.js";
 import { ASSISTANT_TOOL_NAMESPACE } from "../../../src/backend/assistant/plugins/registry.js";
-import { sessionsPlugin } from "../../../src/backend/assistant/plugins/sessions/index.js";
 import { assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
-import { assistantPersonBinding } from "../../../src/backend/assistant/replies.js";
-import { createAssistantM1Service } from "../../../src/backend/assistant/service.js";
+import { composeAssistant } from "../../../src/backend/app/composition/dashboard/assistant.js";
+import { CommandResultSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
 import { createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
-import { AssistantInferenceRequestSchema, AssistantM1RespondEnvelopeSchema, type AssistantM1RespondEnvelope, type AssistantSessionClaim, type AssistantSessionOutcome } from "../../../src/models/dashboard/assistant.js";
+import { AssistantInferenceRequestSchema, AssistantM1RespondEnvelopeSchema, type AssistantM1Request, type AssistantM1RespondEnvelope, type AssistantSessionClaim, type AssistantSessionOutcome } from "../../../src/models/dashboard/assistant.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import type { JsonValue } from "../../../src/rules/validation/canonical-json.js";
 import { createBoundProfileFixture } from "./admission-fixture.js";
+import { createSettingsAuthorityTestWorld } from "./backend/settings-authority-world.js";
 import { assistantM1HistoryFixture } from "./assistant-m1-history-fixture.js";
-import { sessionAuthorizationFixture } from "./assistant-session-claims.js";
 import { typedProposalFixture } from "./assistant-typed-proposals.js";
 import { completedResponseStream, partialTextStream } from "./chatgpt-response-stream.js";
 import { EXECUTOR_EID, personLookupQueuedRun } from "./phase1f-executor-harness.js";
@@ -49,6 +49,9 @@ export interface AssistantScenario {
     message: string;
     provider: readonly ProviderStep[];
     changePlan?: boolean;
+    approvalMode?: AssistantM1Request["approvalMode"];
+    fullAccess?: boolean;
+    revokeAtEffect?: boolean;
     check(observation: TurnObservation): void;
   }>[];
 }
@@ -94,6 +97,7 @@ export function assertScenarioBudget(name: string, budget: Budget, measured: Mea
 
 export async function runAssistantScenario(scenario: AssistantScenario): Promise<Measurement> {
   const profile = await createBoundProfileFixture();
+  const world = createSettingsAuthorityTestWorld();
   try {
     const clock = manualClock(new Date(`${DAY}T12:00:00.000Z`)), at = clock.now().toISOString();
     const { admission, stateRoot } = profile;
@@ -130,9 +134,17 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
       const store = assistantM1HistoryFixture({ now: at, acceptedAt: at, profileId: admission.profileBinding.profileId });
       try {
         const owner = () => ({ profileId: store.profileId(), epoch: store.epoch() });
-        const proposals = typedProposalFixture(store, at), sessions = sessionAuthorizationFixture({ at, current: owner });
+        const proposals = typedProposalFixture(store, at), proposalStore = store.proposals();
+        const settings = scenario.turns.some(turn => turn.approvalMode === "full-access") ? await world.fixture() : undefined;
+        const saveFullAccess = (enabled: boolean) => {
+          assert.ok(settings);
+          const patch = { "preferences.assistantFullAccess": { set: enabled } };
+          assert.equal(settings.execute({ family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: at, requestedBy: "local-operator",
+            source: "settings-surface", target: { expectedRevision: settings.database.authority.settingsCurrent.get()?.revision ?? 1 },
+            payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }).state, "applied");
+        };
+        let revokeAtEffect = false;
         const personRun = RunRecordSchema.parse(personLookupQueuedRun({ runId: randomUUID(), itemId: randomUUID() }));
-        const personTokens = new Set<string>();
         const personQuery = z.strictObject({ query: z.string().min(1) });
         const readPerson: AssistantReadTool = {
           kind: "read", tier: "read", name: "read_person", description: "Look up the person referenced in the operator's request.",
@@ -142,21 +154,33 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
             const { query } = personQuery.parse(input);
             if (context.references.expandArgument(query, ["E"]) !== SCENARIO_PERSON.eid) throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE");
             const person = context.references.issue("P", personRun.envelope.runId, SCENARIO_PERSON.name, SCENARIO_PERSON.eid, personRun.version);
-            personTokens.add(person);
             return { person };
           },
         };
-        const service = createAssistantM1Service({
-          account, proposals: proposals.owner, history: () => store.history, clock, actorId: "local-operator", owner,
-          selectedModel: () => ({ preference: { slug: MODEL, effort: "medium" }, assertCurrent() {} }),
-          facts: () => assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup")),
-          runReferenceLabel: () => "Lookup", debugEvents: { emit() {} },
-          tools: () => ({ plugins: [{ domain: "people", tools: [readPerson] }, proposals.owner.plugin, sessionsPlugin()], sessions: sessions.authorization,
-            bindings: table => [...personTokens].map(token => assistantPersonBinding(table, token, personRun)) }),
-        });
+        // The Full access scenarios join the assistant fixture to a real Settings command store.
+        const authority = { assistantProposals: proposalStore, assistantHistory: store.history,
+          startPlans: { get: (id: string) => { const planned = proposals.ports.plannedInputs(id); return planned === undefined ? undefined : { plannedAt: planned.capturedAt, planned: planned.runs }; } },
+          settingsCurrent: settings?.database.authority.settingsCurrent, commands: settings?.database.authority.commands, commandAudits: settings?.database.authority.commandAudits,
+          runtimeConfig: settings?.database.authority.runtimeConfig ?? { get: () => ({ configSnapshotId: "scenario", configFingerprint: "scenario" }) },
+          configSnapshots: settings?.database.authority.configSnapshots ?? { get: () => ({ fingerprint: "scenario", config: { browser: { headless: true } } }) } };
+        const starts = { ...proposals.ports, submit(command: CommandRequest, attribution: unknown) {
+          if (revokeAtEffect) saveFullAccess(false);
+          composed.assertEffect(command.commandId, command);
+          proposals.submitted.push({ command, attribution });
+          const dryRun = proposalStore.sessions.byCommand(command.commandId)?.claim.dryRun;
+          const runIds = command.family === "start" ? [proposals.run(dryRun).envelope.runId] : command.family === "run" ? [command.target.runId] : [];
+          return Promise.resolve(CommandResultSchema.parse({ state: "applied", commandId: command.commandId, affectedTargets: runIds.map(runId => ({ family: "run", runId })) }));
+        } };
+        const composed = composeAssistant({ database: { authority, withAuthorityReadSnapshot: (work: () => unknown) => work(), withAuthorityTransaction: (work: (repositories: unknown) => unknown) => work(authority) } as unknown as Parameters<typeof composeAssistant>[0]["database"], starts,
+          readPlugins: () => [{ domain: "people", tools: [readPerson] }],
+          service: { account, clock, actorId: "local-operator", owner,
+            selectedModel: () => ({ preference: { slug: MODEL, effort: "medium" }, assertCurrent() {} }),
+            facts: () => assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup" || settings !== undefined && descriptor.id === "separations")),
+            runReferenceLabel: () => "Lookup", debugEvents: { emit() {} } } });
+        const service = composed.assistant;
         const conversationId = randomUUID(), signal = new AbortController().signal;
         assert.equal(service.history({ operation: "create", conversationId, title: scenario.name }).state, "saved");
-        const respond = (request: { expectedRevision: number; messageId: string; message: string }) =>
+        const respond = (request: Pick<AssistantM1Request, "expectedRevision" | "messageId" | "message" | "approvalMode">) =>
           service.respond({ ...request, conversationId }, signal);
         const privateValues = new Set<string>([SCENARIO_PERSON.name, SCENARIO_PERSON.eid, personRun.envelope.runId]);
 
@@ -164,18 +188,22 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
           const view = service.conversation(conversationId);
           assert.ok(view);
           if (turn.changePlan) proposals.knobs.configFingerprint = "f".repeat(64);
+          if (turn.fullAccess !== undefined) saveFullAccess(turn.fullAccess);
+          revokeAtEffect = turn.revokeAtEffect ?? false;
           pending = [...turn.provider];
           const firstRequest = requests.length;
           const envelope = AssistantM1RespondEnvelopeSchema.parse(await respond({
-            expectedRevision: view.revision, messageId: randomUUID(), message: turn.message,
+            expectedRevision: view.revision, messageId: randomUUID(), message: turn.message, approvalMode: turn.approvalMode,
           }));
           if (transportError !== undefined) throw new Error("Synthetic provider transport failed", { cause: transportError });
           assert.equal(pending.length, 0, `${scenario.name} has unused provider answers for a turn`);
           if (envelope.kind === "result" && envelope.result.state === "answered") {
             for (const part of envelope.result.reply.parts) if (part.kind === "session") privateValues.add(part.runId);
           }
-          turn.check({ envelope, requests: requests.slice(firstRequest).map(({ body }) => body), proposalStarts: proposals.submitted.length,
-            sessionStarts: sessions.submitted.length, sessionClaim: sessions.claims.all().at(-1) });
+          const sessionCommands = proposals.submitted.filter(({ command }) => proposalStore.sessions.byCommand(command.commandId) !== undefined);
+          const lastSession = sessionCommands.at(-1);
+          turn.check({ envelope, requests: requests.slice(firstRequest).map(({ body }) => body), proposalStarts: proposals.submitted.length - sessionCommands.length,
+            sessionStarts: sessionCommands.length, sessionClaim: lastSession === undefined ? undefined : proposalStore.sessions.byCommand(lastSession.command.commandId) });
         }
 
         for (const [index, { raw }] of requests.entries()) {
@@ -184,5 +212,5 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
         return measure(requests);
       } finally { store.database.close(); }
     } finally { await account.close(); }
-  } finally { await profile.close(); }
+  } finally { await world.cleanup(); await profile.close(); }
 }

@@ -7,7 +7,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import readXlsxFile from "read-excel-file/node";
-import { afterEach,it } from "vitest";
+import { afterEach,it,vi } from "vitest";
+import { createComposedDashboardReadHost } from "../../../../../src/backend/app/composition/dashboard/runtime-resources.js";
 import { composeActivity } from "../../../../../src/backend/app/composition/dashboard/activity.js";
 import { collectSearchDocument,createOperatorXlsxExportService } from "../../../../../src/backend/runs/exports/operator-xlsx-export-service.js";
 import { composeOperatorXlsxWorkbook } from "../../../../../src/backend/runs/exports/operator-xlsx-workbook.js";
@@ -23,7 +24,6 @@ import type { DashboardApp } from "../../../../../src/backend/transports/http/ro
 import type { ShellRouteDeps } from "../../../../../src/backend/transports/http/routes/shell-types.js";
 import { registerShellRoutes } from "../../../../../src/backend/transports/http/routes/shell.js";
 import { createActivityQueries } from "../../../../../src/dashboard/client/queries/activity-queries.js";
-import { verifySelectionDownload } from "../../../../../src/dashboard/client/queries/selection-download.js";
 import { createDashboardTransport } from "../../../../../src/dashboard/client/transport.js";
 import { ActivityPopulationError } from "../../../../../src/backend/runs/queries/activity-population.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
@@ -102,7 +102,7 @@ function shiftActivityVolumeSeries(report:ActivityReportWire):ActivityReportWire
   return {...report,volume:{...volume,buckets:volume.buckets.map((bucket,index)=>({...bucket,
     runs:bucket.runs+(index===source?-1:index===destination?1:0)}))}};
 }
-async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean}={}) {
+async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean;lanes?:boolean}={}) {
   const profile=await createBoundProfileFixture();
   const scratch=mkdtempSync(join(tmpdir(),"activity-selection-proof-"));
   const clock=manualClock(new Date("2026-09-21T17:00:00Z"));
@@ -127,19 +127,26 @@ async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean
     const report=queryActivitySummaries(database,{from,to,generatedAt},{descriptors,ledger});
     return shiftVolumeSeries?shiftActivityVolumeSeries(report):report;
   };
+  const lanes=options.lanes?createComposedDashboardReadHost({admission:profile.admission,database,clock}):undefined;
+  // Registered after the store's own cleanup, so the lanes close before the store they read.
+  if(lanes!==undefined)cleanup.unshift(()=>lanes.close());
   const { activityPopulation, activity: composedActivity } = composeActivity({database,clock,descriptors,ledger});
   const activity=options.dynamicVolumeSeries
     ?createActivitySelectionService({database,clock,read:readSummary})
     :composedActivity;
+  const laneServed=lanes===undefined?undefined:composeActivity({database,clock,descriptors,ledger,readLanes:lanes});
+  const served=laneServed??{activity,activityPopulation};
   const search=createCrossDateSearchService({clock,descriptors,sourceIdentity,cursorSigningKey:new Uint8Array(32).fill(42),
     authority:{readSnapshot:read=>database.withAuthorityReadSnapshot(()=>read({authorityGeneration:database.getMeta().authorityGeneration,searchRuns:input=>database.authority.runs.search(input)}))}});
   const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(scratch, ".tracker"), join(scratch, ".tracker/data/artifacts"))});
   const withSearchSnapshot = <Result>(read: () => Result) => database.withAuthorityReadSnapshot(read);
   const xlsx=createOperatorXlsxExportService({clock,ids:{uuid:randomUUID},sourceIdentity,artifacts,authority:database.authority.operatorXlsxExports,
-    search,withSearchSnapshot,activityReport:(from,to,token)=>activity.readSelected(from,to,token)});
+    search,withSearchSnapshot,
+    // On a lane the whole document is collected there; main is never handed the selected report.
+    ...(laneServed===undefined?{activityReport:(from:string,to:string,token:string)=>activity.readSelected(from,to,token)}:{readActivityDocument:laneServed.readActivityDocument})});
   const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));
   app.use("*",(c,next)=>{c.set("requestActorId",ActorIdSchema.parse("synthetic-operator"));return next();});
-  registerActivityRoutes(app,{activity,activityPopulation});
+  registerActivityRoutes(app,served);
   registerShellRoutes(app,{bootstrap:{} as ShellRouteDeps["bootstrap"],search,xlsxExports:xlsx,hub:{} as ShellRouteDeps["hub"]});
   return {database,clock,activity,activityPopulation,search,withSearchSnapshot,xlsx,artifacts,sourceIdentity,app,activityDays,setShiftVolumeSeries:(value:boolean)=>{shiftVolumeSeries=value;}};
 }
@@ -160,8 +167,6 @@ it("serves and exports the same reviewed Activity summary snapshot and refuses s
   const f=await fixture();await f.artifacts.ready;
   const report=ActivityReportSelectionSchema.parse(await (await f.app.request("http://localhost/api/v1/reports/activity?from=2026-09-20&to=2026-09-20")).json());
   assert.equal(report.totalRuns,3);assert.equal(report.inFlightRuns,3);
-  const csv=await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({from:report.from,to:report.to,snapshot:report.snapshot.token})}`);
-  assert.equal(csv.status,200);const csvText=await csv.text();assert.match(csvText,/Runs in range,3/u);assert.ok(csvText.includes(report.generatedAt));
   const file=await f.xlsx.export(ActorIdSchema.parse("synthetic-operator"),{requestVersion:3,selection:{kind:"activity",from:report.from,to:report.to,snapshotToken:report.snapshot.token}});
   const sheets=await readXlsxFile(file.bytes),summary=sheets.find(sheet=>sheet.sheet==="Summary");assert.ok(summary);
   assert.deepEqual(summary.data.find(row=>row[0]==="Total runs")?.slice(0,2),["Total runs",3]);
@@ -170,7 +175,6 @@ it("serves and exports the same reviewed Activity summary snapshot and refuses s
   assert.deepEqual(f.database.authority.operatorXlsxExports.get(file.evidence.exportId),file.evidence);
 
   assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH" });
-  assert.equal((await f.app.request(`http://localhost/api/v1/reports/activity.csv?from=${report.from}&to=${report.to}`)).status,409);
 });
 
 it("binds every preset and Custom range to one selected report in decoded CSV and XLSX bytes", async () => {
@@ -196,13 +200,16 @@ it("binds every preset and Custom range to one selected report in decoded CSV an
     assert.equal(selected.snapshot.reportDigest, report.snapshot.reportDigest);
     assert.deepEqual(selected.volume, report.volume);
 
-    const csvResponse = await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({
+    const populationResponse = await f.app.request(`http://localhost/api/v1/reports/activity/population?${new URLSearchParams({ from: report.from, to: report.to })}`);
+    assert.equal(populationResponse.status, 200);
+    const population = ActivityPopulationSelectionSchema.parse(await populationResponse.json());
+    const csvResponse = await f.app.request(`http://localhost/api/v1/reports/activity/population.csv?${new URLSearchParams({
       from: report.from,
       to: report.to,
-      snapshot: report.snapshot.token,
+      snapshot: population.snapshot.token,
     })}`);
     assert.equal(csvResponse.status, 200, `${selection.name} CSV request`);
-    assert.equal(csvResponse.headers.get("x-selection-digest"), sha256Hex(report.snapshot.token));
+    assert.equal(csvResponse.headers.get("x-selection-digest"), sha256Hex(population.snapshot.token));
     const csvRows = parseActivityCsv(await csvResponse.text());
     const csvRow = (label: string): readonly string[] => {
       const row = csvRows.find((candidate) => candidate[0] === label);
@@ -212,6 +219,9 @@ it("binds every preset and Custom range to one selected report in decoded CSV an
     assert.deepEqual(csvRow("Window from"), ["Window from", report.from]);
     assert.deepEqual(csvRow("Window to"), ["Window to", report.to]);
     assert.deepEqual(csvRow("Runs in range"), ["Runs in range", String(expectedRuns)]);
+    const populationHeading = csvRows.findIndex(row => row[0] === "Complete selected run population");
+    assert.ok(populationHeading > 0, `${selection.name} CSV omitted the population section`);
+    const summaryCsvRows = csvRows.slice(0, populationHeading);
 
     const xlsxRequest = {
       requestVersion: 3,
@@ -254,7 +264,7 @@ it("binds every preset and Custom range to one selected report in decoded CSV an
     assert.deepEqual(readMe.data.find((row) => row[0] === "Runs")?.slice(0, 2), ["Runs", expectedRuns]);
     assert.deepEqual(summary.data.find((row) => row[0] === "Total runs")?.slice(0, 2), ["Total runs", expectedRuns]);
     assert.equal(byDay.data.slice(1).reduce((total, row) => total + Number(row[1]), 0), expectedRuns);
-    assert.equal(JSON.stringify({ report, csvRows, sheets }).includes(PRIVATE_ACTIVITY_LABEL), false);
+    assert.equal(JSON.stringify({ report, summaryCsvRows, sheets }).includes(PRIVATE_ACTIVITY_LABEL), false);
   }
 });
 
@@ -280,8 +290,6 @@ it("binds Activity volume series into the snapshot digest for CSV and XLSX downl
   assert.deepEqual(changedIdentity,originalIdentity);
   assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_CONTENT_MISMATCH" });
 
-  const csv=await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({from:report.from,to:report.to,snapshot:report.snapshot.token})}`);
-  assert.equal(csv.status,409);
   const xlsxRequest={requestVersion:3,selection:{kind:"activity" as const,from:report.from,to:report.to,snapshotToken:report.snapshot.token}};
   await assert.rejects(f.xlsx.export(ActorIdSchema.parse("synthetic-operator"),xlsxRequest),{ code: "ACTIVITY_SNAPSHOT_CONTENT_MISMATCH" });
   const xlsx=await f.app.request("http://localhost/api/v1/exports/xlsx",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(xlsxRequest)});
@@ -315,6 +323,32 @@ it("exports the complete ordered collected search values with coverage and exact
   assert.throws(()=>exportSearchMetadata(f,{format:"csv",selection}),/snapshot/u);
 });
 
+it("issues the Activity token on a read lane and accepts it for the XLSX, refusing a forged or expired one",async()=>{
+  const f=await fixture({lanes:true});await f.artifacts.ready;
+  const snapshot=vi.spyOn(f.database,"withAuthorityReadSnapshot").mockImplementation(()=>{throw new Error("main-connection read");});
+  try{
+    const served=await f.app.request("http://localhost/api/v1/reports/activity?from=2026-09-20&to=2026-09-20");
+    assert.equal(served.status,200);
+    const report=ActivityReportSelectionSchema.parse(await served.json());
+    assert.equal(report.totalRuns,3);
+    const exportOf=(snapshotToken:string)=>f.app.request("http://localhost/api/v1/exports/xlsx",{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({requestVersion:3,selection:{kind:"activity",from:report.from,to:report.to,snapshotToken}})});
+    const workbook=await exportOf(report.snapshot.token);
+    assert.equal(workbook.status,200);
+    const summary=(await readXlsxFile(Buffer.from(await workbook.arrayBuffer()))).find(sheet=>sheet.sheet==="Summary");assert.ok(summary);
+    assert.deepEqual(summary.data.find(row=>row[0]==="Total runs")?.slice(0,2),["Total runs",3]);
+    const exportRequest=(snapshotToken:string)=>({requestVersion:3 as const,selection:{kind:"activity" as const,from:report.from,to:report.to,snapshotToken}});
+    const operator=ActorIdSchema.parse("synthetic-operator");
+    await assert.rejects(f.xlsx.export(operator,exportRequest(`${report.snapshot.token}x`)),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
+    const population=await f.app.request("http://localhost/api/v1/reports/activity/population?from=2026-09-20&to=2026-09-20");
+    assert.equal(population.status,200);
+    assert.equal(ActivityPopulationSelectionSchema.parse(await population.json()).report.totalRuns,3);
+    f.clock.advanceWall(15*60_000);
+    await assert.rejects(f.xlsx.export(operator,exportRequest(report.snapshot.token)),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
+    assert.equal(snapshot.mock.calls.length,0);
+  }finally{snapshot.mockRestore();}
+});
+
 it("rejects report token tampering, mismatched range, foreign signer and expiry without returning a replacement report",async()=>{
   const f=await fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20");
   assert.throws(()=>f.activity.readSelected(report.from,"2026-09-21",report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH" });
@@ -323,48 +357,35 @@ it("rejects report token tampering, mismatched range, foreign signer and expiry 
   assert.throws(()=>restarted.readSelected(report.from,report.to,report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
   f.clock.advanceWall(15*60_000);
   assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
-  const expiredCsv=await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({from:report.from,to:report.to,snapshot:report.snapshot.token})}`);
-  assert.equal(expiredCsv.status,409);
   const expiredRequest={requestVersion:3 as const,selection:{kind:"activity" as const,from:report.from,to:report.to,snapshotToken:report.snapshot.token}};
   await assert.rejects(f.xlsx.export(ActorIdSchema.parse("synthetic-operator"),expiredRequest),{ code: "ACTIVITY_SNAPSHOT_INVALID_OR_EXPIRED" });
   const expiredXlsx=await f.app.request("http://localhost/api/v1/exports/xlsx",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(expiredRequest)});
   assert.equal(expiredXlsx.status,409);
 });
 
-it("the client checks range and download filename, MIME, length, digest and selected-token identity before delivering bytes",async()=>{
+it("the client checks report range identity and forwards cancellation",async()=>{
   const f=await fixture();await f.artifacts.ready;const report=f.activity.read("2026-09-20","2026-09-20"),controller=new AbortController();
   let observedSignal:AbortSignal|undefined;
   const client=createActivityQueries(createDashboardTransport({baseUrl:"http://localhost",fetchImpl:(url,init)=>{
     observedSignal=init?.signal??undefined;return Promise.resolve(f.app.request(url,init));
   }}));
   const read=await client.activityReport(report.from,report.to,controller.signal);assert.ok(observedSignal);assert.equal(observedSignal.aborted,false);
-  const valid=await client.exportActivityCsv(read,controller.signal);assert.ok(valid.bytes.byteLength>0);
-  for (const operation of ["report", "download"] as const) {
-    const cancelled = new AbortController();
-    const reason = new Error("caller cancelled");
-    let transportSignal: AbortSignal | undefined;
-    const pendingClient = createActivityQueries(createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: (_url, init) => new Promise((_resolve, reject) => {
-      transportSignal = init?.signal ?? undefined;
-      assert.ok(transportSignal);
-      transportSignal.addEventListener("abort", () => reject(reason), { once: true });
-    }) }));
-    const pending = operation === "report" ? pendingClient.activityReport(report.from, report.to, cancelled.signal) : pendingClient.exportActivityCsv(read, cancelled.signal);
+  const cancelled = new AbortController();
+  const reason = new Error("caller cancelled");
+  let transportSignal: AbortSignal | undefined;
+  const pendingClient = createActivityQueries(createDashboardTransport({ baseUrl: "http://localhost", fetchImpl: (_url, init) => new Promise((_resolve, reject) => {
+    transportSignal = init?.signal ?? undefined;
     assert.ok(transportSignal);
-    assert.equal(transportSignal.aborted, false);
-    const rejected = assert.rejects(pending, /caller cancelled/u);
-    cancelled.abort(reason);
-    assert.equal(transportSignal.aborted, true);
-    assert.equal(transportSignal.reason, cancelled.signal.reason);
-    await rejected;
-  }
-  const response=await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({from:read.from,to:read.to,snapshot:read.snapshot.token})}`);
-  const bytes=await response.arrayBuffer(),expected={path:"CSV",filename:valid.filename,mediaType:valid.mediaType,token:read.snapshot.token};
-  for(const header of ["content-type","content-disposition","content-length","etag","x-selection-digest"]) {
-    const headers=new Headers(response.headers);headers.set(header,"wrong");
-    await assert.rejects(verifySelectionDownload({headers,bytes},expected),/mismatch/u);
-  }
-  const changed=bytes.slice(0);new Uint8Array(changed)[0]^=1;
-  await assert.rejects(verifySelectionDownload({headers:response.headers,bytes:changed},expected),/mismatch/u);
+    transportSignal.addEventListener("abort", () => reject(reason), { once: true });
+  }) }));
+  const pending = pendingClient.activityReport(report.from, report.to, cancelled.signal);
+  assert.ok(transportSignal);
+  assert.equal(transportSignal.aborted, false);
+  const rejected = assert.rejects(pending, /caller cancelled/u);
+  cancelled.abort(reason);
+  assert.equal(transportSignal.aborted, true);
+  assert.equal(transportSignal.reason, cancelled.signal.reason);
+  await rejected;
   const wrong=createActivityQueries(createDashboardTransport({baseUrl:"http://localhost",fetchImpl:()=>Promise.resolve(Response.json(read))}));
   await assert.rejects(wrong.activityReport("2026-09-19","2026-09-19"),/identity-mismatch/u);
 });
@@ -423,6 +444,47 @@ it("retains complete unregistered open results and distinctive absence reasons i
   assert.equal(xlsxValue("Retry"), "distinct retry absence 10800004");
   assert.equal(xlsxValue("Priority"), "bulk");
   assert.equal(xlsxValue("Version"), 23);
+});
+
+for (const lanes of [false, true]) it(`retains the Analytics population across ${lanes ? "lane" : "local"} requests until authority or expiry changes`, async () => {
+  const f = await fixture({ lanes });
+  const range = "from=2026-08-22&to=2026-09-20";
+  const path = "/api/v1/reports/activity/population";
+  const read = async (query = range) => {
+    const response = await f.app.request(`${path}?${query}`);
+    assert.equal(response.status, 200);
+    return ActivityPopulationSelectionSchema.parse(await response.json());
+  };
+  const selected = await read();
+  assert.equal(selected.report.totalRuns, 3);
+  f.clock.advanceWall(1_000);
+  assert.equal((await read("from=2026-08-22&to=2026-09-19")).report.totalRuns, 0);
+  assert.deepEqual(await read(), selected);
+  const selectedRequest = `${path}/selected?${range}&snapshot=${selected.snapshot.token}`;
+  const retained = await f.app.request(selectedRequest);
+  assert.equal(retained.status, 200);
+  assert.deepEqual(ActivityPopulationSelectedReadSchema.parse(await retained.json()).selection, selected);
+
+  f.clock.advanceWall(7.5 * 60_000 - 1_000);
+  const refreshed = await read();
+  assert.equal(refreshed.snapshot.authorityGeneration, selected.snapshot.authorityGeneration);
+  assert.equal(Date.parse(refreshed.snapshot.expiresAt), f.clock.nowMs() + 15 * 60_000);
+  assert.notEqual(refreshed.snapshot.token, selected.snapshot.token);
+  const stillValid = await f.app.request(selectedRequest);
+  assert.equal(stillValid.status, 200);
+  assert.deepEqual(ActivityPopulationSelectedReadSchema.parse(await stillValid.json()).selection, selected);
+
+  f.database.authority.runs.enqueue(runRecordOf({ seed: 3715, workflow: "historical-workflow", enqueuedAt: "2026-09-20T17:00:00Z" }));
+  const changed = await read();
+  assert.equal(changed.report.totalRuns, 4);
+  assert.ok(changed.snapshot.authorityGeneration > selected.snapshot.authorityGeneration);
+  assert.equal((await f.app.request(selectedRequest)).status, 409);
+  f.clock.advanceWall(15 * 60_000);
+  const renewed = await read();
+  assert.equal(renewed.snapshot.authorityGeneration, changed.snapshot.authorityGeneration);
+  assert.equal(renewed.report.totalRuns, changed.report.totalRuns);
+  assert.notEqual(renewed.snapshot.token, changed.snapshot.token);
+  assert.equal((await f.app.request(`${path}/selected?${range}&snapshot=${changed.snapshot.token}`)).status, 409);
 });
 
 it("serves the complete AP1 population and reuses its nested AS1 report for XLSX", async () => {

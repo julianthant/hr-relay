@@ -23,7 +23,7 @@ export const RunWorkflowPicker = memo(function RunWorkflowPicker({ catalog, valu
     if (overflow > 0) scroller.scrollTop = overflow;
   }, [value]);
   return <aside ref={rail} className="launch-workflow-rail launch-picker flex min-h-0 shrink-0 flex-col border-r border-ui-stroke">
-    <div className="launch-picker-search"><SearchInput variant="sidebar" aria-label="Filter workflows" placeholder="Search" value={query} onClear={() => onQuery("")} onChange={event => onQuery(event.target.value)} /></div>
+    <div className="launch-picker-search"><SearchInput aria-label="Filter workflows" placeholder="Search" value={query} onClear={() => onQuery("")} onChange={event => onQuery(event.target.value)} /></div>
     {groups.length > 0 ? <nav aria-label="Workflow" className="workflow-rail"><div className="workflow-rail-groups">{groups.map(group =>
       <section key={group.label} className="workflow-rail-group">
         {group.label !== "" && <h3>{createElement(categoryIcon(group.label), { "aria-hidden": true, className: "size-3.5 shrink-0" })}{group.label}</h3>}
@@ -31,7 +31,7 @@ export const RunWorkflowPicker = memo(function RunWorkflowPicker({ catalog, valu
           const reason = unavailable.get(node.entry.id);
           return <li key={node.entry.id}>
             <button type="button" aria-current={value === node.entry.id ? "page" : undefined} aria-label={node.entry.label} className={`${dsFocus} disabled:cursor-not-allowed disabled:text-ui-muted`}
-              disabled={locked || reason !== undefined} title={reason?.reason} aria-description={reason?.reason} onClick={() => onChange(node.entry.id)}>
+              disabled={locked || reason !== undefined} title={reason === undefined ? node.entry.label : `${node.entry.label}: ${reason.reason}`} aria-description={reason?.reason} onClick={() => onChange(node.entry.id)}>
               <span className="truncate">{node.entry.label}</span>{node.harness && <WorkflowHarnessTag harness={node.harness} />}
               {reason !== undefined && <span className="ml-auto shrink-0 text-caption text-ui-muted">{reason.label}</span>}
             </button>

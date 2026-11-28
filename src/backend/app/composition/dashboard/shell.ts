@@ -12,7 +12,7 @@ import { SearchMetadataExportRequestSchema } from "../../../../models/dashboard/
 import { OperatorXlsxExportRequestSchema, OperatorXlsxSearchDocumentSchema } from "../../../../models/dashboard/xlsx-export.js";
 import { FingerprintSchema } from "../../../../rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
-import type { BootstrapQueryDeps } from "../../../runs/queries/bootstrap.js";
+import { laneAuthorityMeta, type BootstrapQueryDeps } from "../../../runs/queries/bootstrap.js";
 import { createAuthorityCrossDateSearchService, rethrowSearchLaneError, storedSearchQueuedTitle, withSearchSelectionRefusals } from "../../../runs/queries/search.js";
 import { collectSearchDocument, type OperatorXlsxExportServiceDependencies } from "../../../runs/exports/operator-xlsx-export-service.js";
 import { createDashboardStreamHub, type DashboardStreamHubDeps } from "../../../transports/http/subscriptions/dashboard-stream.js";
@@ -80,7 +80,9 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
   "appVersion" | "actorLabel" | "clock" | "descriptorSetHash" | "preflightReport" | "workbookCompatibility">
   & Pick<OperatorXlsxExportServiceDependencies, "ids" | "artifacts">
   & DashboardStreamHubDeps
-  & { readLanes?: DashboardReadLanes; projection: Pick<RunQueueProjection, "runFold">; activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createAuthorityCrossDateSearchService>[0]["descriptors"] }
+  & { readLanes?: DashboardReadLanes; projection: Pick<RunQueueProjection, "runFold">; activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService;
+    /** The Activity lane's whole XLSX document; without it the selected report is read and collected here. */
+    readActivityDocument?: Extract<OperatorXlsxExportServiceDependencies, { readActivityDocument: unknown }>["readActivityDocument"]; database: AuthorityDatabase; descriptors: Parameters<typeof createAuthorityCrossDateSearchService>[0]["descriptors"] }
 ): ShellRouteDeps {
   const { projection, clock, ids, artifacts } = input;
   const database = input.database.dashboardHistory();
@@ -97,7 +99,7 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
   return {
     bootstrap: { appVersion: input.appVersion, actorLabel: input.actorLabel, clock, modules: DASHBOARD_CATALOG_MODULES,
       descriptorSetHash: input.descriptorSetHash, settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-      preflightReport: input.preflightReport, projection, authorityMeta: () => database.getMeta(),
+      preflightReport: input.preflightReport, projection, authorityMeta: input.readLanes === undefined ? () => database.getMeta() : laneAuthorityMeta(input.readLanes),
       workbookCompatibility: input.workbookCompatibility },
     search,
     ...(lane === undefined ? {} : { searchPage: lane.searchPage }),
@@ -105,7 +107,8 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
     calendar: lane?.calendar ?? createCalendarQuery(database, clock),
     xlsxExports: composeGeneratedExports({ clock, ids, sourceIdentity, artifacts, authority: input.database.authority.operatorXlsxExports,
       ...(lane === undefined ? localSearch : { readSearchDocument: lane.readSearchDocument }),
-      activityReport: (from, to, token) => input.activity.readSelected(from, to, token) }),
+      ...(input.readActivityDocument === undefined ? { activityReport: (from: string, to: string, token: string) => input.activity.readSelected(from, to, token) }
+        : { readActivityDocument: input.readActivityDocument }) }),
     hub: createDashboardStreamHub(input),
   };
 }

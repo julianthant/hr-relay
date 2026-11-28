@@ -2,7 +2,7 @@ import { PREFERENCES_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.j
 import { FixtureCommandBinding } from "./command-binding.js";
 import type { SettingsSaveNotice, SettingsSaveProblem } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { randomUUID } from "node:crypto";
-import { act, createElement } from "react";
+import { act, createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
@@ -17,7 +17,9 @@ import { composeSettings } from "../../../../src/backend/app/composition/dashboa
 import { buildSettingsEditor } from "../../../../src/backend/runs/queries/settings-editor.js";
 import { createDashboardClient, createRowStore } from "../../../../src/dashboard/client/index.js";
 import { StreamRowSchema } from "../../../../src/models/dashboard/subscription.js";
-import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
+import { DashboardClientProvider, useDashboardCommandBinding } from "../../../../src/dashboard/state/client-context.js";
+import { PersonPreferencesContext } from "../../../../src/dashboard/lib/person-preferences.js";
+import { createPersonPreferences } from "../../../../src/dashboard/state/person-preferences-model.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { EditableSettingsSection } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor.js";
 import { SettingsAuthoritySection } from "../../../../src/dashboard/surfaces/settings/editor/settings-authorities.js";
@@ -44,7 +46,7 @@ export async function syntheticSettingsAuthority(profileFixture: () => Promise<B
   return { root: profile.workspace, database, credentials, clock, execute, read, apply, protectedApply,
     close: async () => { database.close(); await profile.close(); } };
 }
-export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof syntheticSettingsAuthority>>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
+export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof syntheticSettingsAuthority>>, section = "general", readDocument: (() => unknown) | undefined = undefined, withPersonPreferences = false) {
   const commands: unknown[] = [];
   /** Every request the editor sent, as `METHOD /path`. */
   const requests: string[] = [];
@@ -84,11 +86,15 @@ export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof 
     throw new Error("unexpected-settings-test-request");
   } });
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const preferences = withPersonPreferences ? createPersonPreferences("person") : undefined;
   let editor: ReturnType<typeof useEditableSettings> | undefined;
   function Harness({ sectionId }: { sectionId: string }) {
+    const binding = useDashboardCommandBinding();
+    useEffect(() => preferences === undefined || binding === undefined ? undefined : preferences.connect(client, binding, () => binding), [binding]);
     editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), onSaved: notice => notices.push(notice), onSaveProblem: notice => problems.push(notice) });
-    return ["credentials", "protected-store", "provider-env", "runtime-isolation"].includes(sectionId)
+    const page = ["credentials", "protected-store", "provider-env", "runtime-isolation"].includes(sectionId)
       ? createElement(SettingsAuthoritySection, { profileName: "Synthetic Operator", editor, sectionId }) : createElement(EditableSettingsSection, { editor, sectionId });
+    return createElement(PersonPreferencesContext.Provider, { value: preferences }, page);
   }
   let shown = section;
   const render = async (sectionId: string, show = true, requestKey = 0, stopped = false): Promise<void> => { shown = sectionId; await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, rows, stopped, children: show ? createElement(Harness, { sectionId }) : null }) })); }); };

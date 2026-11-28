@@ -338,7 +338,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         if (!libraryId) {
           await adapter.list();
           move(key, { type: 'unknown' });
-          return { state: 'uncertain', reason: `Save outcome is uncertain. The new workbook identity could not be confirmed.${intent.error === undefined ? '' : ` ${message(intent.error)}`}` };
+          return { state: 'uncertain', reason: `Save not confirmed.${intent.error === undefined ? '' : ` ${message(intent.error)}`}` };
         }
         intent.libraryId = libraryId;
         try {
@@ -350,7 +350,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
           aliases.set(libraryId, key); updateRow(key, confirmed);
           if (confirmed.phase === 'edited') return { state: 'uncertain', reason: 'The original save was confirmed. The current draft still has unsaved changes.' };
           return result;
-        } catch (error) { intent.error = error; move(key, { type: 'unknown' }); return { state: 'uncertain', reason: `Save outcome is uncertain. ${message(error)} Check the library before saving again.` }; }
+        } catch (error) { intent.error = error; move(key, { type: 'unknown' }); return { state: 'uncertain', reason: `Save not confirmed. ${message(error)}` }; }
       };
       const settling = () => { const current = drafts.get(key); return current?.phase === 'settling' && current.saving === saving; };
       started.resolve(execute());

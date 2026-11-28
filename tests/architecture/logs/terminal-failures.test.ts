@@ -24,7 +24,7 @@ function silentRequestCatches(path: string, text: string): string[] {
       const text = handler.getText(source);
       const emits = /\.(?:emit|error)\??\.?(?:\()/u.test(text);
       const propagates = /\bthrow\b|\bpopulationFailure\(/u.test(text);
-      const responds = /\.json\(/u.test(text) && /\b(?:failure|wireError)\(|state:\s*["'](?:error|failed|refused|rejected|unknown|uncertain|unavailable)["']/u.test(text);
+      const responds = /\.json\(/u.test(text) && /\b(?:failure|wireError)\(|state:\s*["'](?:error|failed|refused|rejected|unknown|uncertain|unavailable|no-reply)["']/u.test(text);
       const retained = /current\.loggingFailure\s*=\s*\{\s*cause:/u.test(text)
         && /if \(current\.loggingFailure !== undefined\) return c\.json\(wireError\("LOGGING_UNAVAILABLE"/u.test(source.text);
       if (!emits && !propagates && !responds && !retained) violations.push(`${path}:${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1}`);

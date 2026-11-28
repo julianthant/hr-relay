@@ -2,13 +2,15 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { ActivityReportWireSchema, type ActivityReportWire } from "../../../models/dashboard/activity.js";
-import { ActivityReportSelectionSchema, ActivitySnapshotIdentitySchema } from "../../../models/dashboard/activity-selection.js";
+import type { ActivityReportWire } from "../../../models/dashboard/activity.js";
+import { ActivityReportSelectionSchema, ActivitySnapshotIdentitySchema, type ActivityReportSelection } from "../../../models/dashboard/activity-selection.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 
-const RangeSchema = z.strictObject({ from: z.iso.date(), to: z.iso.date() }).refine(range => range.from <= range.to, { message: "activity range ends before it starts" });
+export const ACTIVITY_SNAPSHOT_LIFETIME_MS = 15 * 60_000;
+
+export const ActivityRangeSchema = z.strictObject({ from: z.iso.date(), to: z.iso.date() }).refine(range => range.from <= range.to, { message: "activity range ends before it starts" });
 export class ActivitySnapshotError extends Error {
   constructor(readonly code: Extract<ErrorCatalogCode, `ACTIVITY_SNAPSHOT_${string}`>) {
     super(ERROR_CATALOG[code].text);
@@ -16,8 +18,9 @@ export class ActivitySnapshotError extends Error {
   }
 }
 
-export function createActivitySnapshotSigner<Identity extends { expiresAt: string }>(schema: z.ZodType<Identity>, prefix: "as1" | "ap1", clock: Clock) {
-  const key = randomBytes(32);
+/** `key` is the runtime's signing key: a lane that issues or validates a token for this runtime is given the same key. */
+export function createActivitySnapshotSigner<Identity extends { expiresAt: string }>(schema: z.ZodType<Identity>, prefix: "as1" | "ap1",
+  clock: Pick<Clock, "nowMs">, key: Uint8Array = randomBytes(32)) {
   const domain = prefix === "as1" ? "activity-selection:v1" : "activity-population:v1";
   const signature = (body: string) => createHmac("sha256", key).update(`${domain}:${body}`).digest();
   const encode = (identity: Identity) => {
@@ -39,18 +42,21 @@ export function createActivitySnapshotSigner<Identity extends { expiresAt: strin
 
 /** A process-bound, expiring review token. No cached/latest report substitutes for the selected authority. */
 export function createActivitySelectionService<ReadContext = never>(input: {
-  database: AuthorityDatabase; clock: Clock; read(from:string,to:string,generatedAt:string,context?:ReadContext): ActivityReportWire;
+  database: AuthorityDatabase; clock: Pick<Clock, "now" | "nowMs">; signingKey?: Uint8Array;
+  /** A lane names the admitted profile store itself; its own connection does not carry the runtime's admission. */
+  sourceIdentity?: string;
+  read(from:string,to:string,generatedAt:string,context?:ReadContext): ActivityReportWire;
 }) {
   const {database,clock}=input;
-  const {encode,decode}=createActivitySnapshotSigner(ActivitySnapshotIdentitySchema,"as1",clock);
+  const {encode,decode}=createActivitySnapshotSigner(ActivitySnapshotIdentitySchema,"as1",clock,input.signingKey);
   const read=(from:string,to:string,selected?:z.infer<typeof ActivitySnapshotIdentitySchema>,context?:ReadContext)=>database.withAuthorityReadSnapshot(()=>{
-    RangeSchema.parse({from,to});
-    const authorityGeneration=database.getMeta().authorityGeneration,sourceIdentity=database.getSourceDatabaseIdentity();
+    ActivityRangeSchema.parse({from,to});
+    const authorityGeneration=database.getMeta().authorityGeneration,sourceIdentity=input.sourceIdentity??database.getSourceDatabaseIdentity();
     if(selected!==undefined&&(selected.from!==from||selected.to!==to||selected.sourceIdentity!==sourceIdentity||selected.authorityGeneration!==authorityGeneration))throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH");
     const generatedAt=selected?.generatedAt??clock.now().toISOString();
-    const report=ActivityReportWireSchema.parse(input.read(from,to,generatedAt,context));
+    const report=input.read(from,to,generatedAt,context);
     const identity=ActivitySnapshotIdentitySchema.parse({from,to,generatedAt,sourceIdentity,authorityGeneration,
-      expiresAt:selected?.expiresAt??new Date(clock.nowMs()+15*60_000).toISOString(),reportDigest:sha256Hex(canonicalJsonStringify(report))});
+      expiresAt:selected?.expiresAt??new Date(clock.nowMs()+ACTIVITY_SNAPSHOT_LIFETIME_MS).toISOString(),reportDigest:sha256Hex(canonicalJsonStringify(report))});
     if(selected!==undefined&&identity.reportDigest!==selected.reportDigest)throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_CONTENT_MISMATCH");
     return ActivityReportSelectionSchema.parse({...report,snapshot:{...identity,token:encode(identity)}});
   });
@@ -59,4 +65,9 @@ export function createActivitySelectionService<ReadContext = never>(input: {
     readSelected:(from:string,to:string,token:unknown,context?:ReadContext)=>read(from,to,decode(token),context),
   });
 }
-export type ActivitySelectionService=ReturnType<typeof createActivitySelectionService<never>>;
+/** What the Activity routes serve: answered now on the request thread, or later from a read lane. */
+export interface ActivitySelectionService {
+  /** A lane answers with the served body, built and validated there. */
+  read(from: string, to: string): ActivityReportSelection | Promise<string>;
+  readSelected(from: string, to: string, token: unknown): ActivityReportSelection | Promise<ActivityReportSelection>;
+}

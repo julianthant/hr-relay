@@ -3,7 +3,6 @@ import {
   ArrowUpRight,
   ChevronsUp,
   ClipboardList,
-  History,
   PauseCircle,
   Pause,
   Play,
@@ -24,6 +23,7 @@ import {
 import {
   BareButton,
   ConfirmDialog,
+  FailureNotice,
   Notice,
   dsFocus,
   dsIcon,
@@ -43,8 +43,10 @@ export interface ActionTarget {
   expectedVersion: number;
 }
 
-/** Every control calls this. */
-export type DashboardActionHandler = (action: ActionDescriptorWire, target: ActionTarget) => Promise<void> | void;
+type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
+
+/** Every control calls this; a command resolves true only when its effect is confirmed. */
+export type DashboardActionHandler = (action: ActionDescriptorWire, target: ActionTarget) => Promise<void | boolean> | void;
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
 
@@ -54,8 +56,10 @@ const PENDING_LIMIT_MS = 15_000;
 
 /** A refused command toasts one line; its Priority notification item opens the run. */
 export function CommandResultFeed({ results }: { results: readonly CommandResultFeedEntry[] }) {
-  return <>{results.map(entry => <Notice key={entry.id} tone={entry.settlement.reason === "conflict" ? "warning" : "danger"}
-    title={commandResultTitle(entry)} />)}</>;
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
+  return <>{results.filter(entry => !dismissed.has(entry.id)).map(entry => entry.settlement.reason === "conflict"
+    ? <Notice key={entry.id} tone="warning" title={commandResultTitle(entry)} />
+    : <FailureNotice key={entry.id} sentence={commandResultTitle(entry)} onDismiss={() => setDismissed(current => new Set(current).add(entry.id))} />)}</>;
 }
 
 const ICONS: Record<ActionIconKey, ReactNode> = {
@@ -71,11 +75,6 @@ const ICONS: Record<ActionIconKey, ReactNode> = {
   rename: <Pencil aria-hidden className={dsIcon.md} />,
   external: <ArrowUpRight aria-hidden className={dsIcon.md} />,
   drill: <Search aria-hidden className={dsIcon.md} />,
-};
-
-/** Recover completed steps and Rerun both arrive with the retry or resume glyph; the key gives Recover its own. */
-const KEY_ICONS: Readonly<Record<string, ReactNode>> = {
-  "recover-run": <History aria-hidden className={dsIcon.md} />,
 };
 
 /** the pill shell and the placement folds live in `actions-model.ts` — see the note there */
@@ -120,6 +119,19 @@ export function FooterActions({
     const timer = setTimeout(() => setPressed(null), PENDING_LIMIT_MS);
     return () => clearTimeout(timer);
   }, [pressed]);
+  // Pause and Resume show their opposite at once and keep it until the run's served control changes;
+  // a refused or unconfirmed press restores the served control. A press on the shown opposite is kept
+  // (`queued`) and sent once against the fresh served descriptor.
+  const [flip, setFlip] = useState<{ runId: string; command: string; version: number; queued: boolean; confirmed: boolean } | null>(null);
+  const servedToggle = footer.find((entry): entry is CommandAction => entry.kind === "command" && (entry.command === "pause" || entry.command === "resume"));
+  const flipHolds = flip !== null && servedToggle !== undefined && flip.runId === target.runId
+    && flip.command === servedToggle.command && flip.version === target.expectedVersion;
+  useEffect(() => {
+    // The queued press waits for the Pause's own confirmation: sending earlier would race its settlement.
+    if (flip === null || flipHolds || !flip.confirmed) return;
+    if (flip.runId === target.runId && flip.queued && servedToggle !== undefined && servedToggle.command !== flip.command) void onAction(servedToggle, target);
+    setFlip(null);
+  }, [flip, flipHolds, servedToggle, target, onAction]);
   if (footer.length === 0 && !onPreviewAction) return null;
   // No `Cancel group` caption beside the ✕: an icon that already means cancel,
   // captioned "cancel", is the same word twice; the warning lives in the ✕'s own `title`.
@@ -130,14 +142,20 @@ export function FooterActions({
         <IconActionButton tone="destructive" icon={<Trash2 aria-hidden className={dsIcon.sm} />} label="Delete" onClick={event => { event.stopPropagation(); onPreviewAction('delete'); }} />
       </>}
       {footer.map((a) => {
-        const label = groupCount === undefined ? a.label
-          : a.key === "pause" ? `Pause all ${groupCount}` : a.key === CANCEL_TREE_KEY ? `Stop all ${groupCount}` : a.label;
+        const toggle = a.kind === "command" && (a.command === "pause" || a.command === "resume");
+        const isFlipped = toggle && flipHolds && a === servedToggle;
+        // A press on the served opposite while the Pause is still unconfirmed is held too.
+        const holdPress = isFlipped || toggle && flip !== null && !flip.confirmed && flip.runId === target.runId && a.command !== flip.command;
+        const shown = isFlipped ? (a.key === "pause" ? { key: "resume", label: "Resume", icon: "resume" as const } : { key: "pause", label: "Pause", icon: "pause" as const })
+          : { key: a.key, label: a.label, icon: a.icon };
+        const label = groupCount === undefined ? shown.label
+          : shown.key === "pause" ? `Pause all ${groupCount}` : a.key === CANCEL_TREE_KEY ? `Stop all ${groupCount}` : shown.label;
         return (
         <IconActionButton
           key={a.key}
           pending={pressed?.key === a.key && pressed.version === target.expectedVersion}
           tone={INTENT_TONE[a.intent]}
-          icon={KEY_ICONS[a.key] ?? ICONS[a.icon ?? "external"]}
+          icon={ICONS[shown.icon ?? "external"]}
           label={label}
           title={
             a.key === CANCEL_TREE_KEY && groupCount === undefined
@@ -149,10 +167,18 @@ export function FooterActions({
           onClick={(e) => {
             e.stopPropagation();
             const row = e.currentTarget.closest<HTMLElement>('[data-demo-row-id]')?.querySelector<HTMLElement>("[data-queue-open]") ?? null;
-            if (a.kind === "command" && !a.confirm) setPressed({ key: a.key, version: target.expectedVersion });
-            const press = { key: a.key, version: target.expectedVersion };
+            if (holdPress) { setFlip(now => now === null ? now : { ...now, queued: true }); return; }
+            const press = { key: a.key, runId: target.runId, version: target.expectedVersion };
+            if (toggle) setFlip({ runId: press.runId, command: a.key, version: press.version, queued: false, confirmed: false });
+            else if (a.kind === "command" && !a.confirm) setPressed({ key: a.key, version: target.expectedVersion });
             const settled = onAction(a, target);
-            if (a.kind === "command" && !a.confirm) {
+            if (toggle) {
+              // Only a confirmed command keeps the flip, until the stream serves the new control.
+              const settle = (confirmed: unknown) => setFlip(now => now?.runId !== press.runId || now.version !== press.version ? now
+                : confirmed === true ? { ...now, confirmed: true } : null);
+              if (settled === undefined) settle(false);
+              else void settled.then(settle, (cause: unknown) => { window.reportError(cause); settle(false); });
+            } else if (a.kind === "command" && !a.confirm) {
               if (settled === undefined) setPressed(null);
               else void settled.catch((cause: unknown) => { window.reportError(cause); })
                 .finally(() => setPressed(now => now?.key === press.key && now.version === press.version ? null : now));

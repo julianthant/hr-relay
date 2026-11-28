@@ -16,7 +16,8 @@ import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
-import { buildRerunPlan, previewRerunWarnings, validateRerunSourcePlan, RerunRefusedError } from "../start/rerun.js";
+import { buildRerunPlan, previewRerunWarnings } from "../start/rerun.js";
+import { validateRerunSourcePlan, RerunRefusedError } from "../start/rerun-source.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema, type RerunWarningWire } from "../../../models/dashboard/rerun-warning.js";
 import { projectRerunPlanForOperator } from "../../../models/run/rerun.js";
 import { StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../../models/run/start-plan.js";
@@ -24,6 +25,7 @@ import { planStart } from "../start/plan.js";
 import { StartStepOmissionRefusedError, applyStartStepSelection, resolveStartStepOmissions } from "../start/step-selection.js";
 import type { StartPlannerDeps } from "../start/plan.js";
 import { TargetNotFoundError } from "./refusals.js";
+import { isInterruptedRerunSource } from "../start/recovery-plan.js";
 
 export type { StartPlanWire } from "../../../models/dashboard/start-plan.js";
 
@@ -117,6 +119,18 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         const run = repositories.runs.get(rerunSource.runId);
         if (run === undefined) throw new RerunRefusedError("target-not-found", "Rerun source does not exist");
         validateRerunSourcePlan(repositories, run);
+        if (isInterruptedRerunSource(repositories, run)) {
+          if (run.version !== rerunSource.expectedVersion) throw new RerunRefusedError("source-stale", "Rerun source revision changed; replan");
+          if (run.envelope.workflow !== descriptor.id || run.envelope.descriptorVersion !== descriptor.version
+            || run.envelope.contractFingerprint !== descriptor.contractFingerprint)
+            throw new RerunRefusedError("schema-mismatch", "Interrupted rerun requires the original workflow contract.");
+          if (ingress.submissions.length !== 0 || (ingress.workbookReferences?.length ?? 0) > 0)
+            throw new RerunRefusedError("invalid-value", "Interrupted rerun uses the original input and workbook references.");
+          if (ingress.dryRun !== run.envelope.dryRun) throw new RerunRefusedError("invalid-value", "Interrupted rerun keeps the original dry-run setting.");
+          if (ingress.stepOmissions !== undefined) throw new RerunRefusedError("invalid-value", "Interrupted rerun keeps the original manual values.");
+          return { input: run.input.parsed, stepOmissions: run.envelope.stepOmissions, interruptedRun: run };
+        }
+        if (ingress.submissions.length === 0) throw new RerunRefusedError("invalid-value", "Provide the input for this rerun.");
         const correction = rerunSource.failureCorrection;
         if (rerunSource.gateCorrection !== undefined) {
           return { input: run.input.parsed, submissions: [gateCorrectionSubmission(descriptor, run, ingress, sourceBrowserMode(repositories, run))],
@@ -126,7 +140,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         const submission = failureCorrectionSubmission(descriptor, run, repositories.failures.get(correction.failureId), ingress, sourceBrowserMode(repositories, run));
         return { input: run.input.parsed, submissions: [submission], stepOmissions: run.envelope.stepOmissions };
       });
-      const stepOmissions = resolveStartStepOmissions(descriptor, ingress.selectedStepKeys,
+      const stepOmissions = source?.interruptedRun !== undefined ? source.stepOmissions : resolveStartStepOmissions(descriptor, ingress.selectedStepKeys,
         source?.stepOmissions ?? ingress.stepOmissions);
       if (rerunSource?.failureCorrection === undefined && rerunSource?.gateCorrection === undefined) {
         for (const submission of ingress.submissions) for (const correction of [...descriptor.failureCorrections ?? [], ...descriptor.gateCorrections ?? []]) {
@@ -152,9 +166,9 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           descriptor,
           ...(ingress.workbookReferences === undefined ? {} : { workbookReferences: ingress.workbookReferences }),
           ...(deps.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: deps.protectedSubmissionBindings }),
-          ...(source === undefined ? {} : { retainedInputs: [source.input] }),
+          ...(source === undefined ? {} : source.interruptedRun === undefined ? { retainedInputs: [source.input] } : { interruptedRun: source.interruptedRun }),
           ...(source?.supersedeRunId === undefined ? {} : { supersedeRunId: source.supersedeRunId }),
-          submissions: (source?.submissions ?? ingress.submissions).map((submission) =>
+          submissions: (source?.submissions ?? ingress.submissions).map(submission =>
             applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys, stepOmissions)),
           ...(ingress.requestedInstance === undefined ? {} : { requestedInstance: ingress.requestedInstance }),
           dryRun: ingress.dryRun,

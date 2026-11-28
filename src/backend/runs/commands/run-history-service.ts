@@ -1,9 +1,8 @@
-import type { RunHistoryCommand, ClearRunHistoryResult, RunHistoryStatus } from "../../../models/dashboard/run-history.js";
+import { type RunHistoryCommand, type ClearRunHistoryResult } from "../../../models/dashboard/run-history.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 
 export interface RunHistoryService {
-  status(): RunHistoryStatus;
   clear(request: RunHistoryCommand): ClearRunHistoryResult;
   check(request: RunHistoryCommand): ClearRunHistoryResult;
 }
@@ -18,10 +17,6 @@ export function createRunHistoryService(input: { database: AuthorityDatabase; li
     return result;
   };
   return {
-    status() {
-      if (input.database.resumeRunDeletionFiles() > 0) input.afterClear();
-      return input.lifecycle.historyStatus();
-    },
     clear: request => settle(input.lifecycle.clearHistory(request)),
     check: request => settle(input.lifecycle.clearHistoryResult(request)),
   };

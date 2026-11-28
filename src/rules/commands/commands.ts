@@ -425,7 +425,7 @@ export const CommandRequestSchema = z.union([
 export const CommandAdmissionRequestSchema = CommandRequestSchema.refine(
   request => request.type !== "plan-worker-count" || PlannedWorkerCountSchema.safeParse(request.payload.desiredWorkers).success,
   { path: ["payload", "desiredWorkers"], message: `Worker count must be at most ${MAX_WORKERS_PER_WORKFLOW}` },
-);
+).refine(request => request.type !== "recover-run", { path: ["type"], message: "Open Rerun to review unfinished steps." });
 
 export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   z.strictObject({ family: z.literal("ocr-review"), runId: RunIdSchema }),
@@ -628,7 +628,7 @@ export const CommandAuditRecordSchema = z.strictObject({
     return;
   }
   const intent = audit.writeResolution;
-  if (request.type === "recheck-write") {
+  if (request.type === "recheck-write" || intent?.status === "parked") {
     if (intent?.status !== "parked" || intent.recheck?.commandId !== request.commandId
       || intent.recheck.auditId !== audit.auditId || intent.recheck.requestedAt !== audit.completedAt) {
       context.addIssue({ code: "custom", path: ["writeResolution"], message: "applied recheck requires its immutable request acknowledgement" });
@@ -1051,7 +1051,7 @@ export const DashboardCommandRequestSchema = z.union([CommandRequestSchema, Iden
 export type DashboardCommandRequest = z.infer<typeof DashboardCommandRequestSchema>;
 /** Start, or a run command that leaves work queued for a worker of its workflow; only these may carry workerStartup. */
 export type CapacityRequest = Extract<CommandRequest, { family: "start" } | { family: "run" }>;
-const QUEUEING_RUN_TYPES: ReadonlySet<string> = new Set(["resume", "retry", "recover-run"]);
+const QUEUEING_RUN_TYPES: ReadonlySet<string> = new Set(["resume", "retry"]);
 export function needsWorkerCapacity(request: DashboardCommandRequest): request is CapacityRequest {
   return request.family === "start" || request.family === "run" && QUEUEING_RUN_TYPES.has(request.type);
 }

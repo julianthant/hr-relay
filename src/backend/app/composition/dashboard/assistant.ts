@@ -1,3 +1,12 @@
+import { AssistantAuthorizationError, createAssistantSessionAuthorization } from '../../../assistant/authorization.js';
+import type { AssistantPlugin } from '../../../assistant/plugins/plugin.js';
+import { sessionsPlugin } from '../../../assistant/plugins/sessions/index.js';
+import { createAssistantM1Service, type AssistantM1ServiceOptions } from '../../../assistant/service.js';
+import { createAssistantTypedProposals, type AssistantTypedProposalPorts } from '../../../assistant/typed-proposals.js';
+import type { AssistantReferenceTable } from '../../../assistant/references.js';
+import type { ServerReplyBinding } from '../../../assistant/replies.js';
+import { selectActiveRunSettings } from '../../../runs/settings/run-settings.js';
+import type { CommandRequest } from '../../../../rules/commands/commands.js';
 import { CrossDateSearchQuerySchema, SearchCoverageSchema } from '../../../../models/dashboard/search.js';
 import { buildRunDetail, type RunDetailQueryDeps } from '../../../runs/queries/run-detail.js';
 import type { CrossDateSearchQueryService } from '../../../runs/queries/search.js';
@@ -92,4 +101,59 @@ export function startAssistantHistoryCleanup(reclaim: () => void, report: (error
   const timer = setInterval(() => { try { reclaim(); } catch (error) { report(error); } }, intervalMs);
   timer.unref();
   return timer;
+}
+
+/** Every reference this turn issued renders as its local display text. */
+export const assistantValueBindings = (table: AssistantReferenceTable): readonly ServerReplyBinding[] =>
+  table.issued().map(([reference, entry]) => ({ kind: 'value-only' as const, reference, entry, value: entry.display }));
+
+/** Whether `attribution` names the stored claim of `command`: its session claim, or the claimed proposal row in the same chat. */
+export function attributionOwnsCommand(store: AuthorityDatabase['authority']['assistantProposals'], command: CommandRequest,
+  attribution: Parameters<AssistantTypedProposalPorts['submit']>[1], profileId: string): boolean {
+  if (attribution.kind !== 'assistant' || command.source !== 'assistant' || attribution.requestedBy !== command.requestedBy || attribution.profileId !== profileId) return false;
+  const { binding } = attribution;
+  if (binding.kind === 'proposal') {
+    const record = store.read(binding.proposalId), row = record?.rows.find(entry => entry.rowId === binding.rowId);
+    return record?.snapshot.conversationId === attribution.conversationId && record.lifecycle.state === 'answered' && record.lifecycle.answerMessageId === attribution.acceptedMessageId
+      && row?.result.state === 'claimed' && row.result.commandId === command.commandId;
+  }
+  const claimed = store.sessions.byCommand(command.commandId)?.claim;
+  return claimed !== undefined && claimed.actionId === binding.actionId && claimed.acceptedTurn.conversationId === attribution.conversationId
+    && claimed.acceptedTurn.messageId === attribution.acceptedMessageId;
+}
+
+/** The served assistant: the turn-accounting service over the typed-yes proposal owner and read-only sessions. */
+export function composeAssistant(options: Readonly<{
+  service: Omit<AssistantM1ServiceOptions, 'history' | 'proposals' | 'tools'>;
+  database: Pick<AuthorityDatabase, 'authority' | 'withAuthorityReadSnapshot' | 'withAuthorityTransaction'>;
+  starts: Pick<AssistantTypedProposalPorts, 'descriptors' | 'served' | 'plans' | 'runs' | 'rerunValues' | 'attachment' | 'ocrSources' | 'submit'>;
+  readPlugins: () => readonly AssistantPlugin[];
+}>) {
+  const { database, service } = options, store = database.authority.assistantProposals;
+  const browserMode = () => database.withAuthorityReadSnapshot(() => selectActiveRunSettings(database.authority)).config.browser.headless ? 'headless' as const : 'headed' as const;
+  // Every assistant command reaches the kernel only with the attribution of the claim that owns it.
+  const submit: AssistantTypedProposalPorts['submit'] = (command, attribution) => {
+    if (!attributionOwnsCommand(store, command, attribution, service.owner().profileId)) throw new AssistantToolRefusal('ASSISTANT_PROPOSAL_REFUSED');
+    return options.starts.submit(command, attribution);
+  };
+  const common = { ...options.starts, submit, current: service.owner, clock: service.clock, actorId: service.actorId, browserMode };
+  const proposals = createAssistantTypedProposals({ ...common, store, plannedInputs: startPlanId => {
+    const record = database.authority.startPlans.get(startPlanId);
+    return record === undefined ? undefined : { capturedAt: record.plannedAt, runs: record.planned };
+  } });
+  const sessions = createAssistantSessionAuthorization({ ...common, claims: store.sessions,
+    fullAccessAllowed: () => database.withAuthorityReadSnapshot(() => readSettings(database.authority).settings.preferences?.assistantFullAccess === true) });
+  const assistant = createAssistantM1Service({ ...service, proposals, atomic: work => database.withAuthorityTransaction(() => work()),
+    history: () => { service.assertComposition?.(); return database.authority.assistantHistory; },
+    tools: () => ({ plugins: [...options.readPlugins(), proposals.plugin, sessionsPlugin()], sessions,
+      bindings: assistantValueBindings }) });
+  return Object.freeze({ assistant,
+    /** The command and worker effect hook: an assistant command runs only from its claimed proposal row or session claim. */
+    assertEffect(commandId: string, command?: CommandRequest): void {
+      proposals.assertEffect(commandId, command);
+      sessions.assertEffect(commandId, command);
+      if (command?.source.startsWith('assistant') === true && !store.hasRowCommand(commandId) && store.sessions.byCommand(commandId) === undefined) {
+        throw new AssistantAuthorizationError('assistant-effect-not-authorized');
+      }
+    } });
 }

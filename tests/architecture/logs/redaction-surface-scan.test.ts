@@ -8,7 +8,7 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { SpanAuthorityReconciliationSchema } from "../../../src/models/storage/storage-status.js";
-import { ClearRunHistoryRequestSchema, RunHistoryStatusSchema, ClearRunHistoryResultSchema } from "../../../src/models/dashboard/run-history.js";
+import { ClearRunHistoryRequestSchema, ClearRunHistoryResultSchema } from "../../../src/models/dashboard/run-history.js";
 import { redactDiagnosticFields, redactValue } from "../../../src/rules/redaction/redaction.js";
 import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
@@ -16,7 +16,7 @@ import { LedgerEntrySchema } from "../../../src/rules/runs/ledger.js";
 import { LEDGER_OUTBOX_PAYLOAD, UUID_1, UUID_6 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 import { assistantToolEgress } from "./helpers/assistant-tool-egress.js";
-import { ALL_CANARY_NAMES, EGRESS_DECISION_LEAVES, auditD331ServedLeafDispositions, auditRedactedProducers, auditSurfaceOrigins, canariesIn, decidableLeaves, D331_SERVED_LEAF_DISPOSITIONS, REDACTED_NAME_WAIVERS, REDACTION_CANARIES, REDACTION_SURFACES, redactedProducerSites, SURFACE_LEAF_ORIGINS, SURFACE_MODULE_DISPOSITIONS, scannedSurfaceModules, surfaceLeaves, UNIVERSAL_CANARY_NAMES, type RedactionSurface, type SurfaceLeafOrigin } from "./helpers/redaction-surface-audit.js";
+import { ALL_CANARY_NAMES, ASSISTANT_PART_LEAF_ORIGINS, EGRESS_DECISION_LEAVES, auditD331ServedLeafDispositions, auditRedactedProducers, auditSurfaceOrigins, canariesIn, decidableLeaves, D331_SERVED_LEAF_DISPOSITIONS, REDACTED_NAME_WAIVERS, REDACTION_CANARIES, REDACTION_SURFACES, redactedProducerSites, SURFACE_LEAF_ORIGINS, SURFACE_MODULE_DISPOSITIONS, scannedSurfaceModules, surfaceLeaves, UNIVERSAL_CANARY_NAMES, type RedactionSurface, type SurfaceLeafOrigin } from "./helpers/redaction-surface-audit.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 /* ── the modules whose exported wire schemas must be covered ─────────────── */
@@ -69,7 +69,6 @@ describe("redaction surface scan — the declaration audit", () => {
   it("audits the real history request/status/result as closed loopback surfaces", () => {
     const surfaces = [
       ["request/clear-run-history", ClearRunHistoryRequestSchema, ["commandId", "target.epoch", "target.profileId"]],
-      ["wire/run-history-status", RunHistoryStatusSchema, ["activeRuns", "finishedRuns", "state"]],
       ["wire/clear-run-history-result", ClearRunHistoryResultSchema, ["commandId", "deletedRuns", "reason", "state"]],
     ] as const;
     assert.equal(SURFACE_MODULE_DISPOSITIONS.find(entry => entry.module === "src/models/dashboard/run-history.ts")?.state, "audited");
@@ -85,21 +84,17 @@ describe("redaction surface scan — the declaration audit", () => {
     assert.deepEqual(ClearRunHistoryRequestSchema.parse(confirmed), confirmed);
     assert.equal(ClearRunHistoryRequestSchema.safeParse({commandId: UUID_1}).success, false);
     for (const epoch of [0, -1, 0.5, Infinity]) assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, target: {...confirmed.target, epoch}}).success, false);
-    for (const value of [{state: "unavailable"}, {state: "available", finishedRuns: 0, activeRuns: 3}]) assert.deepEqual(RunHistoryStatusSchema.parse(value), value);
     for (const value of [{state: "not-recorded", commandId: UUID_1}, {state: "cleared", commandId: UUID_1, deletedRuns: 3},
       ...["active-runs", "shared-checkpoint", "unresolved-write", "replay-divergent", "unavailable"].map(reason => ({state: "refused", commandId: UUID_1, reason}))]) {
       assert.deepEqual(ClearRunHistoryResultSchema.parse(value), value);
     }
     for (const count of [-1, 0.5, Infinity]) {
-      assert.equal(RunHistoryStatusSchema.safeParse({state: "available", finishedRuns: count, activeRuns: 0}).success, false);
-      assert.equal(RunHistoryStatusSchema.safeParse({state: "available", finishedRuns: 0, activeRuns: count}).success, false);
       assert.equal(ClearRunHistoryResultSchema.safeParse({state: "cleared", commandId: UUID_1, deletedRuns: count}).success, false);
     }
     for (const canary of Object.values(REDACTION_CANARIES)) {
       assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, commandId: canary}).success, false);
       assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, note: canary}).success, false);
       assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, target: {profileId: canary, epoch: 1}}).success, false);
-      assert.equal(RunHistoryStatusSchema.safeParse({state: canary}).success, false);
       assert.equal(ClearRunHistoryResultSchema.safeParse({state: "refused", commandId: UUID_1, reason: canary}).success, false);
       assert.equal(ClearRunHistoryResultSchema.safeParse({state: "not-recorded", commandId: canary}).success, false);
       assert.equal(ClearRunHistoryResultSchema.safeParse({state: "cleared", commandId: UUID_1, deletedRuns: 0, note: canary}).success, false);
@@ -187,30 +182,16 @@ describe("redaction surface scan — the declaration audit", () => {
     const origins = SURFACE_LEAF_ORIGINS.filter(entry => ids.includes(entry.surface));
     const expectedOrigins = [
       "request/assistant|message|operator-authored",
-      "wire/assistant|result.text|external-text",
-      "wire/assistant|result.message|repository-authored",
-      "wire/assistant|result.proposal.workflowId|repository-authored",
-      "wire/assistant|result.proposal.label|repository-authored",
-      "wire/assistant|result.proposal.targetLabel|captured-hr-value",
-      "wire/assistant|result.action.workflowId|repository-authored",
-      "wire/assistant|result.action.label|repository-authored",
-      "wire/assistant|result.proposal.startPlan.stopBefore|repository-authored",
-      "wire/assistant|result.action.startPlan.stopBefore|repository-authored",
-      "wire/assistant|result.action.targetLabel|captured-hr-value",
-      ...["action", "proposal"].flatMap(root => ["row.display.documentNumber", "row.display.name", "row.subtitle", "row.title",
-        "startPlan.planned[].display.documentNumber", "startPlan.planned[].display.name"].map(path => `wire/assistant|result.${root}.${path}|captured-hr-value`)),
-      "wire/assistant|result.proposal.startPlan.planned[].title|captured-hr-value",
-      "wire/assistant|result.proposal.startPlan.planned[].subtitle|captured-hr-value",
-      "wire/assistant|result.action.startPlan.planned[].title|captured-hr-value",
-      "wire/assistant|result.action.startPlan.planned[].subtitle|captured-hr-value",
+      ...ASSISTANT_PART_LEAF_ORIGINS.flatMap(([path, origin]) => [`wire/assistant|result.reply.parts[].${path}|${origin}`, `wire/assistant-conversation|messages[].payload.parts[].${path}|${origin}`]),
+      "wire/assistant-conversation|messages[].payload.parts[]|repository-authored",
+      "wire/assistant-conversation|sessions[].label|captured-hr-value",
+      "wire/assistant-conversation|sessions[].meta|repository-authored",
+      "wire/assistant-conversation|sessions[].stop.descriptor|repository-authored",
       ...["title", "draft", "composer"].flatMap(path => [`request/assistant-history|${path}|operator-authored`, `wire/assistant-conversation|${path}|operator-authored`]),
       "request/assistant-history|text|repository-authored",
       "request/assistant-history|messages[].text|external-text",
       "wire/assistant-history|chats[].title|operator-authored",
-      "wire/assistant-conversation|messages[].text|external-text",
       "wire/assistant-conversation|messages[].attachments[].name|local-filesystem-name",
-      ...["action", "proposal"].flatMap(root => ["row.display.fileName", "startPlan.planned[].display.fileName"].map(path => `wire/assistant|result.${root}.${path}|local-filesystem-name`)),
-      ...["action", "proposal"].flatMap(root => [`wire/assistant|result.${root}.facts[].label|repository-authored`, `wire/assistant|result.${root}.facts[].value|captured-hr-value`]),
       "wire/chatgpt-ocr-test|model|external-text",
       "wire/chatgpt-ocr-test|message|repository-authored",
     ];

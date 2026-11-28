@@ -1,4 +1,4 @@
-import { AssistantActivityWireSchema, AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryViewSchema, AssistantRequestSchema, AssistantRespondEnvelopeSchema } from "../../../../src/models/dashboard/assistant.js";
+import { AssistantActivityWireSchema, AssistantHistoryOperationSchema, AssistantHistoryWireSchema, AssistantM1ConversationWireSchema, AssistantM1RequestSchema, AssistantM1RespondEnvelopeSchema } from "../../../../src/models/dashboard/assistant.js";
 import { ASSISTANT_PLUGIN_MODULES, assistantToolEgress } from "./assistant-tool-egress.js";
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema } from "../../../../src/models/dashboard/activity-population.js";
 import { ChatGptAccountStatusSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptOcrTestResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
@@ -32,11 +32,10 @@ import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/
 import { OcrCommandResultWireSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { WorkerCommandResultWireSchema } from "../../../../src/models/dashboard/worker-command-result.js";
 import { CrossDateSearchPageSchema } from "../../../../src/models/dashboard/search.js";
-import { SettingsFactsWireSchema } from "../../../../src/models/dashboard/settings.js";
 import { EditableSettingsPathSchema, EditableSettingsWireSchema } from "../../../../src/models/dashboard/settings-editor.js";
 import { StorageDoctorWireSchema, StorageDoctorLatestWireSchema } from "../../../../src/models/dashboard/storage.js";
 import { ProtectedSettingsInspectionSchema } from "../../../../src/models/storage/storage-status.js";
-import { ClearRunHistoryRequestSchema, RunHistoryStatusSchema, ClearRunHistoryResultSchema } from "../../../../src/models/dashboard/run-history.js";
+import { ClearRunHistoryRequestSchema, ClearRunHistoryResultSchema } from "../../../../src/models/dashboard/run-history.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../src/models/dashboard/subscription.js";
 import { OperatorXlsxExportEvidenceSchema } from "../../../../src/models/dashboard/xlsx-export.js";
 import { RerunValuesResponseSchema } from "../../../../src/models/dashboard/rerun-values.js";
@@ -797,17 +796,15 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/capture-pointer", egress: "operator-loopback", module: "src/models/dashboard/artifacts.ts", schema: CapturePointerWireSchema },
   { id: "wire/storage-doctor", egress: "operator-loopback", module: "src/models/dashboard/storage.ts", schema: StorageDoctorWireSchema },
   { id: "request/clear-run-history", egress: "operator-loopback", module: "src/models/dashboard/run-history.ts", schema: ClearRunHistoryRequestSchema },
-  { id: "wire/run-history-status", egress: "operator-loopback", module: "src/models/dashboard/run-history.ts", schema: RunHistoryStatusSchema },
   { id: "wire/clear-run-history-result", egress: "operator-loopback", module: "src/models/dashboard/run-history.ts", schema: ClearRunHistoryResultSchema },
   { id: "wire/storage-doctor-latest", egress: "operator-loopback", module: "src/models/dashboard/storage.ts", schema: StorageDoctorLatestWireSchema },
-  { id: "wire/settings-facts", egress: "operator-loopback", module: "src/models/dashboard/settings.ts", schema: SettingsFactsWireSchema },
   { id: "wire/editable-settings", egress: "operator-loopback", module: "src/models/dashboard/settings-editor.ts", schema: EditableSettingsWireSchema },
-  { id: "request/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantRequestSchema },
-  { id: "wire/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantRespondEnvelopeSchema },
+  { id: "request/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantM1RequestSchema },
+  { id: "wire/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantM1RespondEnvelopeSchema },
   { id: "request/assistant-history", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantHistoryOperationSchema },
-  { id: "wire/assistant-history", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantHistoryViewSchema },
+  { id: "wire/assistant-history", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantHistoryWireSchema },
   { id: "wire/assistant-activity", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantActivityWireSchema },
-  { id: "wire/assistant-conversation", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantConversationViewSchema },
+  { id: "wire/assistant-conversation", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantM1ConversationWireSchema },
   { id: "egress/assistant-user-message", egress: "process-egress", module: "src/backend/assistant/service.ts", schema: z.strictObject({ content: z.string() }) },
   // Replayed rows: operator turns replay as user messages (above); answers and the fixed proposal and decision captions replay as assistant messages.
   { id: "egress/assistant-replay", egress: "process-egress", module: "src/backend/assistant/service.ts", schema: z.strictObject({ answer: z.string(), caption: z.string() }) },
@@ -932,6 +929,17 @@ const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }
   { path: "revision.seed.review.roster.rows[].name", origin: "captured-hr-value" },
 ];
 
+/** A reply part's free-text leaves, inline and in bullets: model text, the HR values it quotes and the chip's subject; ids are served keys. */
+const ASSISTANT_INLINE_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
+  ["text", "external-text"], ["label", "external-text"], ["value", "captured-hr-value"], ["previous", "captured-hr-value"],
+  ["target.query.q", "external-text"], ["target.query.facets.subject", "captured-hr-value"],
+  ...["source.fieldId", "source.fieldPath[]", "source.libraryId", "target.libraryId", "target.location.fieldId"].map(path => [path, "repository-authored"] as const),
+  ...["source.rowId", "source.sheetId", "target.location.rowId", "target.location.sheetId"].map(path => [path, "captured-hr-value"] as const),
+];
+export const ASSISTANT_PART_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
+  ["label", "captured-hr-value"], ["meta", "repository-authored"],
+  ...["runs[]", "items[][]"].flatMap(prefix => ASSISTANT_INLINE_LEAF_ORIGINS.map(([path, origin]) => [`${prefix}.${path}`, origin] as const)),
+];
 /* The answered option's label may be a picked row's name; the actor names are the local profile's own display name. */
 const ANSWER_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
   ["optionId", "repository-authored"], ["label", "captured-hr-value"], ["actor.name", "operator-authored"], ["actor.onBehalfOf.name", "operator-authored"],
@@ -1275,7 +1283,6 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "request/assistant-history", path: "messages[].text", origin: "external-text" },
   { surface: "wire/assistant-history", path: "chats[].title", origin: "operator-authored" },
   { surface: "wire/assistant-activity", path: "rows[].label", origin: "repository-authored" },
-  { surface: "wire/assistant-conversation", path: "messages[].text", origin: "external-text" },
   { surface: "wire/assistant-conversation", path: "messages[].attachments[].name", origin: "local-filesystem-name" },
   { surface: "egress/assistant-user-message", path: "content", origin: "operator-authored",
     exception: "Operator decision D1 (11-06): the operator's typed assistant message is sent to ChatGPT as typed, after maskOperatorText replaces Employee IDs with references and SSNs, emails, phone numbers and long digit runs with fixed markers." },
@@ -1283,26 +1290,12 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     exception: "Operator decision D3 (11-06): a stored answer's model text, which carries references and never substituted values, is replayed to ChatGPT in later turns of the same chat; imported and local rows never replay." },
   { surface: "egress/assistant-replay", path: "caption", origin: "repository-authored" },
   ...assistantToolEgress().origins,
-  { surface: "wire/assistant", path: "result.text", origin: "external-text" },
-  { surface: "wire/assistant", path: "result.message", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "result.proposal.workflowId", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "result.proposal.label", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "result.proposal.targetLabel", origin: "captured-hr-value" },
-  { surface: "wire/assistant", path: "result.action.workflowId", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "result.action.label", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "result.action.targetLabel", origin: "captured-hr-value" },
-  ...["action", "proposal"].flatMap(root => ["row.display.fileName", "startPlan.planned[].display.fileName"].map(path => ({ surface: "wire/assistant", path: `result.${root}.${path}`, origin: "local-filesystem-name" as const }))),
-  { surface: "wire/assistant", path: "result.proposal.facts[].label", origin: "repository-authored" },
-  ...["action", "proposal"].map(root => ({ surface: "wire/assistant", path: `result.${root}.startPlan.stopBefore`, origin: "repository-authored" as const })),
-  { surface: "wire/assistant", path: "result.proposal.facts[].value", origin: "captured-hr-value" },
-  { surface: "wire/assistant", path: "result.action.facts[].label", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "result.action.facts[].value", origin: "captured-hr-value" },
-  ...["action", "proposal"].flatMap(root => ["row.display.documentNumber", "row.display.name", "row.subtitle", "row.title",
-    "startPlan.planned[].display.documentNumber", "startPlan.planned[].display.name"].map(path => ({ surface: "wire/assistant", path: `result.${root}.${path}`, origin: "captured-hr-value" as const }))),
-  { surface: "wire/assistant", path: "result.proposal.startPlan.planned[].title", origin: "captured-hr-value" },
-  { surface: "wire/assistant", path: "result.proposal.startPlan.planned[].subtitle", origin: "captured-hr-value" },
-  { surface: "wire/assistant", path: "result.action.startPlan.planned[].title", origin: "captured-hr-value" },
-  { surface: "wire/assistant", path: "result.action.startPlan.planned[].subtitle", origin: "captured-hr-value" },
+  ...ASSISTANT_PART_LEAF_ORIGINS.map(([path, origin]) => ({ surface: "wire/assistant", path: `result.reply.parts[].${path}`, origin })),
+  ...ASSISTANT_PART_LEAF_ORIGINS.map(([path, origin]) => ({ surface: "wire/assistant-conversation", path: `messages[].payload.parts[].${path}`, origin })),
+  { surface: "wire/assistant-conversation", path: "messages[].payload.parts[]", origin: "repository-authored" },
+  { surface: "wire/assistant-conversation", path: "sessions[].label", origin: "captured-hr-value" },
+  { surface: "wire/assistant-conversation", path: "sessions[].meta", origin: "repository-authored" },
+  { surface: "wire/assistant-conversation", path: "sessions[].stop.descriptor", origin: "repository-authored" },
   { surface: "wire/chatgpt-ocr-test", path: "model", origin: "external-text" },
   { surface: "wire/profile-first-run-check", path: "report.results[].summary", origin: "local-filesystem-name" },
   { surface: "wire/profile-first-run-check", path: "report.results[].availableFor[]", origin: "repository-authored" },
@@ -1515,6 +1508,7 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/dashboard-day", path: "queueSurfaces[].subtitle.value", origin: "captured-hr-value" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].title", origin: "captured-hr-value" },
   { surface: "wire/rerun-values", path: "snapshot.steps[].key", origin: "repository-authored" },
+  { surface: "wire/rerun-values", path: "snapshot.retainedSteps[].key", origin: "repository-authored" },
   { surface: "wire/rerun-values", path: "snapshot.children[].steps[].key", origin: "repository-authored" },
   { surface: "wire/rerun-values", path: "snapshot.typed[].workflow", origin: "repository-authored" },
   { surface: "wire/rerun-values", path: "snapshot.typed[].labels", origin: "repository-authored" },
@@ -2048,7 +2042,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/search-export.ts", state: "audited", reason: "The request reuses the strict reviewed XLSX selection; diagnostic and CSV producers explicitly omit values and identifiers." },
     { module: "src/models/dashboard/search-index.ts", state: "audited", reason: "Private durable metadata, declared subject projection addresses, grams and authentic actor links; only approved public projection values are indexed." },
     { module: "src/models/dashboard/search.ts", state: "audited", reason: "cross-date search serves redacted run authority and an opaque continuation" },
-    { module: "src/models/dashboard/settings.ts", state: "audited", reason: "the read-only Settings sections state configured system hosts and descriptor-derived capabilities" },
+    { module: "src/models/dashboard/settings.ts", state: "no-surface", reason: "the Settings navigation section identifier is a constant" },
     { module: "src/models/dashboard/settings-catalog.ts", state: "audited", reason: "catalog-derived Settings controls and classifications are embedded by the audited editable Settings wire" },
     { module: "src/models/dashboard/settings-editor.ts", state: "audited", reason: "the server-listed editable Settings inventory carries strict values, provenance and runtime identity" },
     { module: "src/models/dashboard/status-vocabulary.ts", state: "audited", reason: "the closed status vocabulary is operator-visible prose and pill copy" },
