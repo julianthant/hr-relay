@@ -7,10 +7,17 @@ import { NotificationObservationStatusSchema } from "../notifications/notificati
 import { NotificationTargetSchema, type NotificationTarget } from "../notifications/notification-target.js";
 import { EditableSettingsWireSchema } from "./settings-editor.js";
 
+export const QueueDayCountsSchema = z.strictObject({
+  monthCounts: DashboardDayWireSchema.shape.monthCounts,
+  workflowCounts: DashboardDayWireSchema.shape.workflowCounts,
+  statusCounts: DashboardDayWireSchema.shape.statusCounts,
+});
+
 const QueueReplacementPatchSchema = z.strictObject({
   operation: z.literal("replace-queue-surface"),
   target: z.strictObject({ runId: RunIdSchema, rowRevision: RowRevisionSchema }),
   replacement: QueueSurfaceWireSchema,
+  counts: QueueDayCountsSchema.optional(),
 }).superRefine((patch, context) => {
   if (patch.target.runId !== patch.replacement.runId || patch.target.rowRevision !== patch.replacement.rowRevision) {
     context.addIssue({ code: "custom", path: ["replacement"], message: "queue replacement identity and revision must match its target" });

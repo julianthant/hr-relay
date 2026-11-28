@@ -1,5 +1,4 @@
-/** Client-side dashboard-day state: strictly APPLYING server payloads, never deriving.
- * A patch replaces or removes exactly one queue surface */
+/** Applies one replacement or removal and any authoritative counts carried with it. */
 import { z } from "zod";
 import type { DashboardDayWire } from "../../../models/dashboard/projection.js";
 import { DashboardDayPatchSchema } from "../../../models/dashboard/subscription.js";
@@ -32,7 +31,7 @@ export function applyDashboardDayPatch(day: DashboardDayWire, patch: DashboardDa
   }
   const queueSurfaces = [...day.queueSurfaces];
   queueSurfaces[index] = parsed.replacement;
-  return { ...day, queueSurfaces,
+  return { ...day, ...parsed.counts, queueSurfaces,
     ...(day.attemptHistory === undefined ? {} : { attemptHistory: day.attemptHistory.map(entry => entry.runId === parsed.target.runId
       ? { runId: parsed.replacement.runId, startedAt: parsed.replacement.startedAt, endedAt: parsed.replacement.endedAt } : entry) }),
   };

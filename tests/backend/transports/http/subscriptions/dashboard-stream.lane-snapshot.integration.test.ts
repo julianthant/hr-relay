@@ -37,6 +37,7 @@ import {
   DESCRIPTOR_SET_HASH,
   makeWorld,
   queuedEventOf,
+  runRecordOf,
   taskEventsOf,
   type DashboardWorld,
 } from "../../../../support/helpers/backend/dashboard-harness.js";
@@ -196,6 +197,42 @@ function assertConverges(main: RunQueueProjection, envelopes: readonly Dashboard
 }
 
 describe("a stream snapshot read on the navigation lane", () => {
+  it("sends a status patch from the lane's proved day and snapshots a superseding change", async () => {
+    const { w, main, hub, reads, fold } = await laneHarness();
+    const first = queuedEventOf(w, { seed: 1 });
+    const second = queuedEventOf(w, { seed: 2 });
+    const third = queuedEventOf(w, { seed: 3 });
+    fold();
+    const opening = hub.connect({ day: DAY });
+    await answerAll(reads);
+    const connection = await opening;
+    const terminalize = (seed: number, runId: string) => {
+      w.authority.put(runRecordOf({ seed, version: 2,
+        lifecycle: { state: "terminal", outcome: "done", endedAt: w.clock.now().toISOString() } }));
+      main.refreshRun(runId);
+    };
+
+    terminalize(1, first.runId);
+    await answerAll(reads, 1);
+    const updates = await drain(connection);
+    const patch = updates[0];
+    assert.ok(patch?.type === "change" && patch.day?.operation === "replace-queue-surface");
+    assert.deepEqual(patch.day.counts?.statusCounts, [{ status: "done", count: 1 }, { status: "queued", count: 2 }]);
+    assertConverges(main, [...connection.initial, ...updates]);
+
+    terminalize(2, second.runId);
+    const held = lastRead(reads);
+    const overtaken = held.capture();
+    terminalize(3, third.runId);
+    held.answer(overtaken);
+    await tick();
+    await answerAll(reads, 3);
+    const superseding = await drain(connection);
+    assert.deepEqual(superseding.map(envelope => envelope.type), ["snapshot"]);
+    assertConverges(main, superseding);
+    connection.close();
+  });
+
   it("frames a day built after a peer write at main's fold cursor, and drops the write's patch it already holds", async () => {
     const { w, main, hub, reads, fold } = await laneHarness();
     queuedEventOf(w, { seed: 1 }); fold();

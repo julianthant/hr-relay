@@ -17,7 +17,7 @@ import {
 import { ProjectionGenerationSchema, WireErrorSchema } from "../../../../models/dashboard/primitives.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../models/dashboard/projection.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
-import type { DashboardDayRead, RunQueueProjection, RunQueueProjectionChange } from "../../../runs/projections/run-queue-projection.js";
+import { queueRowBasis, type DashboardDayRead, type QueuePatchBasis, type RunQueueProjection, type RunQueueProjectionChange } from "../../../runs/projections/run-queue-projection.js";
 import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID, ProjectionCursorSchema, type RunId } from "../../../../rules/identity/ids.js";
 import type { NotificationInbox, NotificationPublication } from "../../../runs/notifications/inbox.js";
 import type { NotificationObservationStatus } from "../../../runs/notifications/observation.js";
@@ -133,6 +133,7 @@ type PublicationEnvelope = Extract<DashboardStreamEnvelope, { type: "notificatio
 type UnstampedPublication = Omit<PublicationEnvelope, "day">;
 /** A change before handout: its `after` is the receiving connection's and its rows are read per connection. */
 type UnstampedChange = Omit<ChangeEnvelope, "after" | "rows">;
+type StatusCandidate = NonNullable<Extract<RunQueueProjectionChange, { kind: "snapshot" }>["statusCandidate"]>;
 /** A day framed at its baseline: main's stamp joined to the lane's body, never parsed here. Shared by every connection on that day. */
 interface FramedDay {
   readonly cursor: ProjectionCursor;
@@ -140,6 +141,8 @@ interface FramedDay {
   readonly payloadJson: string;
   /** The day as main built it, when it built it itself at this cursor. */
   readonly payload: DashboardDayWire | undefined;
+  readonly patchBasis: QueuePatchBasis | undefined;
+  readonly statusPatch: UnstampedChange | undefined;
   /** The envelope handed to every connection that has no rows, one object for all of them. */
   bare?: SnapshotEnvelope;
 }
@@ -151,6 +154,7 @@ interface SnapshotRequest {
   readonly origin: "handoff" | "change";
   /** Whether its day is recorded as published: a change snapshot, or a handoff whose place a change snapshot found still pending. */
   recordsDay: boolean;
+  statusCandidate: (StatusCandidate & { cursor: ProjectionCursor }) | undefined;
   readonly subscribers: Set<Subscriber>;
   readonly controller: AbortController;
   attempts: number;
@@ -205,6 +209,7 @@ interface Subscriber {
   phase: SubscriberQueue;
   /** Cursor of the last `change` or `snapshot` handed to this connection; the next change's `after`. */
   handedCursor: ProjectionCursor;
+  handedBasis: QueuePatchBasis | undefined;
   readonly handedSyncRows: Map<SyncRowModel, StreamRow>;
   /** Settles when a handoff's first snapshot is framed or its place is released. */
   framed?: PromiseWithResolvers<void>;
@@ -236,6 +241,16 @@ function defaultSchedule(delayMs: number, task: () => void): () => void {
 function entryReady(entry: OutboxEntry): boolean {
   if (entry.kind === "pending-snapshot") return false;
   return entry.kind === "ready" || entry.sync.every(read => read.settled) && entry.reads.every(read => read.settled);
+}
+
+function provesStatusPatch(before: QueuePatchBasis, after: QueuePatchBasis, target: RunId): boolean {
+  if (before.shared !== after.shared || before.rows.length !== after.rows.length) return false;
+  return after.rows.every((row, index) => {
+    const held = before.rows[index];
+    return held?.runId === row.runId && (row.runId === target
+      ? held.status !== row.status && held.rowRevision < row.rowRevision
+      : held.fingerprint === row.fingerprint);
+  });
 }
 
 const FRAMED_TEXT = Symbol("dashboard-stream-framed-text");
@@ -547,14 +562,18 @@ export class DashboardStreamHub {
    * Asks for one day's snapshot for these connections. Each holds one place in its outbox for it; a connection that
    * already holds one keeps that place and its read, which settles only at a baseline that covers this ask.
    */
-  #requestSnapshot(day: string, origin: SnapshotRequest["origin"], subscribers: readonly Subscriber[]): void {
-    const request: SnapshotRequest = { day, origin, recordsDay: origin === "change", subscribers: new Set(), controller: new AbortController(), attempts: 0 };
+  #requestSnapshot(day: string, origin: SnapshotRequest["origin"], subscribers: readonly Subscriber[], statusCandidate?: SnapshotRequest["statusCandidate"]): void {
+    const request: SnapshotRequest = { day, origin, recordsDay: origin === "change", statusCandidate,
+      subscribers: new Set(), controller: new AbortController(), attempts: 0 };
     for (const subscriber of subscribers) {
       const phase = subscriber.phase;
       if (phase.state !== "open") continue;
       const held = phase.outbox.find(entry => entry.kind === "pending-snapshot");
       if (held !== undefined) {
-        if (origin === "change") held.request.recordsDay = true;
+        if (origin === "change") {
+          held.request.recordsDay = true;
+          held.request.statusCandidate = undefined;
+        }
         continue;
       }
       request.subscribers.add(subscriber);
@@ -620,7 +639,18 @@ export class DashboardStreamHub {
     try {
       const cursor = ProjectionCursorSchema.parse(`pc:${String(baseline)}`);
       const built = read.wire !== undefined && read.wire.snapshotCursor === cursor && read.wire.projectionGeneration === read.generation ? read.wire : undefined;
-      frame = { cursor, position, payloadJson: this.#projection.stampDay(request.day, read, baseline), payload: built };
+      const { patchBasis } = read.facts;
+      const candidate = request.statusCandidate;
+      let statusPatch: UnstampedChange | undefined;
+      if (candidate?.cursor === cursor && patchBasis !== undefined) {
+        const replacement = candidate.replacement;
+        const { runId, rowRevision, fingerprint } = queueRowBasis(replacement);
+        if (patchBasis.rows.some(row => row.runId === runId && row.fingerprint === fingerprint)) {
+          statusPatch = this.#unstamped({ cursor, position, day: { operation: "replace-queue-surface",
+            target: { runId, rowRevision }, replacement, counts: patchBasis.counts } });
+        }
+      }
+      frame = { cursor, position, payloadJson: this.#projection.stampDay(request.day, read, baseline), payload: built, patchBasis, statusPatch };
     } catch (error) {
       this.#snapshotFailed(request, error);
       return;
@@ -738,6 +768,7 @@ export class DashboardStreamHub {
     const cursor = cursorNumber(change.cursor);
     if (cursor === undefined) throw new Error(`projection produced a malformed cursor: ${change.cursor}`);
     if (change.kind === "snapshot") {
+      // Status patches formed at handout are specific to the connection's proven day.
       this.#retain({ cursorNumber: cursor, kind: "snapshot" });
       this.#lastSnapshotChange = cursor;
       // Each day's connections hold one place; what is published while the read answers queues behind it.
@@ -748,7 +779,10 @@ export class DashboardStreamHub {
         if (list === undefined) byDay.set(subscriber.day, [subscriber]);
         else list.push(subscriber);
       }
-      for (const [day, subscribers] of byDay) this.#requestSnapshot(day, "change", subscribers);
+      for (const [day, subscribers] of byDay) {
+        const candidate = change.statusCandidate;
+        this.#requestSnapshot(day, "change", subscribers, candidate?.day === day ? { ...candidate, cursor: change.cursor } : undefined);
+      }
       return;
     }
     const unstamped = this.#unstamped({ cursor: change.cursor, position: change.position, day: change.patch });
@@ -912,7 +946,10 @@ export class DashboardStreamHub {
   /** Stamps an entry with this connection's `after` and its rows at handout and records what the connection now holds. */
   #handOut(subscriber: Subscriber, entry: OutboxEntry): DashboardStreamEnvelope {
     if (entry.kind === "ready") {
-      if (entry.envelope.type === "reset-required") subscriber.handedSyncRows.clear();
+      if (entry.envelope.type === "reset-required") {
+        subscriber.handedSyncRows.clear();
+        subscriber.handedBasis = undefined;
+      }
       // The publication can change the browser's list between two whole-list reads.
       if (entry.envelope.type === "notification-publication") subscriber.handedSyncRows.delete("notification-list");
       return entry.envelope;
@@ -937,13 +974,31 @@ export class DashboardStreamHub {
       return true;
     });
     if (entry.kind === "snapshot") {
-      subscriber.handedCursor = entry.frame.cursor;
+      const { cursor, patchBasis, statusPatch } = entry.frame;
+      const { handedBasis, handedCursor } = subscriber;
+      subscriber.handedCursor = cursor;
+      subscriber.handedBasis = patchBasis;
+      if (statusPatch?.day !== undefined && patchBasis !== undefined && handedBasis !== undefined
+        && (cursorNumber(cursor) ?? 0) > (cursorNumber(handedCursor) ?? 0)
+        && provesStatusPatch(handedBasis, patchBasis, statusPatch.day.target.runId)) {
+        return { ...statusPatch, after: handedCursor, rows };
+      }
       if (rows.length > 0) return framedSnapshotEnvelope(entry.frame, rows);
       entry.frame.bare ??= framedSnapshotEnvelope(entry.frame, []);
       return entry.frame.bare;
     }
     const envelope: ChangeEnvelope = { ...entry.change, after: subscriber.handedCursor, rows };
     subscriber.handedCursor = entry.change.cursor;
+    if (envelope.day !== undefined && subscriber.handedBasis !== undefined) {
+      const patch = envelope.day;
+      const before = subscriber.handedBasis;
+      const index = before.rows.findIndex(row => row.runId === patch.target.runId);
+      if (patch.operation === "replace-queue-surface" && index !== -1 && before.rows[index].rowRevision <= patch.target.rowRevision) {
+        const rows = [...before.rows];
+        rows[index] = queueRowBasis(patch.replacement);
+        subscriber.handedBasis = { ...before, rows };
+      } else subscriber.handedBasis = undefined;
+    }
     return envelope;
   }
 
@@ -994,6 +1049,7 @@ export class DashboardStreamHub {
   #overflow(subscriber: Subscriber, phase: Extract<SubscriberQueue, { state: "open" }>, outbox: readonly OutboxEntry[]): void {
     this.#release(subscriber, outbox);
     subscriber.handedSyncRows.clear();
+    subscriber.handedBasis = undefined;
     if (phase.waiter === undefined) {
       subscriber.phase = { state: "reset-pending", reason: "cursor-expired" };
       return;
@@ -1074,7 +1130,8 @@ export class DashboardStreamHub {
    * snapshot in one turn; what is published while the lane answers queues behind the snapshot's place.
    */
   async #admit(day: string, run: RunId | undefined, resume: Extract<ResumeDecision, { state: "resumable" }> | undefined): Promise<DashboardStreamConnection> {
-    const subscriber: Subscriber = { day, run, phase: { state: "open", outbox: [] }, handedCursor: this.#projection.cursor(), handedSyncRows: new Map() };
+    const subscriber: Subscriber = { day, run, phase: { state: "open", outbox: [] }, handedCursor: this.#projection.cursor(),
+      handedBasis: undefined, handedSyncRows: new Map() };
     const hello = this.#hello();
     if (this.#projection.health().state === "degraded") {
       subscriber.phase = { state: "open", outbox: [this.#health("degraded")] };
