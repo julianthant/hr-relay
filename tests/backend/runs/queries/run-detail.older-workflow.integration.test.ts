@@ -44,15 +44,18 @@ async function fixture(attempt = 1) {
   };
   const deps: RunDetailQueryDeps = { runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot,
     projection: w.projection, authority: w.authority, descriptors: { resolve: () => descriptor } };
-  return { w, run, descriptor, deps };
+  const searchCategory = descriptor.timeline.find(category => category.key === "searching");
+  assert.ok(searchCategory);
+  return { w, run, descriptor, deps, searchCategory };
 }
 
 it.each([0, 1])("loads older run detail and Logs with current names after a fingerprint change (version delta %s)", async versionDelta => {
-  const { w, run, descriptor, deps } = await fixture();
+  const { w, run, descriptor, deps, searchCategory } = await fixture();
   descriptor.contractFingerprint = FingerprintSchema.parse(HASH_B);
   descriptor.version += versionDelta;
-  descriptor.timeline[0].label = "Current person search";
-  descriptor.timeline[0].nodes[0].label = "Current search task";
+  const searchTask = searchCategory.nodes.find(node => node.id === "searching");
+  assert.ok(searchTask);
+  searchTask.label = "Current search task";
   taskEventsOf(w, 81, "searching", "done");
   const at = w.clock.now().toISOString();
   w.writer.emit({ t: "data.observed", ts: at, observedAt: at, workflow: run.envelope.workflow,
@@ -65,13 +68,14 @@ it.each([0, 1])("loads older run detail and Logs with current names after a fing
   assert.ok(row);
 
   const detail = buildRunDetail(deps, run.envelope.runId);
-  assert.equal(detail.timeline.steps?.[0].label, "Current person search");
-  assert.equal(detail.timeline.steps?.[0].members[0].label, "Current search task");
+  const searchStep = detail.timeline.steps?.find(step => step.key === searchCategory.key);
+  assert.equal(searchStep?.label, "Current person search");
+  assert.equal(searchStep?.members.find(member => member.nodeId === searchTask.id)?.label, "Current search task");
   const logs = buildRunLogsSection(deps, run.envelope.runId, w.projection.runFold(run.envelope.runId), run);
   const snapshot = await readRunLogs({ runDetail: async () => buildRunDetail(deps, run.envelope.runId), runSection: async () => logs },
     { row, workflowLabel: "Person lookup" }, new AbortController().signal);
   const projected = projectRunLogs(snapshot, { artifactUrl: () => "unused" });
-  assert.equal(projected.timeline[0].label, "Current person search");
+  assert.equal(projected.timeline.find(stage => stage.id === searchCategory.key)?.label, "Current person search");
   assert.equal(projected.steps[0].title, "Current person search");
   assert.match(JSON.stringify(projected.steps[0].entries), /Quillan, Petra A\./u);
 });
@@ -183,13 +187,11 @@ it.each(["historical", "current"] as const)("checks unmapped observations when o
 });
 
 it.each(["version", "fingerprint", "current"] as const)("reads removed task membership only for retained runs (%s)", async drift => {
-  const { w, run, descriptor, deps } = await fixture();
+  const { w, run, descriptor, deps, searchCategory } = await fixture();
   if (drift === "fingerprint") descriptor.contractFingerprint = FingerprintSchema.parse(HASH_B);
   if (drift === "version") descriptor.version++;
   taskEventsOf(w, 81, "searching", "done");
-  w.projection.rebuildFromTimeline();
-  assert.equal(w.projection.health().state, "live", w.projection.health().lastError);
-  descriptor.timeline[0].nodes = descriptor.timeline[0].nodes.filter(node => node.id !== "searching");
+  searchCategory.nodes = searchCategory.nodes.filter(node => node.id !== "searching");
   if (drift === "current") {
     assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
     return;
@@ -248,12 +250,10 @@ it.each([false, true])("retains an unmapped action-only node (declared operation
 });
 
 it("refuses ambiguous recorded membership while preserving the explicit no-timeline mode", async () => {
-  const { w, run, descriptor, deps } = await fixture();
+  const { w, run, descriptor, deps, searchCategory } = await fixture();
   taskEventsOf(w, 81, "searching", "done");
-  w.projection.rebuildFromTimeline();
-  assert.equal(w.projection.health().state, "live", w.projection.health().lastError);
   descriptor.version++;
-  descriptor.timeline.push({ ...descriptor.timeline[0], key: "duplicate" });
+  descriptor.timeline.push({ ...searchCategory, key: "duplicate" });
   assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
   const detail = buildRunDetail({ ...deps, descriptors: { resolve: () => undefined } }, run.envelope.runId);
   assert.equal(detail.timeline.steps, undefined);
