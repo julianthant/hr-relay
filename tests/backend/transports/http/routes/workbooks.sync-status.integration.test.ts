@@ -47,6 +47,7 @@ function open(database: DatabaseSync, sync: WorkbookSyncDownload) {
 function fixture(download: WorkbookSyncDownload, path = ':memory:') {
   const database = new DatabaseSync(path); databases.push(database);
   for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(sql);
+  database.exec("CREATE TABLE runs (id TEXT PRIMARY KEY,state TEXT NOT NULL,lifecycle_json TEXT NOT NULL); CREATE TABLE run_requests (id TEXT PRIMARY KEY,payload_json TEXT NOT NULL)");
   const opened = open(database, download);
   const create = (name: string) => opened.service.create({ name, themes: [], hasFormulas: false,
     sheets: [{ id: 'source', name: 'Sheet 1', width: 1, hidden: [], rows: [

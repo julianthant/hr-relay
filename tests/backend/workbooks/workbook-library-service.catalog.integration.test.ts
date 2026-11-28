@@ -83,7 +83,7 @@ it('retains edited values as a named version without altering an unsupported ori
   await expect(f.service.libraryAction(id, { ...action, change: { ...action.change, name: 'Other' } }, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_OPERATION_CONFLICT' });
   await expect(f.service.libraryAction(id, { ...action, operationId: 'stale' }, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_VERSION_CONFLICT' });
   await expect(f.service.libraryAction(id, { ...action, operationId: 'metadata', expectedRevision: 2,
-    change: { ...action.change, from: { kind: 'values', workbook: encodeEditableWorkbook(original.workbook) } } }, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_INVALID' });
+    change: { ...action.change, name: 'With metadata', from: { kind: 'values', workbook: encodeEditableWorkbook(original.workbook) } } }, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_INVALID' });
   expect(f.service.libraryVersion(id, 'original').workbook).toEqual(encodeEditableWorkbook(original.workbook));
   expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
 });
