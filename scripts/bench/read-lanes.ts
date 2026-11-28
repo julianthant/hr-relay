@@ -32,6 +32,12 @@ type Run = z.infer<typeof RunSchema>;
 
 /** One shape in one fresh process: open the copy's store as the dashboard does, then start the real read host. */
 async function measure(shape: Shape, workspace: string, lockPort: number): Promise<Run> {
+  const hook = withLaneRoute(shape);
+  try { return await measureReadHost(shape, workspace, lockPort); }
+  finally { hook.deregister(); }
+}
+
+async function measureReadHost(shape: Shape, workspace: string, lockPort: number): Promise<Run> {
   const [{ acquireRuntimeLifetimeLock }, { acquireEntrypointAdmission }, { createCredentialStore }, { AuthorityDatabase },
     { createDashboardReadHost }, { createDashboardBackgroundReader }] = await Promise.all([
     import("../../src/backend/storage/admission/lifetime-lock.js"),
@@ -59,7 +65,8 @@ async function measure(shape: Shape, workspace: string, lockPort: number): Promi
           await delay(SETTLE_MS);
           const rssBeforeBytes = process.memoryUsage.rss();
           const started = performance.now();
-          const lanes = createDashboardReadHost({ admission, database, clock: systemClock, lanes: LANES[shape] });
+          const lanes = createDashboardReadHost({ admission, database, clock: systemClock,
+            entry: new URL("../../src/backend/app/composition/dashboard/read-lane-entry.js", import.meta.url) });
           try {
             await lanes.ready;
             const readyMs = performance.now() - started;
@@ -117,7 +124,7 @@ const percentile = (values: readonly number[], fraction: number) => {
   return [...values].sort((a, b) => a - b)[Math.ceil(values.length * fraction) - 1];
 };
 
-function withG4Route(shape: Shape) {
+function withLaneRoute(shape: Shape, g4 = false) {
   const target = new URL("../../src/backend/storage/sqlite/dashboard-read-host.ts", import.meta.url).href;
   return registerHooks({ load(url, context, next) {
     const loaded = next(url, context);
@@ -125,13 +132,18 @@ function withG4Route(shape: Shape) {
     if (typeof loaded.source !== "string") throw new Error("read-lanes-g4-loader-source-refused");
     const source = loaded.source;
     const route = /input\.lanes\s*\?\?\s*(?:ReadLaneNameSchema\.options|\[\s*"navigation"\s*\])/u;
+    const priorityRoute = "lanes.get(definition.lane)";
+    if (source.split(route).length !== 2 || source.split(priorityRoute).length !== 2) throw new Error("read-lanes-bench-route-seam-changed");
+    const routed = source.replace(route, `input.lanes ?? ${JSON.stringify(LANES[shape])}`)
+      .replace(priorityRoute, 'lanes.get(definition.priority === "background" || ["activity", "search-metadata-export", "search-xlsx-selection"].includes(definition.name) ? "search" : "navigation")');
+    if (!g4) return { ...loaded, source: routed };
     const notify = "else lane.held.push(request);";
     const key = /key:\s*canonicalJsonStringify\(\{\s*lane:\s*lane\.name,\s*read:\s*registered\.id,\s*args:\s*parsed\s*\}\)/u;
-    if (source.split(route).length !== 2 || source.split(notify).length !== 2 || source.split(key).length !== 2) {
-      throw new Error("read-lanes-g4-route-or-probe-seam-changed");
+    if (routed.split(notify).length !== 2 || routed.split(key).length !== 2) {
+      throw new Error("read-lanes-g4-probe-seam-changed");
     }
     const probe = 'globalThis[Symbol.for("relay.read-lanes.g4")]';
-    return { ...loaded, source: source.replace(route, `input.lanes ?? ${JSON.stringify(LANES[shape])}`)
+    return { ...loaded, source: routed
       .replace(notify, `${notify}\nif (registered.name === "notification-source-scan") ${probe}?.observe(request.settle.promise);`)
       .replace(key, found => `${found} + (registered.name === "notification-source-scan" ? ${probe}?.scanKey() ?? "" : "")`) };
   } });
@@ -150,7 +162,7 @@ async function serveG4(shape: Shape) {
       void reply.then(({ cached }) => scans.push({ start, end: systemClock.nowMs(), cached }), () => { scanFailures++; });
     },
   } });
-  const hook = withG4Route(shape);
+  const hook = withLaneRoute(shape, true);
   process.on("message", (message: unknown) => {
     if (message === "g4-start") {
       scans = []; scanFailures = 0; measuring = true;
@@ -226,7 +238,7 @@ async function withG4Cleanup<T>(run: () => Promise<T>, close: () => Promise<void
 async function measureG4(shape: Shape, profile: CopyProfile, input: { days: readonly [string, string]; workflow: string; query: string; profileId: string }) {
   const [
     { chromium }, { createDashboardClient }, { operatorCredentials, resumeKey }, { CrossDateSearchPageSchema },
-    { CalendarWireSchema }, { DashboardStreamEnvelopeSchema }, { CommandResultSchema }, { deriveSettingsPatchFingerprint, SettingsPatchSchema },
+    { CalendarWireSchema }, { DashboardStreamEnvelopeSchema }, { CommandResultSchema, SettingsCommandRequestSchema }, { deriveSettingsPatchFingerprint, SettingsPatchSchema },
     { FrontendBootstrapWireSchema }, { SHUTDOWN_BACKUP_WAIT_MS },
   ] = await Promise.all([
     import("playwright"), import("../../src/dashboard/client/index.js"), import("../profiles/copy-signin.js"),
@@ -286,8 +298,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
       const context = await browser.newContext({ locale: "en-US", serviceWorkers: "block", viewport: { width: 1280, height: 800 } });
       context.setDefaultTimeout(G4_TIMEOUT_MS);
       await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
-      const [queue, search, settings] = await Promise.all([context.newPage(), context.newPage(), context.newPage()]);
-      // The actual dashboard uses one retained resume proof across tabs.
+      const queue = await context.newPage();
       await context.addInitScript(({ owner, key, value }) => {
         if (location.origin === owner && localStorage.getItem(key) === null) localStorage.setItem(key, value);
       }, { owner: origin, key: resumeKey, value: proof });
@@ -296,24 +307,12 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
       await queue.goto(origin + dayPath);
       const bootstrap = FrontendBootstrapWireSchema.parse(await (await boot).json());
       await queue.getByRole("complementary", { name: "Workspace" }).waitFor();
-      await search.goto(origin + dayPath);
-      await search.getByRole("complementary", { name: "Workspace" }).waitFor();
-      if (context.pages().length !== 3) throw new Error("read-lanes-g4-tab-count");
+      if (context.pages().length !== 1) throw new Error("read-lanes-g4-window-count");
       const option = queue.getByRole("button", { name: /^Options/u });
       const calendar = queue.getByRole("menu", { name: "Pick a date" });
       const readyQueueRow = '.dashboard-queue-column:not([aria-busy="true"]) [data-queue-scroll] :is([data-queue-open], [data-queue-batch-id])';
       const sound = "preferences.notifications.sound";
-      const soundControl = settings.locator(`[data-settings-path="${sound}"]`).getByRole("combobox");
-      const settingsResponses: number[] = [];
-      settings.on("response", response => {
-        if (new URL(response.url()).pathname === "/api/v1/settings/editable") settingsResponses.push(response.status());
-      });
-      await settings.goto(origin + dayPath);
-      await settings.locator(readyQueueRow).first().waitFor();
-      await settings.getByRole("button", { name: "Settings", exact: true }).click();
-      await soundControl.click({ trial: true }).catch((cause: unknown) => {
-        throw new Error(`read-lanes-g4-settings-not-ready (editable HTTP: ${settingsResponses.join(", ") || "no response"})`, { cause });
-      });
+      await queue.locator(readyQueueRow).first().waitFor();
       const settingsDocument = await client.editableSettings();
       const original = settingsDocument.sections.flatMap(section => section.leaves).find(leaf => leaf.path === sound);
       const soundValue = z.enum(["default", "none"]).parse(original?.effectiveValue);
@@ -328,10 +327,20 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
         }
         const label = new Intl.DateTimeFormat("en-US", { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
         const cell = calendar.getByRole("button", { name: new RegExp(label, "u") });
-        await cell.evaluate(node => {
+        await cell.evaluate((node, timeout) => {
           Reflect.deleteProperty(window, "relayG4Click");
-          node.addEventListener("pointerup", () => { Reflect.set(window, "relayG4Click", performance.timeOrigin + performance.now()); }, { once: true });
-        });
+          const started = Promise.withResolvers<void>();
+          Reflect.set(window, "relayG4WorkStart", started.promise);
+          const deadline = AbortSignal.timeout(timeout);
+          const expire = () => { started.reject(new Error("read-lanes-g4-pointerup-timeout")); };
+          deadline.addEventListener("abort", expire, { once: true });
+          void started.promise.catch(() => undefined);
+          node.addEventListener("pointerup", () => {
+            deadline.removeEventListener("abort", expire);
+            Reflect.set(window, "relayG4Click", performance.timeOrigin + performance.now());
+            started.resolve();
+          }, { once: true });
+        }, G4_TIMEOUT_MS);
         return async () => {
           const stream = queue.waitForResponse(response => {
             const url = new URL(response.url());
@@ -351,7 +360,12 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
         };
       }
 
-      const read = (path: string, stream = false) => search.evaluate(async ({ path, token, stream, timeout }) => {
+      const read = (path: string, stream = false, contended = false) => queue.evaluate(async ({ path, token, stream, contended, timeout }) => {
+        if (contended) {
+          const started: unknown = Reflect.get(window, "relayG4WorkStart");
+          if (!(started instanceof Promise)) throw new Error("read-lanes-g4-work-start-missing");
+          await started;
+        }
         const start = performance.timeOrigin + performance.now();
         const response = await fetch(path, { headers: { "x-relay-session": token }, signal: AbortSignal.timeout(timeout) });
         if (!response.ok) throw new Error(`read-lanes-g4-http-${String(response.status)}`);
@@ -384,9 +398,9 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
             }
           }
         } finally { await reader.cancel(); }
-      }, { path, token: session, stream, timeout: G4_TIMEOUT_MS });
-      const snapshot = async (day: string) => {
-        const result = await read(`/events/v1?topics=dashboard-day:${day}`, true);
+      }, { path, token: session, stream, contended, timeout: G4_TIMEOUT_MS });
+      const snapshot = async (day: string, contended = false) => {
+        const result = await read(`/events/v1?topics=dashboard-day:${day}`, true, contended);
         const envelope = DashboardStreamEnvelopeSchema.parse(result.payload);
         if (envelope.type !== "snapshot" || envelope.payload.day !== day || envelope.payload.queueSurfaces.length === 0) {
           throw new Error("read-lanes-g4-empty-or-mismatched-snapshot");
@@ -395,30 +409,40 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
       };
       const workload = async (day: string) => {
         const [found, calendarRead] = await Promise.all([
-          read(`/api/v1/search?${new URLSearchParams({ q: input.query })}`),
-          read(`/api/v1/calendar?${new URLSearchParams({ month: day.slice(0, 7), day })}`),
+          read(`/api/v1/search?${new URLSearchParams({ q: input.query })}`, false, true),
+          read(`/api/v1/calendar?${new URLSearchParams({ month: day.slice(0, 7), day })}`, false, true),
         ]);
         if (CrossDateSearchPageSchema.parse(found.payload).results.length === 0
           || CalendarWireSchema.parse(calendarRead.payload).day !== day) throw new Error("read-lanes-g4-empty-or-mismatched-search");
         return { search: { start: found.start, end: found.end }, calendar: { start: calendarRead.start, end: calendarRead.end } };
       };
-      let current = soundValue;
-      async function prepareSettingChange() {
+      let current = soundValue, revision = settingsDocument.revision;
+      // Settings takes over the dashboard, so dispatch its ordinary command from the Queue page.
+      async function changeSetting() {
         const next = current === "default" ? "none" : "default";
-        await soundControl.click();
-        const choice = settings.getByRole("option", { name: next === "none" ? "None" : "Default", exact: true });
-        await choice.waitFor();
-        return async () => {
-          const start = systemClock.nowMs();
-          const [response] = await Promise.all([settings.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/commands"
-            && response.request().method() === "POST"), choice.click()]);
-          const result = CommandResultSchema.parse(await response.json());
-          if (!response.ok() || result.state !== "applied" || !result.affectedTargets.some(target => target.family === "settings")) {
-            throw new Error("read-lanes-g4-settings-save-failed");
-          }
-          current = next;
-          return { start, end: systemClock.nowMs() };
-        };
+        const patch = SettingsPatchSchema.parse({ [sound]: { set: next } });
+        const command = SettingsCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: systemClock.now().toISOString(),
+          requestedBy: bootstrap.actor.id, source: "settings-surface", family: "settings", type: "apply-settings",
+          target: { expectedRevision: revision }, payload: { settingsSchemaHash: settingsDocument.settingsSchemaHash,
+            patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
+        const { start, end, payload } = await queue.evaluate(async ({ command, token, timeout }) => {
+          const started: unknown = Reflect.get(window, "relayG4WorkStart");
+          if (!(started instanceof Promise)) throw new Error("read-lanes-g4-work-start-missing");
+          await started;
+          const start = performance.timeOrigin + performance.now();
+          const response = await fetch("/api/v1/commands", { method: "POST", body: JSON.stringify(command),
+            headers: { "content-type": "application/json", "x-relay-session": token }, signal: AbortSignal.timeout(timeout) });
+          if (!response.ok) throw new Error(`read-lanes-g4-settings-http-${String(response.status)}`);
+          const payload: unknown = await response.json();
+          return { start, end: performance.timeOrigin + performance.now(), payload };
+        }, { command, token: session, timeout: G4_TIMEOUT_MS });
+        const result = CommandResultSchema.parse(payload);
+        if (result.state !== "applied" || result.commandId !== command.commandId || result.settingsRevision !== revision + 1) {
+          throw new Error("read-lanes-g4-settings-save-failed");
+        }
+        revision = result.settingsRevision;
+        current = next;
+        return { start, end };
       }
 
       type Snapshot = Awaited<ReturnType<typeof snapshot>>;
@@ -433,8 +457,8 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
         await receive("g4-started", "g4-start");
         for (let index = 0; index < G4_SAMPLES; index++) {
           const day = input.days[index % 2 === 0 ? 1 : 0];
-          const [clickDayNow, changeSetting] = await Promise.all([clickDay(day), prepareSettingChange()]);
-          const [click, companions, sse, changed] = await Promise.allSettled([clickDayNow(), workload(day), snapshot(day), changeSetting()]);
+          const clickDayNow = await clickDay(day);
+          const [click, companions, sse, changed] = await Promise.allSettled([clickDayNow(), workload(day), snapshot(day, true), changeSetting()]);
           if (click.status !== "fulfilled" || companions.status !== "fulfilled" || sse.status !== "fulfilled" || changed.status !== "fulfilled") {
             const failed = Object.entries({ click, companions, sse, changed }).flatMap(([name, result]) =>
               result.status === "rejected" ? [new Error(name, { cause: result.reason })] : []);
@@ -491,7 +515,7 @@ function summarizeG4(shape: Shape, runs: readonly G4Run[], startGate: z.infer<ty
 
 // After importing a fresh signed-in copy with profile-copy.ts and running npm run web:build:
 // node --import tsx scripts/bench/read-lanes.ts development --g4 --days YYYY-MM-DD,YYYY-MM-DD --workflow <workflow-id> --query <matching-text> --g2 <G2-report.json>
-async function runG4(profile: CopyProfile, workspace: string, args: { days: string | undefined; workflow: string | undefined; query: string | undefined; g2: string | undefined; runs: string | undefined }) {
+async function runG4(profile: CopyProfile, workspace: string, args: { days: string | undefined; workflow: string | undefined; query: string | undefined; g2: string | undefined; runs: string | undefined; shape: string | undefined }) {
   const days = z.tuple([z.iso.date(), z.iso.date()]).parse(args.days?.split(","));
   if (days[0] === days[1] || days[0].slice(0, 7) !== days[1].slice(0, 7)) throw new Error("read-lanes-g4-requires-two-distinct-days-in-one-month");
   const workflow = WorkflowIdSchema.parse(args.workflow);
@@ -499,19 +523,20 @@ async function runG4(profile: CopyProfile, workspace: string, args: { days: stri
   const startGate = G2EvidenceSchema.parse(JSON.parse(readFileSync(z.string().min(1).parse(args.g2), "utf8")));
   if (new Set(startGate.shapes.map(row => row.shape)).size !== 2) throw new Error("read-lanes-g4-g2-shapes-invalid");
   const repetitions = z.coerce.number().int().min(5).max(10).parse(args.runs ?? "5");
+  const selected = args.shape === undefined ? ["B", "A"] as const : [ShapeSchema.parse(args.shape)];
   const profileId = await admitG4Copy(profile, workspace);
   const results: Record<Shape, G4Run[]> = { A: [], B: [] };
   const path = join(process.cwd(), `read-lanes-g4-${String(systemClock.nowMs())}.json`);
   const report = { gate: "G4", limits: G4_LIMITS, g2Commit: startGate.commit, profile, node: process.version,
     scanCache: "miss forced for notification polling during each contention window",
-    runtime: "dashboard --prod (built web bundle, tsx backend)", host: { cpus: availableParallelism(), loadavg: loadavg() },
+    runtime: "dashboard --prod (built web bundle, tsx backend)", windows: 1, host: { cpus: availableParallelism(), loadavg: loadavg() },
     commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), runs: results };
   const writeReport = (outcome: object) => {
     writeFileSync(path, `${JSON.stringify({ ...report, ...outcome }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
   };
   try {
     for (let index = 0; index < repetitions; index++) {
-      for (const shape of ["B", "A"] as const) {
+      for (const shape of selected) {
         process.stderr.write(`G4 ${shape} ${String(index + 1)}/${String(repetitions)}\n`);
         results[shape].push(await measureG4(shape, profile, { days, workflow, query, profileId }));
       }
@@ -520,7 +545,7 @@ async function runG4(profile: CopyProfile, workspace: string, args: { days: stri
     writeReport({ decision: "inconclusive" });
     throw new Error(`read-lanes-g4-incomplete (wrote ${path})`, { cause });
   }
-  const shapes = ShapeSchema.options.map(shape => summarizeG4(shape, results[shape], startGate));
+  const shapes = selected.map(shape => summarizeG4(shape, results[shape], startGate));
   const eligible = shapes.find(shape => shape.passesG2 && shape.verdict !== "fail");
   const decision = eligible === undefined ? "stop-for-design" : eligible.verdict === "pass" ? eligible.shape : "inconclusive";
   writeReport({ decision, shapes });
@@ -539,7 +564,7 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
   if (values["g4-backend"] !== undefined) {
     await serveG4(ShapeSchema.parse(values["g4-backend"]));
   } else if (values.g4 === true) {
-    await runG4(profile, workspace, { days: values.days, workflow: values.workflow, query: values.query, g2: values.g2, runs: values.runs });
+    await runG4(profile, workspace, { days: values.days, workflow: values.workflow, query: values.query, g2: values.g2, runs: values.runs, shape: values.shape });
   } else if (values.shape !== undefined) {
     process.stdout.write(`${JSON.stringify(await measure(ShapeSchema.parse(values.shape), workspace, lockPort))}\n`);
   } else {
@@ -553,7 +578,7 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
         results[shape].push(RunSchema.parse(JSON.parse(output.trim().split("\n").at(-1) ?? "")));
       }
     }
-    const report = { gate: "G2", runtime: "tsx (the dashboard:prod backend loader; no packaged build exists)", node: process.version,
+    const report = { gate: "G2", runtime: "tsx (dashboard:prod read-worker entry and backend loader)", node: process.version,
       profile, commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), host: { cpus: availableParallelism(), loadavg: loadavg() },
       shapes: ShapeSchema.options.map(shape => summarizeShape(shape, results[shape])), runs: results };
     const path = join(process.cwd(), `read-lanes-g2-${new Date(systemClock.nowMs()).toISOString().replaceAll(":", "-")}.json`);
