@@ -5,7 +5,7 @@ import { ActionConfirmWireSchema } from "./actions.js";
 
 export const RunDecisionTypeSchema = z.enum([
   "identity-mismatch", "pick-person", "pick-row", "review-before-write",
-  "write-parked", "write-unknown", "failed-retryable", "failed-after-write",
+  "write-parked", "write-unknown", "read-back-failed", "failed-retryable", "failed-after-write",
   "member-failed", "correct-value", "workbook-row", "sign-in",
   "paused", "stalled", "refused", "cancelling",
 ]);

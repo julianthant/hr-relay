@@ -217,6 +217,7 @@ function dispatchActive(
         }
         case "recheck-write":
         case "resolve-write-absent":
+        case "fail-read-back":
           return executeWriteResolution(dependencies, repositories, request, now, auditId);
       }
       break;

@@ -10,7 +10,8 @@ import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 import type { ParkedWriteCheckAcknowledgement } from "../../../rules/commands/commands.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 
-import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { isFailedReadBack } from "../../../rules/write-safety/write-authority-reason.js";
+import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
@@ -165,7 +166,7 @@ function requireResolvableIntent(context: WriteResolutionContext): void {
 }
 
 export function createWriteResolutionExecutor(deps: WriteResolutionDependencies): WriteResolutionExecutor {
-  function requestRead(repositories: AuthorityRepositories, context: WriteResolutionContext, node: TransactionRuntimeNode) {
+  function requestResolution(repositories: AuthorityRepositories, context: WriteResolutionContext, node: TransactionRuntimeNode) {
     const intent = context.intent;
     if (intent.status !== "parked") throw new Error("parked-write-resolution-required");
     const transactionId = context.command.type === "recheck-write" ? context.command.payload.transactionId : undefined;
@@ -190,6 +191,24 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
 
   return Object.freeze({
     recheck(repositories: AuthorityRepositories, context: WriteResolutionContext) {
+      if (context.command.type === "fail-read-back") {
+        const { command, intent, run } = context;
+        if (intent.status !== "parked") throw new Error("parked-write-resolution-required");
+        const attempt = repositories.writeAttempts.get(intent.currentAttemptId);
+        if (attempt?.outcome.state !== "parked" || !isFailedReadBack(attempt.outcome.authorityReason.code)) {
+          rejectCommandRequest(command, "invalid-state", "The parked write has no failed read-back to close.");
+        }
+        const descriptor = deps.descriptors.resolve(run.envelope.workflow);
+        if (descriptor === undefined || descriptor.version !== run.envelope.descriptorVersion
+          || descriptor.contractFingerprint !== run.envelope.contractFingerprint) {
+          rejectCommandRequest(command, "capability-unavailable", "The workflow for this read-back failure is unavailable.");
+        }
+        const node = descriptorRuntimeNodes(descriptor).find((candidate): candidate is TransactionRuntimeNode =>
+          candidate.kind === "transaction" && candidate.commit.uses.id === intent.taskId
+          && intent.bindingProof.afterPrepareSpanPath === `${run.envelope.traceId}/${candidate.id}/prepare`);
+        if (node === undefined) rejectCommandRequest(command, "capability-unavailable", "The original write step is unavailable.");
+        return requestResolution(repositories, context, node);
+      }
       if (context.command.type !== "recheck-write") throw new Error("write-recheck-command-required");
       requireResolvableIntent(context);
       const { node } = requireResolutionTarget(deps, repositories, context, "recheck");
@@ -198,7 +217,7 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
         && (completion.kind === "receipt" || completion.verify.taskId !== "ucpath/verify-termination")) {
         rejectCommandRequest(context.command, "invalid-value", "This write does not support checking one transaction ID");
       }
-      return requestRead(repositories, context, node);
+      return requestResolution(repositories, context, node);
     },
 
     resolveAbsent(repositories: AuthorityRepositories, context: WriteResolutionContext) {
@@ -210,7 +229,7 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
         rejectCommandRequest(context.command, "invalid-state", "Resolution must attest the exact new write occurrence");
       }
       const { node } = requireResolutionTarget(deps, repositories, context, "operator-confirmed-absent");
-      return requestRead(repositories, context, node);
+      return requestResolution(repositories, context, node);
     },
   });
 }

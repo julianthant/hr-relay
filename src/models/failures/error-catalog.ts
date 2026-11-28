@@ -175,6 +175,7 @@ export const ERROR_CATALOG = Object.freeze({
   BROWSER_PROFILE_STILL_CLOSING: catalogEntry("The browser profile is still closing. Wait for it to close.", EmptyParametersSchema),
   STARTUP_CRASH_RECOVERY_REFUSED: catalogEntry("Saved runs and writes could not be reconciled after a crash.", EmptyParametersSchema),
   RUN_INTERRUPTED_BY_CRASH: catalogEntry("A crash ended this run as failed. Review it before starting another.", EmptyParametersSchema),
+  RUN_READ_BACK_FAILED: catalogEntry("The run ended after the read-back failed. The write remains unresolved.", EmptyParametersSchema),
   RUN_CRASH_WRITE_UNRESOLVED: catalogEntry("A crash interrupted this run mid-write. The write stays held.", EmptyParametersSchema),
   RUN_STALE_QUEUE_CANCELLED: catalogEntry("This run was queued on an earlier day and never started.", EmptyParametersSchema),
   RUN_LOGOUT_CANCELLED: catalogEntry("This run was cancelled when the profile logged out.", EmptyParametersSchema),

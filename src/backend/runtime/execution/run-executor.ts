@@ -23,7 +23,10 @@ import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js
 import type { RuntimeScope } from "../../../models/workflow/graph.js";
 import { planStepOmissions } from "../../../models/workflow/step-omission.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
-import { buildEntryValidationFailureRecord } from "./run-failure.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { isFailedReadBack } from "../../../rules/write-safety/write-authority-reason.js";
+import { requestedParkedWriteRecheck } from "./run-execution-write.js";
+import { buildEntryValidationFailureRecord, deriveFailureFingerprint } from "./run-failure.js";
 import { ExecutorSpanEventSchema, runSpanPath } from "../../logs/span-emitter.js";
 import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
 import type { RunPreviewStep } from "../../../models/run/result.js";
@@ -250,6 +253,30 @@ export async function executeClaimedRun(
     await transitionTo({ state: "validating", workerId: claim.workerId, claimedAt, heartbeatAt: instant() });
 
     pauseAtBoundary();
+    const startNode = nodes.find(node => node.id === envelope.startAt);
+    const requested = startNode?.kind === "transaction"
+      ? deps.authority.withAuthorityTransaction?.(repositories => requestedParkedWriteRecheck(repositories, initial, startNode))
+      : undefined;
+    if (requested?.command.type === "fail-read-back") {
+      const { outcome } = requested.attempt;
+      if (outcome.state !== "parked" || !isFailedReadBack(outcome.authorityReason.code)) {
+        throw new RunContinuationRefusedError("read-back-failure-reason-unproved");
+      }
+      if (startNode?.kind !== "transaction") throw new RunContinuationRefusedError("read-back-failure-node-unproved");
+      await transitionTo(runningLifecycle(startNode.id));
+      const code = "RUN_READ_BACK_FAILED";
+      const summary = ERROR_CATALOG[code].text;
+      return terminalizeAsFailure(FailureRecordSchema.parse({
+        diagnosticSafetyVersion: 1, failureId: deps.ids.uuid(),
+        fingerprint: deriveFailureFingerprint({ workflowId: envelope.workflow, nodeId: startNode.id, taskId: startNode.commit.uses.id, code }), runId,
+        nodeId: startNode.id, taskId: startNode.commit.uses.id,
+        traceId: envelope.traceId, attempt: envelope.attempt, workflowId: envelope.workflow,
+        code, summary, transient: false, writeState: "unknown", action: { operation: "commit" },
+        causeChain: [{ code, summary, role: "primary", transient: false }],
+        remediation: [{ kind: "operator-action", message: summary }],
+        writeAuthorityReason: outcome.authorityReason, occurredAt: instant(),
+      }));
+    }
     const accounting = deps.authority.withAuthorityTransaction?.(repositories => {
       const current = getRun();
       checkPause(current);

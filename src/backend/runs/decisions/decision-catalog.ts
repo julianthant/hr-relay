@@ -30,12 +30,15 @@ export type DecisionDeclaration = Readonly<{
 const cancelRun: DeclaredOption = { id: "cancel-run", label: "Cancel run", send: { via: "row-action", command: "cancel" } };
 const annotate = { via: "command", family: "failure-resolution", type: "annotate-failure" } as const;
 /** A parked write is answered by Relay re-reading it or by the operator confirming it is absent; no answer settles it on its own. */
+const checkAgain: DeclaredOption = { id: "check-again", label: "Check again", hint: "Files nothing.", send: { via: "action", command: "check-parked-write" } };
 const parkedWrite: readonly DeclaredOption[] = [
-  { id: "check-again", label: "Check again", hint: "Files nothing.", send: { via: "action", command: "check-parked-write" } },
+  checkAgain,
   { id: "saved", label: "Saved", hint: "Relay verifies first.", send: { via: "action", command: "recheck-write" } },
   { id: "not-saved", label: "Not saved, write it again", send: { via: "action", command: "resolve-write-absent" } },
 ];
-export const READ_BACK_SAVED_LABEL = "Checked by hand, continue";
+export const MARK_READ_BACK_FAILED: DeclaredOption = { id: "mark-as-failed", label: "Mark as failed", hint: "Ends the run and files nothing.",
+  send: { via: "action", command: "fail-read-back" } };
+export const withdrawnFileAgainLabel = (system: string): string => `Withdrawn in ${system}, file again`;
 
 /** How a parked write of each registered write task is asked about: the record, its system, what Relay clicked, where to check and what Not saved does next. */
 export type ParkedWriteRecord = Readonly<{ record: string; system: string; act: "Submit" | "Save" | "Import"; check: string; again: string;
@@ -72,6 +75,12 @@ export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclarat
   "review-before-write": { choiceLabel: "Next step", title: "Review before writing", recommended: [], gateArms: true, options: [] },
   "write-parked": { choiceLabel: "Answer", title: "Did the write save?", recommended: ["saved", "check-again"], options: parkedWrite },
   "write-unknown": { choiceLabel: "Answer", title: "Did the write save?", recommended: ["saved", "check-again"], options: parkedWrite },
+  "read-back-failed": { choiceLabel: "Next step", title: "The write saved, but the read-back failed", recommended: ["check-again"], options: [
+    checkAgain,
+    { id: "saved", label: "Checked by hand, continue", hint: "Relay verifies first.", send: { via: "action", command: "recheck-write" } },
+    { id: "not-saved", label: withdrawnFileAgainLabel("UCPath"), hint: "Relay checks the system before filing again.", send: { via: "action", command: "resolve-write-absent" } },
+    MARK_READ_BACK_FAILED,
+  ] },
   "failed-retryable": { choiceLabel: "Next step", title: "A step failed", recommended: ["retry"], options: [
     { id: "retry", label: "Retry step", hint: "Nothing was written.", send: { via: "action", command: "retry" } },
   ] },

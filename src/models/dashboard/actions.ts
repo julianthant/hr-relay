@@ -6,10 +6,10 @@ import { ParkedWriteCheckTargetSchema, WorkbookRowChoiceTargetSchema, WorkbookRe
 export const ActionPlacementSchema = z.enum(["footer", "banner", "outcome", "menu", "data", "review"]);
 export const ActionIntentSchema = z.enum(["primary", "neutral", "destructive", "violet", "success", "info", "warning"]);
 export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "archive", "delete", "review", "resolve", "rename", "external", "drill", "pause", "resume"]);
-/** The command verbs a served action may name; the two write resolutions are INTENT-scoped rather than run-scoped, and every verb on this list has a durable reason it is here. */
+/** The command verbs a served action may name; parked-write decisions are INTENT-scoped rather than run-scoped, and every verb on this list has a durable reason it is here. */
 export const ActionCommandKeySchema = z.enum([
   "retry", "cancel", "bump", "rename", "archive", "delete", "resolve-gate",
-  "recheck-write", "resolve-write-absent", "check-parked-write",
+  "recheck-write", "resolve-write-absent", "fail-read-back", "check-parked-write",
   "resolve-workbook-row", "resolve-workbook-reference-row", "pause", "resume",
 ]);
 
@@ -68,7 +68,7 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
   }),
 ]).superRefine((action, context) => {
   if (action.kind !== "command") return;
-  const scoped = action.command === "recheck-write" || action.command === "resolve-write-absent" || action.command === "check-parked-write";
+  const scoped = action.command === "recheck-write" || action.command === "resolve-write-absent" || action.command === "fail-read-back" || action.command === "check-parked-write";
   if ((action.command === "check-parked-write") !== (action.checkTarget !== undefined)) {
     context.addIssue({ code: "custom", path: ["checkTarget"], message: "only held checks require their exact worker and parked-write target" });
   }

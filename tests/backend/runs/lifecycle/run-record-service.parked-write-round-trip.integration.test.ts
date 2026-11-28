@@ -3,7 +3,7 @@ import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-r
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, it } from "vitest";
-import { WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureSaveDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
 const { cleanup, roundTrip, parkedIntent, resolutionCommand } = createParkedWriteRoundTripTestWorld();
 
@@ -83,6 +83,53 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     assert.ok(saved?.status === "committed");
     assert.equal(saved.resolution?.writeAttemptId, requested.currentAttemptId);
     assert.deepEqual(saved.completionProof.value, { transactionId: "T998877" });
+  });
+
+  it("file again leaves a read-back failure parked when the fresh read is indeterminate", async () => {
+    const harness = await roundTrip(writeFixtureSaveDescriptor, undefined, writeFixtureSaveDescriptor);
+    harness.world.verifyResults.push({ state: "unknown", reason: "Read unavailable", observedAt: WRITE_FIXTURE_NOW });
+    await harness.park(false);
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(intent.status === "parked" && parked?.lifecycle.state === "parked-write");
+    const command = resolutionCommand("resolve-write-absent", { runId: WRITE_FIXTURE_RUN_ID, expectedVersion: parked.version,
+      writeIntentId: intent.writeIntentId, intentGeneration: intent.generation }, {});
+    assert.equal(harness.kernel.execute(command).state, "applied");
+
+    harness.world.events.length = 0;
+    harness.world.probeResults.push({ state: "unknown", reason: "Read unavailable", observedAt: WRITE_FIXTURE_NOW });
+    assert.equal((await harness.resume()).outcomes[0]?.state, "parked-write");
+    assert.deepEqual(harness.world.events, ["probe"]);
+    const retained = parkedIntent(harness.database);
+    assert.ok(retained.status === "parked" && retained.generation === intent.generation);
+    assert.equal(harness.database.authority.writeAttempts.listByIntent(intent.writeIntentId).length, 1);
+  });
+
+  it("ends a read-back failure without reading or filing and retains the fenced write", async () => {
+    const harness = await roundTrip(writeFixtureSaveDescriptor, undefined, writeFixtureSaveDescriptor);
+    harness.world.verifyResults.push({ state: "unknown", reason: "Read unavailable", observedAt: WRITE_FIXTURE_NOW });
+    await harness.park(false);
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(intent.status === "parked" && parked?.lifecycle.state === "parked-write");
+    const target = { runId: WRITE_FIXTURE_RUN_ID, expectedVersion: parked.version, writeIntentId: intent.writeIntentId,
+      intentGeneration: intent.generation };
+    assert.notEqual(harness.kernel.execute(resolutionCommand("fail-read-back", { ...target, expectedVersion: parked.version + 1 }, {})).state, "applied");
+    assert.equal(harness.kernel.execute(resolutionCommand("fail-read-back", target, {})).state, "applied");
+
+    harness.world.events.length = 0;
+    assert.equal((await harness.resume()).outcomes[0]?.state, "failed");
+    assert.deepEqual(harness.world.events, []);
+    const ended = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(ended?.lifecycle.state === "terminal" && ended.lifecycle.outcome === "failed" && ended.lifecycle.failureId !== undefined);
+    const failure = harness.database.authority.failures.get(ended.lifecycle.failureId);
+    assert.equal(failure?.code, "RUN_READ_BACK_FAILED");
+    assert.equal(failure?.writeState, "unknown");
+    assert.deepEqual(failure?.writeAuthorityReason, intent.authorityReason);
+    const retained = parkedIntent(harness.database);
+    assert.ok(retained.status === "parked" && retained.recheck === undefined);
+    assert.equal(retained.currentAttemptId, intent.currentAttemptId);
+    assert.equal(harness.database.authority.writeAttempts.listByIntent(intent.writeIntentId).length, 1);
   });
 
   it("refuses Mark as failed on a parked write: the run stays parked and the intent UNKNOWN", async () => {

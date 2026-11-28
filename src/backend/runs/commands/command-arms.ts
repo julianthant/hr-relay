@@ -30,6 +30,7 @@ const PHASE1_ACTIVE = {
     "delete",
     "recheck-write",
     "resolve-write-absent",
+    "fail-read-back",
     "resolve-workbook-row",
     "resolve-workbook-reference-row",
   ],

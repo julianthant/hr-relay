@@ -42,6 +42,10 @@ export const WriteAuthorityReasonCodeSchema = z.enum([
 ]);
 export type WriteAuthorityReasonCode = z.infer<typeof WriteAuthorityReasonCodeSchema>;
 
+export function isFailedReadBack(code: WriteAuthorityReasonCode): boolean {
+  return code === "post-click-verifier-exception" || code === "post-click-verifier-unknown";
+}
+
 export const WriteAuthorityReasonSchema = z.strictObject({
   version: z.literal(1),
   code: WriteAuthorityReasonCodeSchema,

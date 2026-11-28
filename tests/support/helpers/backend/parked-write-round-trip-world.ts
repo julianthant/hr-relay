@@ -43,7 +43,7 @@ export function createParkedWriteRoundTripTestWorld() {
 
   const openDatabases: AuthorityDatabase[] = [];
 
-  async function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, resolutionHooks?: WriteSequencerHooks): Promise<RoundTrip> {
+  async function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, resolutionHooks?: WriteSequencerHooks, executionDescriptor = writeFixtureDescriptor): Promise<RoundTrip> {
     const profile = await createBoundProfileFixture();
     roots.push(profile.workspace);
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
@@ -97,7 +97,7 @@ export function createParkedWriteRoundTripTestWorld() {
 
     const park = async (failCommit = true) => {
       const queued = RunRecordSchema.parse(writeFixtureQueuedRun());
-      const run = RunRecordSchema.parse({ ...queued, envelope: { ...queued.envelope,
+      const run = RunRecordSchema.parse({ ...queued, envelope: { ...queued.envelope, contractFingerprint: executionDescriptor.contractFingerprint,
         configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } });
       assert.equal(database.authority.runs.enqueue(run).state, "inserted");
       createTimelineEmitter({ repository: database.authority.timelineEvents, clock }).emit(
@@ -109,10 +109,10 @@ export function createParkedWriteRoundTripTestWorld() {
       return resume();
     };
     const resume = () => runWorkerLoop({
-        ...testWorkerPorts(database, clock, { path: profile.path, descriptor: writeFixtureDescriptor, poolIndex: 1 }),
+        ...testWorkerPorts(database, clock, { path: profile.path, descriptor: executionDescriptor, poolIndex: 1 }),
         workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
         workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
-        descriptor: writeFixtureDescriptor,
+        descriptor: executionDescriptor,
         stores,
         authority: database,
         sessionFactory: sessions.factory,
@@ -161,7 +161,7 @@ export function createParkedWriteRoundTripTestWorld() {
   }
 
   function resolutionCommand(
-    type: "recheck-write" | "resolve-write-absent",
+    type: "recheck-write" | "resolve-write-absent" | "fail-read-back",
     target: Readonly<{
       runId: string;
       expectedVersion: number;

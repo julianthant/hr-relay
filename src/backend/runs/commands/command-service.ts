@@ -51,7 +51,7 @@ export { deriveBulkChildCommandId } from "../../../rules/commands/command-groups
 
 const SPANLESS_RUN_TYPES = new Set([
   "pause", "resume", "rename", "bump", "cancel", "delete",
-  "recheck-write", "resolve-write-absent",
+  "recheck-write", "resolve-write-absent", "fail-read-back",
 ]);
 
 export function createDashboardCommandService(deps: DashboardCommandServiceDeps): DashboardCommandService {

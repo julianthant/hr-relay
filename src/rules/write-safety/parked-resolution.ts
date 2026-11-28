@@ -10,7 +10,7 @@ export function authenticateParkedWriteRecheck(intentInput: unknown, attemptInpu
   const command = CommandRequestSchema.parse(commandInput);
   const audit = CommandAuditRecordSchema.parse(auditInput);
   if (intent.status !== "parked" || intent.recheck === undefined || command.family !== "run"
-    || (command.type !== "recheck-write" && command.type !== "resolve-write-absent")
+    || (command.type !== "recheck-write" && command.type !== "resolve-write-absent" && command.type !== "fail-read-back")
     || attempt.outcome.state !== "parked") throw new Error("parked-write-recheck-authentication-missing");
   const request = intent.recheck;
   if (canonicalJsonStringify(audit.writeResolution) !== canonicalJsonStringify(intent)

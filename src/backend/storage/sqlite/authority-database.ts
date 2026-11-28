@@ -58,6 +58,7 @@ import { interruptTransition } from "../../../rules/runs/run-interrupt.js";
 import { capturedInstantClock } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { DelegationManifestSchema, DependencyRecordSchema, delegationJoinDisposition, type DelegationManifest } from "../../../rules/workflow/dependencies.js";
+import { isFailedReadBack } from "../../../rules/write-safety/write-authority-reason.js";
 import { authenticateParkedWriteRecheck } from "../../../rules/write-safety/parked-resolution.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
@@ -2691,7 +2692,7 @@ export class AuthorityDatabase implements Disposable {
 
   terminalizeFailure(descriptor: AnyWorkflowDescriptor, input: unknown): FailureTerminalizationReport {
     const request = FailureTerminalizationRequestSchema.parse(input);
-    return this.withAuthorityTransaction(() => {
+    return this.withAuthorityTransaction(repositories => {
       const current = this.#readRunRow(request.failure.runId);
       if (current === undefined) throw new Error(`run ${request.failure.runId} does not exist`);
       this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
@@ -2762,6 +2763,24 @@ export class AuthorityDatabase implements Disposable {
       const violation = runTransitionViolation(current.lifecycle, terminal.lifecycle);
       if (violation !== undefined) throw new Error(`run ${request.failure.runId}: ${violation}`);
       this.#assertTerminalAuthorizationConsequence(request.authorization, terminal);
+      if (request.failure.code === "RUN_READ_BACK_FAILED") {
+        const intents = repositories.writeIntents.listByRun(current.envelope.runId).filter(intent =>
+          intent.status === "parked" && intent.recheck?.nodeId === current.envelope.startAt);
+        const intent = intents[0];
+        if (intents.length !== 1 || intent?.status !== "parked" || intent.recheck === undefined) {
+          throw new Error("read-back-failure-request-unavailable");
+        }
+        const { command, attempt } = authenticateParkedWriteRecheck(intent, repositories.writeAttempts.get(intent.currentAttemptId),
+          repositories.commands.get(intent.recheck.commandId), repositories.commandAudits.get(intent.recheck.auditId));
+        if (command.type !== "fail-read-back" || attempt.outcome.state !== "parked"
+          || !isFailedReadBack(attempt.outcome.authorityReason.code)
+          || canonicalJsonStringify(request.failure.writeAuthorityReason) !== canonicalJsonStringify(attempt.outcome.authorityReason)) {
+          throw new Error("read-back-failure-reason-unproved");
+        }
+        repositories.writeIntents.parkRecheck({ writeIntentId: intent.writeIntentId, generation: intent.generation,
+          expectedVersion: intent.version, commandId: command.commandId, code: intent.parkedCode,
+          message: intent.message, authorityReason: intent.authorityReason, now: terminal.updatedAt });
+      }
       this.#insertFailure(request.failure);
       this.#terminalizationHooks?.afterFailureStorageStep?.("failure");
       const result = createRunTerminalEvidenceResult(terminal, {

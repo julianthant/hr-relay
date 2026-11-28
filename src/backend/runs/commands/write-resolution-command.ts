@@ -9,7 +9,7 @@ import { conflict, reject } from "./command-refusal.js";
 import { requireRun, type RunCommand } from "./run-command-context.js";
 import { z } from "zod";
 
-type WriteResolutionCommand = Extract<RunCommand, { type: "recheck-write" | "resolve-write-absent" }>;
+type WriteResolutionCommand = Extract<RunCommand, { type: "recheck-write" | "resolve-write-absent" | "fail-read-back" }>;
 
 export interface WriteResolutionContext {
   readonly command: WriteResolutionCommand;
@@ -96,9 +96,9 @@ export function executeWriteResolution(
   if (intent.currentAttemptId !== request.target.writeAttemptId || intent.bindingProofDigest !== request.target.bindingProofDigest
     || intent.idempotencyKeyDigest !== request.payload.occurrenceKeyDigest) reject(request,"invalid-state","Resolution must bind the exact original parked attempt and permanent occurrence key");
   const context: WriteResolutionContext = Object.freeze({ command: request, run: current, intent, now, auditId });
-  const raw = request.type === "recheck-write"
-    ? dependencies.writeResolution.recheck(repositories, context)
-    : dependencies.writeResolution.resolveAbsent(repositories, context);
+  const raw = request.type === "resolve-write-absent"
+    ? dependencies.writeResolution.resolveAbsent(repositories, context)
+    : dependencies.writeResolution.recheck(repositories, context);
   const outcome = WriteResolutionOutcomeSchema.parse(raw.outcome);
   if (outcome.run.envelope.runId !== request.target.runId) {
     throw new Error(

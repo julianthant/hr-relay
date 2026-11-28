@@ -454,7 +454,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
       steps.push({ id: failure.failureId, time: formatTimeWithSeconds(failure.occurredAt), title: failureTitle,
         entries: [{ kind: "decision", id: failure.failureId, time: formatTimeWithSeconds(failure.occurredAt), decision: { title: failureTitle,
-          state: failure.writeState === "unknown" ? "unconfirmed" : "failed", message, ...failureCardFacts(failure.display),
+          state: failure.writeState === "unknown" && failure.code !== "RUN_READ_BACK_FAILED" ? "unconfirmed" : "failed", message, ...failureCardFacts(failure.display),
           ...(failure.writeState === "not-attempted" ? { footer: WRITE_STATE_NOTE[failure.writeState] } : { caution: WRITE_STATE_NOTE[failure.writeState] }),
           ...(noScreenshot === undefined ? {} : { unavailableCapture: noScreenshot }),
           ...(failure.decision === undefined ? {} : { served: failure.decision }) } }] });
@@ -826,7 +826,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         && prepared.source === lookup.gateRef && canonicalJsonStringify(prepared.envelope) === canonicalJsonStringify(envelope);
     }
     const held = envelope.family === "worker-browser" && envelope.type === "check-parked-write";
-    if ((!held && (envelope.family !== "run" || (envelope.type !== "recheck-write" && envelope.type !== "resolve-write-absent")))
+    if ((!held && (envelope.family !== "run" || (envelope.type !== "recheck-write" && envelope.type !== "resolve-write-absent" && envelope.type !== "fail-read-back")))
       || parked?.section !== "parked-write") return false;
     const descriptor = parked.payload.actions.find(action => action.kind === "command" && action.command === envelope.type);
     const composed = descriptor?.kind === "command" ? composeCommandRequest(descriptor,
@@ -1117,7 +1117,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       || attempt.scope.authority !== binding.scope.authority || attempt.scope.dayRequest !== binding.scope.dayRequest) return false;
     if (request.family === "start") return correctionCommand?.get(row.runId)?.envelope.commandId === request.commandId;
     return (request.family === "gate" || (request.family === "worker-browser" && request.type === "check-parked-write")
-      || (request.family === "run" && ["recheck-write", "resolve-write-absent", "retry", "resolve-workbook-row", "resolve-workbook-reference-row"].includes(request.type)))
+      || (request.family === "run" && ["recheck-write", "resolve-write-absent", "fail-read-back", "retry", "resolve-workbook-row", "resolve-workbook-reference-row"].includes(request.type)))
       && request.target.runId === row.runId;
   });
   const retained = newest !== undefined && !("targets" in newest.request) && (newest.request.family === "gate" || newest.request.family === "run" || newest.request.family === "start"

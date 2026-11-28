@@ -834,7 +834,7 @@ const EXPECTED_ACTIVE = {
     "cancel", "bump", "rename",
 
     "delete",
-    "recheck-write", "resolve-write-absent", "resolve-workbook-row", "resolve-workbook-reference-row",
+    "recheck-write", "resolve-write-absent", "fail-read-back", "resolve-workbook-row", "resolve-workbook-reference-row",
 
   ],
   gate: ["resolve-gate"],

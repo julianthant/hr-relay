@@ -242,7 +242,8 @@ export function composeCommandRequest(
       return parsed.success ? { state: "ready", request: parsed.data } : { state: "refused", reason: "The held check is unavailable." };
     }
     case "recheck-write":
-    case "resolve-write-absent": {
+    case "resolve-write-absent":
+    case "fail-read-back": {
       const parked = context.parkedWrite;
       const served = parked?.actions.find(candidate => candidate.key === action.key);
       const write = action.writeTarget;
@@ -341,7 +342,7 @@ export async function verifyShellCommandEffect(
     }
     return { state: "matched", evidence: receipt };
   }
-  if (request.family === "run" && (request.type === "recheck-write" || request.type === "resolve-write-absent")) {
+  if (request.family === "run" && (request.type === "recheck-write" || request.type === "resolve-write-absent" || request.type === "fail-read-back")) {
     if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1 || reply.affectedTargets[0]?.family !== "run"
       || reply.affectedTargets[0].runId !== request.target.runId) return mismatch(reply);
     const detail = await client.runDetail(request.target.runId);

@@ -18,7 +18,7 @@ export function publicWriteCommand(request: CommandRequest): CommandRequest {
   if (request.family === "worker-browser" && request.type === "check-parked-write") {
     return { ...request, target: publicWriteTarget(request.target) };
   }
-  if (request.family === "run" && (request.type === "recheck-write" || request.type === "resolve-write-absent")) {
+  if (request.family === "run" && (request.type === "recheck-write" || request.type === "resolve-write-absent" || request.type === "fail-read-back")) {
     const target = publicWriteTarget({ ...request.target, ...request.payload });
     return { ...request, payload: { ...request.payload, occurrenceKeyDigest: target.occurrenceKeyDigest } };
   }
@@ -30,7 +30,7 @@ export function resolveWriteCommandTarget(request: CommandRequest, repositories:
   writeIntents: Pick<AuthorityRepositories["writeIntents"], "get">;
 }>): CommandRequest {
   const target = request.family === "worker-browser" && request.type === "check-parked-write" ? request.target
-    : request.family === "run" && (request.type === "recheck-write" || request.type === "resolve-write-absent")
+    : request.family === "run" && (request.type === "recheck-write" || request.type === "resolve-write-absent" || request.type === "fail-read-back")
       ? { ...request.target, ...request.payload } : undefined;
   if (target === undefined) return request;
   const retained = repositories.commands.get(request.commandId);

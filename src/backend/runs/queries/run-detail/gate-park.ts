@@ -1,5 +1,7 @@
 import { publicWriteTarget } from "../../commands/write-command-target.js";
 import { readRunCheckpoint } from "../../../storage/sqlite/run-continuation.js";
+import { isFailedReadBack } from "../../../../rules/write-safety/write-authority-reason.js";
+import { evaluateWriteResolutionBinding } from "../../../runtime/writes/write-resolution-binding.js";
 import { acceptsRecheckTransactionId } from "../../../../rules/write-safety/parked-resolution.js";
 import { retainedUcpathFindings } from "./ucpath-findings.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
@@ -54,7 +56,7 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import { timelineCheckpointReference } from "../../../../models/events/timeline.js";
 import { ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../models/dashboard/actions.js";
 import type { DecisionInputWire, RunDecisionWire } from "../../../../models/dashboard/run-decision.js";
-import { IDENTITY_REVIEW_TEXT, PARKED_WRITE_RECORDS, READ_BACK_SAVED_LABEL, REFERENCE_CHECK_REVIEW_TEXT, parkedWriteRecordId, type ParkedWriteRecord } from "../../decisions/decision-catalog.js";
+import { MARK_READ_BACK_FAILED, IDENTITY_REVIEW_TEXT, PARKED_WRITE_RECORDS, withdrawnFileAgainLabel, REFERENCE_CHECK_REVIEW_TEXT, parkedWriteRecordId, type ParkedWriteRecord } from "../../decisions/decision-catalog.js";
 import { projectDecision, rowActionOption, type ServedOption } from "../../decisions/project-decision.js";
 import { decisionAnswerer, type DecisionAnswerer } from "../../decisions/decision-answer.js";
 
@@ -407,6 +409,8 @@ function parkedWriteProofContract(
 function parkedWriteActions(
   authority: RunRecord,
   intent: Extract<WriteIntentRecord, { status: "parked" }>,
+  canFileAgain: boolean,
+  canMarkFailed: boolean,
 ): unknown[] {
   const writeTarget = publicWriteTarget({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
     writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest });
@@ -429,7 +433,7 @@ function parkedWriteActions(
       },
       writeTarget,
     },
-    {
+    ...(canFileAgain ? [{
       key: "resolve-write-absent",
       label: "I confirmed it is NOT there",
       detail: "Relay checks the system before filing again.",
@@ -446,7 +450,24 @@ function parkedWriteActions(
         tone: "destructive",
       },
       writeTarget,
-    },
+    }] : []),
+    ...(canMarkFailed ? [{
+      key: "fail-read-back",
+      label: MARK_READ_BACK_FAILED.label,
+      intent: "destructive",
+      icon: "resolve",
+      placement: ["review"],
+      kind: "command",
+      command: "fail-read-back",
+      expectedVersion: authority.version,
+      confirm: {
+        title: "End the run after a failed read-back",
+        body: "Files nothing. The write remains unresolved.",
+        confirmLabel: MARK_READ_BACK_FAILED.label,
+        tone: "destructive",
+      },
+      writeTarget,
+    }] : []),
   ];
 }
 
@@ -859,7 +880,13 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     && request.target.bindingProofDigest === intent.bindingProofDigest && request.target.occurrenceKeyDigest === intent.idempotencyKeyDigest
     && request.target.runVersion === authority.version && request.target.intentVersion === intent.version);
   const lastCheck = latest?.parkedWriteCheck?.result;
-  const actions = ActionDescriptorWireSchema.array().parse(parkedWriteActionsWithCheck(authority, intent, check));
+  const attempt = repositories?.writeAttempts.get(intent.currentAttemptId);
+  const readBack = isFailedReadBack(attempt?.outcome.state === "parked" ? attempt.outcome.authorityReason.code : intent.authorityReason.code);
+  const canFileAgain = !readBack || (descriptor !== undefined && repositories !== undefined
+    && evaluateWriteResolutionBinding({ arm: "operator-confirmed-absent", descriptor, run: authority, intent, repositories }).state !== "incompatible");
+  const canMarkFailed = readBack && descriptor !== undefined && descriptor.version === authority.envelope.descriptorVersion
+    && descriptor.contractFingerprint === authority.envelope.contractFingerprint;
+  const actions = ActionDescriptorWireSchema.array().parse(parkedWriteActionsWithCheck(authority, intent, check, canFileAgain, canMarkFailed));
   return ParkedWriteDetailWireSchema.parse({ acceptsTransactionId, check, ...(lastCheck === undefined ? {} : { lastCheck: { ...lastCheck, target: publicWriteTarget(lastCheck.target) } }),
     ...(intent.taskId === "ucpath/create-termination" ? { ucpathFindings: retainedUcpathFindings(deps, authority, intent, latest) } : {}),
     ...(native === undefined || nativeEvent === undefined ? {} : { native: {
@@ -882,14 +909,13 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     subject: parkedWriteSubject(intent.bindingProof),
     proofContract: parkedWriteProofContract(deps, authority, intent),
     actions,
-    decision: parkedWriteDecision({ taskId: intent.taskId, parkedCode: intent.parkedCode, acceptsTransactionId,
-      ...(hasProtectedTransactionInput(authority) || intent.occurrence !== undefined ? {} : { recordId: parkedWriteRecordId(intent.taskId, intent.idempotencyKey) }),
-      readBack: ["post-click-verifier-exception", "post-click-verifier-unknown"].includes(intent.authorityReason.code) }, actions),
+    decision: parkedWriteDecision({ taskId: intent.taskId, system: intent.system, parkedCode: intent.parkedCode, acceptsTransactionId, readBack,
+      ...(hasProtectedTransactionInput(authority) || intent.occurrence !== undefined ? {} : { recordId: parkedWriteRecordId(intent.taskId, intent.idempotencyKey) }) }, actions),
   });
 }
 
 /** D5/D6: "Did the <record> save in <system>?" — Check again (held check only), Saved (read-back), Not saved (read before retry). */
-export function parkedWriteDecision(parked: Readonly<{ taskId: string; parkedCode: string; readBack: boolean; acceptsTransactionId: boolean; recordId?: string }>,
+export function parkedWriteDecision(parked: Readonly<{ taskId: string; parkedCode: string; readBack: boolean; acceptsTransactionId: boolean; recordId?: string; system?: string }>,
   actions: readonly ActionDescriptorWire[]): RunDecisionWire {
   const find = (command: string) => actions.find(action => action.kind === "command" && action.command === command);
   const sending = (id: string, action: ActionDescriptorWire | undefined, text: Readonly<{ label?: string; hint?: string }>, input?: DecisionInputWire) => action === undefined ? []
@@ -898,17 +924,23 @@ export function parkedWriteDecision(parked: Readonly<{ taskId: string; parkedCod
   // A task no longer registered keeps both typed resolutions in the catalog's general wording.
   const record = PARKED_WRITE_RECORDS[parked.taskId];
   const transaction = parked.acceptsTransactionId ? { kind: "text" as const, label: "Transaction number", placeholder: "T00000000", pattern: "^T\\d+$" } : undefined;
+  if (parked.readBack) {
+    const system = record?.system ?? parked.system;
+    return projectDecision("read-back-failed", [
+      ...sending("check-again", find("check-parked-write") ?? find("recheck-write"), {}),
+      ...sending("saved", find("recheck-write"), transaction === undefined ? {} : { hint: "Relay verifies this number first." }, transaction),
+      ...sending("not-saved", find("resolve-write-absent"), system === undefined ? {} : { label: withdrawnFileAgainLabel(system) }),
+      ...sending("mark-as-failed", find("fail-read-back"), {}),
+    ], record === undefined ? {} : parkedWriteText(record, true, parked.recordId));
+  }
   return projectDecision(parked.parkedCode === "unknown" ? "write-unknown" : "write-parked", [
     ...sending("check-again", find("check-parked-write"), {}),
     ...sending("saved", find("recheck-write"), {
       ...(record === undefined ? {} : { label: `Saved in ${record.system}`,
         ...(transaction === undefined ? {} : { hint: "Relay verifies this number first." }) }),
-      ...(parked.readBack ? { label: READ_BACK_SAVED_LABEL } : {}),
     }, transaction),
     ...sending("not-saved", find("resolve-write-absent"), record === undefined ? {} : { label: `Not saved, ${record.again}` }),
-  ], { ...(record === undefined ? {} : parkedWriteText(record, parked.readBack, parked.recordId)),
-    // After a failed read-back the frame preselects the read that files nothing.
-    ...(parked.readBack ? { recommend: "check-again" } : {}) });
+  ], record === undefined ? {} : parkedWriteText(record, false, parked.recordId));
 }
 
 /** The question and its context line; a park after the saved-effect read failed says the system accepted the write but its status could not be read. */
@@ -924,8 +956,10 @@ function parkedWriteActionsWithCheck(
   authority: RunRecord,
   intent: Extract<WriteIntentRecord, { status: "parked" }>,
   check: { state: "available"; target: ParkedWriteCheckTarget } | { state: "unavailable"; code: "PARKED_CHECK_UNAVAILABLE" },
+  canFileAgain: boolean,
+  canMarkFailed: boolean,
 ): unknown[] {
-  return [...parkedWriteActions(authority, intent), ...(intent.taskId !== "ucpath/create-termination" || check.state !== "available" ? [] : [{
+  return [...parkedWriteActions(authority, intent, canFileAgain, canMarkFailed), ...(intent.taskId !== "ucpath/create-termination" || check.state !== "available" ? [] : [{
       key: "check-parked-write", label: "Check again", detail: "Files nothing.",
       intent: "warning", icon: "resolve", placement: ["review"], kind: "command", command: "check-parked-write",
       expectedVersion: authority.version, checkTarget: check.target,
