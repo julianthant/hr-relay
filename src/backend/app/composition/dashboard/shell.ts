@@ -14,7 +14,7 @@ import { FingerprintSchema } from "../../../../rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { laneAuthorityMeta, type BootstrapQueryDeps } from "../../../runs/queries/bootstrap.js";
 import { createAuthorityCrossDateSearchService, rethrowSearchLaneError, storedSearchQueuedTitle, withSearchSelectionRefusals } from "../../../runs/queries/search.js";
-import { collectSearchDocument, type OperatorXlsxExportServiceDependencies } from "../../../runs/exports/operator-xlsx-export-service.js";
+import { collectSearchDocumentChunks, type collectSearchDocument, type OperatorXlsxExportServiceDependencies } from "../../../runs/exports/operator-xlsx-export-service.js";
 import { createDashboardStreamHub, type DashboardStreamHubDeps } from "../../../transports/http/subscriptions/dashboard-stream.js";
 import type { ShellRouteDeps } from "../../../transports/http/routes/shell-types.js";
 import { composeGeneratedExports } from "./generated-exports.js";
@@ -40,16 +40,28 @@ const searchPageRead = defineLaneRead(import.meta.url, "search-page", {
   run: (context, { signingKey, query }) => withLaneSearch(context, signingKey, ({ search }) => search.search(query)),
 });
 
+function* searchDocumentChunks(context: LaneReadContext, signingKey: string, selection: z.output<typeof SearchExportSelectionSchema>) {
+  const document = withLaneSearch(context, signingKey, deps => collectSearchDocumentChunks(deps, selection));
+  for (;;) {
+    const step = withSearchSelectionRefusals(() => document.next());
+    if (step.done) return step.value;
+    yield;
+  }
+}
+
 const searchMetadataRead = defineLaneRead(import.meta.url, "search-metadata-export", {
-  lane: "search", priority: "interactive", args: z.strictObject({ ...laneSigningKey,
+  lane: "search", priority: "background", args: z.strictObject({ ...laneSigningKey,
     selection: SearchExportSelectionSchema, format: SearchMetadataExportRequestSchema.shape.format }),
-  run: (context, { signingKey, selection, format }) => withLaneSearch(context, signingKey,
-    deps => buildSearchMetadata(collectSearchDocument(deps, selection), format)),
+  *chunks(context, { signingKey, selection, format }) {
+    const document = yield* searchDocumentChunks(context, signingKey, selection);
+    yield;
+    return buildSearchMetadata(document, format);
+  },
 });
 
 const searchDocumentRead = defineLaneRead(import.meta.url, "search-xlsx-selection", {
-  lane: "search", priority: "interactive", args: z.strictObject({ ...laneSigningKey, selection: SearchExportSelectionSchema }),
-  run: (context, { signingKey, selection }) => withLaneSearch(context, signingKey, deps => collectSearchDocument(deps, selection)),
+  lane: "search", priority: "background", args: z.strictObject({ ...laneSigningKey, selection: SearchExportSelectionSchema }),
+  chunks: (context, { signingKey, selection }) => searchDocumentChunks(context, signingKey, selection),
 });
 
 export function composeShellLaneReads(lanes: DashboardReadLanes, cursorSigningKey: Uint8Array) {

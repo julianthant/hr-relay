@@ -4,7 +4,7 @@ import { parentPort } from "node:worker_threads";
 import { z } from "zod";
 import "../../../../src/backend/storage/sqlite/dashboard-background-read-worker.js";
 import { AuthoritySnapshotChangedError } from "../../../../src/backend/storage/sqlite/authority-errors.js";
-import { defineLaneRead, runReadLaneWorker } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
+import { defineLaneRead, runReadLaneWorker, type LaneReadContext } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { openReadOnlyDatabase } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 
@@ -58,6 +58,15 @@ function barrier(args: z.infer<typeof BarrierSchema>) {
 export const laneBackgroundBarrier = defineLaneRead(import.meta.url, "lane-background-barrier", { lane: "navigation", priority: "background",
   args: BarrierSchema, run: (_context, args) => barrier(args) });
 
+export const laneBackgroundChunks = defineLaneRead(import.meta.url, "lane-background-chunks", { lane: "navigation", priority: "background",
+  args: BarrierSchema,
+  *chunks(_context, args) {
+    barrier(args);
+    yield;
+    return sleep({ tag: args.tag, ms: 0 });
+  },
+});
+
 /** Search-lane read; shape A routes it to the navigation worker. */
 export const laneSearch = defineLaneRead(import.meta.url, "lane-search", { lane: "search", priority: "interactive", args: SleepSchema,
   run: (_context, args) => sleep(args) });
@@ -70,7 +79,7 @@ export const laneFacts = defineLaneRead(import.meta.url, "lane-facts", { lane: "
   processFacts: true, run: (context, args) => ({ ...sleep(args), facts: context.processFacts }) });
 
 const PoolSchema = z.strictObject({ workflow: z.string().min(1) });
-const poolRead = (context: Parameters<typeof laneSleep.run>[0], args: z.infer<typeof PoolSchema>) => {
+const poolRead = (context: LaneReadContext, args: z.infer<typeof PoolSchema>) => {
   runs += 1;
   return { run: runs, desiredWorkers: context.history.authority.workerPools.get(args.workflow)?.desiredWorkers ?? 0 };
 };

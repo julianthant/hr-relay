@@ -18,7 +18,7 @@ import { OperatorXlsxActivityDocumentSchema, OperatorXlsxActivityExportRequestSe
 type ActivitySummaryDeps = Parameters<typeof queryActivitySummaries>[2];
 type ActivityInput = ActivitySummaryDeps & { database: AuthorityDatabase; clock: Clock };
 type LocalPopulation = ReturnType<typeof createActivityPopulationService>;
-/** The Activity XLSX document, collected whole in the lane's snapshot. */
+/** An Activity XLSX document collected from one proved authority generation. */
 type LaneXlsx = { readActivityDocument: (selection: z.input<typeof OperatorXlsxActivityExportRequestSelectionSchema>) => Promise<z.output<typeof OperatorXlsxActivityDocumentSchema>> };
 type LocalActivity = { activity: LocalPopulation["reports"]; activityPopulation: LocalPopulation; reports: LocalPopulation["reports"] };
 
@@ -44,11 +44,11 @@ const lanePopulations = new WeakMap<AuthorityDatabase, {
   service: LocalPopulation;
 }>();
 
-/** The report, population and Activity XLSX selection run in one lane snapshot, signed and validated with the runtime's key. */
+/** Activity reads yield to navigation between pages while holding one authority generation. */
 const activityLaneRead = defineLaneRead(import.meta.url, "activity", {
-  lane: "navigation", priority: "interactive", sourceProof: "per-read",
+  lane: "navigation", priority: "background", sourceProof: "per-read",
   args: z.strictObject({ signingKey: FingerprintSchema, request: ActivityLaneRequestSchema }),
-  run({ history, nowMs, start }, { signingKey, request }): z.infer<typeof ActivityLaneReplySchema> {
+  *chunks({ history, nowMs, start }, { signingKey, request }): Generator<void, z.infer<typeof ActivityLaneReplySchema>, void> {
     let held = lanePopulations.get(history);
     if (held?.signingKey !== signingKey) {
       const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity({ kind: "profile", binding: start.binding });
@@ -63,11 +63,18 @@ const activityLaneRead = defineLaneRead(import.meta.url, "activity", {
     held.clock.nowMs = nowMs;
     const { service, sourceIdentity } = held;
     try {
-      const served = request.kind === "report" ? service.reports.read(request.from, request.to)
-        : request.kind === "population" ? service.read(request.range)
-          : request.kind === "population-selected" ? service.readSelected(request.range, request.token, request.browse)
-            : request.kind === "population-export" ? service.exportSelected(request.range, request.token)
-              : xlsxDocument(sourceIdentity, service, OperatorXlsxActivityExportRequestSelectionSchema.parse(request.selection));
+      let served: unknown;
+      if (request.kind === "xlsx-document") {
+        const selection = OperatorXlsxActivityExportRequestSelectionSchema.parse(request.selection);
+        const report = yield* service.reports.readSelectedChunks(selection.from, selection.to, selection.snapshotToken);
+        served = activityDocumentOf(sourceIdentity, report, selection);
+      } else {
+        served = request.kind === "report" ? yield* service.reports.readChunks(request.from, request.to)
+          : request.kind === "population" ? yield* service.readChunks(request.range)
+            : request.kind === "population-selected" ? yield* service.readSelectedChunks(request.range, request.token, request.browse)
+              : yield* service.exportSelectedChunks(request.range, request.token);
+      }
+      yield;
       return { state: "served", body: JSON.stringify(served) };
     } catch (error) {
       if (error instanceof ActivitySnapshotError) return { state: "snapshot-refused", code: error.code };
@@ -76,10 +83,6 @@ const activityLaneRead = defineLaneRead(import.meta.url, "activity", {
     }
   },
 });
-
-function xlsxDocument(sourceIdentity: string, service: LocalPopulation, selection: z.output<typeof OperatorXlsxActivityExportRequestSelectionSchema>) {
-  return activityDocumentOf(sourceIdentity, service.reports.readSelected(selection.from, selection.to, selection.snapshotToken), selection);
-}
 
 function laneActivity(lanes: Pick<DashboardReadLanes, "read">, key: Uint8Array): ActivityRouteDeps & LaneXlsx {
   const signingKey = FingerprintSchema.parse(Buffer.from(key).toString("hex"));

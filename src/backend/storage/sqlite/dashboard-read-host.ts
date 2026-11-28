@@ -52,41 +52,45 @@ export interface LaneReadContext {
 /** What a read's warm step sees at lane boot: no request, so no process facts and no position to report. */
 export type LaneWarmContext = Pick<LaneReadContext, "start" | "native" | "history" | "nowMs" | "retain">;
 
-export interface LaneReadDefinition<Args, Result> {
+type LaneReadExecution<Args, Result> =
+  | { readonly priority: "interactive" | "background"; readonly source?: never; run(context: LaneReadContext, args: Args): Result; chunks?: never }
+  | { readonly priority: "background"; readonly source?: "native"; run?: never; chunks(context: LaneReadContext, args: Args): Generator<void, Result, void> };
+
+export type LaneReadDefinition<Args, Result> = LaneReadExecution<Args, Result> & {
   readonly id: string;
   readonly module: string;
   readonly name: string;
   readonly lane: ReadLaneName;
-  readonly priority: "interactive" | "background";
   /** A cached body is reused while the change log proves none of these tables changed; empty disables the cache. */
   readonly tables: readonly AuthorityTableName[];
   readonly timeline: boolean;
   readonly processFacts: boolean;
   readonly cacheMs: number | undefined;
   readonly args: z.ZodType<Args>;
-  run(context: LaneReadContext, args: Args): Result;
   /** Runs once in its lane's read snapshot before the lane reports ready; a throw fails the lane's boot. */
   readonly warm: ((context: LaneWarmContext) => void) | undefined;
   /** Runs once after the lane reports ready, before its first read, in its own read snapshot; a refusal of that snapshot or a throw only skips it. */
   readonly prebuild: ((context: LaneWarmContext) => void) | undefined;
   /** per-statement (the default) proves the store's source on every statement; per-read, once at the snapshot and once before the result. */
   readonly sourceProof: "per-statement" | "per-read";
-}
+};
 
 const definitions = new Map<string, LaneReadDefinition<unknown, unknown>>();
 const laneReadId = (module: string, name: string) => `${module}#${name}`;
 
 /** Declares a read a lane can run, loaded by its lane entry and addressed by id. */
-export function defineLaneRead<Args, Result>(module: string, name: string, spec: Readonly<{
-  lane: ReadLaneName; priority: "interactive" | "background"; args: z.ZodType<Args>; tables?: readonly AuthorityTableName[];
-  timeline?: boolean; processFacts?: boolean; cacheMs?: number; run(context: LaneReadContext, args: Args): Result;
+export function defineLaneRead<Args, Result>(module: string, name: string, spec: LaneReadExecution<Args, Result> & Readonly<{
+  lane: ReadLaneName; args: z.ZodType<Args>; tables?: readonly AuthorityTableName[];
+  timeline?: boolean; processFacts?: boolean; cacheMs?: number;
   warm?(context: LaneWarmContext): void; prebuild?(context: LaneWarmContext): void; sourceProof?: "per-statement" | "per-read";
 }>): LaneReadDefinition<Args, Result> {
   const id = laneReadId(module, name);
   if (definitions.has(id)) throw new Error(`read-lane-read-duplicate: ${name}`);
-  const definition: LaneReadDefinition<Args, Result> = Object.freeze({ id, module, name, lane: spec.lane, priority: spec.priority,
+  const execution = spec.chunks === undefined ? { priority: spec.priority, run: spec.run }
+    : { priority: spec.priority, chunks: spec.chunks, ...(spec.source === undefined ? {} : { source: spec.source }) };
+  const definition: LaneReadDefinition<Args, Result> = Object.freeze({ id, module, name, lane: spec.lane, ...execution,
     tables: Object.freeze([...spec.tables ?? []]), timeline: spec.timeline ?? false, processFacts: spec.processFacts ?? false,
-    cacheMs: spec.cacheMs, args: spec.args, run: spec.run, warm: spec.warm, prebuild: spec.prebuild,
+    cacheMs: spec.cacheMs, args: spec.args, warm: spec.warm, prebuild: spec.prebuild,
     sourceProof: spec.sourceProof ?? "per-statement" });
   definitions.set(id, definition);
   return definition;
@@ -599,6 +603,11 @@ interface CacheEntry {
   beginSeq: number;
 }
 
+interface ReadJob {
+  readonly requests: LaneReadMessage[];
+  chunks?: { iterator: Generator<void, unknown, void>; position: ReadPosition };
+}
+
 function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<string, () => Promise<unknown>>) {
   const { start: record, gate, clock } = LaneDataSchema.parse(data);
   const lane = admitReadLane(record);
@@ -622,7 +631,7 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
     .map(identity => `${identity.device}:${identity.inode}`).join("+") + `@${String(start.cursorOffset)}`;
   const cache = new Map<string, CacheEntry>();
   const checkpoints: number[] = [];
-  const interactive: LaneReadMessage[] = [], background: LaneReadMessage[] = [];
+  const interactive: ReadJob[] = [], background: ReadJob[] = [];
   let scheduled = false, closed = false, gateWait = false, waitingForReaders = false;
   let loading = false;
   const unloaded = new Map(readModules);
@@ -642,22 +651,23 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
     return read();
   };
 
-  const serve = (definition: LaneReadDefinition<unknown, unknown>, message: LaneReadMessage) => {
+  const serve = (definition: LaneReadDefinition<unknown, unknown>, message: LaneReadMessage, job: ReadJob) => {
     const args = definition.args.parse(message.args);
+    const database = definition.source === "native" ? native : history;
     const cached = definition.tables.length === 0 ? undefined : cache.get(message.key);
-    return history.withAuthorityReadSnapshot(() => proved(definition, () => {
+    return database.withAuthorityReadSnapshot(() => proved(definition, () => {
       // A read that waited in the lane checks expiry at its own snapshot, not at the host's post.
       const nowMs = clock === "system" ? systemClock.nowMs() : message.nowMs;
-      const meta = history.getMeta(), change = history.capturedChangeKey();
-      const timelineThrough = definition.timeline ? history.authority.timelineEvents.highWaterMark() : null;
+      const meta = database.getMeta(), change = database.capturedChangeKey();
+      const timelineThrough = definition.timeline ? database.authority.timelineEvents.highWaterMark() : null;
       const base = { source, schemaVersion: meta.schemaVersion, schemaCookie: change.schemaCookie, authorityGeneration: meta.authorityGeneration };
-      if (cached !== undefined) {
+      if (job.chunks === undefined && cached !== undefined) {
         const held = cached.position;
         // Every authority commit moves the generation, so the proved change-log interval, not the generation, decides reuse.
         const reusable = held.source === base.source && held.schemaVersion === base.schemaVersion && held.schemaCookie === base.schemaCookie
           && (held.validUntil === null || nowMs < held.validUntil)
           && held.processRevision === message.processRevision && held.timelineThrough === timelineThrough
-          && history.readChangeInterval(held.changeLogSeq, definition.tables).clear;
+          && database.readChangeInterval(held.changeLogSeq, definition.tables).clear;
         if (reusable) {
           cached.position = { ...held, authorityGeneration: base.authorityGeneration, changeLogSeq: change.changeLogSeq };
           cached.beginSeq = message.beginSeq;
@@ -669,11 +679,23 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
         snapshotAt: position => { own = { schemaVersion: position.schemaVersion, schemaCookie: position.schemaCookie,
           authorityGeneration: position.authorityGeneration, changeLogSeq: position.changeLogSeq }; },
         retain: resource => { resources.push(resource); } };
-      const body = JSON.stringify(definition.run(context, args));
-      const position: ReadPosition = { ...base, changeLogSeq: change.changeLogSeq, ...own, timelineThrough,
+      const position: ReadPosition = { ...base, changeLogSeq: change.changeLogSeq, timelineThrough,
         processRevision: message.processRevision, validUntil: definition.cacheMs === undefined ? null : nowMs + definition.cacheMs };
-      if (definition.tables.length > 0) cache.set(message.key, { body, position, beginSeq: message.beginSeq });
-      return { body, position, cached: false, beginSeq: message.beginSeq };
+      let result: unknown;
+      if (definition.chunks === undefined) result = definition.run(context, args);
+      else {
+        const previous = job.chunks?.position;
+        if (previous !== undefined && (previous.schemaCookie !== position.schemaCookie || previous.timelineThrough !== position.timelineThrough
+          || (definition.tables.length === 0 ? previous.authorityGeneration !== position.authorityGeneration || previous.changeLogSeq !== position.changeLogSeq
+            : !database.readChangeInterval(previous.changeLogSeq, definition.tables).clear))) throw new AuthoritySnapshotChangedError();
+        const iterator = job.chunks?.iterator ?? definition.chunks(context, args);
+        const next = iterator.next();
+        if (!next.done) { job.chunks = { iterator, position }; return undefined; }
+        result = next.value;
+      }
+      const body = JSON.stringify(result), completed = { ...position, ...own };
+      if (definition.tables.length > 0) cache.set(message.key, { body, position: completed, beginSeq: message.beginSeq });
+      return { body, position: completed, cached: false, beginSeq: message.beginSeq };
     }));
   };
 
@@ -732,26 +754,32 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
    * Runs the next read, under the lane's reading mark, with every queued twin of it: same key and process revision. None of them had started, so one run
    * after all of their dispatches answers each. The latest message carries the run's clock and begin position.
    */
-  const runRead = (definition: LaneReadDefinition<unknown, unknown>, picked: LaneReadMessage, queue: LaneReadMessage[]) => {
-    const twins = [picked];
-    for (let index = 0; index < queue.length;) {
-      const queued = queue[index];
-      if (queued.key === picked.key && queued.processRevision === picked.processRevision) {
-        twins.push(queued);
-        queue.splice(index, 1);
-      } else index += 1;
+  const runRead = (definition: LaneReadDefinition<unknown, unknown>, job: ReadJob, queue: ReadJob[]) => {
+    const twins = job.requests, picked = twins[0];
+    if (job.chunks === undefined) {
+      for (let index = 0; index < queue.length;) {
+        const queued = queue[index];
+        if (queued.chunks === undefined && queued.requests[0].key === picked.key && queued.requests[0].processRevision === picked.processRevision) {
+          twins.push(...queued.requests);
+          queue.splice(index, 1);
+        } else index += 1;
+      }
     }
     const ids = twins.map(twin => twin.id);
     const latest = twins.reduce((last, twin) => twin.beginSeq > last.beginSeq ? twin : last);
-    let reply: LaneReply;
-    try { reply = { kind: "read", ids, ...serve(definition, latest) }; }
+    let reply: LaneReply | undefined;
+    try {
+      const result = serve(definition, latest, job);
+      if (result === undefined) queue.unshift(job);
+      else reply = { kind: "read", ids, ...result };
+    }
     catch (error) {
       reply = { kind: "read-failed", ids, message: error instanceof Error && error.message !== "" ? error.message : "read-lane-read-failed",
         ...(error instanceof AuthoritySnapshotChangedError ? { code: error.code } : {}) };
     }
     // A failed rollback leaves a transaction that would pin the WAL: exit, which releases the mark, and let the host restart the lane.
     if (leftInTransaction()) process.exit(LANE_TRANSACTION_EXIT_CODE);
-    send(reply);
+    if (reply !== undefined) send(reply);
     leaveRead();
   };
 
@@ -764,22 +792,24 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
       return;
     }
     if (message.kind === "cancel") {
-      // A message that already started is not in a queue: its reply answers the host instead.
       for (const queue of [interactive, background]) {
-        const index = queue.findIndex(queued => queued.id === message.id);
-        if (index === -1) continue;
-        queue.splice(index, 1);
+        const jobIndex = queue.findIndex(queued => queued.requests.some(request => request.id === message.id));
+        if (jobIndex === -1) continue;
+        const { requests } = queue[jobIndex];
+        requests.splice(requests.findIndex(request => request.id === message.id), 1);
+        if (requests.length === 0) queue.splice(jobIndex, 1);
         send({ kind: "cancelled", id: message.id });
         return;
       }
       return;
     }
-    (message.priority === "interactive" ? interactive : background).push(message);
+    (message.priority === "interactive" ? interactive : background).push({ requests: [message] });
   };
   function takeRead() {
     const queue = interactive.length > 0 ? interactive : background;
-    const message = queue[0];
-    if (message === undefined || loading) return;
+    const job = queue[0];
+    if (job === undefined || loading) return;
+    const message = job.requests[0];
     const definition = definitions.get(laneReadId(message.module, message.name));
     const load = definition === undefined ? unloaded.get(message.module) : undefined;
     if (load !== undefined) {
@@ -799,7 +829,7 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
     }
     if (!tryEnterRead()) { waitForGate(); return; }
     queue.shift();
-    runRead(definition, message, queue);
+    runRead(definition, job, queue);
   }
   /** The lane takes its own next message: a checkpoint, then interactive reads, then background ones. */
   const step = () => {

@@ -2370,11 +2370,14 @@ export class AuthorityDatabase implements Disposable {
       envelopes => this.authority.dependencies.parents(envelopes)).query(this.getMeta().authorityGeneration,query) });
   }
 
-  readActivityRuns(from: string, to: string) {
+  readActivityRuns(from: string, to: string, page?: Readonly<{ limit: number; after?: readonly [string, string, string] }>) {
     return this.withAuthorityReadSnapshot(() => {
       this.#validateExternalQuerySources();
+      const after = page?.after;
       const runs = this.#database.prepare(`SELECT * FROM runs ${runIndex(this.#database, "runs_day_idx")}
-        WHERE local_day BETWEEN ? AND ? ORDER BY workflow,local_day,id`).all(from, to)
+        WHERE local_day BETWEEN ? AND ? ${after === undefined ? "" : "AND (workflow,local_day,id)>(?,?,?)"}
+        ORDER BY workflow,local_day,id ${page === undefined ? "" : "LIMIT ?"}`)
+        .all(from, to, ...after ?? [], ...page === undefined ? [] : [page.limit])
         .map(row => ({ run: runRecordFromRow(row), localDay: z.iso.date().parse(row.local_day) }));
       const bindings = new Map<string, { traceId: string; manifests: readonly DelegationManifest[] }>();
       const unresolved = runs.flatMap(({ run: { envelope } }) => {

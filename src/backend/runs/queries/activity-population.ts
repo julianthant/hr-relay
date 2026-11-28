@@ -7,7 +7,7 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { spreadsheetCsvRow } from "../exports/spreadsheet-csv.js";
 import { activityReportCsv, activityReportCsvFileName } from "./activity-export.js";
 import { ACTIVITY_SNAPSHOT_LIFETIME_MS, createActivitySelectionService, createActivitySnapshotSigner } from "./activity-selection.js";
-import { queryActivitySummaries } from "./activity-summaries.js";
+import { activitySummaryChunks, finishActivityRead, queryActivitySummaries } from "./activity-summaries.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
@@ -62,71 +62,86 @@ export function createActivityPopulationService(input: {
   type VisitSummary = NonNullable<Parameters<typeof queryActivitySummaries>[3]>;
   const reports = createActivitySelectionService<VisitSummary>({ database, clock, signingKey,
     ...(input.sourceIdentity === undefined ? {} : { sourceIdentity: input.sourceIdentity }),
-    read: (from, to, generatedAt, visit) => queryActivitySummaries(database, { from, to, generatedAt }, input, visit) });
+    read: (from, to, generatedAt, visit) => queryActivitySummaries(database, { from, to, generatedAt }, input, visit),
+    chunks: (from, to, generatedAt, visit) => activitySummaryChunks(database, { from, to, generatedAt }, input, visit),
+  });
   const signer = createActivitySnapshotSigner(ActivityPopulationIdentitySchema, "ap1", clock, signingKey);
   const retained = new Map<string, ActivityPopulationSelection>();
   let retainedPosition: ReturnType<AuthorityDatabase["runSummaryReadPosition"]>;
-  const read = (rangeInput: unknown, token?: { encoded: unknown }): ActivityPopulationSelection => {
+  function* read(rangeInput: unknown, token: { encoded: unknown } | undefined, chunked: boolean): Generator<void, ActivityPopulationSelection, void> {
     const selected = token === undefined ? undefined : signer.decode(token.encoded);
     const bounds = ActivityPopulationRangeSchema.safeParse(rangeInput);
     if (!bounds.success) throw new ActivityPopulationError("ACTIVITY_POPULATION_RANGE_INVALID");
     const { from, to } = bounds.data;
-    return database.withAuthorityReadSnapshot(() => {
-      const position = database.runSummaryReadPosition();
-      if (retainedPosition?.authorityGeneration !== position?.authorityGeneration
-        || retainedPosition?.searchState !== position?.searchState
-        || retainedPosition?.schemaCookie !== position?.schemaCookie
-        || retainedPosition?.changeLogSeq !== position?.changeLogSeq) {
-        retainedPosition = position;
-        retained.clear();
-      }
-      const range = `${from}/${to}`;
-      const cached = retained.get(range);
-      const minimumLifeMs = token === undefined ? ACTIVITY_SNAPSHOT_LIFETIME_MS / 2 : 0;
-      if (cached !== undefined && Date.parse(cached.snapshot.expiresAt) > clock.nowMs() + minimumLifeMs
-        && (token === undefined || token.encoded === cached.snapshot.token)
-        && cached.snapshot.sourceIdentity === (input.sourceIdentity ?? database.getSourceDatabaseIdentity())) return cached;
+    const position = database.runSummaryReadPosition();
+    if (retainedPosition?.authorityGeneration !== position?.authorityGeneration
+      || retainedPosition?.searchState !== position?.searchState
+      || retainedPosition?.schemaCookie !== position?.schemaCookie
+      || retainedPosition?.changeLogSeq !== position?.changeLogSeq) {
+      retainedPosition = position;
+      retained.clear();
+    }
+    const range = `${from}/${to}`;
+    const cached = retained.get(range);
+    const minimumLifeMs = token === undefined ? ACTIVITY_SNAPSHOT_LIFETIME_MS / 2 : 0;
+    if (cached !== undefined && Date.parse(cached.snapshot.expiresAt) > clock.nowMs() + minimumLifeMs
+      && (token === undefined || token.encoded === cached.snapshot.token)
+      && cached.snapshot.sourceIdentity === (input.sourceIdentity ?? database.getSourceDatabaseIdentity())) return cached;
 
-      const population: ActivityPopulationRun[] = [];
-      const addToPopulation: VisitSummary = row => {
-        if (row.shape === "operation-member") throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");
-        population.push({ ...row, shape: row.shape });
-      };
-      const report = selected === undefined ? reports.read(from, to, addToPopulation)
-        : reports.readSelected(from, to, selected.reportToken, addToPopulation);
-      if (population.length !== report.totalRuns || new Set(population.map(row => row.runId)).size !== population.length) throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");
-      const successfulTiming = report.workflows.map(workflow => successfulActivityTiming(workflow.workflowId, population));
-      const populationDigest = sha256Hex(canonicalJsonStringify({ population, successfulTiming }));
-      if (selected !== undefined && populationDigest !== selected.populationDigest) throw new ActivityPopulationError("ACTIVITY_POPULATION_CONTENT_MISMATCH");
-      const { token: reportToken, ...reportIdentity } = report.snapshot;
-      const identity = ActivityPopulationIdentitySchema.parse({ ...reportIdentity, reportToken, populationDigest });
-      const selection = ActivityPopulationSelectionSchema.parse({ report, population, successfulTiming, snapshot: { ...identity, token: signer.encode(identity) } });
-      if (position !== undefined && selected === undefined) {
-        retained.delete(range);
-        if (retained.size === 4) {
-          const oldest = retained.keys().next();
-          if (!oldest.done) retained.delete(oldest.value);
-        }
-        retained.set(range, deepFreeze(selection));
+    const population: ActivityPopulationRun[] = [];
+    const addToPopulation: VisitSummary = row => {
+      if (row.shape === "operation-member") throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");
+      population.push({ ...row, shape: row.shape });
+    };
+    const report = chunked
+      ? yield* (selected === undefined ? reports.readChunks(from, to, addToPopulation) : reports.readSelectedChunks(from, to, selected.reportToken, addToPopulation))
+      : selected === undefined ? reports.read(from, to, addToPopulation) : reports.readSelected(from, to, selected.reportToken, addToPopulation);
+    if (population.length !== report.totalRuns || new Set(population.map(row => row.runId)).size !== population.length) throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");
+    const successfulTiming = [];
+    for (const { workflowId } of report.workflows) {
+      successfulTiming.push(successfulActivityTiming(workflowId, population));
+      if (chunked) yield;
+    }
+    const populationDigest = sha256Hex(canonicalJsonStringify({ population, successfulTiming }));
+    if (selected !== undefined && populationDigest !== selected.populationDigest) throw new ActivityPopulationError("ACTIVITY_POPULATION_CONTENT_MISMATCH");
+    const { token: reportToken, ...reportIdentity } = report.snapshot;
+    const identity = ActivityPopulationIdentitySchema.parse({ ...reportIdentity, reportToken, populationDigest });
+    const selection = ActivityPopulationSelectionSchema.parse({ report, population, successfulTiming, snapshot: { ...identity, token: signer.encode(identity) } });
+    if (position !== undefined && selected === undefined) {
+      retained.delete(range);
+      if (retained.size === 4) {
+        const oldest = retained.keys().next();
+        if (!oldest.done) retained.delete(oldest.value);
       }
-      return selection;
-    });
-  };
+      retained.set(range, deepFreeze(selection));
+    }
+    return selection;
+  }
+  function* readSelected(range: unknown, token: unknown, browse: unknown, chunked: boolean): Generator<void, ActivityPopulationSelectedRead, void> {
+    const selection = yield* read(range, { encoded: token }, chunked);
+    if (chunked) yield;
+    return ActivityPopulationSelectedReadSchema.parse({ selection, browse: browse === undefined ? null : browseSelection(selection, browse) });
+  }
+  function* exportSelected(range: unknown, token: unknown, chunked: boolean): Generator<void, ActivityPopulationExport, void> {
+    const selection = yield* read(range, { encoded: token }, chunked);
+    const rows = [spreadsheetCsvRow(["Complete selected run population"]), spreadsheetCsvRow(["Population digest", selection.snapshot.populationDigest]), spreadsheetCsvRow(["Run id", "Workflow id", "Title", "Attempt", "Day", "Queue status", "Terminal", "Duration (ms)", "Read back", "Parent run id", "Shape", "Receipt result", "Warning count"])];
+    for (const row of selection.population) {
+      rows.push(spreadsheetCsvRow([row.runId, row.workflowId, row.title, row.attempt, row.day, row.status, row.terminal, row.durationMs === null ? "Unavailable" : row.durationMs, row.readback === null ? "Unavailable" : row.readback, row.parentRunId === null ? "" : row.parentRunId, row.shape, row.receiptResult === null ? "Unavailable" : row.receiptResult, row.warningCount === null ? "Unavailable" : row.warningCount]));
+      if (chunked && rows.length % 32 === 0) yield;
+    }
+    const timing = [spreadsheetCsvRow(["Successful run timing"]), spreadsheetCsvRow(["Workflow id", "Total (ms)", "Measured", "Unmeasured"]),
+      ...selection.successfulTiming.map(row => spreadsheetCsvRow([row.workflowId, row.totalMs === null ? "Unavailable" : row.totalMs, row.measured, row.unmeasured]))];
+    return ActivityPopulationExportSchema.parse({ selection, filename: activityReportCsvFileName(selection.report), mediaType: "text/csv; charset=utf-8", csv: `${activityReportCsv(selection.report)}\r\n${rows.join("\r\n")}\r\n\r\n${timing.join("\r\n")}\r\n` });
+  }
+  const inSnapshot = <Result>(work: Generator<void, Result, void>) => database.withAuthorityReadSnapshot(() => finishActivityRead(work));
   return Object.freeze({
     reports,
-    read: (range: unknown) => read(range),
-    readSelected: (range: unknown, token: unknown, browse?: unknown): ActivityPopulationSelectedRead => {
-      const selection = read(range, { encoded: token });
-      return ActivityPopulationSelectedReadSchema.parse({ selection, browse: browse === undefined ? null : browseSelection(selection, browse) });
-    },
-    exportSelected: (range: unknown, token: unknown): ActivityPopulationExport => {
-      const selection = read(range, { encoded: token });
-      const rows = [spreadsheetCsvRow(["Complete selected run population"]), spreadsheetCsvRow(["Population digest", selection.snapshot.populationDigest]), spreadsheetCsvRow(["Run id", "Workflow id", "Title", "Attempt", "Day", "Queue status", "Terminal", "Duration (ms)", "Read back", "Parent run id", "Shape", "Receipt result", "Warning count"]),
-        ...selection.population.map(row => spreadsheetCsvRow([row.runId, row.workflowId, row.title, row.attempt, row.day, row.status, row.terminal, row.durationMs === null ? "Unavailable" : row.durationMs, row.readback === null ? "Unavailable" : row.readback, row.parentRunId === null ? "" : row.parentRunId, row.shape, row.receiptResult === null ? "Unavailable" : row.receiptResult, row.warningCount === null ? "Unavailable" : row.warningCount]))];
-      const timing = [spreadsheetCsvRow(["Successful run timing"]), spreadsheetCsvRow(["Workflow id", "Total (ms)", "Measured", "Unmeasured"]),
-        ...selection.successfulTiming.map(row => spreadsheetCsvRow([row.workflowId, row.totalMs === null ? "Unavailable" : row.totalMs, row.measured, row.unmeasured]))];
-      return ActivityPopulationExportSchema.parse({ selection, filename: activityReportCsvFileName(selection.report), mediaType: "text/csv; charset=utf-8", csv: `${activityReportCsv(selection.report)}\r\n${rows.join("\r\n")}\r\n\r\n${timing.join("\r\n")}\r\n` });
-    },
+    read: (range: unknown) => inSnapshot(read(range, undefined, false)),
+    readSelected: (range: unknown, token: unknown, browse?: unknown) => inSnapshot(readSelected(range, token, browse, false)),
+    exportSelected: (range: unknown, token: unknown) => inSnapshot(exportSelected(range, token, false)),
+    readChunks: (range: unknown) => read(range, undefined, true),
+    readSelectedChunks: (range: unknown, token: unknown, browse?: unknown) => readSelected(range, token, browse, true),
+    exportSelectedChunks: (range: unknown, token: unknown) => exportSelected(range, token, true),
   });
 }
 type Awaitable<T> = T | Promise<T>;

@@ -25,18 +25,30 @@ function shiftActivityDay(value:string,days:number):string {
 }
 
 export function visitActivitySummaryRange(database: AuthorityDatabase, from: string, to: string, timeZone: string, visit: (row: ActivityRun) => void) {
+  for (const page of activityRunPages(database, from, to, timeZone, false)) for (const row of page) visit(row);
+}
+
+function* activityRunPages(database: AuthorityDatabase, from: string, to: string, timeZone: string, chunked: boolean) {
   const reportDayOf = createActivityDatePartReader(timeZone);
-  for (const row of database.readActivityRuns(shiftActivityDay(from, -2), shiftActivityDay(to, 2))) {
-    const { workflow, enqueuedAt } = row.run.envelope;
-    // Separations uses canonical person evidence from inline runs as well.
-    if (timeZone === PACIFIC_TIME_ZONE && workflow !== "separations" && !row.topLevel) continue;
-    const enqueuedDay = reportDayOf(enqueuedAt);
-    const storedDayIsInRange = row.localDay >= from && row.localDay <= to;
-    if (row.localDay !== enqueuedDay) {
-      if (storedDayIsInRange || (enqueuedDay >= from && enqueuedDay <= to)) throw new Error("activity-summary-local-day-time-zone-mismatch");
-      continue;
-    }
-    if (storedDayIsInRange) visit(row);
+  const lower = shiftActivityDay(from, -2), upper = shiftActivityDay(to, 2), limit = 16;
+  let after: readonly [string, string, string] | undefined;
+  for (;;) {
+    const page = database.readActivityRuns(lower, upper, chunked ? { limit, ...(after === undefined ? {} : { after }) } : undefined);
+    yield page.filter(row => {
+      const { workflow, enqueuedAt } = row.run.envelope;
+      // Separations uses canonical person evidence from inline runs as well.
+      if (timeZone === PACIFIC_TIME_ZONE && workflow !== "separations" && !row.topLevel) return false;
+      const enqueuedDay = reportDayOf(enqueuedAt);
+      const storedDayIsInRange = row.localDay >= from && row.localDay <= to;
+      if (row.localDay !== enqueuedDay) {
+        if (storedDayIsInRange || (enqueuedDay >= from && enqueuedDay <= to)) throw new Error("activity-summary-local-day-time-zone-mismatch");
+        return false;
+      }
+      return storedDayIsInRange;
+    });
+    const last = page.at(-1);
+    if (!chunked || last === undefined || page.length < limit) return;
+    after = [last.run.envelope.workflow, last.localDay, last.run.envelope.runId];
   }
 }
 
@@ -49,28 +61,42 @@ function failureStep(nodeId: NodeId | undefined, descriptor: AnyWorkflowDescript
   return title === undefined ? { state: "unavailable", reason: "the recorded workflow node has no registered step title" } : { state: "known", nodeId, title };
 }
 
-export function queryActivitySummaries(database: AuthorityDatabase, input: { from: string; to: string; generatedAt: string }, deps: {
+export function finishActivityRead<Result>(read: Generator<void, Result, void>): Result {
+  for (;;) {
+    const step = read.next();
+    if (step.done) return step.value;
+  }
+}
+
+type ActivitySummaryInput = { from: string; to: string; generatedAt: string };
+type ActivitySummaryDeps = {
   descriptors: { resolve(workflow: string): AnyWorkflowDescriptor | undefined };
   ledger: { foldActivityRange(from: string, to: string): ActivityReportWire["ledger"] };
-}, visitTopLevel?: (row: ActivitySummaryRun) => void): ActivityReportWire {
+};
+
+export function queryActivitySummaries(database: AuthorityDatabase, input: ActivitySummaryInput, deps: ActivitySummaryDeps, visitTopLevel?: (row: ActivitySummaryRun) => void): ActivityReportWire {
+  return database.withAuthorityReadSnapshot(() => finishActivityRead(activitySummaryChunks(database, input, deps, visitTopLevel, false)));
+}
+
+export function* activitySummaryChunks(database: AuthorityDatabase, input: ActivitySummaryInput, deps: ActivitySummaryDeps,
+  visitTopLevel?: (row: ActivitySummaryRun) => void, chunked = true): Generator<void, ActivityReportWire, void> {
   const bounds = z.strictObject({ from: z.iso.date(), to: z.iso.date(), generatedAt: z.iso.datetime({ offset: true }) }).parse(input);
   if (bounds.from > bounds.to) throw new Error("run-summary-range-invalid");
 
-  return database.withAuthorityReadSnapshot(() => {
-    const inRange: ActivityRun[] = [];
-    const peopleRuns: RunRecord[] = [];
-    visitActivitySummaryRange(database, bounds.from, bounds.to, PACIFIC_TIME_ZONE, row => {
-      const { run } = row;
-      if (run.envelope.workflow === "separations" && run.envelope.shape !== "operation") peopleRuns.push(run);
-      if (row.topLevel) inRange.push(row);
-    });
+  const people: ReturnType<typeof deriveCanonicalPerson>[] = [];
+  const reportRows: ActivityReportRow[] = [];
+  for (const page of activityRunPages(database, bounds.from, bounds.to, PACIFIC_TIME_ZONE, chunked)) {
+    const inRange = page.filter(row => row.topLevel);
+    const peopleRuns = page.map(row => row.run).filter(run => run.envelope.workflow === "separations" && run.envelope.shape !== "operation");
+    if (chunked) yield;
     const evidence = database.readActivityEvidence({
       terminal: inRange.flatMap(({ run }) => run.lifecycle.state === "terminal" ? [run.envelope.runId] : []),
       people: peopleRuns.flatMap(run => run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done" ? [run.envelope.runId] : []),
       failures: inRange.flatMap(({ run }) => run.lifecycle.state === "terminal" && run.lifecycle.failureId !== undefined ? [run.lifecycle.failureId] : []),
       untitled: visitTopLevel === undefined ? [] : inRange.flatMap(({ run }) => run.displayName === undefined ? [run.envelope.runId] : []),
     });
-    const people = peopleRuns.map(run => deriveCanonicalPerson(run, evidence.people.get(run.envelope.runId) ?? null));
+    if (chunked) yield;
+    for (const run of peopleRuns) people.push(deriveCanonicalPerson(run, evidence.people.get(run.envelope.runId) ?? null));
 
     function* rows(): Generator<ActivityReportRow> {
       for (const { run, localDay, delegationWait } of inRange) {
@@ -105,10 +131,12 @@ export function queryActivitySummaries(database: AuthorityDatabase, input: { fro
       }
     }
 
-    return buildActivityReport({
-      ...bounds, rows: rows(), people, descriptors: deps.descriptors,
-      assistantUsage: () => queryAssistantUsage(database, bounds),
-      ledger: () => deps.ledger.foldActivityRange(bounds.from, bounds.to),
-    });
+    for (const row of rows()) reportRows.push(row);
+    if (chunked) yield;
+  }
+  return buildActivityReport({
+    ...bounds, rows: reportRows, people, descriptors: deps.descriptors,
+    assistantUsage: () => queryAssistantUsage(database, bounds),
+    ledger: () => deps.ledger.foldActivityRange(bounds.from, bounds.to),
   });
 }

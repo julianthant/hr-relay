@@ -107,13 +107,19 @@ export function collectSearchDocument(
   deps: SearchDocumentDependencies,
   selection: SearchSelection,
 ) {
-  return deps.withSearchSnapshot(() => readSearchDocument(deps, selection));
+  return deps.withSearchSnapshot(() => {
+    const pages = collectSearchDocumentChunks(deps, selection);
+    for (;;) {
+      const step = pages.next();
+      if (step.done) return step.value;
+    }
+  });
 }
 
-function readSearchDocument(
+export function* collectSearchDocumentChunks(
   deps: Pick<SearchDocumentDependencies, "search" | "sourceIdentity">,
   selection: SearchSelection,
-) {
+): Generator<void, z.output<typeof OperatorXlsxSearchDocumentSchema>, void> {
   const query = CrossDateSearchQuerySchema.omit({ cursor: true }).parse(selection.query);
   const first = assertSnapshot(
     deps.search.searchSelected(query, selection.snapshot.token),
@@ -130,6 +136,7 @@ function readSearchDocument(
   const cursors = new Set<string>();
   let page = first;
   while (page.nextCursor.state === "present") {
+    yield;
     if (cursors.has(page.nextCursor.value)) {
       throw new Error("operator XLSX search authority repeated a continuation cursor");
     }
@@ -156,6 +163,7 @@ function readSearchDocument(
       + String(first.totalMatches),
     );
   }
+  yield;
   return OperatorXlsxSearchDocumentSchema.parse({
     selection: {
       kind: "search",

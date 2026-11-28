@@ -11,7 +11,7 @@ import { workerExecArgv } from "../../../../src/backend/storage/sqlite/backup-in
 import { prepareReadLaneStart, type ReadLaneName } from "../../../../src/backend/storage/sqlite/read-lane-admission.js";
 import { workerBootstrapEnvironment } from "../../../../src/models/config/secrets.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { LANE_READS_ENTRY, laneBackground, laneBackgroundBarrier, laneSearch, laneSearchBarrier, laneSleep, laneStuck, laneTimedSleep } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
+import { LANE_READS_ENTRY, laneBackground, laneBackgroundBarrier, laneBackgroundChunks, laneSearch, laneSearchBarrier, laneSleep, laneStuck, laneTimedSleep } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -54,6 +54,27 @@ it("dispatches a queued click before the next background message after a backgro
   const click = lanes.read(laneSleep, { tag: "click", ms: 0 });
   release();
   assert.deepEqual(await Promise.all([run(scan), run(click), run(nextScan)]), [1, 2, 3]);
+});
+
+it("serves a click between chunks of a single background read", async () => {
+  const { lanes } = await host();
+  const { dir, release } = barrierDir();
+  const scan = lanes.read(laneBackgroundChunks, { tag: "scan", dir });
+  await until(() => existsSync(join(dir, "started")));
+  const click = lanes.read(laneSleep, { tag: "click", ms: 0 });
+  release();
+  assert.deepEqual(await Promise.all([run(click), run(scan)]), [2, 3]);
+});
+
+it("refuses a background reply when its authority changes between chunks", async () => {
+  const { fixture, lanes } = await host();
+  const { dir, release } = barrierDir();
+  const scan = lanes.read(laneBackgroundChunks, { tag: "scan", dir });
+  await until(() => existsSync(join(dir, "started")));
+  fixture.database.authority.workerPools.plan({ workflow: "person-lookup", desiredWorkers: 1, expectedVersion: 0,
+    requestedBy: "local-operator", now: systemClock.now().toISOString() });
+  release();
+  await assert.rejects(scan, { code: "STORAGE_SNAPSHOT_CHANGED" });
 });
 
 it("starts a click queued behind a background read while the main thread is still held, with no host handoff", async () => {

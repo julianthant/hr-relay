@@ -7,6 +7,7 @@ import { ActivityReportSelectionSchema, ActivitySnapshotIdentitySchema, type Act
 import type { Clock } from "../../../rules/time/clock.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
+import { finishActivityRead } from "./activity-summaries.js";
 
 export const ACTIVITY_SNAPSHOT_LIFETIME_MS = 15 * 60_000;
 
@@ -46,23 +47,27 @@ export function createActivitySelectionService<ReadContext = never>(input: {
   /** A lane names the admitted profile store itself; its own connection does not carry the runtime's admission. */
   sourceIdentity?: string;
   read(from:string,to:string,generatedAt:string,context?:ReadContext): ActivityReportWire;
+  chunks?(from:string,to:string,generatedAt:string,context?:ReadContext): Generator<void, ActivityReportWire, void>;
 }) {
   const {database,clock}=input;
   const {encode,decode}=createActivitySnapshotSigner(ActivitySnapshotIdentitySchema,"as1",clock,input.signingKey);
-  const read=(from:string,to:string,selected?:z.infer<typeof ActivitySnapshotIdentitySchema>,context?:ReadContext)=>database.withAuthorityReadSnapshot(()=>{
+  function* select(from:string, to:string, selected:z.infer<typeof ActivitySnapshotIdentitySchema> | undefined, context:ReadContext | undefined, chunked:boolean): Generator<void, ActivityReportSelection, void> {
     ActivityRangeSchema.parse({from,to});
     const authorityGeneration=database.getMeta().authorityGeneration,sourceIdentity=input.sourceIdentity??database.getSourceDatabaseIdentity();
     if(selected!==undefined&&(selected.from!==from||selected.to!==to||selected.sourceIdentity!==sourceIdentity||selected.authorityGeneration!==authorityGeneration))throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_STALE_OR_SELECTION_MISMATCH");
     const generatedAt=selected?.generatedAt??clock.now().toISOString();
-    const report=input.read(from,to,generatedAt,context);
+    const report = chunked && input.chunks !== undefined ? yield* input.chunks(from,to,generatedAt,context) : input.read(from,to,generatedAt,context);
+    if (chunked) yield;
     const identity=ActivitySnapshotIdentitySchema.parse({from,to,generatedAt,sourceIdentity,authorityGeneration,
       expiresAt:selected?.expiresAt??new Date(clock.nowMs()+ACTIVITY_SNAPSHOT_LIFETIME_MS).toISOString(),reportDigest:sha256Hex(canonicalJsonStringify(report))});
     if(selected!==undefined&&identity.reportDigest!==selected.reportDigest)throw new ActivitySnapshotError("ACTIVITY_SNAPSHOT_CONTENT_MISMATCH");
     return ActivityReportSelectionSchema.parse({...report,snapshot:{...identity,token:encode(identity)}});
-  });
+  }
   return Object.freeze({
-    read:(from:string,to:string,context?:ReadContext)=>read(from,to,undefined,context),
-    readSelected:(from:string,to:string,token:unknown,context?:ReadContext)=>read(from,to,decode(token),context),
+    read:(from:string,to:string,context?:ReadContext)=>database.withAuthorityReadSnapshot(()=>finishActivityRead(select(from,to,undefined,context,false))),
+    readSelected:(from:string,to:string,token:unknown,context?:ReadContext)=>database.withAuthorityReadSnapshot(()=>finishActivityRead(select(from,to,decode(token),context,false))),
+    readChunks:(from:string,to:string,context?:ReadContext)=>select(from,to,undefined,context,true),
+    readSelectedChunks:(from:string,to:string,token:unknown,context?:ReadContext)=>select(from,to,decode(token),context,true),
   });
 }
 /** What the Activity routes serve: answered now on the request thread, or later from a read lane. */
