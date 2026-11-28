@@ -110,6 +110,7 @@ const TABLE_KEYS = deepFreeze<Record<CapturedTable, (image: Image) => string[]>>
   assistant_proposals: none,
   assistant_proposal_rows: none,
   assistant_session_claims: none,
+  assistant_applied_edits: none,
   run_batches: none,
   deleted_runs: columns({ run: "run_id", command: "command_id" }),
   runs: columns({ run: "id", worker: "owner_worker_id" }),
@@ -223,7 +224,7 @@ function runReferenceCaptureTriggers(): string[] {
 
 const SOURCES = RunReferenceSourceSchema.options;
 /** Authority tables created after migration 31. */
-const TABLES_AFTER_CHANGE_LOG: ReadonlySet<AuthorityTableName> = new Set(["workbook_payloads", ...ASSISTANT_PHASE_ONE_TABLES]);
+const TABLES_AFTER_CHANGE_LOG: ReadonlySet<AuthorityTableName> = new Set(["workbook_payloads", ...ASSISTANT_PHASE_ONE_TABLES, "assistant_applied_edits"]);
 
 /**
  * Migration 31. Adds the change log and the run references with their backfill, the capture and reference triggers, and

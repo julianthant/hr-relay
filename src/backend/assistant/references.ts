@@ -136,6 +136,11 @@ export function maskOperatorText(text: string, table: AssistantReferenceTable): 
   });
 }
 
+/** Literal spans in the masked turn, excluding substitutions and neutralized token brackets. */
+export function operatorValueSpans(masked: string): readonly string[] {
+  return masked.split(/\[redacted [a-z]+\]|\[\[[^\r\n]*?\]\]|\[ \[|\] \]/giu);
+}
+
 const STORED_SSN = new RegExp([/(?<token>\[\[[PERNSATV][1-9][0-9]{0,3}\.g[1-9][0-9]{0,8}\]\])/u.source, UUID, SSN].join("|"), "giu");
 /** Stored operator model text as it replays: any SSN form an earlier mask let through is masked; issued tokens and UUIDs stay as stored. */
 export function maskStoredSsn(text: string): string {
