@@ -8,9 +8,8 @@ import { observeEdit, operatorEditSource, requireEditRead, requireOperatorSource
 import { AssistantChangeOutput, AssistantToolRefusal, type AssistantPlugin } from "../plugin.js";
 import type { AssistantPluginDeps } from "../registry.js";
 
-// An assistant edit cannot grant the assistant permission to start a dry run.
 const KEYS = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && row.sensitivity === "ordinary"
-  && row.editability === "operator" && row.key !== "preferences.assistantFullAccess" && !isRetiredSettingsPath(row.key)).map(row => row.key);
+  && row.editability === "operator" && !isRetiredSettingsPath(row.key)).map(row => row.key);
 const matchesKey = (key: string) => KEYS.some(candidate => candidate === key
   || candidate === key.replace(/^annualDates\.FY\d{4}\./u, "annualDates.*."));
 const EditInput = z.strictObject({ key: z.string().min(1).max(160),
@@ -50,7 +49,7 @@ export function settingsPlugin(deps: Pick<AssistantPluginDeps, "settings" | "set
     parameters: EditInput, output: AssistantChangeOutput, privacy: [],
     async change(input, context) {
       const { key, operation, source } = EditInput.parse(input);
-      if (!matchesKey(key) || key.includes("*")) throw new AssistantToolRefusal("ASSISTANT_EDIT_REFUSED");
+      if (!matchesKey(key) || key.includes("*") || key === "preferences.assistantFullAccess") throw new AssistantToolRefusal("ASSISTANT_EDIT_REFUSED");
       const supplied = requireOperatorSource(context, source);
       const words = { enable: /^(?:enable|on|true)$/iu, disable: /^(?:disable|off|false)$/iu, clear: /^(?:clear|reset|default|unset)$/iu };
       if (operation !== "set-text" && operation !== "set-json" && !words[operation].test(supplied)) {

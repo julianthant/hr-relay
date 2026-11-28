@@ -5,6 +5,19 @@ import { settingsPlugin } from "../../../../../src/backend/assistant/plugins/set
 import { createAssistantReferenceTable } from "../../../../../src/backend/assistant/references.js";
 import { AssistantAcceptedTurnSchema } from "../../../../../src/models/dashboard/assistant.js";
 import { AssistantToolRefusal } from "../../../../../src/backend/assistant/plugins/plugin.js";
+import { z } from "zod";
+
+it("lists and reads the operator's Full access status", async () => {
+  const key = "preferences.assistantFullAccess";
+  const read = settingsPlugin({ settings: () => ({ preferences: { assistantFullAccess: true } }) }).tools.find(tool => tool.name === "read_settings");
+  assert.ok(read?.kind === "read");
+  const context = { signal: new AbortController().signal, references: createAssistantReferenceTable(1),
+    actorId: "local-operator", conversationId: randomUUID(), operatorText: "Is Full access enabled?", assertCurrent() {}, assertRetainedCurrent() {} };
+  const output = z.object({ settings: z.array(z.object({ key: z.string(), value: z.unknown() })) });
+  assert.deepEqual(output.parse(await read.invoke({ key }, context)).settings, [{ key, value: true }]);
+  const listed = output.parse(await read.invoke({ key: null }, context)).settings;
+  assert.deepEqual(listed.find(setting => setting.key === key), { key, value: true });
+});
 
 it.each([
   { name: "a setting value with no source", key: "browser.headless", source: null,
