@@ -186,7 +186,8 @@ it("serves the I-9 Lookup search and every Section 2 status without inventing a 
   const spec = await review("i9-lookup");
   assert.deepEqual(spec.options, [{ id: "skip-lookup", label: "Look up Section 2 signer", initial: "run",
     choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }] }]);
-  assert.deepEqual(spec.sessions, [{ system: "i9" }]);
+  assert.deepEqual(spec.sessions, [{ system: "i9", when: [{ "skip-lookup": ["run"] }] }]);
+  assert.deepEqual(visible(spec.sessions, { "skip-lookup": "skip" }), []);
   assert.deepEqual(blocks(spec, "lookup", "click").map(click => click.target), ["Search Options", "Clear Search Filters & Results", "Search"]);
   const cards = blocks(spec, "lookup", "card");
   assert.deepEqual(cards[0]?.rows.map(row => [row.label, row.value]), [["Last name", "Morrow"], ["First name", "Bea"]]);

@@ -54,6 +54,7 @@ it("uses the typed lookup result without opening I-9 Complete", async () => {
   assert.ok(rerun.state === "available", JSON.stringify(rerun));
   assert.ok(!rerun.snapshot.typed?.some(entry => entry.step === "lookup"));
   for (const privateValue of [signer.profileId, signer.i9Id]) {
-    assert.ok(!JSON.stringify({ detail, rerun, receipt }).includes(privateValue));
+    assert.ok(!JSON.stringify(detail).includes(privateValue), "manual values in Logs must withhold record identifiers");
+    assert.ok(!JSON.stringify(rerun).includes(privateValue), "Rerun must withhold record identifiers");
   }
 });

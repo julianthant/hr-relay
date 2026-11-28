@@ -337,7 +337,7 @@ export function buildRunDetail(
     at: string;
     label: string;
     state: "pending" | "active" | "done" | "failed" | "blocked" | "cancelled" | "skipped";
-    notRun: { state: "absent"; reason: string } | { state: "present"; reason: "condition-false" | "branch-not-selected" | "operator-asserted" | "step-omitted" };
+    notRun: { state: "absent"; reason: string } | { state: "present"; reason: TimelineNotRunReason };
     durationMs: TimelineDuration;
     seed: string;
     native: NativeRunEventWire;

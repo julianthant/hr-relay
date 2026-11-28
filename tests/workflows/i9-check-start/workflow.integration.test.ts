@@ -247,8 +247,9 @@ describe("I-9 Check Start omissions", () => {
     const detail = buildRunDetail(deps, runId);
     const section = buildRunLogsWhole(deps, runId, projection.runFold(runId), run);
     const log = projectRunLogs({ detail, logs: section.payload, sections: [], unavailableEvidence: [] }, { artifactUrl: () => "unused" });
-    const line = log.steps.find(entry => entry.title === "Save workflow workbook");
-    assert.ok(line, JSON.stringify(detail.timeline.events.map(event => event.label)));
+    const publicationStage = log.timeline.find(stage => stage.id === "publication");
+    const line = log.steps.find(entry => entry.id === publicationStage?.stepId);
+    assert.ok(line, JSON.stringify(log.timeline));
     expect(logPlainText([line])).toContain(publication ? "Done outside Relay" : "Required evidence unavailable");
   });
 });
