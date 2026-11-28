@@ -224,7 +224,7 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
     fieldKeys: ["employmentDate", "oathDate"], produces: ["crm-dates"],
   },
   {
-    descriptor: ONBOARDING_ID, step: "crm-data", declaration: CRM_DATA_MANUAL, produces: ["crm-source", "hire-plan"],
+    descriptor: ONBOARDING_ID, step: "crm-data", declaration: CRM_DATA_MANUAL, produces: ["crm-source"],
     fieldKeys: ["recordUrl", "firstName", "lastName", "middleName", "personalEmail", "workEmail", "email", "dob", "ssn", "phone",
       "address", "addressLine2", "city", "state", "postalCode", "positionNumber", "department", "recruitmentNumber", "appointment", "wage", "effectiveDate", "expectedJobEndDate"],
   },
@@ -279,7 +279,7 @@ const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly st
   "person-lookup::cross-verify": { asserted: ["crm-identity"], omitted: ["cross-verify"] },
   "person-lookup::active-status": { asserted: ["active-status"], omitted: ["crm-only-recovery"] },
   "person-lookup::crm-dates": { asserted: ["crm-dates"], omitted: [] },
-  "onboarding::crm-data": { asserted: ["crm-source", "hire-plan"], omitted: [] },
+  "onboarding::crm-data": { asserted: ["crm-source"], omitted: [] },
   "onboarding::ucpath-search": { asserted: [], omitted: ["hire-subject", "ucpath-source"] },
   "onboarding::i9-search": { asserted: [], omitted: ["i9-lookup", "i9-lookup-child"] },
   "onboarding::hire-review": { asserted: [], omitted: ["hire-findings", "hire-review"] },

@@ -3,7 +3,6 @@ import { ONBOARDING_ROSTER_GATE_ID, OnboardingRosterChoiceSchema } from "../../.
 import { CrmReadHireData } from "../../../../models/systems/crm/read-hire-data.js";
 import { OnboardingReadHirePlan } from "../../../../models/workflows/onboarding/read-hire-plan.js";
 import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
-import { readHirePlan } from "../../../../rules/onboarding/read-hire-plan.js";
 import type { JsonObject } from "../../../../rules/validation/canonical-json.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof, reuseTask } from "../../../../workflow-kit/workflow-definition.js";
@@ -37,7 +36,7 @@ function hirePlanInput(input: unknown, crm: unknown, rosterChoice: unknown) {
 
 export const CRM_DATA_MANUAL: StepManualDeclaration = {
   off: "values",
-  keepsGate: ONBOARDING_ROSTER_GATE_ID,
+  keeps: [ONBOARDING_ROSTER_GATE_ID, "hire-plan"],
   form: { fields: [
     { key: "recordUrl", label: "CRM record URL", kind: "text", withheld: true },
     { key: "firstName", label: "First name", kind: "text" },
@@ -72,7 +71,6 @@ export const CRM_DATA_MANUAL: StepManualDeclaration = {
   },
   produces: {
     "crm-source": ({ facts, scope }) => enteredCrmData(facts, OnboardingCanonicalValueSchema.parse(scope.input).email),
-    "hire-plan": ({ scope }) => readHirePlan(hirePlanInput(scope.input, scope.outputs["crm-source"], scope.outputs[ONBOARDING_ROSTER_GATE_ID])),
   },
 };
 

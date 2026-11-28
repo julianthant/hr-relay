@@ -944,18 +944,23 @@ function deriveStepOmissions(
       }
     }
     const skipped = new Set(skips);
-    if (manual.keepsGate !== undefined) {
-      const gate = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(manual.keepsGate), owner);
-      if (manual.off !== "values" || gate.kind !== "gate" || gate.resolvedBy !== "operator" || gate.dependsOn.length > 0
-        || !members.has(manual.keepsGate) || skipped.has(manual.keepsGate)) {
-        throw new Error(`${id}: ${owner} must keep an operator ingress gate of its own step`);
+    const kept = new Set(manual.keeps);
+    for (const member of kept) {
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), owner);
+      const ingressGate = node.kind === "gate" && node.resolvedBy === "operator" && node.dependsOn.length === 0;
+      const validation = node.kind === "task" && node.uses.id.startsWith("workflow:") && node.uses.provenance.default === "derived"
+        && node.uses.subject.kind === "none" && node.uses.artifacts === undefined && !isPreviewBoundary(node)
+        && node.dependsOn.some(dependency => Object.hasOwn(manual.produces, dependency));
+      if (manual.off !== "values" || !members.has(member) || skipped.has(member) || Object.hasOwn(manual.produces, member)
+        || !ingressGate && !validation) {
+        throw new Error(`${id}: ${owner} can only keep its own operator ingress gate or local validation of manual values`);
       }
     }
     const switchable = category.selection !== undefined || selectedByOneInputCondition(id, nodes, category.nodes, owner);
     for (const member of category.nodes) {
       if (skipped.has(member) || Object.hasOwn(manual.produces, member)) continue;
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), owner);
-      if (manual.off !== undefined && member !== manual.keepsGate) throw new Error(`${id}: ${owner} leaves "${member}" running when off`);
+      if (manual.off !== undefined && !kept.has(member)) throw new Error(`${id}: ${owner} leaves "${member}" running when off`);
       const read = node.dependsOn.find((dependency) => skipped.has(String(dependency)));
       if (read !== undefined) throw new Error(`${id}: ${owner} runs node "${member}", which reads skipped node "${String(read)}"`);
       if (switchable && (isPreviewBoundary(node) || node.kind === "gate")) {
@@ -994,7 +999,6 @@ function deriveStepOmissions(
     specs.push(Object.freeze({
       step: category.key, form, produces: Object.freeze({ ...manual.produces }),
       ...(manual.off === undefined ? {} : { off: manual.off }),
-      ...(manual.keepsGate === undefined ? {} : { keepsGate: manual.keepsGate }),
       ...(manual.skips === undefined ? {} : { skips: Object.freeze([...manual.skips]) }),
       ...(manual.refine === undefined ? {} : { refine: manual.refine }),
       ...(manual.skipsGatesAndTransactions === undefined ? {} : { skipsGatesAndTransactions: manual.skipsGatesAndTransactions }),

@@ -188,8 +188,8 @@ export interface StepManualDeclaration {
   readonly skipsGatesAndTransactions?: true;
   /** Nodes in other steps that depend on a skipped member only to run after it and read none of its output. */
   readonly orderOnlyReaders?: readonly string[];
-  /** An ingress approval that still runs before the operator's values are used. */
-  readonly keepsGate?: string;
+  /** Ingress approvals and local validation that still run when the operator supplies values. */
+  readonly keeps?: readonly string[];
 }
 
 /** The descriptor-retained form of one declaration, bound to its step key. */
