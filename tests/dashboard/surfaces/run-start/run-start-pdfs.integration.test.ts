@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
-import { i9CheckStartModule } from "../../../support/helpers/registered-workflows.js";
+import { emergencyContactModule, i9CheckStartModule } from "../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, expect, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
 import { FIXTURE_CHATGPT_OCR_SIGNED_OUT } from "../../../support/fixtures/dashboard/fixture-chatgpt-account.js";
 import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../src/models/workflows/i9-check/start.js";
-import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
+import { projectStartRows, projectStartSteps, startRowWire } from "../../../../src/backend/runs/start/step-selection.js";
 import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
 import { StartPlanRequestSchema } from "../../../../src/models/dashboard/start-plan.js";
+import { StartCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { createHash } from "node:crypto";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
@@ -55,6 +56,61 @@ async function attach(files: readonly File[]) {
   await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
   await h.settle();
 }
+
+it.each([
+  { parent: descriptor, row: "Read I-9 forms", start: "Start live run" },
+  { parent: emergencyContactModule.descriptor, row: "Read emergency contact", start: "Start run" },
+])("starts $parent.label with manual OCR values from the picker while subscription OCR is unavailable", async ({ parent, row, start }) => {
+  const plans: unknown[] = [], commands: unknown[] = [];
+  const flow: RunStartWorkflow = { ...workflow, workflowId: parent.id, label: parent.label, version: parent.version,
+    steps: projectStartSteps(parent), rows: projectStartRows(parent).map(startRowWire), uploadRun: parent.surfaces.uploadRun,
+    requiredWorkbookFields: parent.requiredWorkbookFields, workbookReference: parent.workbookReference };
+  const dialog = await h.openDialog(client({
+    checkChatGptAccount: async () => FIXTURE_CHATGPT_OCR_SIGNED_OUT,
+    uploadOcrSource: async request => OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
+      artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }),
+    submitStartPlan: async request => {
+      plans.push(request);
+      const requested = StartPlanRequestSchema.parse(request), plan = h.planResponse("5a000000-0000-4000-8000-000000000001");
+      return { ...plan, workflowId: parent.id, omittedSteps: requested.stepOmissions?.map(({ step }) => step),
+        planned: plan.planned.map(entry => ({ ...entry, workbookReferences: [{ libraryId: reference.libraryId, version: reference.version,
+          versionId: "earlier", versionName: "Fall review", worksheets: [{ sheetId: "history", name: "Action History" }], type: reference.type }] })) };
+    },
+    executeCommand: async request => { commands.push(request); return h.APPLIED; },
+  }, parent.requiredWorkbookFields, parent), { workflows: [h.WORKFLOWS[0], flow], panelWorkflowId: h.WORKFLOW_ID });
+  await dialog.press(flow.label);
+  await attach([pdf("first.pdf", "%PDF first")]);
+  await h.chooseReference("Action History.xlsx", "Fall review", "Action History");
+  await dialog.press("Next");
+  if (parent.id === "emergency-contact") {
+    const skip = document.querySelector<HTMLInputElement>('input[type="radio"][name^="File to OnBase-"][value="skip"]');
+    assert.ok(skip);
+    await act(async () => skip.click());
+  }
+  await dialog.press("Customize steps");
+  await dialog.press("Next");
+  expect(dialog.stage()).toBe("Steps");
+  expect(dialog.disabled(start)).toBe(true);
+  await dialog.press(`Include ${row}`);
+  await dialog.fill("Original page readings", "x");
+  expect(dialog.disabled(start)).toBe(true);
+  expect(dialog.text()).toContain("enter one valid JSON reading per original page");
+  expect(plans).toEqual([]);
+  const reading = JSON.stringify({ sourcePage: 1, pageKind: "blank", readAt: "2026-11-01T00:00:00Z", record: null });
+  await dialog.fill("Original page readings", reading);
+  await dialog.press("Include Group records for review");
+  expect(dialog.disabled("Include Review extracted records")).toBe(true);
+  expect(dialog.disabled(start)).toBe(true);
+  await dialog.press("Include Group records for review");
+  expect(dialog.disabled("Include Review extracted records")).toBe(false);
+  assert.equal(dialog.disabled(start), false, dialog.text());
+  await dialog.press(start);
+  expect(StartPlanRequestSchema.parse(plans.at(-1)).stepOmissions).toEqual([
+    { workflow: "ocr", step: "page-readings", facts: { readings: [reading] } },
+  ]);
+  assert.equal(commands.length, 1, dialog.text());
+  expect(StartCommandRequestSchema.parse(commands.at(-1))).toMatchObject({ requestedBy: h.ACTOR_ID, target: { workflowId: parent.id } });
+});
 
 it("uploads both original PDFs through the typed client and plans one parent with stable reading IDs", async () => {
   const uploads: string[] = [], plans: unknown[] = [];

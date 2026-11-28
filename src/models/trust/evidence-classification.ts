@@ -694,7 +694,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...["ocr", "ocr-source-pages"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."),
     ...ocrRosterLeaves(workflowInput(id), "roster."),
-    ...open(workflowInput(id), "approval", "formType", "reading.kind", "extractWithOcr"),
+    ...open(workflowInput(id), "approval", "formType", "reading.kind", "extractWithOcr", "assertedPageCount"),
     ...ocrPrivateLeaves(workflowInput(id), "sourceRunId", "fileName", "readingId", "reading.actorId", "reading.assertions"),
   ]),
   ...["ocr-page", "ocr-page-reading"].flatMap(id => [
@@ -706,7 +706,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ]),
   ...ocrResultLeaves(workflowResult("ocr")),
   ...ocrPrivateLeaves(workflowResult("ocr"), "approvedSnapshot", "approvedSnapshot.snapshotId", "approvedSnapshot.sourceRunId", "approvedSnapshot.digest"),
-  ...open(workflowResult("ocr"), "approvedSnapshot.revision"),
+  ...open(workflowResult("ocr"), "approvedSnapshot.revision", "review.state", "review.step"),
   ...ocrManifestHeadLeaves(workflowResult("ocr-source-pages"), "manifest."),
   ...ocrPrivateLeaves(gateResult("ocr", "approve-records"), "snapshotId", "sourceRunId", "digest"),
   ...open(gateResult("ocr", "approve-records"), "revision"),

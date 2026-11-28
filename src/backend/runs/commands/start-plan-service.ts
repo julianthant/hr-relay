@@ -130,6 +130,11 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
     const submissions = source?.submissions ?? ingress.submissions;
     const stepOmissions = source?.interruptedRun !== undefined ? source.stepOmissions : resolveStartStepOmissions(descriptor, ingress.selectedStepKeys,
       source?.stepOmissions ?? ingress.stepOmissions, submissions.length === 1 ? submissions[0] : undefined);
+    if (rerunSource === undefined && ingress.selectedStepKeys?.length === 0 && !(descriptor.timeline.length === 1
+      && descriptor.stepOmissions.some(spec => spec.bindInput !== undefined
+        && stepOmissions?.some(entry => entry.workflow === undefined && entry.step === spec.step)))) {
+      throw new StartStepOmissionRefusedError("selection-invalid", `${descriptor.id} start needs a selected step or input-bound typed values`);
+    }
     if (rerunSource?.failureCorrection === undefined && rerunSource?.gateCorrection === undefined) {
       for (const submission of ingress.submissions) for (const correction of [...descriptor.failureCorrections ?? [], ...descriptor.gateCorrections ?? []]) {
         if (descriptor.surfaces?.inputRun?.parser.rules.some(rule => rule.emit === correction.inputField)) continue;

@@ -1,15 +1,16 @@
-import type { z } from "zod";
+import { z } from "zod";
 import { ReadApprovedOcrSnapshot } from "../../../../models/processing/ocr/read-approved-snapshot.js";
 import { ApprovedOcrRecordInputSchema } from "../../../../models/workflows/ocr/approved-record.js";
 import type { OcrApprovedSnapshot } from "../../../../models/ocr/review.js";
 import type { WorkflowRef } from "../../../../models/workflow/graph.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { EidSchema, type BrowserSystemId } from "../../../../rules/identity/ids.js";
-import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { TaskError } from "../../../../workflow-kit/errors.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
-import { ExtractPdfPages } from "../../../../models/processing/extraction/extract-pdf-pages.js";
-import { OcrPageWorkflowInputSchema } from "../../../../models/workflows/ocr-page/input.js";
+import { ExtractPdfPages, PDF_PAGE_LIMIT } from "../../../../models/processing/extraction/extract-pdf-pages.js";
+import { admitManualOcrPageValues, OcrPageWorkflowInputSchema, parseManualOcrDocumentValues } from "../../../../models/workflows/ocr-page/input.js";
 import { OcrInputSchema } from "../../../../models/workflows/ocr/input.js";
 import { ocrPersonLookupRequests, ocrSignerLookupRequests } from "../../../../models/workflows/ocr/lookup.js";
 import { I9LookupInputSchema, I9SignerOutputSchema } from "../../../../models/systems/i9/read-section2-signer.js";
@@ -19,7 +20,7 @@ import { ReadOcrReviewSeed } from "../../../../models/workflows/ocr/read-review-
 import { ReadOcrSourcePages, ocrPageWorkInputs } from "../../../../models/workflows/ocr/read-source-pages.js";
 import { buildOcrSourceManifest } from "../../../../models/workflows/ocr/source-manifest.js";
 import { hydrateOcrReviewSeed, type OcrReviewCheckpoint } from "../../../../models/workflows/ocr/review-seed.js";
-import { OcrApprovalReferenceSchema, OcrWorkflowResultSchema } from "../../../../models/workflows/ocr/result.js";
+import { OcrApprovalReferenceSchema, OcrReviewedResultSchema, OcrWorkflowResultSchema } from "../../../../models/workflows/ocr/result.js";
 import { PersonLookupInput } from "../../../../models/workflows/person-lookup/input.js";
 import { PersonLookupResultSchema } from "../../../../models/workflows/person-lookup/result.js";
 import { WorkflowIdSchema } from "../../../../rules/identity/ids.js";
@@ -30,6 +31,54 @@ const childPolicy = Object.freeze({
   onChildFailed: "allow-partial", cascadeCancel: "cascade",
   afterChildRetry: "resume-parent", visibility: "inline"
 } as const);
+const DOCUMENT_VALUES = { off: "values", allowsChildFanOut: true } as const;
+
+const SOURCE_COUNT: StepManualDeclaration = {
+  ...DOCUMENT_VALUES,
+  form: { fields: [{ key: "pageCount", label: "Original page count", kind: "integer", min: 1,
+    help: "Relay renders the PDF to verify the count and bind the original pages." }] },
+  produces: {}, keeps: ["render-pages", "read-source-pages"],
+  refine: ({ pageCount }) => typeof pageCount === "number" && pageCount <= PDF_PAGE_LIMIT ? []
+    : [{ field: "pageCount", message: `Enter a page count from 1 through ${PDF_PAGE_LIMIT}.` }],
+  bindInput: (input, { pageCount }) => JsonValueSchema.parse(OcrInputSchema.parse({ ...OcrInputSchema.parse(input), assertedPageCount: pageCount })),
+};
+
+const MANUAL_PAGE_READINGS: StepManualDeclaration = {
+  ...DOCUMENT_VALUES,
+  form: { fields: [{ key: "readings", label: "Original page readings", kind: "text-list", format: "ocr-document-readings", withheld: true,
+    help: "Enter one JSON reading per line with sourcePage, pageKind, readAt (ISO time) and record. Use an answers list of path and answer pairs, or null for a non-form page." }] },
+  produces: {}, keeps: ["read-pages"],
+  refine: ({ readings }, submission) => {
+    if (submission === undefined) return [];
+    const { formType, document } = OcrInputSchema.parse(submission);
+    try {
+      for (const { sourcePage, values } of parseManualOcrDocumentValues(z.array(z.string()).parse(readings))) {
+        admitManualOcrPageValues(formType, sourcePage, document.sha256, "local-operator", values);
+      }
+      return [];
+    } catch {
+      return [{ field: "readings", message: "Enter a valid reading for the selected form on each original page." }];
+    }
+  },
+  bindInput: (input, { readings }) => JsonValueSchema.parse(OcrInputSchema.parse({ ...OcrInputSchema.parse(input), extractWithOcr: true,
+    reading: { kind: "manual", actorId: "local-operator", assertions: parseManualOcrDocumentValues(z.array(z.string()).parse(readings)) } })),
+  withholdsBoundInput: input => OcrInputSchema.safeParse(input).data?.reading.kind === "manual",
+};
+
+const WITHHOLD_RELEASE: StepManualDeclaration = {
+  ...DOCUMENT_VALUES,
+  form: { fields: [{ key: "release", label: "Record release", kind: "enum", values: ["withhold"] }] },
+  produces: {}, skips: ["approve-records"], skipsGatesAndTransactions: true,
+};
+
+function leaveUnread(label: string, skips: readonly string[]): StepManualDeclaration {
+  return { ...DOCUMENT_VALUES, form: { fields: [{ key: "outcome", label, kind: "enum", values: ["leave unverified"] }] },
+    produces: {}, skips };
+}
+
+const UNGROUPED_RECORDS = leaveUnread("Record grouping", ["build-review"]);
+const UNVERIFIED_IDENTITIES = leaveUnread("Identity verification", ["lookup-identities"]);
+const UNVERIFIED_SIGNERS = leaveUnread("Signer verification", ["lookup-signers", "read-result"]);
 function reviewSeed(input: z.output<typeof OcrInputSchema>,
   outputs: Readonly<{ "build-review": OcrReviewCheckpoint; "read-pages": readonly OcrPageOutcome[] }>) {
   const readings = new Map<string, OcrPageReading>(outputs["read-pages"].flatMap(page => page.state === "done" ? [[page.output.extractionId, page.output] as const] : []));
@@ -59,17 +108,17 @@ export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key
     branchLabels: []
   } as const,
 });
-export function buildSourcePages({ task, result }: WorkflowAuthor<typeof OcrInputSchema>) {
+export function buildSourcePages({ group, task, result }: WorkflowAuthor<typeof OcrInputSchema>) {
   const rendered = task({ id: "render-pages", contract: ExtractPdfPages, replay: "checkpoint" }, [], ({ input }) => ({ document: input.document }));
   const source = task({ id: "read-source-pages", contract: ReadOcrSourcePages, replay: "checkpoint" }, [rendered],
     ({ input, outputs }) => ({ request: input, rendered: outputs["render-pages"] }));
   return {
-    rendered, source, steps: [[OCR_SOURCE_PAGES_STEP, [rendered, source]]] as const,
+    rendered, source, steps: [[group(OCR_SOURCE_PAGES_STEP, { manual: SOURCE_COUNT }), [rendered, source]]] as const,
     result: result(ReadOcrSourcePages.output, [source], ({ outputs }) => ReadOcrSourcePages.output.parse(outputs["read-source-pages"]))
   };
 }
 export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
-  const { task, delegate, gate, result } = author;
+  const { task, delegate, gate, group, result } = author;
   const sourcePages = buildSourcePages(author);
   const { rendered, source } = sourcePages;
   const pages = delegate({
@@ -116,13 +165,13 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
   return {
     steps: [
       ...sourcePages.steps,
-      [{ key: "page-readings", label: "Read document pages", system: "local",
+      [group({ key: "page-readings", label: "Read document pages", system: "local",
         description: "Read each original page through the delegated OCR Page workflow and retain every completed or failed reading for review.",
         review: { pages: [], branchLabels: [], starts: [{ nodeId: "read-pages", each: "Each original page" }],
           outcomes: [{ nodeId: "read-pages", value: "child-failed", then: "Keeps each failed page in the document review. Correct or retry that page before approving its records; other page readings are retained." }],
         } as const,
-      }, [pages]],
-      [{ key: "review-records", label: "Group records for review", system: "local",
+      }, { manual: MANUAL_PAGE_READINGS }), [pages]],
+      [group({ key: "review-records", label: "Group records for review", system: "local",
         description: "Account for every source page and group its readings into proposed records for operator review.",
         review: {
           pages: [
@@ -142,27 +191,29 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
           ],
           branchLabels: []
         } as const,
-      }, [review]],
-      [{ key: "identity-lookups", label: "Look up proposed identities", system: "ucpath",
+      }, { manual: UNGROUPED_RECORDS }), [review]],
+      [group({ key: "identity-lookups", label: "Look up proposed identities", system: "ucpath",
         description: "Check each proposed person through Person Lookup in UCPath and CRM, retaining the delegated outcomes for review.",
         review: { pages: [], branchLabels: [], starts: [{ nodeId: "lookup-identities", each: "Each proposed person" }] } as const,
-      }, [identities]],
-      [{ key: "signer-lookups", label: "Look up official signers", system: "i9",
+      }, { manual: UNVERIFIED_IDENTITIES }), [identities]],
+      [group({ key: "signer-lookups", label: "Look up official signers", system: "i9",
         description: "Look up proposed official signers in I-9 Complete and retain all person and signer lookup outcomes with the source-bound review.",
         review: { pages: [], branchLabels: [], starts: [{ nodeId: "lookup-signers", each: "Each proposed official signer" }] } as const,
-      }, [signers, completed]],
-      [{ key: "approval", label: "Approve selected records", system: "local",
+      }, { manual: UNVERIFIED_SIGNERS }), [signers, completed]],
+      [group({ key: "approval", label: "Approve selected records", system: "local",
         description: "Require the operator's selection when approval is requested, preserving the bound source evidence before releasing records.",
         review: { pages: [], branchLabels: [],
           outcomes: [{ nodeId: "approve-records", value: "waits", then: "Waits for you to review, correct, select and approve the records in Logs when release is requested. Only the approved selection is released to the parent." }],
         } as const,
-      }, [approval]],
-    ] as const, result: result(OcrWorkflowResultSchema, [completed, approval, review], ({ outputs }) => {
-      const seed = outputs["build-review"], { identities } = outputs["read-result"];
-      if (sha256Hex(canonicalJsonStringify(seed)) !== outputs["read-result"].review.digest) {
+      }, { manual: WITHHOLD_RELEASE }), [approval]],
+    ] as const, result: result(OcrWorkflowResultSchema, [completed, approval, review], ({ outputs }): z.input<typeof OcrWorkflowResultSchema> => {
+      const readResult = outputs["read-result"], seed = outputs["build-review"];
+      if (readResult === undefined) return { review: { state: "omitted", step: seed === undefined ? "review-records" : "signer-lookups" },
+        identities: [], approvedSnapshot: null };
+      if (seed === undefined || sha256Hex(canonicalJsonStringify(seed)) !== readResult.review.digest) {
         throw new Error("OCR result does not match its review checkpoint.");
       }
-      return { review: seed, identities, approvedSnapshot: outputs["approve-records"] ?? null };
+      return { review: seed, identities: readResult.identities, approvedSnapshot: outputs["approve-records"] ?? null };
     })
   };
 }
@@ -185,7 +236,7 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
     memberLabel: string;
     filter(record: OcrApprovedSnapshot["records"][number]): boolean;
     validate(records: readonly OcrApprovedSnapshot["records"][number][]): void;
-    memberInput(input: z.output<Input>, approved: z.output<typeof ApprovedOcrRecordInputSchema>, ocr: z.output<typeof OcrWorkflowResultSchema>,
+    memberInput(input: z.output<Input>, approved: z.output<typeof ApprovedOcrRecordInputSchema>, ocr: z.output<typeof OcrReviewedResultSchema>,
       records: readonly OcrApprovedSnapshot["records"][number][]): z.input<MemberInput>;
   }>,
 ) {
@@ -205,10 +256,11 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
   }, [ocr, approved], { bind: ({ input, outputs }) => {
     const reference = outputs["read-document"];
     if (reference.state !== "done" || reference.output.approvedSnapshot === null) throw new TaskError(ReadApprovedOcrSnapshot.id, "OCR_REVIEW_REFUSED", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    const reviewed = OcrReviewedResultSchema.parse(reference.output);
     const records = outputs["approved-records"].snapshot.records.filter(options.filter);
     options.validate(records);
     return records.map(record =>
-      options.memberInput(input, ApprovedOcrRecordInputSchema.parse({ approval: reference.output.approvedSnapshot, record }), reference.output, records));
+      options.memberInput(input, ApprovedOcrRecordInputSchema.parse({ approval: reference.output.approvedSnapshot, record }), reviewed, records));
   }, sourceRecordIds: ({ outputs }) => outputs["approved-records"].snapshot.records.filter(options.filter).map(record => [record.recordId]),
   deriveChildItemId: (_input, context) => context.canonicalItemId });
   return { ocr, approved, members, steps: [
