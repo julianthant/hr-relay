@@ -187,6 +187,8 @@ it.each(["version", "fingerprint", "current"] as const)("reads removed task memb
   if (drift === "fingerprint") descriptor.contractFingerprint = FingerprintSchema.parse(HASH_B);
   if (drift === "version") descriptor.version++;
   taskEventsOf(w, 81, "searching", "done");
+  w.projection.rebuildFromTimeline();
+  assert.equal(w.projection.health().state, "live", w.projection.health().lastError);
   descriptor.timeline[0].nodes = descriptor.timeline[0].nodes.filter(node => node.id !== "searching");
   if (drift === "current") {
     assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
@@ -248,6 +250,8 @@ it.each([false, true])("retains an unmapped action-only node (declared operation
 it("refuses ambiguous recorded membership while preserving the explicit no-timeline mode", async () => {
   const { w, run, descriptor, deps } = await fixture();
   taskEventsOf(w, 81, "searching", "done");
+  w.projection.rebuildFromTimeline();
+  assert.equal(w.projection.health().state, "live", w.projection.health().lastError);
   descriptor.version++;
   descriptor.timeline.push({ ...descriptor.timeline[0], key: "duplicate" });
   assert.throws(() => buildRunDetail(deps, run.envelope.runId), LogIdentityRefusedError);
