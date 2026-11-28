@@ -4,7 +4,7 @@ import { SETTINGS_SCHEMA_HASH, SettingsPatchSchema, deriveRawSettingsPatchFinger
 import { SettingsCommandRequestSchema } from "../../../../rules/commands/commands.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { settingsLabel } from "../../../runs/queries/settings-editor.js";
-import { observeEdit, operatorEditSource, requireEditRead, requireOperatorSource } from "../../applied-edits.js";
+import { editValueSpellings, observeEdit, operatorEditSource, requireEditRead, requireOperatorEdit, requireOperatorSource } from "../../applied-edits.js";
 import { AssistantChangeOutput, AssistantToolRefusal, type AssistantPlugin } from "../plugin.js";
 import type { AssistantPluginDeps } from "../registry.js";
 
@@ -14,6 +14,22 @@ const matchesKey = (key: string) => KEYS.some(candidate => candidate === key
   || candidate === key.replace(/^annualDates\.FY\d{4}\./u, "annualDates.*."));
 const EditInput = z.strictObject({ key: z.string().min(1).max(160),
   operation: z.enum(["set-text", "set-json", "enable", "disable", "clear"]), source: z.string().min(1).max(2000).nullable() });
+
+function settingCommands(key: string, operation: z.infer<typeof EditInput>["operation"], source: string): readonly string[] {
+  const label = settingsLabel(key);
+  const targets = [key, label, label.toLowerCase(), ...(key === "browser.headless" ? ["headless mode", "headless browser mode"] : [])];
+  const word = source.toLowerCase();
+  return targets.flatMap(target => {
+    switch (operation) {
+      case "set-text": return editValueSpellings(source).map(value => `set ${target} to ${value}`);
+      case "set-json": return [`set ${target} to ${source}`];
+      case "clear": return word === "default" ? [`reset ${target} to ${source}`] : [`${word} ${target}`];
+      default:
+        if (word === "enable" || word === "disable") return [`${word} ${target}`];
+        return word === "on" || word === "off" ? [`turn ${target} ${source}`, `set ${target} to ${source}`] : [`set ${target} to ${source}`];
+    }
+  });
+}
 
 function at(settings: unknown, key: string): unknown {
   return key.split(".").reduce<unknown>((node, part) => typeof node === "object" && node !== null ? Reflect.get(node, part) : undefined, settings);
@@ -45,7 +61,7 @@ export function settingsPlugin(deps: Pick<AssistantPluginDeps, "settings" | "set
   const { edits, settingsRecord } = deps;
   if (edits !== undefined && settingsRecord !== undefined) tools.push({
     kind: "change", tier: "write-local", name: "change_settings",
-    description: "Edit one ordinary setting previously read. Pass exact operator text as source or null if absent. Use set-json for numbers and JSON; enable, disable and clear require those instructions in the source.",
+    description: "Edit one read setting only on an explicit Set, Turn, Enable, Disable or Reset request naming it. Quote the exact operator value as source or pass null. Use set-json for numbers and JSON.",
     parameters: EditInput, output: AssistantChangeOutput, privacy: [],
     async change(input, context) {
       const { key, operation, source } = EditInput.parse(input);
@@ -55,6 +71,7 @@ export function settingsPlugin(deps: Pick<AssistantPluginDeps, "settings" | "set
       if (operation !== "set-text" && operation !== "set-json" && !words[operation].test(supplied)) {
         throw new AssistantToolRefusal("ASSISTANT_VALUE_NEEDS_SOURCE");
       }
+      requireOperatorEdit(context, settingCommands(key, operation, supplied));
       let value: unknown = operation === "enable" ? true : operation === "disable" ? false : supplied;
       if (operation === "set-json") {
         try { value = JSON.parse(supplied) as unknown; } catch { throw new AssistantToolRefusal("ASSISTANT_EDIT_REFUSED"); }

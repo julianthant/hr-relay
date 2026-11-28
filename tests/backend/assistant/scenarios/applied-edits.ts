@@ -50,4 +50,41 @@ export const editScenarios = [{
     { tool: "change_settings", args: { key: "actor.label", operation: "set-text", source: "email" } }],
   maskedSource: "relay.sample@example.invalid", refusal: "ASSISTANT_VALUE_NEEDS_SOURCE",
   largestRequest: 4_700, total: 9_300,
+}, {
+  name: "Refuse a question about a setting",
+  message: "Is headless mode off?",
+  calls: [readSetting, { tool: "change_settings", args: { key: "browser.headless", operation: "disable", source: "off" } }],
+  refusal: "ASSISTANT_VALUE_NEEDS_SOURCE",
+  largestRequest: 4_700, total: 9_300,
+}, {
+  name: "Refuse a setting target substituted by the provider",
+  message: "Set Screen width to 2048.",
+  calls: [{ tool: "read_settings", args: { key: "display.screenHeight" } },
+    { tool: "change_settings", args: { key: "display.screenHeight", operation: "set-json", source: "2048" } }],
+  refusal: "ASSISTANT_VALUE_NEEDS_SOURCE",
+  largestRequest: 4_700, total: 9_300,
+}, {
+  name: "Refuse a workbook rename in a question",
+  message: "Is the only spreadsheet named Winter tracker?",
+  calls: [readSheet, { tool: "change_spreadsheet", args: { change: { action: "rename", sheet: "[[S1.g1]]", source: "Winter tracker" } } }],
+  refusal: "ASSISTANT_VALUE_NEEDS_SOURCE",
+  largestRequest: 4_700, total: 9_300,
+}, {
+  name: "Refuse a value copied from the target name",
+  message: 'Rename spreadsheet "Autumn tracker" to Winter tracker.',
+  calls: [readSheet, { tool: "change_spreadsheet", args: { change: { action: "rename", sheet: "[[S1.g1]]", source: "Autumn tracker" } } }],
+  refusal: "ASSISTANT_VALUE_NEEDS_SOURCE",
+  largestRequest: 4_700, total: 9_300,
+}, {
+  name: "Refuse a workbook target substituted by the provider",
+  message: 'Rename spreadsheet "Other tracker" to Winter tracker.',
+  calls: [readSheet, { tool: "change_spreadsheet", args: { change: { action: "rename", sheet: "[[S1.g1]]", source: "Winter tracker" } } }],
+  refusal: "ASSISTANT_VALUE_NEEDS_SOURCE",
+  largestRequest: 4_700, total: 9_300,
+}, {
+  name: "Replace a long cell",
+  message: "Set the only spreadsheet worksheet 1, row 2, column 1 to Reviewed.",
+  calls: [readSheet, { tool: "change_spreadsheet", args: { change: { action: "set-cell", sheet: "[[S1.g1]]",
+    worksheet: 1, row: 2, column: 1, format: "text", source: "Reviewed" } } }],
+  largestRequest: 4_700, total: 9_300,
 }] as const satisfies readonly EditScenario[];

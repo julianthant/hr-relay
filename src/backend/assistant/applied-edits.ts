@@ -41,6 +41,25 @@ export function requireOperatorSource(context: AssistantChangeContext, source: s
   return source;
 }
 
+/** The owner names every operand in the one command it can authorize. */
+export function requireOperatorEdit(context: AssistantChangeContext, commands: readonly string[]) {
+  const text = context.operatorText.trim().replace(/^please\s+/iu, "");
+  const command = text.charAt(0).toLowerCase() + text.slice(1);
+  if (operatorValueSpans(text).length !== 1 || !commands.some(allowed => command === allowed || command === allowed + ".")) {
+    throw new AssistantToolRefusal("ASSISTANT_VALUE_NEEDS_SOURCE");
+  }
+}
+
+export function editValueSpellings(value: string): readonly string[] {
+  const quoted = JSON.stringify(value);
+  return /^[\p{L}\p{M}\p{N}_ -]+$/u.test(value) && !/\b(?:and|or|if|unless|instead|then|but|except)\b/iu.test(value)
+    ? [value, quoted] : [quoted];
+}
+
+function editDisplay(text: string): string {
+  return text.length <= 2000 ? text : text.slice(0, 1999).replace(/[\uD800-\uDBFF]$/u, "") + "…";
+}
+
 export function operatorEditSource(context: AssistantChangeContext, value: JsonValue): AssistantValueSource {
   const turn = context.acceptedTurn;
   return { kind: "operator", profileId: turn.profileId, conversationId: turn.conversationId, messageId: turn.messageId,
@@ -58,7 +77,7 @@ export function createAssistantEditApply(options: Readonly<{
     const id = randomUUID(), at = options.clock.now().toISOString();
     const { details, label, before, after, source } = work({ id, at, execute: options.execute });
     const reply: AssistantReplyPart = { kind: "text", editId: id, runs: [
-      { kind: "plain", text: label + " to " }, { kind: "value", previous: before, value: after, ...(source === undefined ? {} : { source }) },
+      { kind: "plain", text: label + " to " }, { kind: "value", previous: editDisplay(before), value: editDisplay(after), ...(source === undefined ? {} : { source }) },
       { kind: "plain", text: "." },
     ] };
     AssistantReplyPartsSchema.parse([reply]);
