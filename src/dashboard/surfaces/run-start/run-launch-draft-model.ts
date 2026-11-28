@@ -15,7 +15,7 @@ import {
 import type { RerunLaunchSource } from "./run-launch-model.js";
 import type { PdfRunDraft, PdfRunPicks } from "./run-start-pdfs.js";
 import type { WorkbookRowChoice } from "./run-workbook-rows-model.js";
-import { factDraft, includedRowCount, rowFieldsOpen, rowIncluded, preselectionBadge, retainedRowSteps, sourceTypedFacts, startRowsOf, type ManualRows, type StepRow } from "./run-steps-model.js";
+import { childStepViews, factDraft, includedRowCount, rowFieldsOpen, rowIncluded, preselectionBadge, retainedRowSteps, sourceTypedFacts, startRowsOf, type ManualRows, type StepRow } from "./run-steps-model.js";
 
 /** `sheetIds` holds at least one worksheet; more than one only where the workflow reads them all. */
 export type ReferenceSelection = Readonly<{ libraryId: string; versionId: string; sheetIds: readonly string[] }>;
@@ -169,7 +169,12 @@ export function toggleRow(draft: LaunchDraft, workflow: RunStartWorkflow, snapsh
   if (row.kind !== "switch") return draft;
   let changed: LaunchDraft;
   if (row.stepKey !== undefined) changed = withSteps(draft, workflow.workflowId, toggleStepSelection(workflow.steps, selectedStepKeys(draft, workflow), row.stepKey, next));
-  else changed = { ...draft, manualRows: next ? draft.manualRows.filter(key => key !== row.key) : [...new Set([...draft.manualRows, row.key])] };
+  else {
+    const children = childStepViews(startRowsOf(workflow));
+    const keys = children.map(({ key }) => key);
+    const selected = toggleStepSelection(children, keys.filter(key => !draft.manualRows.includes(key)), row.key, next);
+    changed = { ...draft, manualRows: [...draft.manualRows.filter(key => !keys.includes(key)), ...keys.filter(key => !selected.includes(key))] };
+  }
   return next ? changed : prefillRow(changed, snapshot, row);
 }
 

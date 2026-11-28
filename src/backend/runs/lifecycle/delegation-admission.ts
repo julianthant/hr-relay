@@ -261,8 +261,8 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
       let manifest = repositories.delegationManifests.get(manifestId);
       const stepOmissions = delegatedStepOmissions(parent.envelope.stepOmissions, target.id);
       // Document facts stay with the parent. Never apply the same typed child facts to multiple members.
-      if (plan.children.length > 1 && (parent.envelope.stepOmissions ?? []).some(entry => entry.workflow !== undefined
-        || !descriptor.stepOmissions.some(spec => spec.step === entry.step && spec.allowsChildFanOut === true))) {
+      if (plan.children.length > 1 && (stepOmissions !== undefined || (parent.envelope.stepOmissions ?? []).some(entry => entry.workflow === undefined
+        && !descriptor.stepOmissions.some(spec => spec.step === entry.step && spec.allowsChildFanOut === true)))) {
         throw new RunContinuationRefusedError("delegation-typed-values-many-members");
       }
       if (journal.state === "new") {

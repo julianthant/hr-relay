@@ -1,6 +1,6 @@
 import { ExtractFormPage } from "../../../../models/processing/ocr/extract-form-page.js";
 import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
-import { manualOcrPageInput, ManualOcrPageValuesSchema, OcrPageWorkflowInputSchema } from "../../../../models/workflows/ocr-page/input.js";
+import { manualOcrPageInput, OcrPageWorkflowInputSchema, parseManualOcrPageValues } from "../../../../models/workflows/ocr-page/input.js";
 import { ReadManualOcrReading } from "../../../../models/workflows/ocr-page/read-manual-reading.js";
 import { ReadOcrPageReading } from "../../../../models/workflows/ocr-page/read-page-reading.js";
 import { OcrPageReadingSchema } from "../../../../models/workflows/ocr/page-accounting.js";
@@ -11,12 +11,12 @@ import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js"
 
 function pageValues(value: unknown) {
   if (typeof value !== "string") throw new Error("Enter an original-page reading.");
-  return ManualOcrPageValuesSchema.parse(JSON.parse(value));
+  return parseManualOcrPageValues(value);
 }
 
 const MANUAL_PAGE: StepManualDeclaration = {
   off: "values",
-  form: { fields: [{ key: "reading", label: "Page reading", kind: "text", withheld: true,
+  form: { fields: [{ key: "reading", label: "Page reading", kind: "text", format: "ocr-page-reading", withheld: true,
     help: "Enter JSON with pageKind, readAt (ISO time) and record. Use an answers list of path and answer pairs, or null for a non-form page." }] },
   produces: {}, skips: ["extract", "read-page-reading"], keeps: ["manual-reading"],
   refine: ({ reading }, submission) => {

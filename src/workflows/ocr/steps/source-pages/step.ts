@@ -10,7 +10,7 @@ import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { TaskError } from "../../../../workflow-kit/errors.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { ExtractPdfPages, PDF_PAGE_LIMIT } from "../../../../models/processing/extraction/extract-pdf-pages.js";
-import { ManualOcrDocumentPageValuesSchema, OcrPageWorkflowInputSchema } from "../../../../models/workflows/ocr-page/input.js";
+import { admitManualOcrPageValues, OcrPageWorkflowInputSchema, parseManualOcrDocumentValues } from "../../../../models/workflows/ocr-page/input.js";
 import { OcrInputSchema } from "../../../../models/workflows/ocr/input.js";
 import { ocrPersonLookupRequests, ocrSignerLookupRequests } from "../../../../models/workflows/ocr/lookup.js";
 import { I9LookupInputSchema, I9SignerOutputSchema } from "../../../../models/systems/i9/read-section2-signer.js";
@@ -31,7 +31,7 @@ const childPolicy = Object.freeze({
   onChildFailed: "allow-partial", cascadeCancel: "cascade",
   afterChildRetry: "resume-parent", visibility: "inline"
 } as const);
-const DOCUMENT_VALUES = { off: "values", allowsChildFanOut: true, ownStartOnly: true } as const;
+const DOCUMENT_VALUES = { off: "values", allowsChildFanOut: true } as const;
 
 const SOURCE_COUNT: StepManualDeclaration = {
   ...DOCUMENT_VALUES,
@@ -43,26 +43,25 @@ const SOURCE_COUNT: StepManualDeclaration = {
   bindInput: (input, { pageCount }) => JsonValueSchema.parse(OcrInputSchema.parse({ ...OcrInputSchema.parse(input), assertedPageCount: pageCount })),
 };
 
-function documentPageValues(value: unknown) {
-  const lines = z.array(z.string()).min(1).max(PDF_PAGE_LIMIT).parse(value);
-  return lines.map((line, index) => {
-    const { sourcePage, ...values } = ManualOcrDocumentPageValuesSchema.parse(JSON.parse(line));
-    if (sourcePage !== index + 1) throw new Error("Enter one reading for each original page in order.");
-    return { sourcePage, values };
-  });
-}
-
 const MANUAL_PAGE_READINGS: StepManualDeclaration = {
   ...DOCUMENT_VALUES,
-  form: { fields: [{ key: "readings", label: "Original page readings", kind: "text-list", withheld: true,
+  form: { fields: [{ key: "readings", label: "Original page readings", kind: "text-list", format: "ocr-document-readings", withheld: true,
     help: "Enter one JSON reading per line with sourcePage, pageKind, readAt (ISO time) and record. Use an answers list of path and answer pairs, or null for a non-form page." }] },
   produces: {}, keeps: ["read-pages"],
-  refine: ({ readings }) => {
-    try { documentPageValues(readings); return []; }
-    catch { return [{ field: "readings", message: "Enter one valid reading per original page, in order." }]; }
+  refine: ({ readings }, submission) => {
+    if (submission === undefined) return [];
+    const { formType, document } = OcrInputSchema.parse(submission);
+    try {
+      for (const { sourcePage, values } of parseManualOcrDocumentValues(z.array(z.string()).parse(readings))) {
+        admitManualOcrPageValues(formType, sourcePage, document.sha256, "local-operator", values);
+      }
+      return [];
+    } catch {
+      return [{ field: "readings", message: "Enter a valid reading for the selected form on each original page." }];
+    }
   },
   bindInput: (input, { readings }) => JsonValueSchema.parse(OcrInputSchema.parse({ ...OcrInputSchema.parse(input), extractWithOcr: true,
-    reading: { kind: "manual", actorId: "local-operator", assertions: documentPageValues(readings) } })),
+    reading: { kind: "manual", actorId: "local-operator", assertions: parseManualOcrDocumentValues(z.array(z.string()).parse(readings)) } })),
   withholdsBoundInput: input => OcrInputSchema.safeParse(input).data?.reading.kind === "manual",
 };
 

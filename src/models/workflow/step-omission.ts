@@ -4,6 +4,7 @@ import type { JsonObject, JsonValue } from "../../rules/validation/canonical-jso
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { EID_PATTERN, type IsoInstant } from "../../rules/identity/ids.js";
 import { CRM_MANUAL_RECORDS_EXAMPLE, crmManualRecordsIssue } from "../workflows/crm-doc-download/manual-records.js";
+import { OCR_MANUAL_DOCUMENT_EXAMPLE, OCR_MANUAL_PAGE_EXAMPLE, parseManualOcrDocumentValues, parseManualOcrPageValues } from "../workflows/ocr-page/input.js";
 import type { RuntimeScope } from "./graph.js";
 import { TimelineCategoryKeySchema } from "./presentation.js";
 import { ValueFieldPathSchema } from "./rerun-values.js";
@@ -24,7 +25,7 @@ const FieldBase = {
 
 /** The closed field vocabulary the Steps screen draws; each kind owns its parser. */
 export const StepOmissionFieldSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ ...FieldBase, kind: z.literal("text"), format: z.literal("crm-document-records").optional() }),
+  z.strictObject({ ...FieldBase, kind: z.literal("text"), format: z.enum(["crm-document-records", "ocr-page-reading"]).optional() }),
   /** MM/DD/YYYY — the form every HR date in this tree is typed and staged in. */
   z.strictObject({ ...FieldBase, kind: z.literal("us-date") }),
   /** Shown and typed as MM/DD/YYYY; the server accepts and stores YYYY-MM-DD only. */
@@ -34,7 +35,7 @@ export const StepOmissionFieldSchema = z.discriminatedUnion("kind", [
   z.strictObject({ ...FieldBase, kind: z.literal("integer"), min: z.number().int().optional() }),
   z.strictObject({ ...FieldBase, kind: z.literal("boolean") }),
   z.strictObject({ ...FieldBase, kind: z.literal("enum"), values: z.array(z.string().min(1)).min(1) }),
-  z.strictObject({ ...FieldBase, kind: z.literal("text-list") }),
+  z.strictObject({ ...FieldBase, kind: z.literal("text-list"), format: z.literal("ocr-document-readings").optional() }),
 ]);
 export type StepOmissionField = z.infer<typeof StepOmissionFieldSchema>;
 
@@ -66,6 +67,10 @@ function fieldSchema(field: StepOmissionField, input?: StepOmissionInput): z.Zod
   switch (field.kind) {
     case "text": {
       const text = z.string().trim().min(1);
+      if (field.format === "ocr-page-reading") return text.superRefine((value, context) => {
+        try { parseManualOcrPageValues(value); }
+        catch { context.addIssue({ code: "custom", message: "Enter a valid JSON reading for the original page." }); }
+      });
       return field.format === undefined ? text : text.superRefine((value, context) => {
         const message = crmManualRecordsIssue(value, input);
         if (message !== undefined) context.addIssue({ code: "custom", message });
@@ -77,7 +82,13 @@ function fieldSchema(field: StepOmissionField, input?: StepOmissionInput): z.Zod
     case "integer": return field.min === undefined ? z.number().int() : z.number().int().min(field.min);
     case "boolean": return z.boolean();
     case "enum": return z.string().refine((value) => field.values.includes(value), { message: `expected one of: ${field.values.join(", ")}` });
-    case "text-list": return z.array(z.string().trim().min(1));
+    case "text-list": {
+      const lines = z.array(z.string().trim().min(1));
+      return field.format === undefined ? lines : lines.superRefine((value, context) => {
+        try { parseManualOcrDocumentValues(value); }
+        catch { context.addIssue({ code: "custom", message: "Enter one valid JSON reading per original page, in order." }); }
+      });
+    }
   }
 }
 
@@ -427,12 +438,13 @@ export function stepOmissionPlaceholderFacts(form: StepOmissionForm): JsonObject
     switch (field.kind) {
       case "boolean": return false;
       case "integer": return field.min ?? 0;
-      case "text-list": return [];
+      case "text-list": return field.format === "ocr-document-readings" ? [OCR_MANUAL_DOCUMENT_EXAMPLE] : [];
       case "enum": return field.values[0] ?? "";
       case "us-date": return "01/01/2000";
       case "iso-date": return "2000-01-01";
       case "eid": return "10000000";
-      case "text": return field.format === "crm-document-records" ? CRM_MANUAL_RECORDS_EXAMPLE : "cascade";
+      case "text": return field.format === "ocr-page-reading" ? OCR_MANUAL_PAGE_EXAMPLE
+        : field.format === "crm-document-records" ? CRM_MANUAL_RECORDS_EXAMPLE : "cascade";
     }
   };
   return JsonFactsSchema.parse(Object.fromEntries(

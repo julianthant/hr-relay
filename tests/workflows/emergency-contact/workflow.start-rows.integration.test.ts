@@ -11,14 +11,17 @@ const nodeDigest = (nodes: ReturnType<typeof descriptorRuntimeNodes>): string =>
   [String(node.id), node.kind, node.dependsOn.map(String), "dryRun" in node ? node.dryRun ?? null : null]))).digest("hex");
 
 describe("Emergency Contact Start run rows", () => {
-  it("serves the six rows over its own steps and its OCR and member children, every one locked", () => {
+  it("serves the OCR switches and keeps the Emergency Contact member rows locked", () => {
     const member = "emergency-contact-member";
     assert.deepEqual(projectStartRows(descriptor).map(({ key, label, kind, lockReason, members }) => ({ key, label, kind, lockReason: lockReason ?? null, members })), [
-      { key: "read-emergency-contact", label: "Read emergency contact", kind: "locked", lockReason: null, members: [{ step: "read-document", nodes: ["read-document"] },
-        { workflow: "ocr", step: "source-pages" }, { workflow: "ocr", step: "page-readings" }] },
-      { key: "match-extracted-people", label: "Match extracted people", kind: "locked", lockReason: null, members: [{ step: "read-document", nodes: ["approved-records"] },
-        { workflow: "ocr", step: "review-records" }, { workflow: "ocr", step: "identity-lookups" }, { workflow: "ocr", step: "signer-lookups" }] },
-      { key: "review-extracted-records", label: "Review extracted records", kind: "locked", lockReason: "approval", members: [{ workflow: "ocr", step: "approval" }] },
+      { key: "ocr-source-pages", label: "Prepare source pages", kind: "switch", lockReason: null, members: [{ workflow: "ocr", step: "source-pages" }] },
+      { key: "read-emergency-contact", label: "Read emergency contact", kind: "switch", lockReason: null, members: [{ step: "read-document", nodes: ["read-document"] },
+        { workflow: "ocr", step: "page-readings" }] },
+      { key: "ocr-group-records", label: "Group records for review", kind: "switch", lockReason: null, members: [{ workflow: "ocr", step: "review-records" }] },
+      { key: "match-extracted-people", label: "Match extracted people", kind: "switch", lockReason: null, members: [{ step: "read-document", nodes: ["approved-records"] },
+        { workflow: "ocr", step: "identity-lookups" }] },
+      { key: "ocr-signer-lookups", label: "Look up official signers", kind: "switch", lockReason: null, members: [{ workflow: "ocr", step: "signer-lookups" }] },
+      { key: "review-extracted-records", label: "Review extracted records", kind: "switch", lockReason: null, members: [{ workflow: "ocr", step: "approval" }] },
       { key: "read-existing-contacts", label: "Read existing contacts", kind: "locked", lockReason: "bound-read", members: [{ workflow: member, step: "contact-plan" },
         { workflow: member, step: "reference-check" }] },
       { key: "fill-emergency-contact", label: "Fill emergency contact", kind: "locked", lockReason: "form-action", members: [{ workflow: member, step: "contact-preview", phase: "prepare" }] },
@@ -31,15 +34,15 @@ describe("Emergency Contact Start run rows", () => {
     assert.deepEqual(emergencyContactMemberModule.descriptor.stepLocks, [{ step: "contact-plan", reason: "bound-read" }]);
   });
 
-  it("offers no switch and no typed field on any row", () => {
+  it("offers typed fields only for OCR child steps", () => {
     for (const row of projectStartRows(descriptor)) {
-      assert.equal(row.target, undefined, row.key);
-      assert.equal(row.manual, undefined, row.key);
+      assert.deepEqual(row.target, row.kind === "switch" ? row.members.find(({ workflow }) => workflow === "ocr") : undefined, row.key);
+      assert.equal(row.manual !== undefined, row.kind === "switch", row.key);
       assert.equal(row.selection, undefined, row.key);
     }
   });
 
-  it("refuses a start that carries typed facts for any step", () => {
+  it("refuses typed facts for the parent's own steps", () => {
     const keys = projectStartSteps(descriptor).map(({ key }) => key);
     for (const step of keys) {
       assert.throws(() => resolveStartStepOmissions(descriptor, keys, [{ step, facts: { value: "typed" } }]),

@@ -417,7 +417,8 @@ export function RunStartDialog({
     }
   }, [catalog, selectWorkflow, send, sending]);
 
-  const requiresOcr = pdfSurface !== undefined && pdfRunReadingMode(pdfSurface, pdfInput.draft, pdfInput.picks) === "subscription";
+  const typedOcr = openRowDrafts.some(({ form }) => form.fields.some(field => field.kind === "text-list" && field.format === "ocr-document-readings"));
+  const requiresOcr = !typedOcr && pdfSurface !== undefined && pdfRunReadingMode(pdfSurface, pdfInput.draft, pdfInput.picks) === "subscription";
   const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Start" || (!isRerun && currentStage === "Steps"), open, requiresOcr);
   /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
   const fixedCheck = useRef<{ check: string; reread: boolean } | null>(null);
@@ -661,7 +662,7 @@ export function RunStartDialog({
               items={[
                 workflow?.label,
                 workflow === undefined ? undefined : `${includedRowCount(rows, selectedStepKeys, manualRows, snapshot)} of ${rows.length} steps`,
-                pdfSurface === undefined ? undefined : pdfRunOcrFooter(pdfSurface, pdfInput.draft, pdfInput.picks),
+                typedOcr ? "Manual reading" : pdfSurface === undefined ? undefined : pdfRunOcrFooter(pdfSurface, pdfInput.draft, pdfInput.picks),
                 priority === "interactive" ? "Priority" : undefined,
               ].filter((item): item is string => item !== undefined)}
             />}

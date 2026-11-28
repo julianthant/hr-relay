@@ -5,6 +5,7 @@ import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/e
 import { projectTypedSteps } from "../../../src/backend/runs/queries/run-detail/typed-values.js";
 import { readRerunValues } from "../../../src/backend/runs/start/rerun-values.js";
 import { OcrPageWorkflowInputSchema } from "../../../src/models/workflows/ocr-page/input.js";
+import { EmergencyContactInputSchema } from "../../../src/models/workflows/emergency-contact/input.js";
 import { OcrInputSchema } from "../../../src/models/workflows/ocr/input.js";
 import { OcrWorkflowResultSchema } from "../../../src/models/workflows/ocr/result.js";
 import { deriveEvidenceEntryId } from "../../../src/models/trust/evidence-identity.js";
@@ -13,6 +14,38 @@ import { READ_AT, sourceFixture, submittedPage } from "../../support/fixtures/oc
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
+
+it("admits a manual original page through Emergency Contact Start without the OCR account", async () => {
+  let available = true;
+  const f = await world.fixture({ coordinator: true, holdPages: true, ocrProviderAvailable: () => available });
+  const descriptor = f.root.descriptor, authority = f.database.authority;
+  available = false;
+  const input = EmergencyContactInputSchema.parse({ ...EmergencyContactInputSchema.parse(f.parentRun.input.parsed.value),
+    readingId: randomUUID(), onbaseFiling: "skip" });
+  assert.equal(input.reading.kind, "subscription");
+  const options = { dryRun: false, ...(f.workbookReferences === undefined ? {} : { workbookReferences: f.workbookReferences }) };
+  const entry = (pageKind: string) => ({ workflow: "ocr", step: "page-readings", facts: {
+    readings: [JSON.stringify({ sourcePage: 1, pageKind, readAt: READ_AT, record: null })],
+  } });
+  assert.throws(() => f.canonical.start(descriptor, input, { ...options, stepOmissions: [entry("emergency-contact")] }),
+    /omission facts are invalid at: readings/u);
+  const run = f.canonical.start(descriptor, input, { ...options, stepOmissions: [entry("blank"),
+    { workflow: "ocr", step: "review-records", facts: { outcome: "leave unverified" } },
+    { workflow: "ocr", step: "identity-lookups", facts: { outcome: "leave unverified" } },
+    { workflow: "ocr", step: "signer-lookups", facts: { outcome: "leave unverified" } },
+    { workflow: "ocr", step: "approval", facts: { release: "withhold" } },
+  ] });
+  await f.canonical.execute(run, new AbortController().signal);
+  const child = authority.runs.listChildren(run.envelope.runId).find(candidate => candidate.envelope.workflow === "ocr");
+  assert.ok(child?.lifecycle.state === "terminal" && child.lifecycle.outcome === "done");
+  const [page] = authority.runs.listChildren(child.envelope.runId);
+  assert.ok(page?.lifecycle.state === "terminal" && page.lifecycle.outcome === "done");
+  const { reading } = OcrPageWorkflowInputSchema.parse(page.input.parsed.value);
+  assert.ok(reading.kind === "manual");
+  assert.deepEqual(reading.extraction.source, { kind: "operator", actorId: "local-operator" });
+  assert.equal(f.ocrCalls(), 0);
+  assert.deepEqual(authority.ocrReviews.snapshots(child.envelope.runId), []);
+});
 
 it("starts with operator readings for each original page and withholds release", async () => {
   const f = await world.fixture({ pageCount: 2, holdPages: true });
@@ -32,6 +65,11 @@ it("starts with operator readings for each original page and withholds release",
   assert.throws(() => f.canonical.start(descriptor, input, { ...startOptions, stepOmissions: [
     { step: "source-pages", facts: { pageCount: 2 } },
     { step: "page-readings", facts: { readings: ["not a page reading"] } }, { step: "approval", facts: { release: "withhold" } },
+  ] }), /omission facts are invalid at: readings/u);
+  assert.throws(() => f.canonical.start(descriptor, input, { ...startOptions, stepOmissions: [
+    { step: "source-pages", facts: { pageCount: 2 } },
+    { step: "page-readings", facts: { readings: [JSON.stringify({ sourcePage: 1, pageKind: "emergency-contact", readAt: READ_AT, record: null })] } },
+    { step: "approval", facts: { release: "withhold" } },
   ] }), /omission facts are invalid at: readings/u);
   const run = f.canonical.start(descriptor, input, { ...startOptions, stepOmissions: [
     { step: "source-pages", facts: { pageCount: 2 } },
