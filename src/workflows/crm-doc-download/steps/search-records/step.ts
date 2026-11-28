@@ -4,11 +4,16 @@ import type { StepManualDeclaration } from "../../../../models/workflow/step-omi
 import { CrmDocDownloadCanonicalInput, CrmDocDownloadInput, type CrmDocDownloadInputValue } from "../../../../models/workflows/crm-doc-download/input.js";
 import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import { matchesCrmDocumentSubject } from "../../../../rules/crm-doc-download/documents.js";
+import { EID_PATTERN } from "../../../../rules/identity/ids.js";
 import { defineStep, inheritStepProof, reuseTask, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { CrmSearchDocumentRecords } from "../../../../models/systems/crm/search-document-records.js";
 
 const identityFields = CrmDocumentIdentitySchema.shape;
+const eid = EID_PATTERN.source.slice(1, -1);
+const email = `(?:${z.regexes.email.source.slice(1, -1)})`;
+const emails = String.raw`(?:${email}\s*\|\s*${email}?|\|\s*${email})`;
+const record = String.raw`\s*[^\s|;][^|;]*\|\s*(?:${eid})?\s*\|\s*${emails}\s*`;
 const manualRecords = z.string().transform(text => text.split(";").map(row =>
   row.split("|").map(value => value.trim() || null),
 )).pipe(z.array(z.tuple([identityFields.recordId, identityFields.eid, identityFields.workEmail, identityFields.personalEmail]))
@@ -18,6 +23,8 @@ const manualRecords = z.string().transform(text => text.split(";").map(row =>
 
 export const CRM_DOCUMENT_SEARCH_MANUAL: StepManualDeclaration = {
   form: { fields: [{ key: "records", label: "CRM records", kind: "text",
+    pattern: { source: `^${record}(?:;${record})*$`, example: "fixture | | fixture@example.test |",
+      message: "Enter a CRM record ID and at least one valid email per person. Use all four columns." },
     help: "Enter CRM record ID | Employee ID | Work email | Personal email for each person in input order. Leave unknown fields blank and separate people with semicolons." }] },
   refine: facts => manualRecords.safeParse(facts.records).success ? []
     : [{ field: "records", message: "Enter each distinct CRM record ID with at least one valid email." }],

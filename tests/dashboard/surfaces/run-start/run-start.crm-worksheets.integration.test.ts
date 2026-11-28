@@ -5,7 +5,7 @@ import { act } from "react";
 import { afterAll, afterEach, it } from "vitest";
 import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
-import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
+import { projectStartRows, projectStartSteps, startRowWire } from "../../../../src/backend/runs/start/step-selection.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../../src/models/dashboard/start-plan.js";
@@ -31,10 +31,10 @@ afterEach(async () => {
 const crm = DESCRIPTORS.find(flow => flow.id === "crm-doc-download"); assert.ok(crm?.surfaces.inputRun);
 const crmFlow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: crm.id, label: crm.label, version: crm.version,
   requiredWorkbookFields: [...crm.requiredWorkbookFields], workbookReference: crm.workbookReference,
-  steps: projectStartSteps(crm), inputRun: { state: "present", surface: crm.surfaces.inputRun } };
+  steps: projectStartSteps(crm), rows: projectStartRows(crm).map(startRowWire), inputRun: { state: "present", surface: crm.surfaces.inputRun } };
 const EMAIL = "hire@example.test";
 
-it("starts a real CRM Doc Download run from the mounted picker with a reference row captured on each chosen worksheet", async () => {
+it.each([false, true])("captures each chosen worksheet when starting CRM Document Download with manual records %s", async manual => {
   const f = await world.createHarness(undefined, { descriptors: [crm] });
   const repository = f.database.authority.workbooks;
   const library = createWorkbookLibraryService({ repository, clock: f.clock, sync: unexpectedWorkbookSync });
@@ -72,7 +72,28 @@ it("starts a real CRM Doc Download run from the mounted picker with a reference 
   const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].find(node => node.textContent === "Nov 2"); assert.ok(item);
   await act(async () => { item.click(); }); await h.settle();
   await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-  await dialog.type(EMAIL); await dialog.press("Next"); await dialog.press("Start run");
+  await dialog.type(EMAIL); await dialog.press("Next");
+  const typedRecords = `fixture | | ${EMAIL} |`;
+  if (manual) {
+    await dialog.press("Customize steps"); await dialog.press("Next");
+    for (const label of ["Find latest CRM records", "Resolve worksheet rows", "Download CRM documents", "Package worksheet archives"]) {
+      assert.equal(dialog.disabled(`Include ${label}`), false, label);
+    }
+    await dialog.press("Find latest CRM records");
+    assert.equal(dialog.disabled("Start run"), true);
+    const records = document.querySelector<HTMLInputElement>('input[aria-label="CRM records"]'); assert.ok(records);
+    const typeRecords = (value: string) => act(async () => {
+      setValue?.set?.call(records, value);
+      records.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await typeRecords("fixture | | malformed |");
+    assert.equal(dialog.disabled("Start run"), true);
+    assert.equal(planned, undefined);
+    await typeRecords(typedRecords);
+    assert.equal(dialog.disabled("Start run"), false);
+  }
+  await dialog.press("Start run");
+  assert.deepEqual(StartPlanRequestSchema.parse(planned).stepOmissions, manual ? [{ step: "search-records", facts: { records: typedRecords } }] : undefined);
   const runs = f.database.authority.runs.listByWorkflow(crm.id);
   assert.equal(runs.length, 1);
   const references = (runs[0].input.workbookReferences ?? []).map(bound => parseRunWorkbookReference(bound));

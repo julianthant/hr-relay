@@ -19,9 +19,20 @@ const FieldBase = {
   replaces: z.strictObject({ nodeId: z.string().min(1), path: ValueFieldPathSchema }).optional(),
 };
 
+const TextPatternSchema = z.strictObject({
+  source: z.string().min(1),
+  example: z.string().trim().min(1),
+  message: z.string().min(1),
+}).refine(({ source, example }) => {
+  try { return new RegExp(source, "u").test(example); } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    return false;
+  }
+}, "a text field pattern must compile and accept its example");
+
 /** The closed field vocabulary the Steps screen draws; each kind owns its parser. */
 export const StepOmissionFieldSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ ...FieldBase, kind: z.literal("text") }),
+  z.strictObject({ ...FieldBase, kind: z.literal("text"), pattern: TextPatternSchema.optional() }),
   /** MM/DD/YYYY — the form every HR date in this tree is typed and staged in. */
   z.strictObject({ ...FieldBase, kind: z.literal("us-date") }),
   /** Shown and typed as MM/DD/YYYY; the server accepts and stores YYYY-MM-DD only. */
@@ -53,7 +64,10 @@ export const EidFactSchema = z.string().regex(EID_PATTERN, "an employee id fact 
 
 function fieldSchema(field: StepOmissionField): z.ZodType {
   switch (field.kind) {
-    case "text": return z.string().trim().min(1);
+    case "text": {
+      const text = z.string().trim().min(1);
+      return field.pattern === undefined ? text : text.regex(new RegExp(field.pattern.source, "u"), field.pattern.message);
+    }
     case "us-date": return UsDateFactSchema;
     case "iso-date": return IsoDateFactSchema;
     case "eid": return EidFactSchema;
@@ -376,7 +390,7 @@ export function stepOmissionPlaceholderFacts(form: StepOmissionForm): JsonObject
       case "us-date": return "01/01/2000";
       case "iso-date": return "2000-01-01";
       case "eid": return "10000000";
-      case "text": return "cascade";
+      case "text": return field.pattern?.example ?? "cascade";
     }
   };
   return JsonFactsSchema.parse(Object.fromEntries(
