@@ -215,7 +215,7 @@ const REFERENCE = {
 /** Saved onboarding rows: the spreadsheet is listed and checked, but the version behind its row list cannot be read. */
 const rowsFailing = (): Partial<DashboardClient> => ({ ...RUN_DIALOG_REFERENCE_READS, workbookLibraryVersion: async () => unreadable() });
 const SAVED_ROWS = {
-  unavailable: reference("Saved rows that could not be read", rowsFailing(), RUN_DIALOG_SAVED_ROWS_CATALOG, { then: chooseRoster, ready: 'text=/Saved rows unavailable/' }),
+  unavailable: reference("Saved rows that could not be read", rowsFailing(), RUN_DIALOG_SAVED_ROWS_CATALOG, { then: chooseRoster, ready: 'text="Couldn\'t read the rows of Roster (Reviewed): This could not load."' }),
 } satisfies Record<"unavailable", Story>;
 
 const SEPARATIONS_FLOW = { catalog: RUN_DIALOG_SEPARATIONS_CATALOG, workflowId: RUN_DIALOG_SEPARATIONS, typed: RUN_DIALOG_SEPARATIONS_TYPED } as const;
