@@ -6,10 +6,12 @@ import { AssistantToolRefusal } from "../../../../../src/backend/assistant/plugi
 import type { AssistantPluginDeps } from "../../../../../src/backend/assistant/plugins/registry.js";
 import { createAssistantReferenceTable } from "../../../../../src/backend/assistant/references.js";
 import { RunDetailWireSchema, type RunDetailWire } from "../../../../../src/models/dashboard/run-detail.js";
+import type { SpanNotRunReasonSchema } from "../../../../../src/models/events/types.js";
 import { NodeIdSchema } from "../../../../../src/rules/identity/ids.js";
+import type { z } from "zod";
 
 const AT = "2026-11-08T12:00:00.000Z";
-function failedRun(): RunDetailWire {
+function failedRun(skipped: z.infer<typeof SpanNotRunReasonSchema> = "branch-not-selected"): RunDetailWire {
   const runId = randomUUID(), traceId = "ws-120000-abcd";
   return RunDetailWireSchema.parse({ runId, rowRevision: 3, panelKind: "run",
     header: { runId, traceId, workflowId: "work-study", title: "Synthetic private run title", status: "failed", attempt: 1 },
@@ -20,10 +22,10 @@ function failedRun(): RunDetailWire {
         { nodeId: "paypath-update", label: "Update Work-Study", state: "skipped" },
       ].map((event, index) => ({ noteId: randomUUID(), sequence: index + 1, at: AT, label: event.label, state: event.state,
         native: { eventId: randomUUID(), order: index + 1, runId, traceId, attempt: 1, nodeId: event.nodeId },
-        notRun: event.state === "skipped" ? { state: "present", reason: "branch-not-selected" } : { state: "absent", reason: "this step ran" } })),
+        notRun: event.state === "skipped" ? { state: "present", reason: skipped } : { state: "absent", reason: "this step ran" } })),
       steps: [
         { key: "update", label: "Update the appointment", state: "skipped",
-          members: [{ nodeId: "paypath-update", label: "Update Work-Study", state: "skipped", notRunReason: "branch-not-selected" }] },
+          members: [{ nodeId: "paypath-update", label: "Update Work-Study", state: "skipped", notRunReason: skipped }] },
         { key: "sign-in", label: "Sign in to UCPath", state: "failed", members: [
           { nodeId: "ucpath-login", label: "Open UCPath", state: "done" },
           { nodeId: "paypath-open", label: "Open PayPath Actions", state: "failed" },
@@ -46,7 +48,7 @@ function logs(detail: RunDetailWire, version: number = detail.rowRevision) {
   const references = createAssistantReferenceTable(3), run = references.issue("R", detail.runId, "selected run", detail.runId, version);
   const context = { references, signal: new AbortController().signal, actorId: "local-operator", conversationId: randomUUID(),
     operatorText: "", assertCurrent() {}, assertRetainedCurrent() {} };
-  return { read: (last: number) => tool.invoke({ run, last }, context) };
+  return { read: async (last: number) => tool.output.parse(await tool.invoke({ run, last }, context)) };
 }
 
 it("names each action's served Logs step, including the failed step, without returning other run values", async () => {
@@ -72,6 +74,12 @@ it("refuses events without one served Logs step instead of inventing a step name
   ];
   for (const timeline of timelines) await assert.rejects(logs({ ...detail, timeline }).read(5),
     (error: unknown) => error instanceof AssistantToolRefusal && error.code === "ASSISTANT_READ_UNAVAILABLE");
+});
+
+it("returns the skipped action when required evidence is unavailable", async () => {
+  assert.deepEqual(await logs(failedRun("required-evidence-unavailable")).read(1), { total: 3, steps: [
+    { at: AT, label: "Update Work-Study", stepLabel: "Update the appointment", state: "skipped", skipped: "required-evidence-unavailable" },
+  ] });
 });
 
 it("keeps an empty timeline readable without inventing step metadata", async () => {

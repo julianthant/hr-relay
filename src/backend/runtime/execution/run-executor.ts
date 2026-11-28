@@ -17,7 +17,7 @@ import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import type { Fingerprint, IsoInstant, NodeId } from "../../../rules/identity/ids.js";
 import { RunLifecycleSchema, RunRecordSchema, runClaim, type RunLifecycle, type RunRecord } from "../../../models/run/record.js";
 import { pendingInterruptOf } from "../../../rules/runs/run-interrupt.js";
-import type { TerminalDependencyEvidence } from "../../../models/run/result.js";
+import type { TerminalDependencyEvidence, TerminalNotRunReason } from "../../../models/run/result.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { RuntimeScope } from "../../../models/workflow/graph.js";
@@ -270,7 +270,7 @@ export async function executeClaimedRun(
     const checkpointRecords = new Map<string, RunCheckpointRecord>();
     const childResultEvidence = new Map<string, Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>>();
     const gateResultEvidence = new Map<string, Extract<TerminalDependencyEvidence, { state: "gate-resolved" }>>();
-    const skippedReasons = new Map<string, "condition-false" | "branch-not-selected" | "step-omitted">();
+    const skippedReasons = new Map<string, Exclude<TerminalNotRunReason, "operator-asserted">>();
 
     const assertedRecords = new Map<string, Readonly<{ step: string; assertedAt: IsoInstant; output: Readonly<{ schemaHash: Fingerprint; value: JsonValue }> }>>();
 

@@ -462,7 +462,7 @@ export interface StepOmissionStepView {
   readonly label: string;
   readonly control:
     | Readonly<{ state: "selectable"; inputField: string }>
-    | Readonly<{ state: "omittable"; form: StepOmissionForm; forces: readonly string[] }>
+    | Readonly<{ state: "omittable"; form: StepOmissionForm; forces: readonly string[]; stop?: string }>
     | Readonly<{ state: "required"; reason: string }>;
 }
 
@@ -476,7 +476,7 @@ export function omittedStepViews<T extends StepOmissionStepView>(
 
 /** A step whose omission types nothing: switching it off says it was done by hand. */
 function doneByHand(step: StepOmissionStepView | undefined): boolean {
-  return step?.control.state === "omittable" && step.control.form.fields.length === 0;
+  return step?.control.state === "omittable" && step.control.stop === undefined && step.control.form.fields.length === 0;
 }
 
 /** Lock exactly the omissions forced by the descriptor’s fixpoint, never another client rule; a step done by hand is never forced. */
@@ -494,6 +494,18 @@ export function handOffStepOmissions(
 ): ReadonlyMap<string, readonly string[]> {
   return new Map([...cascadeTargets(steps, selectedStepKeys)]
     .filter(([key]) => selectedStepKeys.includes(key) && doneByHand(steps.find((step) => step.key === key))));
+}
+
+/** Stop cascades suppress actions even if the operator had left them on. Their choices stay in the draft. */
+export function stoppedStepOmissions(
+  steps: readonly StepOmissionStepView[],
+  selectedStepKeys: readonly string[],
+): ReadonlyMap<string, readonly string[]> {
+  const stops = new Set(steps.flatMap(step => step.control.state === "omittable" && step.control.stop !== undefined ? [step.key] : []));
+  return new Map([...cascadeTargets(steps, selectedStepKeys)].flatMap(([key, owners]) => {
+    const stopping = owners.filter(owner => stops.has(owner));
+    return stopping.length === 0 ? [] : [[key, stopping] as const];
+  }));
 }
 
 function cascadeTargets(
@@ -528,7 +540,7 @@ export function toggleStepSelection(
   if (step.control.state === "required") return selectedStepKeys;
   if (forcedStepOmissions(steps, selectedStepKeys).has(key)) return selectedStepKeys;
   const selected = new Set(selectedStepKeys);
-  const forces = step.control.state === "omittable" ? step.control.forces : [];
+  const forces = step.control.state === "omittable" && step.control.stop === undefined ? step.control.forces : [];
   if (next) {
     selected.add(key);
     // Only the step this press let back in is offered a return; whether it
@@ -540,7 +552,8 @@ export function toggleStepSelection(
   }
   // Apply forces to the new selection once; another omitted step may still hold a target out.
   const stillForced = forcedStepOmissions(steps, [...selected]);
-  for (const forced of stillForced.keys()) selected.delete(forced);
+  const stopped = stoppedStepOmissions(steps, [...selected]);
+  for (const forced of stillForced.keys()) if (!stopped.has(forced)) selected.delete(forced);
   return Object.freeze(steps.filter((candidate) => selected.has(candidate.key)).map((candidate) => candidate.key));
 }
 

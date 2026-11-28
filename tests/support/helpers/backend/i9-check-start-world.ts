@@ -52,7 +52,9 @@ import type { z } from "zod";
 export function createI9CheckStartWorld() {
   const world = createRunExecutorTestWorld();
   return { cleanup: world.cleanup, /** `checks` are extra library spreadsheets picked as the second check; `rows` follow the header row, so the first data row is sheet row 2. */
-  async fixture(options: Readonly<{ dryRun?: boolean; nameSearch?: "none" | "multiple"; checks?: readonly Readonly<{ name: string; sheet: string; fields: readonly string[]; rows: readonly (readonly string[])[] }>[] }> = {}) {
+  async fixture(options: Readonly<{ dryRun?: boolean; nameSearch?: "none" | "multiple";
+    selection?: Pick<Parameters<ReturnType<typeof canonicalChildExecution>["start"]>[2], "selectedStepKeys" | "stepOmissions">;
+    checks?: readonly Readonly<{ name: string; sheet: string; fields: readonly string[]; rows: readonly (readonly string[])[] }>[] }> = {}) {
     const publishCalls: string[] = [], fieldReads: { runId: string; key: string }[] = [], projections: (readonly string[])[] = [];
     const pages = new Map<string, z.output<typeof ExtractPdfPagesOutputSchema>>();
     const renderer = defineTask(ExtractPdfPages, { sessions: [], async run({ input, ctx }) {
@@ -173,7 +175,7 @@ export function createI9CheckStartWorld() {
       return { entry: 1, typeId: REFERENCE_CHECK_ID, libraryId: extra.libraryId, versionId: library.libraryVersion(extra.libraryId).version.id,
         sheetId: "sheet", expectedVersion: library.read(extra.libraryId).version };
     });
-    const run = canonical.start(root.descriptor, input, { dryRun: options.dryRun ?? false, workbookReferences: [{ entry: 1,
+    const run = canonical.start(root.descriptor, input, { dryRun: options.dryRun ?? false, ...options.selection, workbookReferences: [{ entry: 1,
       libraryId: saved.libraryId, versionId: selectedReference.versionId, sheetId: "history",
       expectedVersion: library.read(saved.libraryId).version }, ...checks] });
     const changeReference = async () => {
