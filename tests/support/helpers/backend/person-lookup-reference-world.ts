@@ -1,3 +1,4 @@
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import type { z } from "zod";
@@ -64,7 +65,7 @@ export function createPersonLookupReferenceWorld() {
       configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint, activatedAt: snapshot.capturedAt });
     const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
     const runWorkbooks = createRunWorkbookService({ database, clock });
-    const canonical = canonicalChildExecution(harness.deps, database, path, id => SERVER_REGISTRY[id]?.descriptor, undefined, { workbooks: library,
+    const canonical = canonicalChildExecution({ ...harness.deps, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }) }, database, path, id => SERVER_REGISTRY[id]?.descriptor, undefined, { workbooks: library,
       resources: (_reader, run) => ({ providers: { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
         adapters: { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
           references: { runId: run.envelope.runId, write: () => { throw new Error("Person Lookup must not write a reference"); },

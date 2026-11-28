@@ -1,3 +1,4 @@
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { i9CheckStartModule } from "../registered-workflows.js";
 import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/driver/fake.js";
 import { WorkbookNamedReferenceSnapshotSchema } from "../../../../src/models/dashboard/workbooks.js";
@@ -111,7 +112,7 @@ export function createI9CheckStartWorld() {
     const runWorkbooks = createRunWorkbookService({ database, clock }), readRefusals = new Set<string>();
     const projector = composeWorkerArtifactProjector({ admission, database, artifacts, clock });
     const resolve = (id: string) => (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
-    const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve, createOcrCheckpointPublication, { workbooks: library,
+    const canonical = canonicalChildExecution({ ...harness.deps, artifacts, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }) }, database, path, resolve, createOcrCheckpointPublication, { workbooks: library,
       resources: (reader, run) => ({ artifactProjector: { projectOutbox: ids => { projections.push(ids); return projector.projectOutbox(ids); } }, providers: { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
         adapters: { "ocr.review": createOcrReviewAdapter({ reader: createApprovedOcrRecordReader({ database, reader, run, resolveDescriptor: resolve, assertCurrent: () => admission.assertProfileRuntime() }), clock }),
           "workbooks.library": countPublishes(createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
