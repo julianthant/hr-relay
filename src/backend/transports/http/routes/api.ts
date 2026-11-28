@@ -66,14 +66,14 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
         const disconnected = causes.some(cause => cause.reason === "request-disconnected");
         const debugReportFailed = c.req.method === "POST" && c.req.path === "/api/v1/debug/errors";
         const correlationId = randomUUID();
-        afterRequestOutcome(c.req.raw, () => {
-          for (const cause of causes) {
+        afterRequestOutcome(c.req.raw, async () => {
+          await Promise.all(causes.map(cause => {
             const reportCause = cause.token !== undefined && debugReportCauseTokens.has(cause.token) ? cause.token : cause.reason;
             const reason = debugReportFailed ? reportCause : "request-cause";
-            debugEvents.emit({ category: "http", phase: "failed", correlationId, area: "request", reason,
+            return debugEvents.emit({ category: "http", phase: "failed", correlationId, area: "request", reason,
               ...(debugReportFailed ? { method: "POST", route: "/api/v1/debug/errors" } : {}),
               ...(disconnected ? {} : { status }), code: debugReportFailed ? cause.code : causeCode(cause), message: cause.name, stack: cause.stack });
-          }
+          }));
         });
       } catch {
         return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
@@ -82,8 +82,8 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     const timeout = preflightRunnerTimeout(error);
     if (timeout !== undefined) {
       const correlationId = randomUUID();
-      afterRequestOutcome(c.req.raw, () => {
-        debugEvents.emit({ category: "http", phase: "failed", correlationId, area: "request", reason: "preflight-timeout",
+      afterRequestOutcome(c.req.raw, async () => {
+        await debugEvents.emit({ category: "http", phase: "failed", correlationId, area: "request", reason: "preflight-timeout",
           code: "PREFLIGHT_TIMEOUT", status, message: timeout.message });
       });
     }
@@ -144,7 +144,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     if (report.runId !== undefined && debugReportRunReader === undefined) throw new Error("TRUST_RUN_READER_NOT_CONFIGURED");
     const existence = report.runId === undefined ? undefined : debugReportRunReader?.read(report.runId);
     const run = existence?.state === "present" ? existence.run : undefined;
-    debugEvents.emit({ category: "client", phase: "failed", correlationId: report.reportId,
+    await debugEvents.emit({ category: "client", phase: "failed", correlationId: report.reportId,
       area: "dashboard", reason: report.reason,
       route: report.route, surface: report.surface, release: report.release, code: report.code, message: report.message, stack: report.stack },
       run === undefined ? { kind: "client", clientId: report.clientId } : { kind: "run", runId: run.envelope.runId }, run?.envelope.workflow);

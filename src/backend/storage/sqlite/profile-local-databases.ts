@@ -1,7 +1,9 @@
-import type { TimelineEventRecord } from "../../../models/events/timeline.js";
+import { TimelineDiagnosticBudgetError, type TimelineEventRecord } from "../../../models/events/timeline.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { LogMutation } from "../events/log-mutations.js";
-import { debugEventFromRow, timelineEventColumns, timelineEventFromRow } from "./timeline-repository.js";
+import { assertSameClientDebugReport, DebugAppendRefusalSchema, type DebugAppendResult, type DebugTimelineAppend, type LogMutation } from "../events/log-mutations.js";
+import { createTimelineRepository, debugEventFromRow, timelineEventColumns, timelineEventFromRow } from "./timeline-repository.js";
+import { assertTimelineOwner } from "./authority-run-evidence.js";
+import { configureWritableConnection, existingDatabaseLocation } from "./authority-connection.js";
 import { fileModified, fileChanged, fileStatus } from "../file-identity.js";
 import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
 import { posixPrivatePathRejects, privatePathRejects } from "../private-path.js";
@@ -10,6 +12,7 @@ import { createReadonlyAuthoritySnapshot, openReadOnlyDatabase } from "./readonl
 import { closeSync, lstatSync, openSync, type BigIntStats } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { isMainThread } from "node:worker_threads";
 import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -416,11 +419,14 @@ function openSidecar(root: string, spec: typeof timeline | typeof dashboard, bin
   }
 }
 
-export function openLogDatabases(statePath: string, root: string) {
+export function openLogDatabases(statePath: string, root: string, liveWriter = false) {
+  if (liveWriter && isMainThread) throw new Error("debug-log-writer-thread-required");
   const directory = fileStatus(root);
   if (!directory.isDirectory() || privatePathRejects(root, directory, "owner")) throw new Error("log-database-root-unsafe");
   validateFile(statePath, true);
-  const state = openReadOnlyDatabase(statePath, 5000);
+  const state = liveWriter
+    ? new DatabaseSync(existingDatabaseLocation(statePath), { timeout: 5000, enableDoubleQuotedStringLiterals: false, allowExtension: false, defensive: true })
+    : openReadOnlyDatabase(statePath, 5000);
   const opened: ReturnType<typeof openSidecar>[] = [];
   const close = () => {
     const errors: unknown[] = [];
@@ -431,6 +437,16 @@ export function openLogDatabases(statePath: string, root: string) {
   };
   try {
     const binding = bindingSchema.parse(state.prepare("SELECT installation_id,profile_id FROM database_states WHERE id=1").get());
+    if (liveWriter) {
+      if (pragmaInteger(state, "application_id") !== AUTHORITY_APPLICATION_ID || pragmaInteger(state, "user_version") !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
+        throw new Error("debug-log-writer-state-schema-mismatch");
+      }
+      configureWritableConnection(state, 5000);
+    }
+    const debugRepository = createTimelineRepository({
+      database: state, read: work => work(), mutate: work => work().result,
+      assertOwner: (record, appending) => assertTimelineOwner(state, record, appending),
+    });
     opened.push(openSidecar(root, timeline, binding));
     opened.push(openSidecar(root, dashboard, binding));
     const tables = opened.map(sidecar => ({
@@ -479,6 +495,25 @@ export function openLogDatabases(statePath: string, root: string) {
           });
         }
       }),
+      commitDebug(records: readonly DebugTimelineAppend[]): readonly { result: DebugAppendResult; row?: TimelineEventRecord }[] {
+        if (!liveWriter) throw new Error("debug-log-writer-thread-required");
+        return inTransaction(state, "BEGIN IMMEDIATE", () => records.map(record => {
+          try {
+            const existing = record.payload.event.category === "client" ? debugRepository.get(record.eventId) : undefined;
+            if (existing !== undefined) {
+              assertSameClientDebugReport(record, existing);
+              return { result: "existing", row: existing };
+            }
+            const { state: result, record: row } = debugRepository.append(record);
+            return { result, row };
+          } catch (error) {
+            if (error instanceof TimelineDiagnosticBudgetError) return { result: "budget-full" };
+            const refusal = DebugAppendRefusalSchema.safeParse(error instanceof Error ? error.message : undefined);
+            if (refusal.success) return { result: refusal.data };
+            throw error;
+          }
+        }));
+      },
       close,
     };
   } catch (error) {

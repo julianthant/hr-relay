@@ -11,7 +11,7 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import { createDebugEventWriter } from "../../../logs/debug-events.js";
 import { composeLoopDelayMonitor } from "../../../logs/loop-delay.js";
 import { appendEmergencyFault, withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
-import { importLocalDebugLog } from "../../../storage/events/local-debug-log.js";
+import { importLocalDebugLogViaWriter } from "../../../storage/events/local-debug-log.js";
 import { startLogWriter } from "../../../storage/events/log-writer.js";
 import { runQueuedSpanEvent } from "../../../runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
@@ -29,7 +29,6 @@ import { composeRuntimePreflight } from "../../preflight/runtime-admission.js";
 import { DESCRIPTORS,SERVER_REGISTRY,descriptorSetHash } from "../../registries/workflow-registry.js";
 import { RuntimeCustodyUncertainError } from "../storage-compose.js";
 import { createTrustNotifications } from "./notifications.js";
-import { ownedDiagnostics } from "./notification-health.js";
 import { DashboardFrontendModeSchema,PackageVersionSchema,type DashboardComposeInput,type StartupCleanup,type StartupCustody } from "./runtime-contracts.js";
 import { composeSettings } from "./settings.js";
 import { createDashboardReadHost, ReadLaneStartError } from "../../../storage/sqlite/dashboard-read-host.js";
@@ -147,14 +146,18 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
       code: "LOG_WRITER_FAILED", area: "log-writer", reason: "database-unavailable" }); }
     catch { input.workerProcess?.faultSink?.(JSON.stringify({ code: "LOG_WRITER_FAILED", reason: "boot-log-unavailable" })); }
   } });
-  const unbindLogPublisher = database.bindLogPublisher(logWriter.publish);
+  const unbindLogPublisher = database.bindLogPublisher(logWriter.publish, "writer-thread");
   const stopLogWriter = () => {
     unbindLogPublisher();
     return logWriter.close();
   };
   startupCleanups.push(stopLogWriter);
-  importLocalDebugLog(stateRoot, database.authority.timelineEvents);
-  importLocalDebugLog(machineAdmission.stateRoot, database.authority.timelineEvents);
+  const bootImport = Promise.all([
+    importLocalDebugLogViaWriter(stateRoot, logWriter.appendDebug),
+    importLocalDebugLogViaWriter(machineAdmission.stateRoot, logWriter.appendDebug),
+    logWriter.flush(),
+  ]);
+  void bootImport.catch(() => {});
   database.sweepOrdinaryDiagnostics(clock.now().toISOString());
   const bootConfig = (() => {
     const persistedSettings = database.withAuthorityTransaction((repositories) => readBootSettings(repositories));
@@ -210,11 +213,11 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   });
 
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
-  const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: appVersion, development: frontend === "vite-dev" });
+  const debugEvents = createDebugEventWriter({ enqueue: logWriter.appendDebug, clock, build: appVersion, development: frontend === "vite-dev" });
   context.attachSlowOperations(debugEvents);
-  context.sessionBackups.start(ownedDiagnostics(database, debugEvents));
+  context.sessionBackups.start(debugEvents);
   startupCleanups.push(() => context.sessionBackups.requestCancellation());
-  const loopDelayMonitor = composeLoopDelayMonitor(input.loopDelay, { clock, debugEvents: ownedDiagnostics(database, debugEvents) });
+  const loopDelayMonitor = composeLoopDelayMonitor(input.loopDelay, { clock, debugEvents });
   startupCleanups.push(() => loopDelayMonitor.stop());
   chatGptAccount.setDebugEvents(debugEvents);
   const spanWriter = createTimelineEmitter({ repository: loggingRepository, clock });
@@ -241,7 +244,7 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     if (error instanceof AuthoritySourceClosureUnprovedError) custody.failedClosures.push(error);
     throw error;
   }
-  profile.runtime.registerCommandActivity(profile.token, startSettingsKeepAwake({ database, debugEvents: ownedDiagnostics(database, debugEvents) }));
+  profile.runtime.registerCommandActivity(profile.token, startSettingsKeepAwake({ database, debugEvents }));
   const { backfillGapNotifier, inbox: notificationInbox, observer: notificationObserver } = createTrustNotifications({
     admission, database, clock, ids, reader: lifecycle, readLanes, stateRoot,
   });
@@ -271,5 +274,5 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, readLanes, logWriter, stopLogWriter, settingsProcesses, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, readLanes, logWriter, stopLogWriter, bootImport, settingsProcesses, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }

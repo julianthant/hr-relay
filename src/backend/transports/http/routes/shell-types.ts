@@ -4,10 +4,11 @@ import type { OperatorXlsxExportService } from "../../../runs/exports/operator-x
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import type { CalendarQuery, CalendarWire } from "../../../../models/dashboard/calendar.js";
 import type { CrossDateSearchQuery } from "../../../../models/dashboard/search.js";
+import type { DebugEventEmitter } from "../../../logs/debug-events.js";
 
 export interface ShellRouteDeps {
   readonly applicationLifecycle?: { snapshot(): import("../../../../models/dashboard/application-lifecycle.js").ApplicationLifecycle };
-  readonly debugEvents?: ReturnType<typeof import("../../../logs/debug-events.js").createDebugEventWriter>;
+  readonly debugEvents?: DebugEventEmitter;
   readonly calendar?: { read(query: CalendarQuery, signal?: AbortSignal): CalendarWire | Promise<string> };
   readonly bootstrap: BootstrapQueryDeps;
   readonly search: CrossDateSearchQueryService;

@@ -973,6 +973,7 @@ export function composeSelectedProfileStorage(input: Readonly<{
   hostFacts: HostConfigFacts;
   clock: Clock;
   assertOrdinaryOwner?: () => void;
+  deferSlowOperations?: boolean;
 }>) {
   const admission = requireRuntimeAdmission(input.admission);
   const machine = requireRuntimeAdmission(input.machineAdmission);
@@ -997,7 +998,7 @@ export function composeSelectedProfileStorage(input: Readonly<{
   const database = AuthorityDatabase.open(admission, {
     path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "selected-profile-runtime",
   }, input.clock, undefined, undefined, undefined, input.credentials, slowOperations.hook);
-  attachStorageSlowOperations(slowOperations, database, input.clock, stateRoot);
+  if (input.deferSlowOperations !== true) attachStorageSlowOperations(slowOperations, database, input.clock, stateRoot);
   const sessionBackups = createSessionBackups({ admission, database, clock: input.clock, directory: join(stateRoot, "backups", "authority") });
   try {
     database.withAuthorityTransaction(repositories => {
@@ -1074,7 +1075,7 @@ export function composeProfileRuntime(input: Readonly<{
     if (entry.state !== "open" || entry.preparation !== undefined || session.duoReenrolCommitHeld(selected.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     if (entry.context === undefined) {
       const created = composeSelectedProfileStorage({ machineAdmission: machine, admission: entry.admission, credentials: entry.credentials,
-        hostFacts: input.hostFacts, clock: input.clock, assertOrdinaryOwner: () => {
+        hostFacts: input.hostFacts, clock: input.clock, deferSlowOperations: true, assertOrdinaryOwner: () => {
           if (entry.state !== "open" || session.duoReenrolCommitHeld(selected.profileId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
         } });
       entry.context = created;

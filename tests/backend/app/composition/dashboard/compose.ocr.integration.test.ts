@@ -35,9 +35,12 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
     const invoke = (body = "{}", signal?: AbortSignal) => actualApp.request("http://127.0.0.1/api/v1/settings/chatgpt-account/test-ocr", { method: "POST", headers, body, signal });
     const missing = await invoke(); assert.equal((await missing.json() as { state: string }).state, "refused");
     assert.equal(transport.calls.filter(call => call.url.endsWith("/responses")).length, 0);
-    const unsignedFaults = runtime.selectedContext(active.token).database.authority.timelineEvents.debugPage({ limit: 500 })
-      .filter(record => record.payload.kind === "debug" && record.payload.event.area === "chatgpt-inference");
-    assert.equal(unsignedFaults.length, 1);
+    const unsignedFaults = await vi.waitFor(() => {
+      const records = runtime.selectedContext(active.token).database.authority.timelineEvents.debugPage({ limit: 500 })
+        .filter(record => record.payload.kind === "debug" && record.payload.event.area === "chatgpt-inference");
+      assert.equal(records.length, 1);
+      return records;
+    });
     const attempt = await account.signIn({ usePlan: true }); await transport.callback(attempt); await attempt.completion;
     transport.setResponse(init => {
       assert.equal(typeof init.body, "string");
@@ -71,7 +74,7 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
     const faultOwner = { database: context.database, stateRoot: profile.stateRoot };
     const beforeFault = faultAuthoritySnapshot(faultOwner);
     const before = profileBytes();
-    const unchanged = (diagnostics: number) => {
+    const unchanged = (diagnostics: number) => vi.waitFor(() => {
       const after = profileBytes(); assert.deepEqual([...after.keys()], [...before.keys()]);
       for (const [path, value] of after) {
         const prior = before.get(path); assert.ok(prior);
@@ -79,19 +82,19 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
         assert.equal(value.bytes === undefined, prior.bytes === undefined);
         if (value.bytes !== undefined) {
           assert.ok(prior.bytes);
-          if (!["state.db", "state.db-wal", "state.db-shm"].includes(path)) assert.equal(value.bytes.equals(prior.bytes), true);
+          if (!["state.db", "state.db-wal", "state.db-shm", "dashboard.db", "dashboard.db-wal", "dashboard.db-shm"].includes(path)) assert.equal(value.bytes.equals(prior.bytes), true);
         }
       }
       assertHttpFaultOnly(faultOwner, beforeFault, diagnostics);
       assert.deepEqual(context.database.getMeta(), metadata);
-    };
+    });
     assert.equal((await (await invoke('{"page":"foreign"}')).json() as { state: string }).state, "refused");
     assert.equal(transport.calls.filter(call => call.url.endsWith("/responses")).length, 0);
-    unchanged(1);
+    await unchanged(1);
     const response = await invoke(); assert.deepEqual(await response.json(), { state: "completed", model: CHATGPT_OCR_MODEL });
-    assert.equal(transport.calls.filter(call => call.url.endsWith("/responses")).length, 1); unchanged(1);
+    assert.equal(transport.calls.filter(call => call.url.endsWith("/responses")).length, 1); await unchanged(1);
     transport.setResponse(() => Response.json({ error: { code: "subscription_sharing_unsupported_capability" } }, { status: 400 }));
-    const failed = await invoke(); assert.equal((await failed.json() as { code: string }).code, "CHATGPT_REQUEST_REJECTED"); unchanged(3);
+    const failed = await invoke(); assert.equal((await failed.json() as { code: string }).code, "CHATGPT_REQUEST_REJECTED"); await unchanged(3);
     const inferenceFaults = context.database.authority.timelineEvents.debugPage({ limit: 500 }).filter(record => record.payload.kind === "debug" && record.payload.event.area === "chatgpt-inference");
     assert.equal(inferenceFaults.length, 2);
     assert.deepEqual(inferenceFaults[0], unsignedFaults[0]);
@@ -116,7 +119,7 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
       transport: { source: "injected", status: 400, contentType: "application/json", hasBody: true, redirected: false, target: "missing" } });
     const cancellation = new AbortController();
     transport.setResponse(() => { cancellation.abort(); return new Response(completedOcrStream("synthetic"), { headers: { "content-type": "text/event-stream" } }); });
-    const cancelled = await invoke("{}", cancellation.signal); assert.equal((await cancelled.json() as { code: string }).code, "CHATGPT_OCR_CANCELLED"); unchanged(5);
+    const cancelled = await invoke("{}", cancellation.signal); assert.equal((await cancelled.json() as { code: string }).code, "CHATGPT_OCR_CANCELLED"); await unchanged(5);
     assert.equal(context.database.getMeta().authorityGeneration, generation);
     assert.equal(factory.mock.calls[0]?.[0].admission, context.admission);
     assert.equal(factory.mock.calls[0]?.[0].stateRoot, profile.stateRoot);

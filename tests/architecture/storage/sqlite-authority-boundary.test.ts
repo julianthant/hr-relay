@@ -54,6 +54,21 @@ const PRIVATE_SQLITE_ADAPTERS = [
   "src/backend/storage/sqlite/worker-slots.ts",
 ];
 const ADAPTER_PATH = "src/backend/storage/sqlite/authority-database.ts";
+const DASHBOARD_LOG_COMPOSITION = "src/backend/app/composition/dashboard/runtime-resources.ts";
+
+function assertQueuedDashboardDebugWrites(source: string) {
+  assert.match(source, /createDebugEventWriter\(\{\s*enqueue:\s*logWriter\.appendDebug\b/u);
+  assert.match(source, /bindLogPublisher\(logWriter\.publish, "writer-thread"\)/u);
+  assert.doesNotMatch(source, /\bimportLocalDebugLog\(/u);
+}
+
+it("requires the BFF debug emitter and boot import to hand off to the log writer", () => {
+  const composition = readFileSync(join(REPO_ROOT, DASHBOARD_LOG_COMPOSITION), "utf8");
+  assertQueuedDashboardDebugWrites(composition);
+  assert.match(composition, /importLocalDebugLogViaWriter\(stateRoot, logWriter\.appendDebug\)/u);
+  assert.throws(() => assertQueuedDashboardDebugWrites(composition.replace("enqueue: logWriter.appendDebug", "repository: database.authority.timelineEvents")));
+  assert.throws(() => assertQueuedDashboardDebugWrites(composition.replace("importLocalDebugLogViaWriter(", "importLocalDebugLog(")));
+});
 
 function isPrivateMember(member: ts.ClassElement): boolean {
   const hashPrivate = member.name !== undefined && ts.isPrivateIdentifier(member.name);

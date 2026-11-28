@@ -11,7 +11,7 @@ import { AuthoritySnapshotChangedError } from "../../../storage/sqlite/authority
 import { createDashboardReadHost, type DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-host.js";
 import { type StartupCleanup } from "./runtime-contracts.js";
 import { createDiagnosticRetentionSweep, type DiagnosticRetentionSweepDependencies } from "../../../logs/diagnostics/diagnostic-retention.js";
-import type { createDebugEventWriter } from "../../../logs/debug-events.js";
+import type { DebugEventEmitter } from "../../../logs/debug-events.js";
 import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { inspectArtifactDeletionFile } from "../../../storage/artifacts/content-addressed-artifact-writer.js";
 import { startStartupObservation } from "./startup-observation.js";
@@ -21,7 +21,7 @@ const RETENTION_SWEEP_MS = 24 * 60 * 60 * 1000;
 
 export const GATE_PARK_WATCH_MS = 1_000;
 
-export function composeDashboardTimeline(input: { database: AuthorityDatabase; clock: Clock; loggingRepository: Parameters<typeof createNoteTimelineWriter>[0]["repository"]; projection: ReturnType<typeof createOperatorProjection>; startupCleanups: StartupCleanup[]; admission: RuntimeAdmission; readLanes?: DashboardReadLanes; lifecycle: DiagnosticRetentionSweepDependencies["lifecycle"]; debugEvents: Pick<ReturnType<typeof createDebugEventWriter>, "emit"> }) {
+export function composeDashboardTimeline(input: { database: AuthorityDatabase; clock: Clock; loggingRepository: Parameters<typeof createNoteTimelineWriter>[0]["repository"]; projection: ReturnType<typeof createOperatorProjection>; startupCleanups: StartupCleanup[]; admission: RuntimeAdmission; readLanes?: DashboardReadLanes; lifecycle: DiagnosticRetentionSweepDependencies["lifecycle"]; debugEvents: DebugEventEmitter }) {
   const { database, clock, loggingRepository, projection, startupCleanups, admission, readLanes, lifecycle, debugEvents } = input;
   const noteWriter = createNoteTimelineWriter({ repository: loggingRepository, clock });
 

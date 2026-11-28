@@ -1,8 +1,6 @@
-import type { LogMutation } from "./log-mutations.js";
-
-export function createLogWriterBatch(maxWaitMs: number, write: (rows: readonly LogMutation[]) => void, acknowledge: (through: number) => void) {
+export function createLogWriterBatch<Entry>(maxWaitMs: number, write: (rows: readonly Entry[]) => void, acknowledge: (through: number) => void) {
   let timer: ReturnType<typeof setTimeout> | undefined, through = 0;
-  const queued: LogMutation[] = [];
+  const queued: Entry[] = [];
   const drain = () => {
     clearTimeout(timer);
     timer = undefined;
@@ -16,7 +14,7 @@ export function createLogWriterBatch(maxWaitMs: number, write: (rows: readonly L
     acknowledge(sequence);
   };
   return {
-    append(sequence: number, mutation: LogMutation, stepEnd: boolean) {
+    append(sequence: number, mutation: Entry, stepEnd: boolean) {
       through = sequence;
       queued.push(mutation);
       if (stepEnd || queued.length >= 50) flush();

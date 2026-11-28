@@ -438,6 +438,9 @@ case; a negative control establishes that the actual guard rejects the defect. A
 must resolve a nonempty production file set. A literal name, comment, or unused function is not
 executable enforcement.
 
+The SQLite authority boundary requires the dashboard runtime and boot import to hand debug
+appends to the log writer thread. The BFF repository refuses direct debug appends once bound.
+
 `names-check` (`tests/architecture/tooling/names-check.test.ts`) runs the shipped `names:check`
 command over the shared table in `tests/support/helpers/names-check-cases.ts`. A wrong name was
 reaching CI and spending a full run. Allowed branches are `main`, `staging`, `development`, `dependabot/*`,

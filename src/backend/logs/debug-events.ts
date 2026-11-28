@@ -1,11 +1,11 @@
 import { sanitizeDebugText } from "../../rules/redaction/redaction.js";
 import { deriveStableUuid } from "../../rules/identity/identifiers.js";
-import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { randomUUID } from "node:crypto";
 import { DebugEventSchema, TimelineDiagnosticBudgetError, type TimelineRepository, type TimelineAppend } from "../../models/events/timeline.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { localDatePart } from "../../rules/time/clock.js";
 import { mirrorDebugEvent } from "../storage/events/local-debug-log.js";
+import { assertSameClientDebugReport, type DebugTimelineAppend } from "../storage/events/log-mutations.js";
 import { serializeErrorCauses } from "../../models/failures/error-origins.js";
 
 /** Optional producers can skip a full diagnostic budget. Required writers keep their durable receipt contract. */
@@ -17,8 +17,16 @@ export function emitOptionalDiagnostic(emit: () => void): "emitted" | "budget-fu
   }
 }
 
-export function createDebugEventWriter(deps: { repository: TimelineRepository; clock: Clock; build: string;
-  development?: boolean; writeStderr?: (line: string) => void }) {
+export type DebugEventEmitter<Result = unknown> = Readonly<{
+  emit(input: unknown, scope?: TimelineAppend["scope"], workflow?: TimelineAppend["workflow"]): Result;
+}>;
+type DebugEventWriterOptions = { clock: Clock; build: string; development?: boolean; writeStderr?: (line: string) => void };
+type QueuedDebugEvents = { enqueue(record: DebugTimelineAppend): Promise<"inserted" | "existing"> };
+type StoredDebugEvents = { repository: Pick<TimelineRepository, "append" | "get"> };
+
+export function createDebugEventWriter(deps: DebugEventWriterOptions & QueuedDebugEvents): DebugEventEmitter<Promise<void>>;
+export function createDebugEventWriter(deps: DebugEventWriterOptions & StoredDebugEvents): DebugEventEmitter<ReturnType<TimelineRepository["append"]>>;
+export function createDebugEventWriter(deps: DebugEventWriterOptions & (QueuedDebugEvents | StoredDebugEvents)): DebugEventEmitter {
   return Object.freeze({
     emit(input: unknown, scope: TimelineAppend["scope"] = { kind: "transport", connectionId: "local" }, workflow?: TimelineAppend["workflow"]) {
       if (scope.kind === "run" && workflow === undefined) throw new Error("debug-run-workflow-required");
@@ -36,15 +44,25 @@ export function createDebugEventWriter(deps: { repository: TimelineRepository; c
       if (Buffer.byteLength(JSON.stringify(safe)) > limits[safe.category] * 1024) throw new Error("debug-event-size-exceeded");
       const now = deps.clock.now();
       const eventId = safe.category === "client" ? deriveStableUuid("dashboard-report", safe.correlationId) : randomUUID();
+      const at = now.toISOString();
+      const record: DebugTimelineAppend = { schemaVersion: 1, eventId, scope,
+        ...(workflow === undefined ? {} : { workflow }),
+        occurredAt: at, recordedAt: at, retentionDate: localDatePart(now),
+        payload: { kind: "debug", event: safe }, source: { kind: "native" } };
+      if ("enqueue" in deps) {
+        const committed = deps.enqueue(record).then(state => {
+          if (state === "inserted") mirrorDebugEvent({ ...record, event: safe }, deps);
+        });
+        // Optional diagnostics do not wait for a receipt. Required reports await this same promise.
+        void committed.catch(() => {});
+        return committed;
+      }
       const existing = safe.category === "client" ? deps.repository.get(eventId) : undefined;
       if (existing !== undefined) {
-        if (existing.workflow !== workflow || canonicalJsonStringify(existing.scope) !== canonicalJsonStringify(scope) || canonicalJsonStringify(existing.payload) !== canonicalJsonStringify({ kind: "debug", event: safe })) throw new Error("debug-report-identity-conflict");
+        assertSameClientDebugReport(record, existing);
         return { state: "existing" as const, record: existing };
       }
-      const result = deps.repository.append({ schemaVersion: 1, eventId, scope,
-        ...(workflow === undefined ? {} : { workflow }),
-        occurredAt: now.toISOString(), recordedAt: now.toISOString(), retentionDate: localDatePart(now),
-        payload: { kind: "debug", event: safe }, source: { kind: "native" } });
+      const result = deps.repository.append(record);
       if (result.state === "inserted") mirrorDebugEvent({ ...result.record, event: safe }, deps);
       return result;
     },

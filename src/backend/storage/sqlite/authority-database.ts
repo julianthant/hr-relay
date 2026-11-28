@@ -321,6 +321,7 @@ export class AuthorityDatabase implements Disposable {
   #authorityCommitCallbacks: (() => void)[] = [];
   #logWriteFailure: Error | undefined;
   #logPublisher: ((mutation: LogMutation) => void) | undefined;
+  #debugAppendsOwnedByLogWriter = false;
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
   #slowOperation: SlowOperationHook | undefined;
   /** Nonzero while an outermost operation is being timed, and again while its hook runs. */
@@ -2564,10 +2565,11 @@ export class AuthorityDatabase implements Disposable {
     this.#authorityCommitCallbacks.push(publish);
   }
 
-  bindLogPublisher(publish: (mutation: LogMutation) => void): () => void {
+  bindLogPublisher(publish: (mutation: LogMutation) => void, debugAppends?: "writer-thread"): () => void {
     this.#assertOpen();
     if (this.#logPublisher !== undefined) throw new Error("log-publisher-already-bound");
     this.#logPublisher = publish;
+    this.#debugAppendsOwnedByLogWriter = debugAppends === "writer-thread";
     return () => { if (this.#logPublisher === publish) this.#logPublisher = undefined; };
   }
 
@@ -4226,6 +4228,9 @@ export class AuthorityDatabase implements Disposable {
         read: (work) => this.#withReadSnapshot(work),
         mutate: (work) => this.#authorityWrite("timeline_events", work),
         assertOwner: (record, appending) => assertTimelineOwner(this.#database, record, appending),
+        assertDebugAppend: () => {
+          if (this.#debugAppendsOwnedByLogWriter) throw new Error("debug-log-writer-thread-required");
+        },
         publishCommitted: mutation => this.#publishLogAfterCommit(mutation),
       }),
       runs: this.#buildRunRepository(),

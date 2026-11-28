@@ -12,6 +12,7 @@ interface TimelineRepositoryPorts {
   cursorOffset?(): number;
   database: DatabaseSync;
   publishCommitted?: (mutation: LogMutation) => void;
+  assertDebugAppend?: () => void;
   /** Must use the owning connection's authority transaction and generation accounting. */
   mutate<T>(work: () => Readonly<{ result: T; changes: number }>): T;
   read<T>(work: () => T): T;
@@ -220,6 +221,7 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       const parsed = TimelineAppendSchema.safeParse(input);
       if (!parsed.success) throw new Error("timeline-event-invalid");
       const record = parsed.data;
+      if (record.payload.kind === "debug") ports.assertDebugAppend?.();
       const content = canonicalJsonStringify(record);
       if (Buffer.byteLength(content, "utf8") > 256 * 1024) throw new Error("timeline-event-size-exceeded");
       const result = ports.mutate<ReturnType<TimelineRepository["append"]> | "budget-full">(() => {

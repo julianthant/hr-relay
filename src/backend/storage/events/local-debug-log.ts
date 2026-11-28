@@ -11,6 +11,7 @@ import { developmentDebugMirrorEnabled } from "../../../models/config/secrets.js
 import { diagnosticRequestRoute } from "../../../models/events/debug-report.js";
 import { descriptorStatus, fileChanged, fileModified, fileStatus, privateFileNumber } from "../file-identity.js";
 import { fsyncPath, privatePathRejects, replacePrivateFile } from "../private-path.js";
+import { DebugTimelineAppendSchema, type DebugTimelineAppend } from "./log-mutations.js";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const BOOT_LOG = "boot.jsonl";
@@ -108,8 +109,8 @@ function parseLocalDebugLog(content: string) {
   return lines.map(line => {
     let input: unknown;
     try { input = JSON.parse(line); } catch { throw new Error("boot-log-invalid"); }
-    const parsed = TimelineAppendSchema.safeParse(input);
-    if (!parsed.success || parsed.data.payload.kind !== "debug" || parsed.data.scope.kind !== "transport") throw new Error("boot-log-invalid");
+    const parsed = DebugTimelineAppendSchema.safeParse(input);
+    if (!parsed.success || parsed.data.scope.kind !== "transport") throw new Error("boot-log-invalid");
     const event = parsed.data.payload.event;
     if (event.category === "session" && event.code === "PROFILE_SELECTION_CHANGED" && parsed.data.scope.connectionId === "profile-registry") {
       if (event.message === undefined) throw new Error("boot-log-invalid");
@@ -158,7 +159,7 @@ export function readLocalDebugLog(stateRoot: string) {
   return { state: "present" as const, records };
 }
 
-export function importLocalDebugLog(stateRoot: string, repository: TimelineRepository): number {
+function captureLocalDebugLog(stateRoot: string) {
   const { current, directory } = bootLogPaths(stateRoot);
   const paths = () => [...bootLogSegments(directory).map(name => join(directory, name)), current];
   const read = (path: string) => {
@@ -170,15 +171,29 @@ export function importLocalDebugLog(stateRoot: string, repository: TimelineRepos
   };
   const files = paths().map(path => ({ path, content: read(path) }));
   const records = files.flatMap(file => file.content === undefined ? [] : parseLocalDebugLog(file.content));
+  const remove = () => {
+    const remaining = paths();
+    if (remaining.length !== files.length || files.some((file, index) => remaining[index] !== file.path || read(file.path) !== file.content)) {
+      throw new Error("boot-log-import-concurrent-write");
+    }
+    for (const file of files) if (file.content !== undefined) unlinkSync(file.path);
+    return records.length;
+  };
+  return { records, remove };
+}
+
+export function importLocalDebugLog(stateRoot: string, repository: TimelineRepository): number {
+  const { records, remove } = captureLocalDebugLog(stateRoot);
   for (const record of records) {
     repository.append(record);
     const stored = repository.get(record.eventId);
     if (stored === undefined || timelineAppendContent(stored) !== canonicalJsonStringify(record)) throw new Error("boot-log-import-verification-failed");
   }
-  const remaining = paths();
-  if (remaining.length !== files.length || files.some((file, index) => remaining[index] !== file.path || read(file.path) !== file.content)) {
-    throw new Error("boot-log-import-concurrent-write");
-  }
-  for (const file of files) if (file.content !== undefined) unlinkSync(file.path);
-  return records.length;
+  return remove();
+}
+
+export async function importLocalDebugLogViaWriter(stateRoot: string, append: (record: DebugTimelineAppend) => Promise<"inserted" | "existing">): Promise<number> {
+  const { records, remove } = captureLocalDebugLog(stateRoot);
+  await Promise.all(records.map(append));
+  return remove();
 }

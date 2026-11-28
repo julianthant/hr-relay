@@ -8,9 +8,44 @@ import { createWorkerLogReceiver } from "../../../../src/backend/runtime/workers
 import { WorkerLogMessageSchema } from "../../../../src/backend/runtime/workers/worker-messages.js";
 import { startLogWriter } from "../../../../src/backend/storage/events/log-writer.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
+import { DebugTimelineAppendSchema } from "../../../../src/backend/storage/events/log-mutations.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 import { openAuthorityHarness, personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
+
+it("accepts BFF debug events while state is locked and drains exact rows in emission order", async () => {
+  const { database, path, stateRoot, dispose } = await openAuthorityHarness();
+  const faults: Error[] = [];
+  const writer = startLogWriter({ statePath: path, root: stateRoot, onFault: error => faults.push(error) });
+  const connectionId = randomUUID();
+  const at = "2026-11-28T20:00:00.000Z";
+  const events = (["started", "settled"] as const).map(phase => DebugTimelineAppendSchema.parse({
+    schemaVersion: 1, eventId: randomUUID(), scope: { kind: "transport", connectionId },
+    occurredAt: at, recordedAt: at, retentionDate: "2026-11-28", source: { kind: "native" },
+    payload: { kind: "debug", event: { category: "sse", phase, correlationId: connectionId, build: "fixture", pid: 1 } },
+  }));
+  try {
+    await writer.ready;
+    database.bindLogPublisher(writer.publish, "writer-thread");
+    assert.throws(() => database.authority.timelineEvents.append(events[0]), /debug-log-writer-thread-required/u);
+    using peer = new DatabaseSync(path);
+    peer.exec("BEGIN IMMEDIATE");
+    const committed = events.map(event => writer.appendDebug(event));
+    assert.deepEqual(database.authority.timelineEvents.debugPage({}), []);
+    peer.exec("ROLLBACK");
+
+    await writer.close();
+    assert.deepEqual(await Promise.all(committed), ["inserted", "inserted"]);
+    const rows = database.authority.timelineEvents.debugPage({});
+    assert.deepEqual(rows.map(({ cursor: _cursor, ...event }) => event), events);
+    using dashboard = new DatabaseSync(join(stateRoot, "dashboard.db"), { readOnly: true });
+    const stored = dashboard.prepare("SELECT payload_json FROM debug_events ORDER BY cursor").all();
+    assert.deepEqual(stored.map(row => JSON.parse(String(row.payload_json))), rows);
+    assert.deepEqual(faults, []);
+  } finally {
+    try { await writer.close(); } finally { await dispose(); }
+  }
+});
 
 it("copies only committed notes and recovers committed state rows whose worker disappears before delivery", async () => {
   const { database, clock, path, stateRoot, dispose } = await openAuthorityHarness();

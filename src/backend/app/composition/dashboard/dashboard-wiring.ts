@@ -399,7 +399,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
   input.onInitialPreflight?.(initialPreflight);
   // Boot spawns the standing members; each one that fails shows on its card with its cause.
-  await logWriter.ready;
+  await resources.bootImport;
   void workers.startActive();
 
   const chatGptOcrTest = createChatGptOcrTestService({ assertCurrent, dispatch: async (input, signal, source) => {

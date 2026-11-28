@@ -1,7 +1,8 @@
 import { Worker } from "node:worker_threads";
 import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
+import { TimelineDiagnosticBudgetError } from "../../../models/events/timeline.js";
 import { workerExecArgv } from "../sqlite/backup-inspection-worker.js";
-import { LogWriterReplySchema, type LogMutation, type LogWriterRequest } from "./log-mutations.js";
+import { LogWriterReplySchema, type DebugTimelineAppend, type LogMutation, type LogWriterRequest } from "./log-mutations.js";
 
 export function startLogWriter(input: { statePath: string; root: string; onFault(error: Error): void; maxWaitMs?: number }) {
   const worker = new Worker(new URL("./log-writer-thread.js", import.meta.url), {
@@ -12,6 +13,7 @@ export function startLogWriter(input: { statePath: string; root: string; onFault
   void ready.promise.catch(() => {});
   const exited = Promise.withResolvers<number>();
   const acknowledgments = new Map<number, { committed(): void; failed(error: Error): void }>();
+  const debug = new Map<number, { record: DebugTimelineAppend; receipt: PromiseWithResolvers<"inserted" | "existing"> }>();
   let sent = 0, through = 0, readySeen = false, failure: Error | undefined, closure: Promise<void> | undefined;
   const fail = (error: unknown) => {
     if (failure !== undefined) return;
@@ -19,6 +21,8 @@ export function startLogWriter(input: { statePath: string; root: string; onFault
     ready.reject(failure);
     for (const pending of acknowledgments.values()) pending.failed(failure);
     acknowledgments.clear();
+    for (const { receipt } of debug.values()) receipt.reject(failure);
+    debug.clear();
     input.onFault(failure);
   };
   worker.on("error", fail);
@@ -37,6 +41,21 @@ export function startLogWriter(input: { statePath: string; root: string; onFault
         return;
       }
       if (!readySeen || reply.through <= through || reply.through > sent) throw new Error("log-writer-acknowledgment-invalid");
+      const results = new Map(reply.debug.map(result => [result.sequence, result]));
+      if (results.size !== reply.debug.length) throw new Error("log-writer-debug-acknowledgment-invalid");
+      for (const [sequence, result] of results) {
+        if (sequence > reply.through || debug.get(sequence)?.record.eventId !== result.eventId) {
+          throw new Error("log-writer-debug-acknowledgment-invalid");
+        }
+      }
+      for (const [sequence, { receipt }] of debug) {
+        if (sequence > reply.through) break;
+        const result = results.get(sequence)?.result;
+        if (result === undefined) throw new Error("log-writer-debug-acknowledgment-missing");
+        debug.delete(sequence);
+        if (result === "inserted" || result === "existing") receipt.resolve(result);
+        else receipt.reject(result === "budget-full" ? new TimelineDiagnosticBudgetError() : new Error(result));
+      }
       through = reply.through;
       for (const [sequence, pending] of acknowledgments) {
         if (sequence > through) break;
@@ -70,6 +89,13 @@ export function startLogWriter(input: { statePath: string; root: string; onFault
       const sequence = sent + 1;
       if (acknowledged !== undefined) acknowledgments.set(sequence, { committed: () => acknowledged(), failed: acknowledged });
       send({ kind: "append", sequence, mutation });
+    },
+    appendDebug(record: DebugTimelineAppend): Promise<"inserted" | "existing"> {
+      if (failure !== undefined || closure !== undefined) return Promise.reject(failure ?? new Error("log-writer-closing"));
+      const receipt = Promise.withResolvers<"inserted" | "existing">(), sequence = sent + 1;
+      debug.set(sequence, { record, receipt });
+      send({ kind: "append", sequence, mutation: { kind: "append-debug", record } });
+      return receipt.promise;
     },
     flush: () => closure ?? request("flush"),
     reconcile: () => closure === undefined ? request("reconcile") : Promise.reject(new Error("log-writer-closing")),
