@@ -312,9 +312,10 @@ for (const boundary of ["registry", "control", "marker"] as const) it(`retains t
 
 it("recovers a stopped machine-control upgrade after its complete backup set was written", async () => {
   const f = await priorFormatFixture();
-  const request = AuthorityBackupService.prototype.request;
-  const backup = vi.spyOn(AuthorityBackupService.prototype, "request").mockImplementationOnce(async function (this: AuthorityBackupService, input) {
-    await request.call(this, input);
+  const backup = vi.spyOn(AuthorityBackupService.prototype, "request");
+  backup.mockImplementationOnce(async function (this: AuthorityBackupService, input) {
+    backup.mockRestore();
+    await this.request(input);
     throw new Error("fixture stopped after backup publication");
   });
   try {
@@ -324,7 +325,7 @@ it("recovers a stopped machine-control upgrade after its complete backup set was
         /fixture stopped after backup publication/u);
       const intent = join(f.workspace, ".tracker", "control", "profile-control-upgrade.json");
       assert.equal(z.object({ phase: z.string() }).parse(JSON.parse(readFileSync(intent, "utf8"))).phase, "backing-up");
-    } finally { maintenance.release(); backup.mockRestore(); }
+    } finally { maintenance.release(); }
     const cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
     try {
       const recovered = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);

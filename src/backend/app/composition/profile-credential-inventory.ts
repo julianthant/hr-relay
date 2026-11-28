@@ -102,7 +102,7 @@ export function scanProfileCredentialCopy(path: string, capturedSecrets: readonl
 /** Verdicts of one assessment's backup scans, reused only while a backup keeps the exact file identity it was scanned under. */
 type BackupCredentialScans = Map<string, Readonly<{ identity: string; digest: string; containsSecret: boolean }>>;
 
-function scanRows(fields: Pick<StoppedCredentialCopyInspection, "capturedSecrets" | "containsKey">, tables: readonly string[]) {
+function scanRows(fields: Readonly<{ capturedSecrets: readonly string[]; containsKey(value: unknown): boolean }>, tables: readonly string[]) {
   return (database: Parameters<Parameters<typeof withReadonlyAuthoritySnapshot<boolean>>[1]>[0]) => {
     const bytes = credentialSearchBytes(fields.capturedSecrets);
     for (const table of tables) for (const row of database.prepare(`SELECT * FROM ${table}`).iterate()) {
