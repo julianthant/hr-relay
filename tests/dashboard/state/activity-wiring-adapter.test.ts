@@ -1,7 +1,7 @@
 import { DS_STATUS } from "../../../src/dashboard/ds/ui.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { act, createElement, useState } from "react";
+import { act, createElement, StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, it, vi } from "vitest";
 import { ActivityPopulationSelectionSchema, ActivityPopulationBrowseResultSchema, type ActivityPopulationRun, type ActivityPopulationSelection, type ActivityPopulationBrowse, type ActivityPopulationBrowseResult } from "../../../src/models/dashboard/activity-population.js";
@@ -155,6 +155,24 @@ it("retains search focus and stale rows while superseding browse requests, guard
     assert.equal(host.querySelectorAll('a[aria-label^="Open logs for"]').length, 1); assert.match(host.textContent ?? "", /Person 2/);
     await state!.exportCsv(); assert.equal(vi.mocked(client.exportActivityPopulationCsv).mock.calls[0]?.[0], selected);
   } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("starts one cold population request under the dashboard's Strict Mode", async () => {
+  const selected = selection();
+  const client = clientOf(selected);
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  let state: ReturnType<typeof useActivityWiring> | undefined;
+  function Scene() {
+    state = useActivityWiring(client, { from: selected.report.from, to: selected.report.to }, null, sources, true);
+    return null;
+  }
+  try {
+    await act(async () => root.render(createElement(StrictMode, null, createElement(Scene))));
+    assert.equal(vi.mocked(client.activityPopulation).mock.calls.length, 1);
+    assert.equal(vi.mocked(client.activityPopulation).mock.calls[0]?.[2]?.aborted, false);
+    assert.equal(state?.exportReady, true);
+  } finally { await act(async () => root.unmount()); }
 });
 
 it("keeps initial loading, read refusal, empty success and client replacement separate", async () => {

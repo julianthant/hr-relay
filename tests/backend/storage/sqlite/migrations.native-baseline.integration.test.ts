@@ -12,7 +12,7 @@ import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqli
 import { inspectAuthorityBackupReadOnly,upgradeStorage } from "../../../support/helpers/synthetic-storage-admission.js";
 
 describe("current stopped authority initialization", () => {
-  it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1, CURRENT_AUTHORITY_SCHEMA_VERSION + 2, 49, 50, 51, 56])("refuses noncurrent schema %s before credentials or rewriting bytes", async version => {
+  it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1, CURRENT_AUTHORITY_SCHEMA_VERSION + 2, 52, 53, 54, 56])("refuses noncurrent schema %s before credentials or rewriting bytes", async version => {
     const f = await storageRecoveryFixture(version);
     try {
       credentialTrap(f.root);
