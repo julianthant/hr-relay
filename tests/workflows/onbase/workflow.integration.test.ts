@@ -93,9 +93,11 @@ function omittedReceipt(descriptor: AnyWorkflowDescriptor, fixture: Awaited<Retu
   const { receipt } = deriveRunEvidenceReceipt({ descriptor, run, result: stored,
     checkpoints: database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId) });
   assert.equal(receipt.result, "partial");
-  assert.deepEqual(receipt.output.map(({ field, value }) => [field, value]), [
-    ["disposition", { key: "disposition", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "omitted" }],
-  ]);
+  assert.equal(receipt.output.length, 1);
+  const [disposition] = receipt.output;
+  assert.ok(disposition?.state === "satisfied");
+  assert.equal(disposition.field, "disposition");
+  assert.deepEqual(disposition.value, { key: "disposition", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "omitted" });
   return receipt;
 }
 
