@@ -54,7 +54,8 @@ async function measure(shape: Shape, workspace: string, lockPort: number): Promi
           await delay(SETTLE_MS);
           const rssBeforeBytes = process.memoryUsage.rss();
           const started = performance.now();
-          const lanes = createDashboardReadHost({ admission, database, clock: systemClock, lanes: LANES[shape] });
+          const lanes = createDashboardReadHost({ admission, database, clock: systemClock, lanes: LANES[shape],
+            entry: new URL("../../src/backend/app/composition/dashboard/read-lane-entry.js", import.meta.url) });
           try {
             await lanes.ready;
             const readyMs = performance.now() - started;
