@@ -18,8 +18,8 @@ import { closeSync, constants, lstatSync, openSync, readSync, type BigIntStats, 
 import { basename, dirname, join } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { countProfileCredentialLoginRows } from "../../profiles/credential-inventory.js";
-import { verifiedBackupFiles, verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
-import { withAuthorityDatabaseReadOnly } from "../../storage/sqlite/readonly-authority-snapshot.js";
+import { verifiedBackupFiles, verifiedBackupLogs, verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
+import { withAuthorityDatabaseReadOnly, withReadonlyAuthoritySnapshot } from "../../storage/sqlite/readonly-authority-snapshot.js";
 import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
 import { requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "../../storage/admission/installation.js";
 import { RuntimeAdmission } from "../../storage/admission/admission.js";
@@ -112,19 +112,33 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
     const issued = requireStoppedControlProfileInventory(purpose.claim);
     if (issued.binding.profileId !== admission.profileBinding.profileId || issued.stateRoot !== root) throw new Error("profile-control-upgrade-inventory-owner-mismatch");
   }
+  const pairedLogs = new Map(backups.flatMap(verifiedBackupLogs).map(log => [log.path, log]));
+  const scanRows = (tables: readonly string[]) => (database: Parameters<Parameters<typeof withReadonlyAuthoritySnapshot<boolean>>[1]>[0]) => {
+    const bytes = credentialSearchBytes(fields.capturedSecrets);
+    for (const table of tables) for (const row of database.prepare(`SELECT * FROM ${table}`).iterate()) {
+      for (const [column, value] of Object.entries(row)) {
+        if (fields.containsKey(value)) return true;
+        if (containsCredentialValue(typeof value === "string" && column.endsWith("_json") ? JSON.parse(value) : value, fields.capturedSecrets)) return true;
+        if (value instanceof Uint8Array && bytes.some(secret => secret.length > 0 && Buffer.from(value).includes(secret))) return true;
+      }
+    }
+    return false;
+  };
       for (const path of [...before.copies, ...before.backupPaths]) {
         const backup = backups.find(value => value.backupPath === path);
-        const identity = canonicalJsonStringify(inventoryFileIdentity(path)), kept = backup === undefined ? undefined : backupScans.get(path);
+        const pairedLog = pairedLogs.get(path);
+        const digest = backup?.manifest.sha256 ?? pairedLog?.digest.sha256;
+        const identity = canonicalJsonStringify(inventoryFileIdentity(path)), kept = digest === undefined ? undefined : backupScans.get(path);
         const reused = kept?.identity === identity ? kept : undefined;
         const scanned = reused ?? scanProfileCredentialCopy(path, fields.capturedSecrets, fields);
         const suspect = before.suspects.find(value => value.path === path);
-        if (backup !== undefined && scanned.digest !== backup.manifest.sha256) throw new Error("profile-inventory-backup-changed");
+        if (digest !== undefined && scanned.digest !== digest) throw new Error("profile-inventory-backup-changed");
         if (suspect !== undefined && scanned.digest !== suspect.sha256) throw new Error("profile-inventory-suspect-changed");
         let containsSecret = scanned.containsSecret;
         const enginePath = join(root, "credentials", "duo-webauthn.json");
         const retainedEngine = purpose.kind === "stopped-control" && path === enginePath;
         if (purpose.kind === "ordinary" && path === enginePath) unknownFormats.push(path);
-        if (backup === undefined && suspect === undefined && basename(path) !== "Login Data" && !before.unsupported.includes(path)) {
+        if (digest === undefined && suspect === undefined && basename(path) !== "Login Data" && !before.unsupported.includes(path)) {
           try {
             const bootLog = path === join(root, "logs", "boot.jsonl");
             if (bootLog && readLocalDebugLog(root).state !== "present") throw new Error("profile-inventory-log-unavailable");
@@ -166,20 +180,14 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
           const copyAdmission = admission.verifiedReadOnlyCopy(path, digest);
           try {
             const schemaVersion = backup?.manifest.schemaVersion ?? AuthorityDatabase.inspectExistingReadOnly(copyAdmission, path).schemaVersion;
-            containsSecret ||= withAuthorityDatabaseReadOnly(copyAdmission, path, database => {
-              const bytes = credentialSearchBytes(fields.capturedSecrets);
-              for (const table of migrationTableNames(schemaVersion)) for (const row of database.prepare(`SELECT * FROM ${table}`).iterate()) {
-                for (const [column, value] of Object.entries(row)) {
-                  if (fields.containsKey(value)) return true;
-                  if (containsCredentialValue(typeof value === "string" && column.endsWith("_json") ? JSON.parse(value) : value, fields.capturedSecrets)) return true;
-                  if (value instanceof Uint8Array && bytes.some(secret => secret.length > 0 && Buffer.from(value).includes(secret))) return true;
-                }
-              }
-              return false;
-            });
+            containsSecret ||= withAuthorityDatabaseReadOnly(copyAdmission, path, scanRows(migrationTableNames(schemaVersion)));
           } finally { copyAdmission.release(); }
         }
-        if (backup !== undefined) backupScans.set(path, { identity, digest: scanned.digest, containsSecret });
+        if (pairedLog !== undefined && reused === undefined) {
+          containsSecret ||= withReadonlyAuthoritySnapshot(path, scanRows([pairedLog.table]));
+          if (canonicalJsonStringify(inventoryFileIdentity(path)) !== identity) throw new Error("profile-inventory-backup-changed");
+        }
+        if (digest !== undefined) backupScans.set(path, { identity, digest: scanned.digest, containsSecret });
         if (containsSecret) backupPlaintext.push(path);
         if (!fields.capturedSecretsComplete && !retainedEngine) unknownFormats.push(path);
       }

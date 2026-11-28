@@ -2,6 +2,7 @@ import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/p
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
@@ -52,9 +53,20 @@ describe("corruption → degraded → automatic restore → rebuild", () => {
       const operation = admission.acquireOfflineMaintenance();
       const manifest = backup.manifests[0]; expect(manifest).toBeDefined();
       const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot}, async (stagedPath, restoreAdmission) => { const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission); try { const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission, { path: stagedPath, busyTimeoutMs: 250, migrationOwner: "notification-projection-proof" }, f.clock); staged.close(); } finally { stagedAdmission.release(); } }, f.clock, undefined, boundProfileCredentials(admission));
-      await restore.restore({ manifestPath: join(f.root, "backups", "authority", `${manifest.backupFileName}.manifest.json`) }, operation);
       assert.ok(manifest.manifestVersion === 4 && manifest.logFiles !== undefined);
       const backupLogs = backupLogPaths(join(f.root, "backups", "authority", manifest.backupFileName));
+      const manifestPath = join(root, "backups", "authority", `${manifest.backupFileName}.manifest.json`);
+      const originalAuthority = readFileSync(path);
+      const originalBackupLog = readFileSync(backupLogs[0]);
+      writeFileSync(backupLogs[0], "damaged backup");
+      await assert.rejects(restore.restore({ manifestPath }, operation), /backup-log-file-unverified/u);
+      assert.deepEqual(readFileSync(path), originalAuthority);
+      writeFileSync(backupLogs[0], originalBackupLog);
+      for (const name of ["timeline", "dashboard"]) {
+        writeFileSync(join(root, `${name}.db`), "damaged live log", { mode: 0o600 });
+        writeFileSync(join(root, `${name}.db-wal`), "stale live WAL", { mode: 0o600 });
+      }
+      await restore.restore({ manifestPath }, operation);
       for (const [name, table, index] of [["timeline", "timeline_events", 0], ["dashboard", "debug_events", 1]] as const) {
         using restoredLog = new DatabaseSync(join(root, `${name}.db`), { readOnly: true });
         using backedUpLog = new DatabaseSync(backupLogs[index], { readOnly: true });

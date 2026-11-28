@@ -74,6 +74,20 @@ async function fixture() {
 }
 
 describe("hourly in-session backup", () => {
+  it.each(["missing", "damaged"] as const)("replaces a session backup whose log companion is %s", async damage => {
+    const f = await fixture();
+    await expect(f.sessionBackups.check()).resolves.toBe("taken");
+    const previous = f.names(".session.sqlite")[0];
+    const companion = `${previous}.timeline.db`;
+    if (damage === "missing") rmSync(join(f.directory, companion));
+    else f.damage(companion);
+    await expect(f.sessionBackups.check()).resolves.toBe("taken");
+    const [replacement] = f.names(".session.sqlite");
+    expect(replacement).not.toBe(previous);
+    expect(f.names(".session.sqlite.timeline.db")).toEqual([`${replacement}.timeline.db`]);
+    expect(f.names(".session.sqlite.dashboard.db")).toEqual([`${replacement}.dashboard.db`]);
+  });
+
   it("takes a backup only when the store changed and the newest backup is over an hour old", async () => {
     const f = await fixture();
     await expect(f.sessionBackups.check()).resolves.toBe("taken");

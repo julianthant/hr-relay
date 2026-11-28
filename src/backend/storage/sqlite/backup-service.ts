@@ -31,8 +31,7 @@ import { AuthorityUpgradeRecordSchema, type AuthorityUpgradeRecord } from "../..
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { type Clock, systemClock } from "../../../rules/time/clock.js";
 import { inspectOpenDatabase, inspectVerifiedBackupCopyReadOnly, type AuthorityBackupSourceReadOnly, type BackupCopyInspection } from "./backup-inspection.js";
-import { inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
-import { startLogWriter } from "../events/log-writer.js";
+import { backupThreadIdle, buildBackupLogsOffThread, inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
 import { LOG_DATABASE_NAMES, PROFILE_LOG_FILES } from "../events/log-mutations.js";
 import { isCurrentAuthoritySchemaVersion } from "./migrations.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
@@ -119,14 +118,32 @@ export async function verifyBackupBytesAtPath(
 }
 
 export const backupLogPaths = (backupPath: string) => LOG_DATABASE_NAMES.map(name => `${backupPath}.${name}.db`);
-export const verifiedBackupFiles = ({ backupPath, manifest }: VerifiedBackup) =>
-  [backupPath, ...(manifest.manifestVersion === 4 && manifest.logFiles !== undefined ? backupLogPaths(backupPath) : [])];
+export function verifiedBackupLogs({ backupPath, manifest }: VerifiedBackup) {
+  const files = manifest.manifestVersion === 4 ? manifest.logFiles : undefined;
+  return files === undefined ? [] : LOG_DATABASE_NAMES.map(name => ({
+    path: `${backupPath}.${name}.db`,
+    digest: files[name],
+    table: name === "timeline" ? "timeline_events" as const : "debug_events" as const,
+  }));
+}
+export const verifiedBackupFiles = (backup: VerifiedBackup) => [backup.backupPath, ...verifiedBackupLogs(backup).map(log => log.path)];
+
+const sqliteCompanions = ["-wal", "-shm", "-journal"] as const;
+
+export async function backupLogFileMatches(path: string, expected: Readonly<{ byteSize: number; sha256: string }>): Promise<boolean> {
+  const metadata = fileStatus(path, true);
+  if (metadata === undefined || !metadata.isFile() || BigInt(metadata.nlink) !== 1n
+    || privatePathRejects(path, metadata, "owner") || BigInt(metadata.size) !== BigInt(expected.byteSize)
+    || sqliteCompanions.some(suffix => fileStatus(path + suffix, true) !== undefined)) return false;
+  try { return await sha256File(path) === expected.sha256; }
+  catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+    throw error;
+  }
+}
 
 export async function verifyBackupLogFile(path: string, expected: Readonly<{ byteSize: number; sha256: string }>): Promise<void> {
-  const metadata = fileStatus(path);
-  if (!metadata.isFile() || BigInt(metadata.nlink) !== 1n || privatePathRejects(path, metadata, "owner")
-    || ["-wal", "-shm", "-journal"].some(suffix => existsSync(path + suffix))) throw new Error("backup-log-file-unsafe");
-  await verifyBackupBytesAtPath(path, { ...expected, backupFileName: basename(path) });
+  if (!await backupLogFileMatches(path, expected)) throw new Error("backup-log-file-unverified");
 }
 
 export async function verifyBackupLogFiles(backupPath: string, manifest: Pick<AuthorityBackupManifest, "logFiles">): Promise<void> {
@@ -408,7 +425,8 @@ function reconcileAbandonedBackups(root: string, assertHeld: () => void, readUpg
   const names = new Set(readdirSync(directory));
   const stages = [...names].filter(name => BackupStageName.test(name));
   const logStages = [...names].filter(name => BackupLogStageName.test(name));
-  const unpaired = [...names].filter(name => FinalBackupName.test(name)
+  const candidateNames = new Set([...names].map(name => name.replace(/\.(?:timeline|dashboard)\.db(?:-wal|-shm|-journal)?$/u, "")));
+  const unpaired = [...candidateNames].filter(name => FinalBackupName.test(name)
     && !names.has(`${name}.manifest.json`) && !names.has(`${name}.manifest.json.retiring`));
   if (stages.length === 0 && logStages.length === 0 && unpaired.length === 0) return 0;
   assertMaintenanceCustodyAvailable("backup");
@@ -432,7 +450,9 @@ function reconcileAbandonedBackups(root: string, assertHeld: () => void, readUpg
   for (const name of orphans) {
     if (["-wal", "-shm", "-journal"].some(suffix => names.has(`${name}${suffix}`))) throw new Error("abandoned-backup-companion-unproved");
   }
-  const abandoned = [...stages, ...orphans, ...orphans.flatMap(name => backupLogPaths(name).filter(path => names.has(path)))].map(name => {
+  const orphanLogs = orphans.flatMap(name => backupLogPaths(name).flatMap(path =>
+    [...sqliteCompanions.map(suffix => path + suffix), path].filter(entry => names.has(entry))));
+  const abandoned = [...stages, ...orphanLogs, ...orphans.filter(name => names.has(name))].map(name => {
     const file = abandonedFile(directory, name);
     if (file === undefined) throw new Error("abandoned-backup-file-unsafe");
     return file;
@@ -598,8 +618,8 @@ export class AuthorityBackupService {
       const withLogs = expected.kind === "profile" && isCurrentAuthoritySchemaVersion(inspection.schemaVersion);
       if (withLogs) {
         mkdirSync(temporaryLogRoot, { mode: 0o700 });
-        const builder = startLogWriter({ statePath: temporaryBackupPath, root: temporaryLogRoot, onFault: () => {} });
-        try { await builder.ready; } finally { await builder.close(); }
+        try { await buildBackupLogsOffThread(temporaryBackupPath, temporaryLogRoot, this.#signal); }
+        finally { await backupThreadIdle(); }
         this.#signal?.throwIfAborted();
         this.#admission.assertAuthorityBackupWrite(this.#directory);
         removeReadOnlyInspectionCompanions(temporaryBackupPath);
@@ -609,6 +629,9 @@ export class AuthorityBackupService {
       if (withLogs) {
         const publish = async (name: typeof LOG_DATABASE_NAMES[number]) => {
           const source = join(temporaryLogRoot, `${name}.db`), target = `${finalBackupPath}.${name}.db`;
+          if (sqliteCompanions.some(suffix => (fileStatus(source + suffix, true)?.size ?? 0n) > 0n)) {
+            throw new Error("backup-log-file-not-self-contained");
+          }
           fsyncPath(source);
           const byteSize = statSync(source).size, sha256 = await sha256File(source);
           this.#admission.assertAuthorityBackupWrite(this.#directory);
@@ -680,7 +703,7 @@ export class AuthorityBackupService {
     if (primary !== undefined) {
       try { if (finalManifestPath !== undefined && existsSync(finalManifestPath)) rmSync(finalManifestPath); }
       catch (error) { cleanupFailures.push(error); }
-      for (const finalPath of finalPaths) {
+      for (const finalPath of finalPaths.reverse()) {
         for (const path of [finalPath, `${finalPath}-wal`, `${finalPath}-shm`]) {
           try { if (existsSync(path)) rmSync(path); } catch (error) { cleanupFailures.push(error); }
         }

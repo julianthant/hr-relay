@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -54,6 +55,18 @@ it("imports the newest production workbook library into the independently signed
   expect(imported.created).toBe(2);
   expect(imported.history.runs).toBe(1);
   expect((await importProfileLibrary(options, lock)).unchanged).toBe(2);
+
+  for (const [name, table] of [["timeline", "timeline_events"], ["dashboard", "debug_events"]] as const) {
+    using mirror = new DatabaseSync(join(destination.stateRoot, `${name}.db`), { readOnly: true });
+    using local = new DatabaseSync(destination.path, { readOnly: true });
+    const query = `SELECT cursor,id,payload_json FROM ${table} ORDER BY cursor`;
+    expect(mirror.prepare(query).all()).toEqual(local.prepare(query).all());
+  }
+  const companion = `${backup.backupPath}.timeline.db`;
+  const original = readFileSync(companion);
+  writeFileSync(companion, "tampered log backup");
+  await expect(importProfileLibrary(options, lock)).rejects.toThrow(/byte size|checksum/u);
+  writeFileSync(companion, original);
 
   const schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION + 1;
   writeFileSync(backup.manifestPath, JSON.stringify({ ...backup.manifest, schemaVersion,
