@@ -7,7 +7,8 @@ import { surfaceLeaves } from "../../../architecture/logs/helpers/redaction-surf
 
 const unused = () => { throw new Error("registry test reads declarations only"); };
 const plugins = (edits = false) => createAssistantPlugins({ findLookupRuns: unused, runReferenceLabel: unused, search: unused, runDetail: unused, notifications: unused, workbooks: unused, attachment: unused, settings: unused, facts: unused,
-  ...(edits ? { settingsRecord: unused, edits: { apply: unused, notification: unused, workbooks: unused } } : {}) });
+  ...(edits ? { settingsRecord: unused, edits: { apply: unused, notification: unused, workbooks: unused },
+    appliedEdits: { clock: { now: unused }, list: unused } } : {}) });
 
 it("offers every plugin's tools in one strict namespace with unique names", () => {
   const registry = assistantToolRegistry(plugins());
@@ -19,17 +20,19 @@ it("offers every plugin's tools in one strict namespace with unique names", () =
   assert.throws(() => assistantToolRegistry([first, first]), /assistant-tool-registry-invalid/u);
 });
 
-it("fits the full served tool set (16 tools) exactly at the cap", () => {
+it("fits the full served tool set (18 tools) exactly at the cap", () => {
   // Construction reads no owner; the declarations alone are registered.
   const proposals = createAssistantTypedProposals({} as Parameters<typeof createAssistantTypedProposals>[0]);
   const registry = assistantToolRegistry([...plugins(true), proposals.plugin, sessionsPlugin()]);
-  assert.equal(registry.tools.length, 16);
+  assert.equal(registry.tools.length, 18);
+  assert.deepEqual(registry.tools.filter(tool => ["list_today_edits", "undo_edit"].includes(tool.name)).map(tool => tool.name), ["list_today_edits", "undo_edit"]);
+  assert.deepEqual(registry.namespace.tools.find(tool => tool.name === "list_today_edits")?.parameters.required, []);
   // Strict function schemas refuse `oneOf` (discriminated unions); unions must emit `anyOf`.
   for (const tool of registry.namespace.tools) assert.doesNotMatch(JSON.stringify(tool.parameters), /"oneOf"/u, tool.name);
   assert.deepEqual(proposals.plugin.tools.map(tool => tool.name), ["propose_workflow_start", "propose_rerun", "propose_run_action"]);
   const [first] = plugins(true); assert.ok(first);
   assert.throws(() => assistantToolRegistry([...plugins(true), proposals.plugin, sessionsPlugin(), { domain: "extra", tools: [{ ...first.tools[0], name: "extra_read" }] }]),
-    /assistant-tool-registry-invalid/u, "a seventeenth tool refuses");
+    /assistant-tool-registry-invalid/u, "a nineteenth tool refuses");
 });
 
 it("declares a privacy origin for exactly the free-text leaves of every tool output", () => {
