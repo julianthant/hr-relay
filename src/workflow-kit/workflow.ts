@@ -1628,6 +1628,10 @@ export function defineWorkflowDescriptor<
     }
   }
   const stepOmissions = deriveStepOmissions(id, nodes, spec.timeline);
+  const ocrStep = spec.surfaces.uploadRun?.ocrStep;
+  if (ocrStep !== undefined && !stepOmissions.some(step => step.step === ocrStep)) {
+    throw new Error(`${id}: PDF OCR step "${ocrStep}" must name an omittable step`);
+  }
   const failureCorrections = spec.failureCorrections === undefined ? undefined : validateFailureCorrections(spec.flow.input, nodes, spec.failureCorrections);
   const gateCorrections = spec.gateCorrections === undefined ? undefined : validateGateCorrections(spec.flow.input, nodes, spec.gateCorrections);
   if (spec.rerunValues?.some((mapping) => mapping.targetStepKey !== undefined) === true) {

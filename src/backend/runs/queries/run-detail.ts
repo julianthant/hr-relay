@@ -252,7 +252,7 @@ function buildTimelineSteps(
         ...(member.replayedFrom === undefined ? {} : { replayedFrom: member.replayedFrom }),
         ...(member.notRunReason === undefined ? {} : { notRunReason: member.notRunReason }),
       })),
-      ...(category.key === undefined ? {} : typed.get(category.key)),
+      ...(category.key === undefined || members.every(member => member.notRunReason === "required-evidence-unavailable") ? {} : typed.get(category.key)),
     })];
   });
   if (runCancelled) {

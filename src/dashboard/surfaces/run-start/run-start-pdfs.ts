@@ -50,6 +50,10 @@ export function pdfRunReadingMode(surface: UploadRunSurface, draft: PdfRunDraft 
   return field?.kind === "boolean" && !pdfRunSwitchValue(field, picks) ? "off" : "subscription";
 }
 
+export function pdfRunRequiresOcr(surface: UploadRunSurface, draft: PdfRunDraft | null, picks: PdfRunPicks, selected: readonly string[]): boolean {
+  return (surface.ocrStep === undefined || selected.includes(surface.ocrStep)) && pdfRunReadingMode(surface, draft, picks) === "subscription";
+}
+
 export function pdfRunOcrFooter(surface: UploadRunSurface, draft: PdfRunDraft | null, picks: PdfRunPicks): string {
   return { manual: "Manual reading", off: "OCR off", subscription: "OCR on" }[pdfRunReadingMode(surface, draft, picks)];
 }

@@ -194,6 +194,23 @@ describe("I-9 Check Start omissions", () => {
   const world = createI9CheckStartWorld();
   afterEach(world.cleanup);
 
+  it("shows unavailable evidence in the stopped dry-run preview", async () => {
+    const f = await world.fixture({ dryRun: true, selection: { selectedStepKeys: [],
+      stepOmissions: ["documents", "roster-reference", "retention", "publication"].map(step => ({ step, facts: {} })) } });
+    const { database, clock, root: { descriptor } } = f;
+    const { run } = await f.canonical.execute(f.run, new AbortController().signal);
+    assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
+    const runId = run.envelope.runId, reader = f.canonical.lifecycle, stateRoot = f.harness.authority.stateRoot;
+    const descriptors = { resolve: (id: string) => id === descriptor.id ? descriptor : undefined };
+    const projection = createOperatorProjection({ database, stateRoot, clock, reader, appVersion: "0.1.0",
+      descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(database.authority), descriptors });
+    projection.ingestFromTimeline();
+    const deps = createOperatorRunDetail({ database, stateRoot, projection, runReader: reader, canonical: { database, reader, descriptors } });
+    const preview = buildRunLogsWhole(deps, runId, projection.runFold(runId), run).payload.dryRunPreview;
+    assert.ok(preview?.state === "available");
+    expect(preview.stages.find(stage => stage.id === "save-workbook")).toMatchObject({ state: "skipped", detail: "required-evidence-unavailable" });
+  });
+
   it.each([
     { step: "documents", omitted: ["documents", "roster-reference", "retention", "publication"], review: false },
     { step: "roster-reference", omitted: ["roster-reference", "retention", "publication"], review: true },
@@ -245,6 +262,9 @@ describe("I-9 Check Start omissions", () => {
     projection.ingestFromTimeline();
     const deps = createOperatorRunDetail({ database, stateRoot, projection, runReader: reader, canonical: { database, reader, descriptors } });
     const detail = buildRunDetail(deps, runId);
+    const publicationStep = detail.timeline.steps?.find(entry => entry.key === "publication");
+    assert.ok(publicationStep);
+    expect(publicationStep.typedValues?.title).toBe(publication ? "Operator-entered values" : undefined);
     const section = buildRunLogsWhole(deps, runId, projection.runFold(runId), run);
     const log = projectRunLogs({ detail, logs: section.payload, sections: [], unavailableEvidence: [] }, { artifactUrl: () => "unused" });
     const publicationStage = log.timeline.find(stage => stage.id === "publication");

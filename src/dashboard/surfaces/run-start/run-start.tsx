@@ -33,7 +33,7 @@ import { SYSTEM_NAME } from "../shared/status/system-chip-model.js";
 import { planRefusalNotice, forcedStepOmissions, handOffStepOmissions, initialStepOmissionDraft, stoppedStepOmissions, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable } from "./run-start-model.js";
 import { includedRowCount, rowFieldsOpen, rowOpenFold, startRowsOf, stepEntries, type OpenStepRow, type StartStep, type StepRow } from "./run-steps-model.js";
 import { reconcileRunStartStage, runStartStages } from "./run-start-timeline.js";
-import { pdfRunOcrFooter, pdfRunReadingMode, pdfRunSelectValue, pdfRunSwitchValue, restorePdfRun, usePdfRunInput } from "./run-start-pdfs.js";
+import { pdfRunOcrFooter, pdfRunRequiresOcr, pdfRunSelectValue, pdfRunSwitchValue, restorePdfRun, usePdfRunInput } from "./run-start-pdfs.js";
 import { RunStartInput } from "./run-start-input.js";
 import { RunStartSteps } from "./run-start-steps.js";
 import { runStartGates, runStartPlanRequest, runStartRequestFingerprint, useRunStartInputPreview } from "./run-start-request-model.js";
@@ -421,7 +421,7 @@ export function RunStartDialog({
     }
   }, [catalog, selectWorkflow, send, sending]);
 
-  const requiresOcr = pdfSurface !== undefined && pdfRunReadingMode(pdfSurface, pdfInput.draft, pdfInput.picks) === "subscription";
+  const requiresOcr = pdfSurface !== undefined && pdfRunRequiresOcr(pdfSurface, pdfInput.draft, pdfInput.picks, selectedStepKeys);
   const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Start" || (!isRerun && currentStage === "Steps"), open, requiresOcr);
   /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
   const fixedCheck = useRef<{ check: string; reread: boolean } | null>(null);

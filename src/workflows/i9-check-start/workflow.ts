@@ -24,6 +24,7 @@ export const i9CheckStartWorkflow = defineWorkflow({
   surface: { shape: "single" }, surfaces: {
     uploadRun: { title: { segments: [{ kind: "literal", text: "I-9 PDFs" }] }, fields: [],
       pdfInput: { documentsField: "documents", asOfField: "asOf", reviewerField: "reviewerName" },
+      ocrStep: "documents",
       accepts: [{ mediaType: "application/pdf", extensions: [".pdf"], maxBytes: PositiveIntSchema.parse(25 * 1024 * 1024) }],
       successMessage: { segments: [{ kind: "literal", text: "PDFs attached for one I-9 Check run." }] } },
   },

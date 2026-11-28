@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { projectStartRows, projectStartSteps, resolveStartStepOmissions, startRowWire, startStepWireControl } from "../../../src/backend/runs/start/step-selection.js";
+import { restoreRerunDraft, selectedStepKeys } from "../../../src/dashboard/surfaces/run-start/run-launch-draft-model.js";
 import { stoppedStepOmissions, toggleStepSelection } from "../../../src/dashboard/surfaces/run-start/run-start-model.js";
+import { pdfRunRequiresOcr } from "../../../src/dashboard/surfaces/run-start/run-start-pdfs.js";
 import { rowFieldsOpen, rowIncluded, rowOpenFold, startRowsOf, stepEntries } from "../../../src/dashboard/surfaces/run-start/run-steps-model.js";
+import type { RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start/run-start.js";
+import { RerunValuesSnapshotSchema } from "../../../src/models/dashboard/rerun-values.js";
 import { i9CheckStartModule } from "../../support/helpers/registered-workflows.js";
 
 const descriptor = i9CheckStartModule.descriptor;
@@ -40,6 +44,10 @@ it("switching off OCR review also skips its source and dependent rows without op
   const stopped = stoppedStepOmissions(steps, requested);
   const selected = requested.filter(key => !stopped.has(key));
   assert.deepEqual(selected, []);
+  const pdfSurface = descriptor.surfaces.uploadRun;
+  assert.ok(pdfSurface);
+  assert.equal(pdfRunRequiresOcr(pdfSurface, null, {}, all), true);
+  assert.equal(pdfRunRequiresOcr(pdfSurface, null, {}, selected), false);
   assert.ok(rows.every(row => !rowIncluded(row, selected, [])));
   const open = rows.flatMap(row => row.form !== undefined && rowFieldsOpen(row, selected, []) ? [rowOpenFold(row, row.form, {})] : []);
   assert.ok(open.every(({ form }) => form.fields.length === 0));
@@ -53,4 +61,42 @@ it("switching off OCR review also skips its source and dependent rows without op
   assert.throws(() => resolveStartStepOmissions(descriptor, selected, [
     ...entries, { workflow: "i9-check", step: "person-lookup", facts: { emplId: null, name: null, hireDate: null } },
   ]), /will not run/u);
+});
+
+it("requires both matched-person values before starting", () => {
+  const rows = startRowsOf({ steps: projectStartSteps(descriptor), rows: projectStartRows(descriptor).map(startRowWire) });
+  const row = rows.find(candidate => candidate.key === "ucpath-match");
+  assert.ok(row?.form);
+  const found = { status: "found", eid: "10812345", name: "Example Person" };
+  assert.equal(stepEntries([rowOpenFold(row, row.form, { ...found, eid: "" })]), null);
+  assert.equal(stepEntries([rowOpenFold(row, row.form, { ...found, name: "" })]), null);
+  assert.ok(stepEntries([rowOpenFold(row, row.form, found)]));
+  assert.ok(stepEntries([rowOpenFold(row, row.form, { status: "not-found", eid: "", name: "" })]));
+});
+
+it.each(["roster-reference", "retention", "publication"])("keeps the steps needed to rerun a failed %s", failed => {
+  const workflow: RunStartWorkflow = {
+    workflowId: "i9-check-start", version: descriptor.version, label: "I-9 Check", categoryId: "operations",
+    role: { kind: "standalone" }, icon: "Search", enqueue: "reject-active", spreadsheetIntake: false, requiredWorkbookFields: [],
+    inputRun: { state: "absent", reason: "This workflow uses PDFs." },
+    steps: projectStartSteps(descriptor).map(step => ({ ...step, control: startStepWireControl(step.control) })),
+    rows: projectStartRows(descriptor).map(startRowWire),
+  };
+  const restart = descriptor.timeline.findIndex(step => step.key === failed);
+  const snapshot = RerunValuesSnapshotSchema.parse({
+    sourceInput: { state: "available", value: {} },
+    source: { runId: "10000000-0000-4000-8000-000000000001", version: 3, workflow: workflow.workflowId,
+      descriptorVersion: descriptor.version, contractFingerprint: "a".repeat(64), outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headed" },
+    steps: descriptor.timeline.map((step, index) => {
+      const state = index < restart ? "completed" : index === restart ? "failed" : "unfinished";
+      return { key: step.key, state, nodes: step.nodes.map(node => ({ nodeId: node.id, state,
+        reason: state === "completed" ? "checkpoint" : state === "failed" ? "failure" : "incomplete-execution" })) };
+    }),
+    values: [], transactions: [],
+  });
+  const draft = restoreRerunDraft(snapshot, workflow);
+  const requested = selectedStepKeys(draft, workflow), stopped = stoppedStepOmissions(workflow.steps, requested);
+  const selected = requested.filter(key => !stopped.has(key));
+  assert.ok(selected.includes("documents"));
+  assert.ok(selected.includes(failed));
 });
