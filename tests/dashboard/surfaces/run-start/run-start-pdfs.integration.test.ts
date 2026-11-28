@@ -98,17 +98,13 @@ it.each([
   await dialog.fill("Original page readings", reading);
   await dialog.press("Include Group records for review");
   expect(dialog.disabled("Include Review extracted records")).toBe(true);
-  await dialog.fill("Record grouping", "leave unverified");
-  await dialog.fill("Identity verification", "leave unverified");
-  await dialog.fill("Signer verification", "leave unverified");
-  await dialog.fill("Record release", "withhold");
+  expect(dialog.disabled(start)).toBe(true);
+  await dialog.press("Include Group records for review");
+  expect(dialog.disabled("Include Review extracted records")).toBe(false);
+  assert.equal(dialog.disabled(start), false, dialog.text());
   await dialog.press(start);
   expect(StartPlanRequestSchema.parse(plans.at(-1)).stepOmissions).toEqual([
     { workflow: "ocr", step: "page-readings", facts: { readings: [reading] } },
-    { workflow: "ocr", step: "review-records", facts: { outcome: "leave unverified" } },
-    { workflow: "ocr", step: "identity-lookups", facts: { outcome: "leave unverified" } },
-    { workflow: "ocr", step: "signer-lookups", facts: { outcome: "leave unverified" } },
-    { workflow: "ocr", step: "approval", facts: { release: "withhold" } },
   ]);
   expect(StartCommandRequestSchema.parse(commands.at(-1))).toMatchObject({ requestedBy: h.ACTOR_ID, target: { workflowId: parent.id } });
 });

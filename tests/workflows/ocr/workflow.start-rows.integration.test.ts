@@ -19,6 +19,11 @@ it("admits a manual original page through Emergency Contact Start without the OC
   let available = true;
   const f = await world.fixture({ coordinator: true, holdPages: true, ocrProviderAvailable: () => available });
   const descriptor = f.root.descriptor, authority = f.database.authority;
+  const baseline = authority.runs.get(f.parentRun.envelope.runId);
+  assert.ok(baseline);
+  const cancelled = f.canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard",
+    requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: { runId: baseline.envelope.runId, expectedVersion: baseline.version } });
+  assert.equal(cancelled.state, "applied", JSON.stringify(cancelled));
   available = false;
   const input = EmergencyContactInputSchema.parse({ ...EmergencyContactInputSchema.parse(f.parentRun.input.parsed.value),
     readingId: randomUUID(), roster: null, onbaseFiling: "skip" });
@@ -35,9 +40,10 @@ it("admits a manual original page through Emergency Contact Start without the OC
     { workflow: "ocr", step: "signer-lookups", facts: { outcome: "leave unverified" } },
     { workflow: "ocr", step: "approval", facts: { release: "withhold" } },
   ] });
-  await f.canonical.execute(run, new AbortController().signal);
+  const { outcomes } = await f.canonical.execute(run, new AbortController().signal);
   const child = authority.runs.listChildren(run.envelope.runId).find(candidate => candidate.envelope.workflow === "ocr");
-  assert.ok(child?.lifecycle.state === "terminal" && child.lifecycle.outcome === "done");
+  assert.ok(child?.lifecycle.state === "terminal" && child.lifecycle.outcome === "done", JSON.stringify(outcomes.map(outcome =>
+    outcome.state === "failed" ? authority.failures.get(outcome.failureId)?.code : outcome.state)));
   const [page] = authority.runs.listChildren(child.envelope.runId);
   assert.ok(page?.lifecycle.state === "terminal" && page.lifecycle.outcome === "done");
   const { reading } = OcrPageWorkflowInputSchema.parse(page.input.parsed.value);
