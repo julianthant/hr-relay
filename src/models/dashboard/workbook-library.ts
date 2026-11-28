@@ -260,8 +260,12 @@ export const WorkbookLibraryEntrySchema = z.strictObject({
   worksheets: z.array(z.strictObject({ id: WorkbookIdSchema, name: z.string().min(1) })).min(1),
   rowCount: z.number().int().nonnegative(), metadata: WorkbookMetadataSchema, type: WorkbookTypeSchema,
   state: WorkbookLibraryStateSchema, sync: WorkbookLibrarySyncStatusSchema.optional(),
+  /** Other versions protected from deletion, present when any are held. */
+  heldVersionIds: z.array(WorkbookIdSchema).nonempty().optional(),
 }).refine(entry => entry.libraryId === entry.state.libraryId && entry.metadata.typeId === entry.type.id
   && (entry.sync === undefined || entry.metadata.sharePoint !== null)
+  && (entry.heldVersionIds === undefined || new Set(entry.heldVersionIds).size === entry.heldVersionIds.length
+    && entry.heldVersionIds.every(id => id !== entry.state.selectedVersionId && entry.state.versions.some(version => version.id === id)))
   && entry.updatedAt === entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.savedAt);
 export const WorkbookLibraryCatalogSchema = z.array(WorkbookLibraryEntrySchema)
   .refine(entries => new Set(entries.map(entry => entry.libraryId)).size === entries.length);

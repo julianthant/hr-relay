@@ -395,7 +395,10 @@ it('protects a version held by a start plan or queued run and keeps the finished
     ...START_PLAN, planned, plannedAt, expiresAt, createdAt: plannedAt, updatedAt: plannedAt,
     inputFingerprint: derivePlannedInputFingerprint(planned, START_PLAN.ingressSchemaHash, START_PLAN.canonicalInputSchemaHash),
   }).state, 'inserted');
+  assert.deepEqual((await client.workbookCatalog())[0].heldVersionIds, [versionId]);
   await assertInUse('delete-with-plan');
+  h.clock.setWall(new Date(expiresAt));
+  assert.equal((await client.workbookCatalog())[0].heldVersionIds, undefined);
 
   const { people: [person] } = ReadCrmDocumentRows.example;
   const raw = { people: person.subject.value };
@@ -406,7 +409,7 @@ it('protects a version held by a start plan or queued run and keeps the finished
       protectedBindings: [], value: CrmDocDownloadInput.parse(raw) }, workbookReferences: [bound] },
   });
   authority.runs.enqueue(queued);
-  h.clock.setWall(new Date(expiresAt));
+  assert.deepEqual((await client.workbookCatalog())[0].heldVersionIds, [versionId]);
   await assertInUse('delete-with-queued-run');
   const { runId, workflow, itemId, attempt, descriptorVersion, contractFingerprint } = queued.envelope;
   const finished = testRunService(h.database, h.clock).transition({
@@ -414,6 +417,7 @@ it('protects a version held by a start plan or queued run and keeps the finished
     lifecycle: { state: 'terminal', outcome: 'discarded', endedAt: expiresAt },
   });
   assert.equal(finished.state, 'applied');
+  assert.equal((await client.workbookCatalog())[0].heldVersionIds, undefined);
   const referenceDigest = sha256Hex(canonicalJsonStringify(bound));
   authority.runCheckpoints.insert({
     workflowId: workflow, itemId, nodeId: 'document-rows', attempt, claimGeneration: queued.claimGeneration,
@@ -477,7 +481,11 @@ it('creates a named version from SharePoint only after its download settles', as
   assert.equal(named.version.name, 'Remote review');
   assert.equal(named.version.source, 'sharepoint');
   assert.equal(named.workbook.sheets[0].rows[1].cells[0].value, 'Remote');
-  assert.equal((await client.workbookCatalog())[0].state.selectedVersionId, before.state.selectedVersionId);
+  const [after] = await client.workbookCatalog();
+  assert.equal(after.state.selectedVersionId, before.state.selectedVersionId);
+  const duplicate = await action({ ...request, operationId: 'duplicate-version', expectedVersion: after.version, expectedRevision: after.state.revision });
+  assert.equal(duplicate.status, 409);
+  assert.deepEqual(await duplicate.json(), { state: 'error', code: 'WORKBOOK_VERSION_NAME_EXISTS', message: 'A version with this name exists.', retryable: false });
   assert.equal((await action(request)).status, 200);
   assert.equal(downloads, 2);
 });
@@ -523,6 +531,7 @@ it('dispatches a SharePoint import to the authenticated download boundary and se
   const database = new DatabaseSync(':memory:');
   try {
     for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(sql);
+    database.exec("CREATE TABLE runs (id TEXT PRIMARY KEY,state TEXT NOT NULL,lifecycle_json TEXT NOT NULL); CREATE TABLE run_requests (id TEXT PRIMARY KEY,payload_json TEXT NOT NULL)");
     const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => work().result });
     let downloads = 0;
     const library = createWorkbookLibraryService({ repository, clock: manualClock(new Date('2026-11-02T00:00:00.000Z')),

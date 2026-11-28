@@ -25,16 +25,16 @@ it("offers the versions by name, current first choice, and reports the chosen ve
   assert.deepEqual(onVersion.mock.calls, [["a"]]);
 });
 
-it("tells same-named versions of one day apart and keeps a long name inside the trigger", async () => {
+it("shows the stored version names and keeps a long name inside the trigger", async () => {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   const same = { name: "Reviewed", savedAt: "2026-11-05T01:00:00Z" };
   await act(async () => root?.render(createElement(TooltipProvider, null, createElement(SpreadsheetRow, {
-    name: "Roster", versionId: "a", versions: [{ id: "a", ...same }, { id: "b", ...same }, { id: "c", name: "A very long version name that must not push the controls", savedAt: "2026-11-06T00:00:00Z" }],
+    name: "Roster", versionId: "c", versions: [{ id: "a", ...same }, { id: "b", ...same, name: "Reviewed (2)" }, { id: "c", name: "A very long version name that must not push the controls", savedAt: "2026-11-06T00:00:00Z" }],
     worksheets: [], picked: [], mode: "one", busy: false, worksheetsReady: true, onVersion: () => undefined, onWorksheets: () => undefined, onRemove: () => undefined }))));
   const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Roster version"]'); assert.ok(trigger);
   assert.match(trigger.className, /max-w-52/u);
   await act(async () => { trigger.click(); });
   const labels = [...document.body.querySelectorAll('[role="option"]')].map(option => option.textContent ?? "");
-  assert.match(labels[0], /\(1 of 2\)$/u); assert.match(labels[1], /\(2 of 2\)$/u); assert.doesNotMatch(labels[2], /of/u);
+  assert.deepEqual(labels.map(label => label.split(" · ")[0]), ["Reviewed", "Reviewed (2)", "A very long version name that must not push the controls"]);
 });
