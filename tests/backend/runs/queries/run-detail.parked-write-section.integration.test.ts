@@ -33,6 +33,7 @@ function proofFor(base: unknown): Record<string, unknown> {
 
 function parkedIntentOf(input?: Readonly<{
   generation?: number;
+  readBack?: boolean;
   proof?: unknown;
   status?: "parked" | "attempting";
   taskId?: string;
@@ -64,7 +65,7 @@ function parkedIntentOf(input?: Readonly<{
     updatedAt: NOW,
     ...(status === "parked"
       ? { status, parkedCode: "unknown", message: PARK_MESSAGE,
-        authorityReason: deriveWriteAuthorityReason("post-click-verifier-unknown", "probe", PARK_MESSAGE) }
+        authorityReason: deriveWriteAuthorityReason(input?.readBack ? "post-click-verifier-unknown" : "post-fence-commit-exception", "exception", PARK_MESSAGE) }
       : { status }),
   });
   if (intent.status !== "parked" && intent.status !== "attempting") throw new Error("fixture intent is not fenced");
@@ -139,6 +140,20 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
         attempt: 1, traceId: run.envelope.traceId, nodeId: "termination", writeIntentId: INTENT_ID, generation: 1 } });
     assert.deepEqual(parkedSection(w).native, { eventId: appended.record.eventId, order: appended.record.cursor,
       runId: RUN_ID, attempt: 1, traceId: run.envelope.traceId, nodeId: "termination" });
+  });
+
+  it("refuses a repeated read-back park event on a different node", async () => {
+    const w = await world();
+    const run = runRecordOf({ seed: 1 });
+    const proof = { ...SUBJECT_PROOF, runId: RUN_ID, afterPrepareSpanPath: `${run.envelope.traceId}/termination/prepare` };
+    seed(w, { intent: parkedIntentOf({ proof, readBack: true }) });
+    for (const [index, nodeId] of ["termination", "different-write"].entries()) {
+      w.timeline.append({ schemaVersion: 1, eventId: uuidOf(9801 + index), workflow: "person-lookup",
+        scope: { kind: "run", runId: RUN_ID }, occurredAt: NOW, recordedAt: NOW, retentionDate: "2026-07-31",
+        source: { kind: "native" }, payload: { kind: "write-parked", workflow: "person-lookup", runId: RUN_ID,
+          attempt: 1, traceId: run.envelope.traceId, nodeId, writeIntentId: INTENT_ID, generation: 1 } });
+    }
+    assert.throws(() => parkedSection(w), /RUN_LOG_WRITE_NATIVE_IDENTITY_DUPLICATE/u);
   });
 
   it("advertises and serves the section with the durable intent's exact facts", async () => {

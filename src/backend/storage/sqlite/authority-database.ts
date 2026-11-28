@@ -2144,9 +2144,10 @@ export class AuthorityDatabase implements Disposable {
       if (attempt?.outcome.state !== "parked" || !isFailedReadBack(attempt.outcome.authorityReason.code)
         || canonicalJsonStringify(failure.writeAuthorityReason) !== canonicalJsonStringify(attempt.outcome.authorityReason)) return [];
       const row = this.#database.prepare(`SELECT * FROM command_audits
-        WHERE json_extract(payload_json,'$.request.type')='fail-read-back'
+        WHERE json_extract(payload_json,'$.request.target.runId')=?
+          AND json_extract(payload_json,'$.request.type')='fail-read-back'
           AND json_extract(payload_json,'$.request.target.writeIntentId')=?
-          AND json_extract(payload_json,'$.result.state')='applied'`).all(intent.writeIntentId)
+          AND json_extract(payload_json,'$.result.state')='applied'`).all(intent.runId, intent.writeIntentId)
         .map(candidate => this.#parseNativeRow("command_audits", candidate, CommandAuditRecordSchema))
         .find(audit => String(lifecycleCommandId("read-back-failure", audit.request.commandId)) === failure.failureId);
       if (row === undefined) return [];

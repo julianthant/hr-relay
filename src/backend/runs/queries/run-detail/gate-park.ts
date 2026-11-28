@@ -836,22 +836,32 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
       + `${lifecycle.writeIntentId}, which is at generation ${String(intent.generation)}`,
     );
   }
-  const nativeEvents = readTimelineRecords(deps.timeline, 0, runId).records.filter(record =>
-    record.payload.kind === "write-parked" && record.payload.writeIntentId === intent.writeIntentId
-    && record.payload.generation === intent.generation);
-  if (nativeEvents.length > 1) throw new LogIdentityRefusedError("RUN_LOG_WRITE_NATIVE_IDENTITY_DUPLICATE");
-  const nativeEvent = nativeEvents[0];
-  const native = nativeEvent?.payload.kind === "write-parked" ? nativeEvent.payload : undefined;
-  if (native !== undefined && (native.runId !== runId || native.attempt !== intent.runAttempt
-    || native.traceId !== authority.envelope.traceId || native.workflow !== authority.envelope.workflow
-    || intent.bindingProof.afterPrepareSpanPath !== `${native.traceId}/${native.nodeId}/prepare`)) throw new LogIdentityRefusedError("RUN_LOG_WRITE_NATIVE_IDENTITY_MISMATCH");
+  const repositories = deps.canonical?.database?.authority;
+  const attempt = repositories?.writeAttempts.get(intent.currentAttemptId);
+  const readBack = isFailedReadBack(attempt?.outcome.state === "parked" ? attempt.outcome.authorityReason.code : intent.authorityReason.code);
+  const nativeEvents = readTimelineRecords(deps.timeline, 0, runId).records.flatMap(record => {
+    const { payload } = record;
+    return payload.kind === "write-parked" && payload.writeIntentId === intent.writeIntentId
+      && payload.generation === intent.generation ? [{ record, payload }] : [];
+  });
+  const matchesOccurrence = ({ payload }: typeof nativeEvents[number]) => payload.runId === runId
+    && payload.attempt === intent.runAttempt && payload.traceId === authority.envelope.traceId
+    && payload.workflow === authority.envelope.workflow
+    && intent.bindingProof.afterPrepareSpanPath === `${payload.traceId}/${payload.nodeId}/prepare`;
+  const latestPark = nativeEvents.at(-1);
+  if (nativeEvents.length > 1 && (!readBack || latestPark?.record.occurredAt !== lifecycle.parkedAt
+    || !nativeEvents.every(event => event.record.source.kind === "native" && matchesOccurrence(event)))) {
+    throw new LogIdentityRefusedError("RUN_LOG_WRITE_NATIVE_IDENTITY_DUPLICATE");
+  }
+  if (latestPark !== undefined && !matchesOccurrence(latestPark)) throw new LogIdentityRefusedError("RUN_LOG_WRITE_NATIVE_IDENTITY_MISMATCH");
+  const nativeEvent = latestPark?.record;
+  const native = latestPark?.payload;
   const descriptor = deps.canonical?.descriptors.resolve(authority.envelope.workflow);
   const acceptsTransactionId = descriptor !== undefined
     && descriptor.version === authority.envelope.descriptorVersion
     && descriptor.contractFingerprint === authority.envelope.contractFingerprint
     && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction"
       && node.commit.uses.id === intent.taskId && acceptsRecheckTransactionId(node.commit.uses.writeSafety.completion));
-  const repositories = deps.canonical?.database?.authority;
   let check: { state: "available"; target: ParkedWriteCheckTarget } | { state: "unavailable"; code: "PARKED_CHECK_UNAVAILABLE" }
     = { state: "unavailable", code: "PARKED_CHECK_UNAVAILABLE" };
   if (repositories !== undefined && deps.authorityIdentity !== undefined && native !== undefined
@@ -885,8 +895,6 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     && request.target.bindingProofDigest === intent.bindingProofDigest && request.target.occurrenceKeyDigest === intent.idempotencyKeyDigest
     && request.target.runVersion === authority.version && request.target.intentVersion === intent.version);
   const lastCheck = latest?.parkedWriteCheck?.result;
-  const attempt = repositories?.writeAttempts.get(intent.currentAttemptId);
-  const readBack = isFailedReadBack(attempt?.outcome.state === "parked" ? attempt.outcome.authorityReason.code : intent.authorityReason.code);
   const canFileAgain = !readBack || (descriptor !== undefined && repositories !== undefined
     && evaluateWriteResolutionBinding({ arm: "operator-confirmed-absent", descriptor, run: authority, intent, repositories }).state !== "incompatible");
   const canMarkFailed = readBack && descriptor !== undefined && descriptor.version === authority.envelope.descriptorVersion

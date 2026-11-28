@@ -1,3 +1,7 @@
+import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
+import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";
+import { buildGateParkSection } from "../../../../src/backend/runs/queries/run-detail/gate-park.js";
+import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { assertCredentialCopyResourcesClosed, assertLogoutResourcesClosed, assertShutdownResourcesClosed } from "../../../../src/backend/storage/maintenance/profile-custody.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -104,6 +108,21 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     const retained = parkedIntent(harness.database);
     assert.ok(retained.status === "parked" && retained.generation === intent.generation);
     assert.equal(harness.database.authority.writeAttempts.listByIntent(intent.writeIntentId).length, 1);
+
+    const { database, clock, profile } = harness;
+    const reader = testRunService(database, clock);
+    const descriptors = { resolve: (id: string) => id === WRITE_FIXTURE_WORKFLOW_ID ? writeFixtureSaveDescriptor : undefined };
+    const projection = createOperatorProjection({ database, reader, descriptors, clock, stateRoot: profile.stateRoot,
+      appVersion: "0.1.0", descriptorSetHash: writeFixtureSaveDescriptor.contractFingerprint,
+      ledger: { foldActivityRange: () => { throw new Error("unrequested activity"); } } });
+    const deps = createOperatorRunDetail({ database, projection, runReader: reader, stateRoot: profile.stateRoot,
+      canonical: { database, reader, descriptors } });
+    const parks = database.authority.timelineEvents.page({ runId: WRITE_FIXTURE_RUN_ID }).filter(event => event.payload.kind === "write-parked");
+    assert.equal(parks.length, 2);
+    const section = buildGateParkSection(deps, WRITE_FIXTURE_RUN_ID, "parked-write");
+    assert.ok(section.section === "parked-write");
+    assert.equal(section.payload.native?.eventId, parks[1]?.eventId);
+    assert.deepEqual(section.payload.decision?.options.map(option => option.id), ["check-again", "saved", "not-saved", "mark-as-failed"]);
   });
 
   it("ends a read-back failure without reading or filing and retains the fenced write", async () => {
