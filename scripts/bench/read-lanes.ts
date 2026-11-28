@@ -136,15 +136,16 @@ function withG4Routes(shape: Shape, workspace: string) {
     if (typeof loaded.source !== "string") throw new Error("read-lanes-g4-loader-source-refused");
     const source = loaded.source;
     if (url === config) {
-      const owner = "host ??= currentApplicationDataHostFacts();";
+      const owner = /host\s*\?\?=\s*currentApplicationDataHostFacts\(\);/u;
       if (source.split(owner).length !== 2) throw new Error("read-lanes-g4-workspace-seam-changed");
-      return { ...loaded, source: source.replace(owner, `if (host === undefined && profile === runtimeProfile) return ${JSON.stringify(workspace)};\n${owner}`) };
+      return { ...loaded, source: source.replace(owner, found => `if (host === undefined && profile === runtimeProfile) return ${JSON.stringify(workspace)};\n${found}`) };
     }
     if (url === cli) {
       // Finish the clone's normal quit backup with its own lifecycle lock, before the harness deletes it.
-      const backup = 'shutdownBackup: detachedShutdownBackup(productionWorkerLaunch(REPOSITORY_ROOT, void 0, options.frontend === "vite-dev"))';
-      if (source.split(backup).length !== 2) throw new Error("read-lanes-g4-shutdown-seam-changed");
-      return { ...loaded, source: source.replace("composeStorageCommand, detachedShutdownBackup", "composeStorageCommand, backupRegisteredPeopleAtCleanShutdown")
+      const backup = /shutdownBackup:\s*detachedShutdownBackup\(productionWorkerLaunch\(REPOSITORY_ROOT,\s*(?:undefined|void 0),\s*options\.frontend\s*===\s*"vite-dev"\)\)/u;
+      const backupImport = /composeStorageCommand,\s*detachedShutdownBackup/u;
+      if (source.split(backup).length !== 2 || source.split(backupImport).length !== 2) throw new Error("read-lanes-g4-shutdown-seam-changed");
+      return { ...loaded, source: source.replace(backupImport, "composeStorageCommand, backupRegisteredPeopleAtCleanShutdown")
         .replace(backup, "shutdownBackup: backupRegisteredPeopleAtCleanShutdown") };
     }
     const route = /input\.lanes\s*\?\?\s*(?:ReadLaneNameSchema\.options|\[\s*"navigation"\s*\])/u;
@@ -267,7 +268,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, workspace: string,
   ]);
   const startLoad = loadavg();
   const child = fork(fileURLToPath(import.meta.url), [profile, "--g4-backend", shape, "--cloned-workspace", workspace], {
-    execArgv: ["--import", "tsx"], env: workerBootstrapEnvironment(), stdio: ["ignore", "ignore", "ignore", "ipc"],
+    execArgv: ["--import", "tsx"], env: workerBootstrapEnvironment(), stdio: ["ignore", "ignore", "inherit", "ipc"],
   });
   const closed = new Promise<boolean>(resolve => {
     child.once("close", (code, signal) => resolve(code === 0 && signal === null));
@@ -529,8 +530,7 @@ function summarizeG4(shape: Shape, runs: readonly G4Run[], startGate: z.infer<ty
   return { shape, g2: startup, passesG2, verdict: inconclusive ? "inconclusive" : limits.length === 0 ? "pass" : "fail", limits, summaries };
 }
 
-// After importing a fresh signed-in copy with profile-copy.ts and running npm run web:build:
-// node --import tsx scripts/bench/read-lanes.ts development --g4 --days YYYY-MM-DD,YYYY-MM-DD --workflow <workflow-id> --query <matching-text> --g2 <G2-report.json>
+// Build the web bundle, then use --g4 --fresh-copy --days YYYY-MM-DD,YYYY-MM-DD --workflow <id> --query <text> --g2 <report.json>.
 async function runG4(profile: CopyProfile, workspace: string, args: { days: string | undefined; workflow: string | undefined; query: string | undefined; g2: string | undefined; runs: string | undefined; shape: string | undefined }) {
   const days = z.tuple([z.iso.date(), z.iso.date()]).parse(args.days?.split(","));
   if (days[0] === days[1] || days[0].slice(0, 7) !== days[1].slice(0, 7)) throw new Error("read-lanes-g4-requires-two-distinct-days-in-one-month");
@@ -611,7 +611,12 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
     try {
       await cloneProfile(workspace, clone, lockPort);
       await runG4(profile, clone, { days: values.days, workflow: values.workflow, query: values.query, g2: values.g2, runs: values.runs, shape: values.shape });
-    } finally { rmSync(clone, { recursive: true, force: true }); }
+    } finally {
+      const { acquireRuntimeLifetimeLock } = await import("../../src/backend/storage/admission/lifetime-lock.js");
+      const lock = await acquireRuntimeLifetimeLock(lockPort);
+      try { rmSync(clone, { recursive: true, force: true }); }
+      finally { await lock.close(); }
+    }
   } else if (values.shape !== undefined) {
     if (values["fresh-copy"]) throw new Error("read-lanes-bench-fresh-copy-requires-both-shapes");
     process.stdout.write(`${JSON.stringify(await measure(ShapeSchema.parse(values.shape), clonedWorkspace ?? workspace, lockPort))}\n`);
