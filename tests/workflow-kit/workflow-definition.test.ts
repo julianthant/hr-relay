@@ -81,7 +81,7 @@ describe("workflow definition compiler", () => {
     expect(declaration.map((group) => [group.key, group.label, group.entries.map((entry) => ({
       id: entry.id, nodeIds: entry.nodeIds.map(String), dependsOn: entry.dependsOn.map(String),
     }))])).toEqual([
-      ["reference-check", "Reference spreadsheets", expectedReferenceStages(["start", "search-identity", "crm-identity", "active-status"])
+      ["reference-check", "Reference spreadsheets", expectedReferenceStages(["start", "matching", "search-identity", "crm-identity", "active-status"])
         .flatMap(stage => stage.entries.map(({ id, nodeIds, dependsOn }) => ({ id, nodeIds, dependsOn })))],
       [
         "searching",
@@ -201,13 +201,14 @@ describe("workflow definition compiler", () => {
 
   it("derives execution order and edges from entry references while preserving tuple presentation order", () => {
     const graph = descriptorRuntimeNodes(personLookupDescriptor);
-    const [start, search, crm, active] = expectedReferenceStages(["start", "search-identity", "crm-identity", "active-status"])
+    const [start, match, search, crm, active] = expectedReferenceStages(["start", "matching", "search-identity", "crm-identity", "active-status"])
       .map(stage => stage.graph.map(({ id, dependsOn }) => ({ id, dependsOn })));
 
     expect(graph.map((node) => ({ id: String(node.id), dependsOn: node.dependsOn.map(String) }))).toEqual([
       ...start,
       {id: "searching", dependsOn: []},
       {id: "matching", dependsOn: ["searching"]},
+      ...match,
       {id: "search-identity", dependsOn: ["searching", "matching"]},
       ...search,
       {id: "cross-verify", dependsOn: ["search-identity", "searching", "matching"]},

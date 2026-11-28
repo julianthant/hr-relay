@@ -1,4 +1,4 @@
-import { i9CheckModule } from "../../support/helpers/registered-workflows.js";
+import { i9CheckModule, personLookupModule } from "../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { afterEach, expect, it } from "vitest";
 import { CHILD_ONLY_WORKFLOW_MODULES, createWorkflowRegistry, workflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
@@ -47,8 +47,9 @@ it("i9-check/person — admits I-9 only as a declared child and limits it to rea
     }, [], { bind: () => i9CheckInput, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
     return { steps: [[{ key: "work", label: "Work" }, [child]]], result: result(I9CheckCanonicalInput, [], () => i9CheckInput) };
   })), []);
-  const registry = createWorkflowRegistry([parent], [i9CheckModule]);
+  const registry = createWorkflowRegistry([parent, personLookupModule], [i9CheckModule]);
   expect(registry.childModuleOf("i9-fixture-parent", "i9-check")).toBe(i9CheckModule);
+  expect(registry.childModuleOf("i9-check", "person-lookup")).toBe(personLookupModule);
   expect(() => registry.childModuleOf("person-lookup", "i9-check")).toThrow(/does not declare/u);
 });
 

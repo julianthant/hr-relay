@@ -196,7 +196,7 @@ export function prepareRunPlan(
       plan.set(String(node.id), { mode: "omitted" });
       continue;
     }
-    if (node.kind === "child-run" && node.id === REFERENCE_LOOKUP_NODE && node.target.id === "person-lookup"
+    if (node.kind === "child-run" && node.id === REFERENCE_LOOKUP_NODE && descriptor.workbookCheck?.id === REFERENCE_CHECK_ID
       && !runWorkbookReferenceTypeIds(initial.input.workbookReferences).includes(REFERENCE_CHECK_ID)) {
       plan.set(String(node.id), { mode: "skipped-condition" });
       continue;
