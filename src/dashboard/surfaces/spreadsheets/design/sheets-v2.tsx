@@ -4,7 +4,7 @@ import { closeDraft, copyMapping, dropImport, editMapping, importWorkbook, pendi
 import { EmptyState, FailureNotice, PageHeading, SearchInput, dsIcon, useToasts } from '../../../ds/ui.js';
 import { useSpreadsheetWiringAdapter, type LibraryChangeResult } from '../../../state/spreadsheet-wiring-adapter.js';
 import { decodeEditableWorkbook } from '../../../../models/dashboard/workbooks.js';
-import type { WorkbookLibraryAction } from '../../../../models/dashboard/workbook-library.js';
+import type { WorkbookLibraryAction, WorkbookLibraryEntry } from '../../../../models/dashboard/workbook-library.js';
 import type { EditableWorkbook } from '../../../../rules/spreadsheets/workbook-io.js';
 import { saveSpreadsheetDownload, spreadsheetDownload } from '../spreadsheet-chat-registration-model.js';
 import { TagFilter } from './sheets-v2-tagfilter.js';
@@ -46,7 +46,10 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const settled = async (work: Promise<LibraryChangeResult>, done?: string, failed = "Couldn't save the change") => {
     const result = await work;
     if (result.state === 'confirmed') { if (done) toast({ tone: 'success', title: done }); return true; }
-    toast({ tone: 'danger', key: failed, title: failed, description: result.message }); return false;
+    if (result.state === 'refused') toast({ tone: 'danger', key: failed, title: failed, description: result.message });
+    else if (result.state === 'uncertain') toast({ tone: 'danger', key: 'sheets-pending', title: 'Not confirmed yet', description: result.message });
+    else toast({ tone: 'success', key: 'sheets-recorded', title: 'Change recorded', description: result.message });
+    return false;
   };
   const change = (id: string, edit: WorkbookLibraryAction['change'], done?: string, failed?: string) => {
     const entry = catalog.find(item => item.libraryId === id);
@@ -154,14 +157,16 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
 
   const importMenu = <ImportMenu onFile={file => void pickFile(file)} onSharePoint={() => setSharePoint(true)} />;
   const pending = pendingLibraries.map(id => catalog.find(item => item.libraryId === id)).filter(Boolean);
+  const pendingNote = (entries: readonly WorkbookLibraryEntry[]) => <span className="inline-flex min-h-6 items-center gap-2"><Loader2 aria-hidden className={`${dsIcon.md} animate-spin motion-reduce:animate-none`} />{entries.map(entry => <span key={entry.libraryId} className="inline-flex items-center gap-1">{syncing.current.has(entry.libraryId) ? `Syncing ${entry.name} isn't confirmed yet.` : `The change to ${entry.name} isn't confirmed yet.`}<V2Button look="line" onClick={() => void checkPending(entry.libraryId)}>Check result</V2Button></span>)}</span>;
   return <section aria-label="Spreadsheets" className="hub-sheets-library settings-compact-page min-w-0">
     {importDraft ? <DraftDetail draft={importDraft} bank={bank} fields={fields} adding={adding} onChange={setImportDraft} onDiscard={discardDraft} onAdd={() => addDraft(importDraft)} />
     : openId && open ? (<SheetDetail key={openId} sheet={open} onBack={back} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'versions', id: openId })}>
+      {pendingLibraries.includes(openId) && open && <div className="mb-2">{pendingNote([catalog.filter(item => item.libraryId === openId)[0]])}</div>}
       {draft ? <SheetDetailGrid sheet={open} document={draft.document} fields={fields} onMap={(worksheet, patch) => void saveMapping(worksheet, patch)} onCopy={copyAll} copying={copying} />
         : openError ? <Grey className="ds-text-ui">This spreadsheet couldn't be opened. <V2Button look="plain" onClick={back}>Back</V2Button></Grey>
         : <SheetDetailGridSkeleton name={open.name} />}
     </SheetDetail>) : <>
-      <PageHeading title="Spreadsheets" description={pending.length ? <span className="inline-flex min-h-6 items-center gap-2"><Loader2 aria-hidden className={`${dsIcon.md} animate-spin motion-reduce:animate-none`} />{pending.map(entry => <span key={entry!.libraryId} className="inline-flex items-center gap-1">{syncing.current.has(entry!.libraryId) ? `Syncing ${entry!.name} isn't confirmed yet.` : `The change to ${entry!.name} isn't confirmed yet.`}<V2Button look="line" onClick={() => void checkPending(entry!.libraryId)}>Check result</V2Button></span>)}</span> : undefined} actions={importMenu} />
+      <PageHeading title="Spreadsheets" description={pending.length ? pendingNote(pending as WorkbookLibraryEntry[]) : undefined} actions={importMenu} />
       <div>{catalogError ? <FailureNotice sentence="Couldn't load spreadsheets." action={{ label: 'Retry', onClick: () => void adapter.refreshCatalog() }} />
         : catalogLoading ? <SheetsSkeleton />
         : sheets.length === 0 ? <EmptyState title="No spreadsheets yet" action={importMenu} />

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, it, vi } from 'vitest';
 import { WorkbookLibraryEntrySchema } from '../../../../../src/models/dashboard/workbook-library.js';
 import { ToastProvider, TooltipProvider } from '../../../../../src/dashboard/ds/ui.js';
 
-const wiring = vi.hoisted(() => ({ adapter: {} as Record<string, ReturnType<typeof vi.fn>>, catalog: [] as unknown[] }));
+const wiring = vi.hoisted(() => ({ adapter: {} as Record<string, ReturnType<typeof vi.fn>>, catalog: [] as unknown[], pending: [] as string[] }));
 const LINK = 'https://contoso.sharepoint.com/sites/hr/roster.xlsx';
 const version = (id: string, n: number) => ({ id, name: `v${n}`, snapshotId: id, version: n, savedAt: `2026-11-0${n}T00:00:00Z`, source: 'operator' });
 const make = (libraryId: string, name: string, options: { pinned?: boolean; linked?: boolean; sync?: unknown } = {}) => WorkbookLibraryEntrySchema.parse({ libraryId, version: 2, name, updatedAt: '2026-11-02T00:00:00Z', rowCount: 1, ...(options.sync ? { sync: options.sync } : {}),
@@ -15,7 +15,7 @@ const make = (libraryId: string, name: string, options: { pinned?: boolean; link
   state: { libraryId, revision: 1, selectedVersionId: 'v2', removed: false, origin: { kind: 'local' }, pinned: options.pinned ?? false, tags: [], versions: [version('v1', 1), version('v2', 2)] } });
 vi.mock('../../../../../src/dashboard/state/spreadsheet-wiring-adapter.js', () => ({
   useSpreadsheetWiringAdapter: () => ({ adapter: wiring.adapter, catalog: wiring.catalog, compatibility: undefined, catalogLoading: false,
-    catalogError: undefined, openError: undefined, draft: undefined, pendingLibraries: [] }),
+    catalogError: undefined, openError: undefined, draft: undefined, pendingLibraries: wiring.pending }),
 }));
 const { SheetsV2 } = await import('../../../../../src/dashboard/surfaces/spreadsheets/design/sheets-v2.js');
 
@@ -25,6 +25,7 @@ let host: HTMLElement;
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   wiring.adapter = { changeLibrary: vi.fn(async () => ({ state: 'confirmed' })), cloneLibrary: vi.fn(async () => ({ state: 'confirmed' })), importSharePoint: vi.fn(async () => ({ state: 'confirmed' })) };
+  wiring.pending = [];
   wiring.catalog = [make('roster', 'Roster.xlsx', { pinned: true, linked: true }), make('keys', 'Keys.xlsx')];
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
@@ -140,6 +141,36 @@ it('creates a version from another version under a name', async () => {
   await type(document.body.querySelector('input[aria-label="Name"]'), '  Before audit ');
   await click(byText('button', 'Create'));
   assert.deepEqual(lastChange(), { kind: 'create-version', name: 'Before audit', from: { kind: 'version', versionId: 'v2' }, useNow: false });
+});
+
+it('creates a version from a chosen non-current version', async () => {
+  await openVersions();
+  await click(byText('button', 'New version'));
+  await type(document.body.querySelector('input[aria-label="Name"]'), 'From the first');
+  await click(document.body.querySelector('button[aria-label="Start from"]'));
+  await click([...document.body.querySelectorAll('[role="option"]')].find(node => node.textContent?.trim() === 'v1'));
+  await click(byText('button', 'Create'));
+  assert.deepEqual(lastChange(), { kind: 'create-version', name: 'From the first', from: { kind: 'version', versionId: 'v1' }, useNow: false });
+});
+
+it('says an uncertain change is not confirmed, not that it failed', async () => {
+  wiring.adapter.changeLibrary = vi.fn(async () => ({ state: 'uncertain', message: 'Check the result.' }));
+  const dialog = await openVersions(); assert.ok(dialog);
+  await click(document.body.querySelector('button[aria-label="Delete v1"]'));
+  await click(byText('button', 'Delete version'));
+  const text = document.body.textContent ?? '';
+  assert.match(text, /Not confirmed yet/u); assert.doesNotMatch(text, /Couldn't delete/u);
+});
+
+it('shows a pending change and its Check result on the opened spreadsheet', async () => {
+  wiring.pending = ['keys'];
+  wiring.adapter.settleLibrary = vi.fn(async () => ({ state: 'confirmed' }));
+  wiring.adapter.snapshot = vi.fn(() => ({ pendingLibraries: ['keys'] }));
+  await render();
+  await click(host.querySelector('li[aria-label="Keys.xlsx"]'));
+  assert.match(host.textContent ?? '', /The change to Keys\.xlsx isn't confirmed yet\./u);
+  await click(byText('button', 'Check result'));
+  assert.deepEqual(wiring.adapter.settleLibrary?.mock.calls.at(-1), ['keys']);
 });
 
 it('creates a version from SharePoint when the spreadsheet is linked', async () => {
