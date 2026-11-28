@@ -4,7 +4,7 @@
   "label": "Separations",
   "icon": "ShieldCheck",
   "categoryId": "separation",
-  "descriptorFingerprint": "4396d7af52f6f4bc749fa3ae16541e31534e549cfde959dc264402224e2abe4f",
+  "descriptorFingerprint": "b7ec5c3cfbcd70ffe26446d1c2a88711acfb3f38d36ee4afb6cfb8acc1548907",
   "availability": {
     "state": "available"
   },
@@ -49,6 +49,16 @@
       "keyFieldId": "eid"
     },
     "steps": [
+      {
+        "key": "reference-check",
+        "label": "Reference spreadsheets",
+        "includedByDefault": true,
+        "systems": [],
+        "control": {
+          "state": "required",
+          "reason": "This workflow requires every node in this step."
+        }
+      },
       {
         "key": "kuali-extraction",
         "label": "Kuali extraction",
@@ -212,16 +222,6 @@
             ]
           },
           "forces": []
-        }
-      },
-      {
-        "key": "reference-check",
-        "label": "Check reference spreadsheets",
-        "includedByDefault": true,
-        "systems": [],
-        "control": {
-          "state": "required",
-          "reason": "This workflow requires every node in this step."
         }
       },
       {
