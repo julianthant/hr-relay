@@ -169,3 +169,11 @@ it('deletes a version after a confirm, and turns Delete off with the reason for 
   await click(byText('button', 'Delete version'));
   assert.deepEqual(lastChange(), { kind: 'delete-version', versionId: 'v1' });
 });
+
+it('ellipsizes a long version name in the list while the button keeps the full name', async () => {
+  const long = 'Before the fall audit of every department roster';
+  wiring.catalog = [WorkbookLibraryEntrySchema.parse({ ...make('keys', 'Keys.xlsx'), state: { ...make('keys', 'Keys.xlsx').state, versions: [version('v1', 1), { ...version('v2', 2), name: long }] } })];
+  await render();
+  const button = host.querySelector(`button[aria-label="Versions of Keys.xlsx, now ${long}"]`); assert.ok(button);
+  assert.ok(button.querySelector('span.truncate')?.textContent === long);
+});
