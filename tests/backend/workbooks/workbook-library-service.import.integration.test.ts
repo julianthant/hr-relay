@@ -20,6 +20,7 @@ const workbook = () => ({ name: 'Roster.xlsx', themes: ['original theme'], hasFo
 function fixture(sync: WorkbookSyncDownload = unexpectedWorkbookSync, wrap = (repository: WorkbookLibraryRepository) => repository) {
   const database = new DatabaseSync(':memory:'); databases.push(database);
   for (const sql of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements, ...WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.statements, ...WORKBOOK_PAYLOAD_TABLE.statements]) database.exec(sql);
+  database.exec("CREATE TABLE runs (id TEXT PRIMARY KEY,state TEXT NOT NULL,lifecycle_json TEXT NOT NULL); CREATE TABLE run_requests (id TEXT PRIMARY KEY,payload_json TEXT NOT NULL)");
   let depth = 0;
   // Nested work runs in a savepoint, as authority writes do.
   const transaction = <T>(work: () => T) => {

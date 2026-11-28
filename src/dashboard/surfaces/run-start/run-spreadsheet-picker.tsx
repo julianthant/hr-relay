@@ -68,17 +68,6 @@ function WorksheetMenu({ owner, worksheets, picked, mode, disabled, max, onChang
   </DropdownMenu>;
 }
 
-/** "Name · Nov 24"; versions that would read the same get "(2 of 3)" so the operator can tell which data a run reads. */
-function versionLabels(versions: readonly SheetVersion[]): readonly { id: string; label: string }[] {
-  const labels = versions.map(version => `${version.name} · ${formatMonthDay(version.savedAt, undefined, "short")}`);
-  const seen = new Map<string, number>();
-  return versions.map((version, index) => {
-    const same = labels.filter(label => label === labels[index]).length, nth = (seen.get(labels[index]) ?? 0) + 1;
-    seen.set(labels[index], nth);
-    return { id: version.id, label: same > 1 ? `${labels[index]} (${nth} of ${same})` : labels[index] };
-  });
-}
-
 /** One picked spreadsheet: name left; worksheet chip, "v6 · Nov 24" version choice and remove right. `note` says what stops the row. */
 export function SpreadsheetRow({ name, versions, versionId, note, worksheets, picked, mode, busy, locked = false, worksheetsReady, max, onVersion, onWorksheets, onRemove }: {
   name: string; versions: readonly SheetVersion[]; versionId: string; note?: string | undefined;
@@ -88,7 +77,10 @@ export function SpreadsheetRow({ name, versions, versionId, note, worksheets, pi
   return <RunListRow title={name} description={note} lead={<Table2 aria-hidden className={`${dsIcon.md} shrink-0 text-ui-muted`} />}>
     <WorksheetMenu owner={name} worksheets={worksheets} picked={picked} mode={mode} disabled={busy || !worksheetsReady} max={max} onChange={onWorksheets} />
     <Select aria-label={`${name} version`} variant="toolbar" className="min-w-0 max-w-52 !border-transparent !bg-transparent !text-ui-muted tabular-nums" disabled={busy} value={versionId} onChange={event => onVersion(event.target.value)}>
-      {versionLabels(versions).map(({ id, label }) => <option key={id} value={id}>{<span className="block min-w-0 truncate" title={label}>{label}</span>}</option>)}
+      {versions.map(({ id, name, savedAt }) => {
+        const label = `${name} · ${formatMonthDay(savedAt, undefined, "short")}`;
+        return <option key={id} value={id}><span className="block min-w-0 truncate" title={label}>{label}</span></option>;
+      })}
     </Select>
     <IconButton size="xs" label={`Remove ${name}`} disabled={locked} icon={<X aria-hidden className={dsIcon.md} />} onClick={onRemove} />
   </RunListRow>;
