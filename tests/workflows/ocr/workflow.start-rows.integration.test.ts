@@ -66,6 +66,7 @@ it("starts with operator readings for each original page and withholds release",
     delegations: result.dependencies.flatMap(dependency => dependency.state === "delegation-resolved"
       ? [authority.dependencies.evidence(run.envelope.runId, dependency.nodeId)] : []) };
   const { receipt } = deriveRunEvidenceReceipt(receiptInput);
+  assert.equal(receipt.decisions.some(decision => decision.kind === "gate"), false);
   assert.throws(() => deriveRunEvidenceReceipt({ ...receiptInput, run: { ...settled, envelope: { ...settled.envelope,
     stepOmissions: settled.envelope.stepOmissions?.filter(({ step }) => step !== "approval") } } }), /OCR_REVIEW_REFUSED/u);
   const typed = projectTypedSteps(settled, descriptor).get("page-readings")?.typedValues;
@@ -75,7 +76,8 @@ it("starts with operator readings for each original page and withholds release",
   assert.equal(rerun.state, "available");
   assert.deepEqual(rerun.snapshot.sourceInput, { state: "unavailable", reason: "protected" });
   assert.equal(rerun.snapshot.typed?.some(entry => entry.step === "page-readings"), false);
-  assert.equal(JSON.stringify({ typed, receipt, rerun }).includes("Omission Evidence Example"), false);
+  assert.equal(JSON.stringify(typed).includes("Omission Evidence Example"), false, "typed Logs values must be withheld");
+  assert.equal(JSON.stringify(rerun).includes("Omission Evidence Example"), false, "Rerun must withhold the manual reading");
 });
 
 it("settles with an omitted review when grouping and its dependent rows are off", async () => {
