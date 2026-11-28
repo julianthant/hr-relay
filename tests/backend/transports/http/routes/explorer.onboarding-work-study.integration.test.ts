@@ -57,7 +57,7 @@ it("serves Work Study's planned PayPath values, their origins and the live Save 
     { id: "skip-ucpath-auth", label: "Sign in to UCPath", choices: skipChoices, initial: "run" },
     { id: "skip-transaction", label: "Submit work-study transaction", choices: skipChoices, initial: "run" },
   ]);
-  assert.deepEqual(spec.sessions, [{ system: "ucpath" }]);
+  assert.deepEqual(spec.sessions, [{ system: "ucpath", when: [{ "skip-ucpath-auth": ["run"] }, { "skip-transaction": ["run"] }] }]);
   assert.deepEqual(walk(spec).steps.map(entry => entry.id), ["ucpath-auth", "reference-check", "transaction"]);
   const [card] = blocks(spec, "transaction", "card"); assert.ok(card);
   assert.deepEqual([card.title, card.mode], ["PayPath Actions", "fill"]);
