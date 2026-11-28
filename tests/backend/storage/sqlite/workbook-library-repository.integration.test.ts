@@ -54,6 +54,38 @@ function workbookFixture(database: DatabaseSync, cache = false) {
   return { repository, service, id: first.libraryId };
 }
 
+it("gives two SharePoint pulls of the same revision distinct names and snapshots", () => {
+  using database = new DatabaseSync(":memory:");
+  const { id, repository, service } = workbookFixture(database);
+  service.operatorOperation(id, "link", { kind: "metadata", expectedVersion: 2,
+    metadata: { typeId: "roster", sharePoint: { url: "https://example.sharepoint.com/sites/hr/Roster.xlsx", verifiedAt: savedAt } } });
+  const saved = service.read(id), downloaded = encodeSavedWorkbook(saved).workbook;
+  const pull = (operationId: string) => {
+    const action = { operationId, expectedRevision: repository.libraryState(id).revision, expectedVersion: saved.version,
+      change: { kind: "create-version", name: "Reviewed", from: { kind: "sharepoint" }, useNow: false } };
+    return { action, result: repository.libraryAction(id, action, savedAt, downloaded) };
+  };
+  const first = pull("pull-one"), second = pull("pull-two");
+  const one = repository.libraryVersion(id, first.action.operationId);
+  const two = repository.libraryVersion(id, second.action.operationId);
+  expect([one.version.name, two.version.name]).toEqual(["Reviewed", "Reviewed (2)"]);
+  expect([one.version.version, two.version.version]).toEqual([saved.version, saved.version]);
+  expect(one.version.snapshotId).not.toBe(two.version.snapshotId);
+  expect(two.workbook).toEqual(one.workbook);
+  expect(repository.libraryAction(id, second.action, savedAt)).toEqual(second.result);
+});
+
+it("keeps a generated revision name from colliding with an existing named version", () => {
+  using database = new DatabaseSync(":memory:");
+  const { id, repository, service } = workbookFixture(database);
+  const before = service.read(id);
+  repository.libraryAction(id, { operationId: "reserve-next-name", expectedRevision: repository.libraryState(id).revision, expectedVersion: before.version,
+    change: { kind: "create-version", name: "Saved revision 3", from: { kind: "version", versionId: "original" }, useNow: false } }, savedAt);
+  service.save(id, before.version, before.workbook);
+  expect(repository.libraryVersion(id, "reserve-next-name").version.name).toBe("Saved revision 3");
+  expect(repository.libraryVersion(id).version.name).toBe("Saved revision 3 (2)");
+});
+
 it("keeps decoded rows and snapshots across change keys only within their stored-size budget", () => {
   using database = new DatabaseSync(":memory:");
   for (const migration of [WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_TABLE]) {

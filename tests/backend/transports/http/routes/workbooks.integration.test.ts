@@ -327,6 +327,16 @@ it('serves persisted types and manual named versions, refusing forged sources an
     const entry = await catalog();
     return post({ operationId, expectedVersion: entry.version, expectedRevision: entry.state.revision, change });
   };
+  for (const [index, change] of [
+    request.change,
+    { kind: 'rename-version', versionId: before.state.selectedVersionId, name: 'Reviewed' },
+  ].entries()) {
+    const duplicate = await action(`duplicate-${index}`, change);
+    assert.equal(duplicate.status, 409);
+    assert.deepEqual(await duplicate.json(), { state: 'error', code: 'WORKBOOK_VERSION_NAME_EXISTS', message: 'A version with this name exists.', retryable: false });
+  }
+  assert.deepEqual(await catalog(), after);
+  assert.equal((await action('keep-own-name', { kind: 'rename-version', versionId: request.operationId, name: 'Reviewed' })).status, 200);
   const inUse = await action('delete-current', { kind: 'delete-version', versionId: before.state.selectedVersionId });
   assert.equal(inUse.status, 409);
   assert.equal((await inUse.json() as { code: string }).code, 'WORKBOOK_VERSION_IN_USE');

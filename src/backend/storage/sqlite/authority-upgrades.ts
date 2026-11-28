@@ -22,7 +22,7 @@ import { deletePreBuildRuns } from "./pre-build-run-deletion.js";
 import { assertWorkerCustodyConverted, convertWorkerCustody, execMigrationStatement } from "./worker-custody-migration.js";
 import { SearchStateColumnSchema, backfillRunSearchOcrSubjects } from "./run-search-index.js";
 import { readAppSettings, migrateSettingsRecords } from "./settings-storage.js";
-import { assertPreMasterWorkbookHistory, migrateWorkbookPayloads, WORKBOOK_MASTER_MIGRATION, WORKBOOK_PAYLOAD_CONVERSION_ID } from "./workbook-library-repository.js";
+import { assertPreMasterWorkbookHistory, migrateWorkbookPayloads, migrateWorkbookVersionNames, WORKBOOK_MASTER_MIGRATION, WORKBOOK_PAYLOAD_CONVERSION_ID, WORKBOOK_VERSION_NAMES_CONVERSION_ID } from "./workbook-library-repository.js";
 import { FingerprintSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -152,6 +152,7 @@ export function applyAuthorityMigrationsAfter(database: DatabaseSync, version: n
       if (migration.version === ASSISTANT_EFFORT_SCALE_VERSION && index === 2) migrateAssistantEffortScale(database);
       if (statement === `SELECT '${FAILURE_NOTE_REMOVAL_CONVERSION_ID}'`) migrateFailureNotes(database);
       if (statement === `SELECT '${WORKBOOK_PAYLOAD_CONVERSION_ID}'`) migrateWorkbookPayloads(database);
+      if (statement === `SELECT '${WORKBOOK_VERSION_NAMES_CONVERSION_ID}'`) migrateWorkbookVersionNames(database);
       if (statement === `SELECT '${OCR_SEARCH_TERMS_BACKFILL_ID}'`) backfillRunSearchOcrSubjects(database);
       if (statement === `SELECT '${WORKER_CUSTODY_SCAN_ID}'`) assertWorkerCustodyConverted(database);
     }
