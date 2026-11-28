@@ -577,8 +577,10 @@ function checkChildStartRows(descriptor: AnyWorkflowDescriptor, targets: Readonl
         }
       }
     }
-    for (const { step } of child.stepOmissions) {
-      if (!targeted.has(`${workflow}/${step}`)) throw new Error(`${id}: step "${step}" of child workflow "${workflow}" takes typed values, but no start row targets it`);
+    for (const { step, parentStartOptional } of child.stepOmissions) {
+      if (parentStartOptional !== true && !targeted.has(`${workflow}/${step}`)) {
+        throw new Error(`${id}: step "${step}" of child workflow "${workflow}" takes typed values, but no start row targets it`);
+      }
     }
   }
 }
@@ -1009,6 +1011,7 @@ function deriveStepOmissions(
       ...(manual.bindInput === undefined ? {} : { bindInput: manual.bindInput }),
       ...(manual.withholdsBoundInput === undefined ? {} : { withholdsBoundInput: manual.withholdsBoundInput }),
       ...(manual.allowsChildFanOut === undefined ? {} : { allowsChildFanOut: manual.allowsChildFanOut }),
+      ...(manual.parentStartOptional === undefined ? {} : { parentStartOptional: manual.parentStartOptional }),
       ...(manual.skipsGatesAndTransactions === undefined ? {} : { skipsGatesAndTransactions: manual.skipsGatesAndTransactions }),
       ...(manual.orderOnlyReaders === undefined ? {} : { orderOnlyReaders: Object.freeze([...manual.orderOnlyReaders]) }),
     }));

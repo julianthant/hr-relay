@@ -205,6 +205,8 @@ export interface StepManualDeclaration {
   readonly withholdsBoundInput?: (input: JsonValue) => boolean;
   /** Own facts describe the parent document, not one shared assertion applied to its child members. */
   readonly allowsChildFanOut?: true;
+  /** A parent that groups this step into a broader row can leave its values control on the owning workflow. */
+  readonly parentStartOptional?: true;
   /** Allows `skips` to name the step's gates and transactions: the typed values stand for their decision or write. */
   readonly skipsGatesAndTransactions?: true;
   /** Nodes in other steps that depend on a skipped member only to run after it and read none of its output. */

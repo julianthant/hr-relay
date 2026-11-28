@@ -11,10 +11,8 @@ export const ManualOcrPageValuesSchema = SubmittedExtractionSchema.pick({ pageKi
 });
 const SourcePageSchema = OcrPageInputSchema.shape.sourcePage;
 export const ManualOcrDocumentPageValuesSchema = ManualOcrPageValuesSchema.extend({ sourcePage: SourcePageSchema });
-export const ManualOcrAssertionSchema = z.union([
-  z.strictObject({ sourcePage: SourcePageSchema, extraction: AdmittedExtractionSchema }),
-  z.strictObject({ sourcePage: SourcePageSchema, values: ManualOcrPageValuesSchema }),
-]);
+export const ManualOcrAssertionSchema = z.strictObject({ sourcePage: SourcePageSchema, extraction: AdmittedExtractionSchema });
+export const ManualOcrDraftAssertionSchema = z.strictObject({ sourcePage: SourcePageSchema, values: ManualOcrPageValuesSchema });
 
 export function manualOcrPageInput(page: OcrPageInput, actorId: string, values: z.output<typeof ManualOcrPageValuesSchema>) {
   const record = values.record === null ? null : { answers: Object.fromEntries(values.record.answers.map(({ path, answer }) => [path, answer])) };

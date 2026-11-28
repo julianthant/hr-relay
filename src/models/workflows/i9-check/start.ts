@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { defineCanonicalInput } from "../../workflow/canonical-input.js";
 import { DateOnlySchema } from "../../../rules/identity/ids.js";
-import { OcrInputSchema, OCR_INPUT_EXAMPLE } from "../ocr/input.js";
+import { OcrParentInputSchema, OCR_INPUT_EXAMPLE } from "../ocr/input.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { OcrSourceUploadSchema } from "../../ocr/review.js";
 
-const documentFields = OcrInputSchema.pick({ document: true, readingId: true, reading: true }).extend({ fileName: OcrSourceUploadSchema.shape.fileName });
+const documentFields = OcrParentInputSchema.pick({ document: true, readingId: true, reading: true }).extend({ fileName: OcrSourceUploadSchema.shape.fileName });
 const documents = <Schema extends z.ZodType<{ document: { sha256: string } }>>(schema: Schema) => z.array(schema).min(1)
   .refine(values => new Set(values.map(value => value.document.sha256)).size === values.length, "Attach each PDF once");
 const fields = { asOf: DateOnlySchema, reviewerName: z.string().min(1).refine(value => value.trim() === value) };
