@@ -189,12 +189,17 @@ function rowSourceNodes(row: StepRow, snapshot: RerunValuesSnapshot) {
   });
 }
 
+function isSettledManualOmission(nodes: ReturnType<typeof rowSourceNodes>): boolean {
+  const manuallyOmitted = (node: (typeof nodes)[number]) => node.reason === "step-omitted" || node.reason === "operator-asserted";
+  return nodes.some(manuallyOmitted) && nodes.every(node => node.state === "completed" || manuallyOmitted(node));
+}
+
 /** The source outcome Rerun preselection reads: a condition-skipped step counts as not run and nothing reads Cancelled, so the badge never moves the restart point. */
 export function preselectionBadge(row: StepRow, snapshot: RerunValuesSnapshot): Exclude<SourceBadge, "cancelled"> | undefined {
   const nodes = rowSourceNodes(row, snapshot);
   if (nodes.length === 0) return undefined;
   if (nodes.some(node => node.state === "failed")) return "failed";
-  if (nodes.every(node => node.reason === "step-omitted" || node.reason === "operator-asserted")) return "skipped";
+  if (isSettledManualOmission(nodes)) return "skipped";
   return nodes.every(node => node.state === "completed" && node.reason !== "condition-skipped") ? "completed" : "not-started";
 }
 
@@ -202,7 +207,7 @@ export function sourceBadge(row: StepRow, snapshot: RerunValuesSnapshot): Source
   const nodes = rowSourceNodes(row, snapshot);
   if (nodes.length === 0) return undefined;
   if (nodes.some(node => node.state === "failed")) return "failed";
-  if (nodes.every(node => node.reason === "step-omitted" || node.reason === "operator-asserted")) return "skipped";
+  if (isSettledManualOmission(nodes)) return "skipped";
   if (nodes.every(node => node.state === "completed")) return "completed";
   return snapshot.source.outcome === "cancelled" && nodes.some(node => node.reason === "incomplete-execution") ? "cancelled" : "not-started";
 }

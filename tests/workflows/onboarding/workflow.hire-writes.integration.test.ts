@@ -4,7 +4,7 @@ import { EidSchema, FingerprintSchema } from "../../../src/rules/identity/ids.js
 import assert from "node:assert/strict";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createOnboardingRunWorld } from "../../support/helpers/backend/onboarding-run-world.js";
-import { StartStepOmissionRefusedError } from "../../../src/backend/runs/start/step-selection.js";
+import { StartStepOmissionRefusedError, projectStartRows, projectStartSteps, startRowWire } from "../../../src/backend/runs/start/step-selection.js";
 import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding/result.js";
 import { RunDryRunPreviewResultSchema } from "../../../src/models/run/result.js";
 import { DRY_RUN_I9_PROFILE_ID, containsDryRunSample } from "../../../src/models/workflow/dry-run.js";
@@ -12,10 +12,14 @@ import { ONBOARDING_WRITE_REVIEW_GATE } from "../../../src/models/workflows/onbo
 import { RerunSourceSchema } from "../../../src/models/run/rerun.js";
 import { previewRerunWarnings } from "../../../src/backend/runs/start/rerun.js";
 import { createOperatorProjection, createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/operator.js";
+import { composeDataQueries } from "../../../src/backend/app/composition/dashboard/data.js";
+import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
+import { deriveEvidenceEntryId } from "../../../src/models/trust/evidence-identity.js";
 import { readRunPanel } from "../../../src/backend/runs/queries/run-detail.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { projectRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import { preselectionBadge, sourceBadge, startRowsOf } from "../../../src/dashboard/surfaces/run-start/run-steps-model.js";
 import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { CrmReadHireData } from "../../../src/models/systems/crm/read-hire-data.js";
 
@@ -35,14 +39,18 @@ function assertNewProfilePreview(preview: ReturnType<typeof RunDryRunPreviewResu
     { nodeId: "i9-remote-create", state: "unavailable", reason: "requires-unsubmitted-output" });
 }
 
-async function logsFor(h: Awaited<ReturnType<typeof world.executionFixture>>, runId: string) {
+function operatorRunDetail(h: Awaited<ReturnType<typeof world.executionFixture>>) {
   const reader = testRunService(h.database, h.clock);
   const descriptors = { resolve: (id: string) => id === h.descriptor.id ? h.descriptor : undefined };
   const projection = createOperatorProjection({ database: h.database, stateRoot: h.stateRoot, clock: h.clock, reader,
     appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(h.database.authority), descriptors });
   projection.ingestFromTimeline();
-  const panel = await readRunPanel(createOperatorRunDetail({ database: h.database, stateRoot: h.stateRoot, projection, runReader: reader,
-    canonical: { database: h.database, reader, descriptors } }), runId, signal());
+  return createOperatorRunDetail({ database: h.database, stateRoot: h.stateRoot, projection, runReader: reader,
+    canonical: { database: h.database, reader, descriptors } });
+}
+
+async function logsFor(h: Awaited<ReturnType<typeof world.executionFixture>>, runId: string) {
+  const panel = await readRunPanel(operatorRunDetail(h), runId, signal());
   return projectRunLogs({ ...panel, unavailableEvidence: [] }, { artifactUrl: () => "unused" }).steps;
 }
 
@@ -63,7 +71,11 @@ describe("public onboarding write execution", () => {
 
   it("skips the delegated lookup and every dependent write when there is no observed I-9 result", async () => {
     const h = await world.executionFixture(false, { selectedRow: true });
-    const root = h.start({ ...h.request, selectedStepKeys: ["crm-data", "ucpath-search"], stepOmissions: [
+    const { fields, department, recruitmentNumber, recordUrl, personalEmail } = CrmReadHireData.example;
+    const ssn = "123-45-6789", dob = "02/04/2000";
+    const root = h.start({ ...h.request, selectedStepKeys: ["ucpath-search"], stepOmissions: [
+      { step: "crm-data", facts: { ...fields, department, recruitmentNumber, recordUrl, personalEmail, workEmail: null,
+        middleName: null, ssn, addressLine2: null, phone: null, dob } },
       { step: "i9-search", facts: { i9Status: "Not found", profileId: null } },
       { step: "hire-review", facts: { decision: "Undecided", emplId: null } },
       { step: "reference-check", facts: { referenceResult: "Not checked" } },
@@ -71,7 +83,7 @@ describe("public onboarding write execution", () => {
       { step: "ucpath-hire", facts: {} },
       { step: "master-results", facts: {} },
     ] });
-    terminal(await h.rawExecution.execute(root, signal()));
+    const run = terminal(await h.rawExecution.execute(root, signal()));
     assert.deepEqual(h.database.authority.runs.listChildren(root.envelope.runId), []);
     assert.deepEqual(h.database.authority.gateResults.listByRun(root.envelope.runId), []);
     assert.deepEqual(h.database.authority.writeIntents.listByRun(root.envelope.runId), []);
@@ -79,6 +91,22 @@ describe("public onboarding write execution", () => {
     const result = h.database.authority.runResults.get(root.envelope.runId);
     assert.ok(result);
     assert.partialDeepStrictEqual(result.result.value, { state: "completed-with-manual-steps" });
+    const { receipt } = deriveRunEvidenceReceipt({ descriptor: h.descriptor, run, result,
+      checkpoints: h.database.authority.runCheckpoints.listByItem(h.descriptor.id, run.envelope.itemId) });
+    const omittedMaster = deriveEvidenceEntryId(receipt.receiptId, "output", "rosterAccess.step");
+    assert.partialDeepStrictEqual(receipt.output.find(entry => entry.id === omittedMaster), { value: { value: "master-results" } });
+
+    const rerun = composeDataQueries(operatorRunDetail(h)).rerunValues({ runId: run.envelope.runId, expectedVersion: run.version });
+    assert.ok(rerun.state === "available", JSON.stringify(rerun));
+    assert.equal(rerun.snapshot.typed?.some(entry => entry.step === "crm-data"), false);
+    assert.ok(rerun.snapshot.typed?.some(entry => entry.step === "i9-search" && entry.facts.i9Status === "Not found"));
+    const wire = JSON.stringify(rerun);
+    for (const hidden of [ssn, "123456789", dob, fields.address, recordUrl]) assert.equal(wire.includes(hidden), false);
+    const crm = startRowsOf({ steps: projectStartSteps(h.descriptor), rows: projectStartRows(h.descriptor).map(startRowWire) })
+      .find(row => row.key === "crm-data");
+    assert.ok(crm);
+    assert.equal(sourceBadge(crm, rerun.snapshot), "skipped");
+    assert.equal(preselectionBadge(crm, rerun.snapshot), "skipped");
   });
 
   it("records a hire done outside Relay without staging it, opening a write intent, or filling unverified master results", async () => {

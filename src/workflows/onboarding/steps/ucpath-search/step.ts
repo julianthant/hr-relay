@@ -6,6 +6,7 @@ import type { HireEmployee } from "../../../../models/people/hire-employee.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof, reuseTask } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
+import { buildCrmData } from "../crm-data/step.js";
 
 export const UCPATH_SEARCH_MANUAL: StepManualDeclaration = {
   off: "values",
@@ -16,7 +17,6 @@ export const UCPATH_SEARCH_MANUAL: StepManualDeclaration = {
   produces: {},
   skips: ["ucpath-source", "hire-subject"],
 };
-import { buildCrmData } from "../crm-data/step.js";
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "ucpath-search", label: "Check UCPath duplicates" }),

@@ -183,13 +183,23 @@ describe("onboarding workflow", () => {
     assert.equal(derive({ ...outputs, "master-results": { ...outputs["master-results"], receiptState: "resolve-required" } }).state, "master-review-required");
     assert.throws(() => OnboardingResultSchema.parse(terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: { ...outputs, "hire-receipt": null } })));
     const { "master-results": _filled, ...withoutMaster } = outputs;
-    assert.deepEqual(terminal.parseResult(terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: withoutMaster })), {
+    const masterOmitted = terminal.parseResult(terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: withoutMaster }));
+    assert.deepEqual(masterOmitted, {
       ...result, state: "completed-with-manual-steps", rosterAccess: { state: "omitted", step: "master-results" },
+    });
+    const writesOmitted = terminal.parseResult(terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: { "hire-plan": plan } }));
+    assert.deepEqual(writesOmitted, {
+      state: "completed-with-manual-steps", plan,
+      subject: { state: "omitted", step: "i9-creation" }, i9: { state: "omitted", step: "i9-creation" },
+      hireWrite: { state: "omitted", step: "ucpath-hire" }, rosterAccess: { state: "omitted", step: "master-results" },
     });
     assert.deepEqual(descriptor.outcomeProjection?.cases.map(value => value.value), ["filed", "master-review-required", "completed-with-manual-steps"]);
     assert.ok(descriptor.details.some(detail => "kind" in detail.source && detail.source.kind === "result" && detail.source.fieldPath === "hireWrite.state"));
     for (const workflow of ["onboarding", "onboarding-hire-writes"]) {
-      for (const leaf of evidenceLeaves(result)) classifyEvidenceLeaf({ kind: "workflow-result", workflowId: WorkflowIdSchema.parse(workflow) }, leaf.path);
+      const scope = { kind: "workflow-result" as const, workflowId: WorkflowIdSchema.parse(workflow) };
+      for (const output of [result, masterOmitted, writesOmitted]) {
+        for (const leaf of evidenceLeaves(output)) classifyEvidenceLeaf(scope, leaf.path);
+      }
     }
   });
 

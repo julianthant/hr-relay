@@ -383,11 +383,14 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         return { workflow, steps: leastAdvancedSteps(child, older ? [] : [...latest.values()].map((member) => childUnitFacts(repositories, child, member, deps.executions?.(member.envelope.runId) ?? []))) };
       });
       // The source's typed facts refill a step it had typed, its own or a child's a row targets; they stay typed by hand.
-      const typed = (run.envelope.stepOmissions ?? []).filter((entry) => (entry.workflow === undefined
-        ? descriptor.stepOmissions.some((spec) => spec.step === entry.step
-          && !spec.form.fields.some(field => field.withheld === true && Object.hasOwn(entry.facts, field.key) && entry.facts[field.key] !== null))
-        : descriptor.startRows.some(({ target }) => target !== undefined && target.workflow === entry.workflow && target.step === entry.step))
-        && !containsProtected(JsonValueSchema.parse(entry.facts), privateValues));
+      const typed = (run.envelope.stepOmissions ?? []).filter((entry) => {
+        if (entry.workflow !== undefined && !descriptor.startRows.some(({ target }) => target?.workflow === entry.workflow && target?.step === entry.step)) return false;
+        const owner = entry.workflow === undefined ? descriptor : workflowDelegatedDescriptor(descriptor, entry.workflow);
+        const spec = owner.stepOmissions.find(({ step }) => step === entry.step);
+        return spec !== undefined
+          && !spec.form.fields.some(field => field.withheld === true && Object.hasOwn(entry.facts, field.key) && entry.facts[field.key] !== null)
+          && !containsProtected(JsonValueSchema.parse(entry.facts), privateValues);
+      });
       let sourceInput: RerunValuesSnapshot["sourceInput"] = { state: "available", value: run.input.parsed.value };
       if (canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
         || containsProtected(run.input.parsed.value, privateValues)) sourceInput = { state: "unavailable", reason: "protected" };
