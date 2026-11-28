@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { createReadStream, existsSync, lstatSync, readdirSync, rmSync, rmdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { z } from "zod";
@@ -8,8 +8,9 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { fsyncPath } from "../private-path.js";
+import { LOG_DATABASE_NAMES } from "../events/log-mutations.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { AuthorityBackupService, parseBackupManifestFile, type AuthorityBackupSource } from "../sqlite/backup-service.js";
+import { AuthorityBackupService, backupLogFileMatches, backupLogPaths, parseBackupManifestFile, type AuthorityBackupSource } from "../sqlite/backup-service.js";
 import { backupThreadIdle, copyAuthorityOffThread } from "../sqlite/backup-inspection-worker.js";
 import type { AuthorityBackupManifest } from "../sqlite/recovery-contracts.js";
 import { hasUnprovedSourceClosure } from "../source-closure.js";
@@ -42,7 +43,8 @@ export type SessionBackups = Readonly<{
 type VerifiedManifest = Readonly<{ name: string; createdAt: string; authorityGeneration: number }>;
 
 function fileIdentity(path: string): string {
-  const stats = statSync(path, { bigint: true, throwIfNoEntry: false });
+  const readIdentity = /\.(?:timeline|dashboard)\.db(?:-wal|-shm|-journal)?$/u.test(path) ? lstatSync : statSync;
+  const stats = readIdentity(path, { bigint: true, throwIfNoEntry: false });
   return stats === undefined ? "missing" : `${String(stats.dev)}:${String(stats.ino)}:${String(stats.size)}:${String(stats.mtimeNs)}:${String(stats.ctimeNs)}`;
 }
 
@@ -68,14 +70,29 @@ async function backupBytesMatch(path: string, manifest: AuthorityBackupManifest)
   if (stats === undefined || !stats.isFile() || stats.size !== manifest.byteSize) return false;
   const hash = createHash("sha256");
   await pipeline(createReadStream(path), hash);
-  return hash.digest("hex") === manifest.sha256;
+  if (hash.digest("hex") !== manifest.sha256) return false;
+  const logFiles = manifest.logFiles;
+  if (logFiles !== undefined) {
+    for (const name of LOG_DATABASE_NAMES) if (!await backupLogFileMatches(`${path}.${name}.db`, logFiles[name])) return false;
+  }
+  return true;
 }
 
 /** A backup file and the sidecars SQLite may leave beside it. */
-function backupFiles(path: string): string[] { return [path, `${path}-wal`, `${path}-shm`, `${path}-journal`]; }
+function backupFiles(path: string): string[] {
+  return [path, ...[path, ...backupLogPaths(path)].flatMap(database =>
+    ["-wal", "-shm", "-journal"].map(suffix => database + suffix)), ...backupLogPaths(path)];
+}
+
+function removeBackupEntry(path: string): void {
+  const metadata = lstatSync(path, { throwIfNoEntry: false });
+  if (metadata?.isDirectory()) rmdirSync(path);
+  else rmSync(path, { force: true });
+}
 
 function removeBackupFiles(path: string): void {
-  for (const candidate of backupFiles(path)) rmSync(candidate, { force: true });
+  for (const candidate of backupFiles(path).slice(1)) removeBackupEntry(candidate);
+  removeBackupEntry(path);
 }
 
 /** A file as one pass classified it; its identity is "missing" when it was absent. */
@@ -93,11 +110,12 @@ function assertUnchanged(proof: FileProof): void {
 function retire(admission: RuntimeAdmission, directory: string, plan: SessionPlan): void {
   if (plan.keep.length < 2 || plan.keep.slice(0, 2).some(proof => proof.identity === "missing")) throw new Error("session-backup-keeper-unproved");
   for (const proof of [...plan.keep, ...plan.retire]) assertUnchanged(proof);
-  for (const proof of plan.retire) {
+  const retireOrder = [...plan.retire.filter(proof => !proof.path.endsWith(".sqlite")), ...plan.retire.filter(proof => proof.path.endsWith(".sqlite"))];
+  for (const proof of retireOrder) {
     if (proof.identity === "missing") continue;
     assertUnchanged(proof);
     admission.assertAuthorityBackupWrite(directory);
-    rmSync(proof.path); fsyncPath(directory);
+    removeBackupEntry(proof.path); fsyncPath(directory);
   }
 }
 
@@ -130,7 +148,8 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
       if (Date.parse(manifest.createdAt) > nowMs) continue;
       candidates.push({ name, createdAt: manifest.createdAt, authorityGeneration: manifest.authorityGeneration, pair, backup: manifest });
     }
-    if (forRetirement) for (const name of listed.filter(entry => SessionBackupFile.test(entry) && !listed.includes(`${entry}${ManifestSuffix}`))) {
+    const sessionNames = new Set(listed.map(entry => entry.replace(/\.(?:timeline|dashboard)\.db(?:-wal|-shm|-journal)?$/u, "")));
+    if (forRetirement) for (const name of [...sessionNames].filter(entry => SessionBackupFile.test(entry) && !listed.includes(`${entry}${ManifestSuffix}`))) {
       // The manifest's confirmed absence is part of the proof: one published during the pass makes this a pair again.
       const path = join(directory, name), orphan = proofs([`${path}${ManifestSuffix}`, ...backupFiles(path)]);
       if (orphan[0].identity === "missing") retired.push(...orphan);
@@ -138,7 +157,7 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
     candidates.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt) || right.name.localeCompare(left.name));
     let newest: VerifiedManifest | undefined, keep: FileProof[] = [];
     for (const candidate of candidates) {
-      const [manifest, backup] = candidate.pair, identity = `${manifest.identity}|${backup.identity}`;
+      const [manifest, backup] = candidate.pair, identity = candidate.pair.map(proof => proof.identity).join("|");
       if (passed.get(manifest.path) !== identity) {
         passed.delete(manifest.path);
         if (!await backupBytesMatch(backup.path, candidate.backup)) { retired.push(...candidate.pair); continue; }

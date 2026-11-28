@@ -95,7 +95,7 @@ export function admitReadLane(input: unknown): Readonly<{ start: ReadLaneStart; 
  */
 export function openReadLane(lane: ReturnType<typeof admitReadLane>, busyTimeoutMs: number): Readonly<{ native: AuthorityDatabase; history: AuthorityDatabase }> {
   const { start, admission, assertSource } = lane;
-  const native = AuthorityDatabase.open(admission, { path: start.path, busyTimeoutMs, migrationOwner: "dashboard-read-lane", openMode: READ_LANE_OPEN_MODE });
+  const native = AuthorityDatabase.openReadLaneNative(admission, start.path, busyTimeoutMs, start.historyArchive !== undefined);
   try {
     assertSource();
     const history = native.readLaneHistory(start.historyArchive === undefined ? undefined : { ...start.historyArchive, cursorOffset: start.cursorOffset });

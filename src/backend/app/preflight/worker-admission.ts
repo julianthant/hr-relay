@@ -29,6 +29,7 @@ export async function claimWithPreflight(input: Readonly<{
   preflight: RuntimePreflight; signal: AbortSignal;
   prepareRun(run: RunRecord, signal: AbortSignal): Promise<void>;
   claim(admit: (run: RunRecord) => void): RunMutationOutcome;
+  beforeConfirmedWrite?(): Promise<void>;
   candidateCurrent(run: RunRecord): boolean;
   onObservationChanged?(attempt: number): void;
 }>): Promise<RunMutationOutcome | WorkerPreflightRefusal> {
@@ -36,6 +37,10 @@ export async function claimWithPreflight(input: Readonly<{
   let lastPreparation: "lost-race" | "refused" | undefined;
   for (let attempt = 0; attempt <= CLAIM_ATTEMPTS; attempt += 1) {
     if (input.signal.aborted) throw input.signal.reason;
+    if (input.beforeConfirmedWrite !== undefined) {
+      await input.beforeConfirmedWrite();
+      if (input.signal.aborted) throw input.signal.reason;
+    }
     let selected: RunRecord | undefined;
     try {
       return input.claim(run => {

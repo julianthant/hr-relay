@@ -12,15 +12,18 @@ import { createPrivateDirectory, fsyncPath } from "../private-path.js";
 import { isAuthorityInspectionIntegrityFailure } from "./authority-errors.js";
 import { inspectOpenDatabase, type BackupCopyInspection } from "./backup-inspection.js";
 import { backupReadOnlyDatabase, readonlyAuthorityCopyPrefix, withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
+import { restoreLogDatabases } from "./profile-local-databases.js";
 import { BackupCopyInspectionSchema } from "./recovery-contracts.js";
 
 const PROTOCOL = "relay.backup-inspection.v1";
 const COPY_PROTOCOL = "relay.backup-copy.v1";
+const LOG_BACKUP_PROTOCOL = "relay.log-backup.v1";
 const INTEGRITY_FAILURE_CODE = "authority-inspection-integrity-failed";
 const InspectionRequestSchema = z.strictObject({ protocol: z.literal(PROTOCOL), path: z.string().min(1), expectedSchemaVersion: z.number().int().positive().optional(),
   busyTimeoutMs: z.number().int().nonnegative() });
 const CopyRequestSchema = z.strictObject({ protocol: z.literal(COPY_PROTOCOL), source: z.string().min(1), destination: z.string().min(1),
   busyTimeoutMs: z.number().int().positive() });
+const LogBackupRequestSchema = z.strictObject({ protocol: z.literal(LOG_BACKUP_PROTOCOL), source: z.string().min(1), destination: z.string().min(1) });
 const FailedReplySchema = z.strictObject({ kind: z.literal("failed"), name: z.string(), message: z.string(), code: z.string().optional() });
 const InspectionReplySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("inspected"), inspection: BackupCopyInspectionSchema }),
@@ -142,6 +145,15 @@ export async function copyAuthorityOffThread(admission: RuntimeAdmission, source
   });
 }
 
+export async function buildBackupLogsOffThread(source: string, destination: string, signal?: AbortSignal): Promise<void> {
+  const request = LogBackupRequestSchema.parse({ protocol: LOG_BACKUP_PROTOCOL, source, destination });
+  await runOnWorkerThread<undefined>(request, signal, message => {
+    const reply = CopyReplySchema.safeParse(message);
+    if (!reply.success) return { error: new Error("log-backup-reply-invalid"), invalid: true };
+    return reply.data.kind === "copied" ? { value: undefined } : { error: failureError(reply.data), invalid: false };
+  });
+}
+
 function abortReason(signal: AbortSignal | undefined): Error {
   const reason: unknown = signal?.reason;
   return reason instanceof Error ? reason : new DOMException("backup inspection stopped", "AbortError");
@@ -191,6 +203,12 @@ export function answerInspectionRequest(data: unknown): WorkerReply | Promise<Wo
   if (protocol.data.protocol === COPY_PROTOCOL) {
     const request = CopyRequestSchema.safeParse(data);
     return request.success ? runCopy(request.data) : { kind: "failed", name: "Error", message: "backup-copy-request-invalid" };
+  }
+  if (protocol.data.protocol === LOG_BACKUP_PROTOCOL) {
+    const request = LogBackupRequestSchema.safeParse(data);
+    if (!request.success) return { kind: "failed", name: "Error", message: "log-backup-request-invalid" };
+    try { restoreLogDatabases(request.data.source, request.data.destination); return { kind: "copied" }; }
+    catch (error) { return failedReply(error); }
   }
   return undefined;
 }

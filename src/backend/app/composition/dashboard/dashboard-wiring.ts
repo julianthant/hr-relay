@@ -107,6 +107,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   let wakeForWork: (workflowId: string) => void = () => undefined;
   const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle, workflowId => wakeForWork(workflowId));
   const { settingsProcesses } = resources;
+  const { logWriter, stopLogWriter } = resources;
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority, readLanes } = resources;
   const history = database.dashboardHistory();
   // A copy profile serves its sample runs and Sessions cards from the history archive; production never attaches one.
@@ -159,6 +160,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const assertAssistantEffect = (commandId: string): void => { composedAssistant.assertEffect(commandId); };
   profile.runtime.beginSupervisorConstruction(profile.token);
   const nominatim = createNominatimGeocodeAdapter({clock});
+  const spawnWorker = realWorkerProcessSpawner(input.lifetimeLock, nominatim, logWriter);
   const workers = composeWorkerPool({
     admission,
     sessionGeneration: context.profileEpoch,
@@ -168,7 +170,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),
     ids,
     launch: input.workerProcess?.launch ?? productionWorkerLaunch(repoRoot, env, frontend === "vite-dev"),
-    spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(input.lifetimeLock, nominatim),
+    spawn: request => input.workerProcess?.spawn?.(request, spawnWorker) ?? spawnWorker(request),
     settleExit: member => { profile.runtime.workerExited(admission, WorkerPoolMemberSchema.parse(member)); },
     onChange: () => { projection.reconcileWorkerAuthority(); },
     onFault: reportSupervisorFault,
@@ -181,8 +183,10 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   wakeForWork = workers.pool.wakeForWork;
   profile.runtime.bindSupervisor(profile.token, workers.pool);
   const stopWorkerControl = requiredClosure(async () => {
-    requireStoppedPool(await workers.pool.stopAll("shutdown"));
-    await nominatim.stop();
+    try {
+      requireStoppedPool(await workers.pool.stopAll("shutdown"));
+      await nominatim.stop();
+    } finally { await stopLogWriter(); }
   });
   custody.closeWorkerControl = stopWorkerControl;
   const { writeResolution, artifacts } = prepareWriteSafety({ database, admission, lifecycle, descriptors, ids });
@@ -395,6 +399,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
   input.onInitialPreflight?.(initialPreflight);
   // Boot spawns the standing members; each one that fails shows on its card with its cause.
+  await logWriter.ready;
   void workers.startActive();
 
   const chatGptOcrTest = createChatGptOcrTestService({ assertCurrent, dispatch: async (input, signal, source) => {

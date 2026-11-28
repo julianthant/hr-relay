@@ -21,7 +21,9 @@ type HistoryRepositories = Parameters<typeof reconstructConfirmedOperation>[0] &
   confirmedTransactionSources: { select(selection: TransactionHistorySelection): Readonly<{
     events: readonly (z.infer<typeof TimelineEventRecordSchema> | z.infer<typeof TimelineAppendSchema>)[];
     eventIds: readonly string[];
-  }> };
+  }>;
+    countActivityConfirmations(from: string, to: string): readonly { system: string; instance: "prod" | "test"; count: number }[];
+  };
   runs: { get(runId: string): RunRecord | undefined };
   deletedRuns: { get(runId: string): DeletedRunRecord | undefined };
   writeIntents: { get(operationId: string): WriteIntentRecord | undefined };
@@ -69,10 +71,11 @@ export function createTransactionHistory(repositories: HistoryRepositories) {
   return Object.freeze({
     query,
     foldActivityRange(from: string, to: string) {
+      const range = TransactionHistorySelectionSchema.parse({ from, to });
       const totals = new Map<string, { system: string; entries: number; prod: number; test: number }>();
-      for (const { ledger } of query({ from, to }).rows) {
-        const row = totals.get(ledger.system) ?? { system: ledger.system, entries: 0, prod: 0, test: 0 };
-        row.entries += 1; row[ledger.instance] += 1; totals.set(ledger.system, row);
+      for (const { system, instance, count } of repositories.confirmedTransactionSources.countActivityConfirmations(range.from, range.to)) {
+        const row = totals.get(system) ?? { system, entries: 0, prod: 0, test: 0 };
+        row.entries += count; row[instance] += count; totals.set(system, row);
       }
       return ActivityLedgerBlockSchema.parse({ systems: [...totals.values()].sort((a, b) => b.entries - a.entries || a.system.localeCompare(b.system)) });
     },

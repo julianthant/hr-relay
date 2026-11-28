@@ -4,12 +4,14 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { changeLogTriggers } from "./authority-change-log.js";
+import type { LogMutation } from "../events/log-mutations.js";
 import { TimelineAppendSchema, TimelineDiagnosticBudgetError, TimelineEventRecordSchema, TimelinePageRequestSchema,
   timelineAppendContent, type TimelineEventRecord, type TimelineRepository } from "../../../models/events/timeline.js";
 
 interface TimelineRepositoryPorts {
   cursorOffset?(): number;
   database: DatabaseSync;
+  publishCommitted?: (mutation: LogMutation) => void;
   /** Must use the owning connection's authority transaction and generation accounting. */
   mutate<T>(work: () => Readonly<{ result: T; changes: number }>): T;
   read<T>(work: () => T): T;
@@ -29,6 +31,7 @@ const DebugRowSchema = z.strictObject({
   pinned: z.union([z.literal(0), z.literal(1)]), payload_json: z.string(),
 });
 const EventIdSchema = z.uuid();
+const CursorRowSchema = z.strictObject({ cursor: z.number().int().positive() });
 const DataVersionSchema = z.object({ data_version: z.number().int() });
 const DiagnosticBytesRowSchema = z.object({ bytes: z.number().int(), data_version: z.number().int() }).optional();
 const DiagnosticBytesSchema = z.number().int().nonnegative();
@@ -244,15 +247,19 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
           `).get(record.eventId,record.workflow ?? null,
             record.scope.kind === "run" ? record.scope.runId : null,record.scope.kind === "worker" ? record.scope.workerId : null,
             record.occurredAt,record.recordedAt,record.retentionDate,record.payload.event.pinned ? 1 : 0,content);
+          const stored = debugEventFromRow(raw);
+          ports.publishCommitted?.({ kind: "append", row: stored });
           // Debug rows are no authority change: no generation bump, search invalidation or run publication.
-          return { result: { state: "inserted" as const, record: debugEventFromRow(raw) }, changes: 0 };
+          return { result: { state: "inserted" as const, record: stored }, changes: 0 };
         }
         const raw = prepare(`
           INSERT INTO timeline_events(id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,
             retention_class,operation_id,operation_generation,confirmed_at,system,payload_json)
           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,json_set(?,'$.cursor',${sequenceCursor("timeline_events")}+1)) RETURNING *
         `).get(...Object.values(timelineBaseColumns(record)), content);
-        return { result: { state: "inserted" as const, record: timelineEventFromRow(raw) }, changes: 1 };
+        const stored = timelineEventFromRow(raw);
+        if (stored.payload.kind !== "operation-confirmed") ports.publishCommitted?.({ kind: "append", row: stored });
+        return { result: { state: "inserted" as const, record: stored }, changes: 1 };
       });
       // Keep the transaction's refreshed byte count when the event itself cannot fit.
       if (result === "budget-full") throw new TimelineDiagnosticBudgetError();
@@ -337,9 +344,14 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
               json_each(search_row.actor_source_json) actor_source
               WHERE search_row.run_id=timeline_events.run_id
                 AND json_extract(actor_source.value,'$.kind')='queued'
-                AND json_extract(actor_source.value,'$.event.eventId')=timeline_events.id)`,
-        ).run(cutoff);
-        const changes = z.number().int().nonnegative().parse(Number(result.changes));
+                AND json_extract(actor_source.value,'$.event.eventId')=timeline_events.id)
+            RETURNING cursor`,
+        ).all(cutoff);
+        const changes = result.length;
+        if (changes > 0 && ports.publishCommitted !== undefined) {
+          const cursors = result.map(row => CursorRowSchema.parse(row).cursor);
+          ports.publishCommitted({ kind: "remove", table: "timeline_events", cursors });
+        }
         return { result: changes, changes };
       });
     },
@@ -357,9 +369,14 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
           )
           DELETE FROM debug_events WHERE pinned = 0 AND retention_date < ?1
             AND COALESCE((SELECT expires FROM sse_expiry WHERE cursor = debug_events.cursor), 1)
-            AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.id=debug_events.run_id AND r.state<>'terminal')`,
-        ).run(cutoff);
-        return { result: z.number().int().nonnegative().parse(Number(result.changes)), changes: 0 };
+            AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.id=debug_events.run_id AND r.state<>'terminal')
+            RETURNING cursor`,
+        ).all(cutoff);
+        if (result.length > 0 && ports.publishCommitted !== undefined) {
+          const cursors = result.map(row => CursorRowSchema.parse(row).cursor);
+          ports.publishCommitted({ kind: "remove", table: "debug_events", cursors });
+        }
+        return { result: result.length, changes: 0 };
       });
     },
   });

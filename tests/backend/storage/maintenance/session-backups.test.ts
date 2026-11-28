@@ -74,6 +74,31 @@ async function fixture() {
 }
 
 describe("hourly in-session backup", () => {
+  it("retires a lone log companion from an interrupted session backup deletion", async () => {
+    const f = await fixture();
+    await expect(f.sessionBackups.check()).resolves.toBe("taken");
+    const [kept] = f.names(".session.sqlite");
+    const orphan = kept.replace(/-[0-9a-f-]{36}\.session/u, "-00000000-0000-4000-8000-000000000000.session");
+    writeFileSync(join(f.directory, `${orphan}.dashboard.db`), "unpaired log", { mode: 0o600 });
+    await expect(f.sessionBackups.check()).resolves.toBe("recent");
+    expect(f.names(".session.sqlite.dashboard.db")).toEqual([`${kept}.dashboard.db`]);
+    expect(f.names(".session.sqlite")).toEqual([kept]);
+  });
+
+  it.each(["missing", "damaged"] as const)("replaces a session backup whose log companion is %s", async damage => {
+    const f = await fixture();
+    await expect(f.sessionBackups.check()).resolves.toBe("taken");
+    const previous = f.names(".session.sqlite")[0];
+    const companion = `${previous}.timeline.db`;
+    if (damage === "missing") rmSync(join(f.directory, companion));
+    else f.damage(companion);
+    await expect(f.sessionBackups.check()).resolves.toBe("taken");
+    const [replacement] = f.names(".session.sqlite");
+    expect(replacement).not.toBe(previous);
+    expect(f.names(".session.sqlite.timeline.db")).toEqual([`${replacement}.timeline.db`]);
+    expect(f.names(".session.sqlite.dashboard.db")).toEqual([`${replacement}.dashboard.db`]);
+  });
+
   it("takes a backup only when the store changed and the newest backup is over an hour old", async () => {
     const f = await fixture();
     await expect(f.sessionBackups.check()).resolves.toBe("taken");
@@ -107,6 +132,9 @@ describe("hourly in-session backup", () => {
     expect(second).toHaveLength(1);
     expect(second).not.toEqual(first);
     expect(f.names(".session.sqlite")).toEqual(second.map(name => name.slice(0, -".manifest.json".length)));
+    for (const log of ["timeline", "dashboard"]) {
+      expect(f.names(`.session.sqlite.${log}.db`)).toEqual(second.map(name => name.replace(/\.manifest\.json$/u, `.${log}.db`)));
+    }
     expect([...f.names(".shutdown.sqlite"), ...f.names(".shutdown.sqlite.manifest.json")]).toEqual(others);
     expect(readdirSync(f.directory).filter(name => !name.includes(".shutdown") && !name.includes(".session")).sort()).toEqual(plain);
   });

@@ -74,7 +74,14 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
 
 /** Removes the empty edit table to construct a populated schema-46 copy. */
 export function restoreSchema46AssistantEdits(database: DatabaseSync): void {
-  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 49) {
+    database.exec("DROP INDEX write_intents_activity_confirmed_idx; UPDATE database_states SET schema_version=48; PRAGMA user_version=48");
+  }
+  // Version 48 normalized workbook version names without changing the schema layout.
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 48) {
+    database.exec("UPDATE database_states SET schema_version=47; PRAGMA user_version=47");
+  }
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 47);
   assert.equal(database.prepare("SELECT count(*) AS count FROM assistant_applied_edits").get()?.count, 0);
   database.exec("DROP TABLE assistant_applied_edits; UPDATE database_states SET schema_version=46; PRAGMA user_version=46");
 }
@@ -92,7 +99,7 @@ export function inventoryRowOrder(table: string): string {
 
 /** Steps an authority back to schema 45, before the derived full-text index. */
 export function restoreSchema45RunSearch(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === CURRENT_AUTHORITY_SCHEMA_VERSION) restoreSchema46AssistantEdits(database);
+  if (Number(database.prepare("PRAGMA user_version").get()?.user_version) >= 47) restoreSchema46AssistantEdits(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 46);
   dropRunSearchFts(database);
   database.exec("UPDATE database_states SET schema_version=45; PRAGMA user_version=45");

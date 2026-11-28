@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { ErrorCatalogCodeSchema, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { WorkerParentMessageSchema, type WorkerActivity, type WorkerChildBrowserObservation, type WorkerChildMessage,
+import { WorkerLogChannelError, type LogMutation } from "../../storage/events/log-mutations.js";
+import { WorkerLogAckSchema, WorkerParentMessageSchema, type WorkerActivity, type WorkerChildBrowserObservation, type WorkerChildMessage, type WorkerLogMessage,
   type WorkerControlRequest, type WorkerReplyOutcome, type WorkerStopReason } from "./worker-messages.js";
 import { WorkerIpcProtocolError } from "./worker-ipc-router.js";
 
@@ -17,6 +19,71 @@ export interface WorkerChildControlHandlers {
 const refused = (code: ErrorCatalogCode): WorkerReplyOutcome => ({ state: "refused", code, message: code });
 const catalogCodeOf = (error: unknown): ErrorCatalogCode | undefined =>
   error instanceof Error && "code" in error ? ErrorCatalogCodeSchema.safeParse(error.code).data : undefined;
+
+export function createWorkerLogChannel(onFailure?: (error: WorkerLogChannelError) => void) {
+  type Append = Extract<WorkerLogMessage, { kind: "worker-log-append" }>;
+  const retained = new Map<number, Append>();
+  const barriers = new Map<string, { throughSeq: number; finish(error?: Error): void }>();
+  let tail = 0, acknowledged = 0, send: ((message: WorkerLogMessage) => void) | undefined;
+  const unsent: WorkerLogMessage[] = [];
+  const sendOrQueue = (message: WorkerLogMessage) => { if (send === undefined) unsent.push(message); else send(message); };
+  let failure: WorkerLogChannelError | undefined;
+  const fail = (error: unknown) => {
+    if (failure !== undefined) return;
+    failure = error instanceof WorkerLogChannelError ? error : new WorkerLogChannelError(error);
+    onFailure?.(failure);
+    for (const barrier of barriers.values()) barrier.finish(failure);
+    barriers.clear();
+  };
+  const flush = (final = false): Promise<void> => {
+    if (failure !== undefined) return Promise.reject(failure);
+    if (tail === acknowledged && !final) return Promise.resolve();
+    const requestId = randomUUID(), throughSeq = tail;
+    const barrier = Promise.withResolvers<void>();
+    const timer = setTimeout(() => fail(new Error("worker-log-flush-deadline")), 5000);
+    barriers.set(requestId, { throughSeq, finish(error) {
+      clearTimeout(timer);
+      if (error === undefined) barrier.resolve();
+      else barrier.reject(error);
+    } });
+    sendOrQueue({ kind: "worker-log-flush", requestId, throughSeq, ...(final ? { final: true } : {}) });
+    return barrier.promise;
+  };
+  return {
+    publish: (mutation: LogMutation): void => {
+      if (mutation.kind !== "append" || failure !== undefined) return;
+      const seq = ++tail;
+      const message: Append = { kind: "worker-log-append", seq, row: mutation.row };
+      retained.set(seq, message);
+      sendOrQueue(message);
+    },
+    attach(deliver: (message: WorkerLogMessage) => void): void {
+      if (send !== undefined) throw new Error("worker-log-channel-already-attached");
+      send = deliver;
+      for (const message of unsent.splice(0)) send(message);
+    },
+    receive(input: unknown): void {
+      const reply = WorkerLogAckSchema.parse(input);
+      if (reply.throughSeq > tail || (reply.kind === "worker-log-ack" && reply.throughSeq < acknowledged)) {
+        throw new Error("worker-log-acknowledgment-invalid");
+      }
+      for (const seq of retained.keys()) {
+        if (seq > reply.throughSeq) break;
+        retained.delete(seq);
+      }
+      acknowledged = Math.max(acknowledged, reply.throughSeq);
+      if (reply.kind === "worker-log-flushed") {
+        const barrier = barriers.get(reply.requestId);
+        if (barrier?.throughSeq !== reply.throughSeq) throw new Error("worker-log-flush-acknowledgment-invalid");
+        barriers.delete(reply.requestId);
+        barrier.finish();
+      }
+    },
+    flush: () => flush(),
+    drain: () => flush(true),
+    fail,
+  };
+}
 
 /**
  * The child end of the worker family. Claims and controls share one turn: a control never starts while a run is

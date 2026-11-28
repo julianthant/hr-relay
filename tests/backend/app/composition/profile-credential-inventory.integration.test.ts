@@ -106,7 +106,7 @@ function nativeKey(f: Awaited<ReturnType<typeof fixture>>) {
   return credentialKeyCustody.read(head.key);
 }
 const heldStoppedInventories = new Set<object>();
-async function stoppedFixture(archivedAuthorityVersion?: 6 | 7 | 8, archivedAuthorityCopy?: "password" | "native-key") {
+async function stoppedFixture(archivedAuthorityVersion?: 6 | 7 | 8 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION, archivedAuthorityCopy?: "password" | "native-key") {
   const f = await createHistoricalIncompleteProfileFixture({ ...(archivedAuthorityVersion === undefined ? {} : { archivedAuthorityVersion }),
     ...(archivedAuthorityCopy === undefined ? {} : { archivedAuthorityCopy }) }), clock = manualClock(new Date("2026-11-01T12:00:00.000Z"));
   const held: { f: typeof f; owners: unknown[] } = { f, owners: [] }; heldStoppedInventories.add(held);
@@ -211,6 +211,40 @@ for (const copy of ["clean", "password", "native-key"] as const) it(`assesses a 
     if (copy === "clean") { const inventory = f.inspect(); f.revalidate(inventory); }
     else assert.throws(() => f.inspect(), error => causeHas(error, "credential-maintenance-copy-capture-incomplete"));
     assert.deepEqual(paths.map(path => readFileSync(path)), before);
+  } finally { await f.cleanup(); }
+});
+
+it("assesses a current verified backup with paired SQLite logs", async () => {
+  const f = await stoppedFixture(CURRENT_AUTHORITY_SCHEMA_VERSION);
+  try {
+    const manifest = f.archive?.manifest;
+    assert.ok(manifest?.manifestVersion === 4 && manifest.logFiles !== undefined);
+    const inventory = f.inspect();
+    f.revalidate(inventory);
+  } finally { await f.cleanup(); }
+});
+
+it.each(["dashboard.db", "timeline.db-journal"])("refuses a credential copy in live %s", async name => {
+  const f = await stoppedFixture(CURRENT_AUTHORITY_SCHEMA_VERSION);
+  try {
+    const path = join(f.profileRoot, name), secret = historicalIncompleteProfileFields.password;
+    const clean = f.inspect();
+    f.revalidate(clean);
+    if (name === "dashboard.db") {
+      assert.ok(f.archive);
+      copyFileSync(`${f.archive.path}.dashboard.db`, path);
+      const encoded = [...secret].map(character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+      {
+        using db = new DatabaseSync(path);
+        const now = f.clock.now().toISOString();
+        db.prepare("INSERT INTO debug_events (id, occurred_at, recorded_at, retention_date, payload_json, pinned) VALUES (?, ?, ?, ?, ?, 0)")
+          .run(randomUUID(), now, now, now.slice(0, 10), `{"message":"${encoded}"}`);
+      }
+      assert.equal(scanProfileCredentialCopy(path, [secret]).containsSecret, false);
+    } else writeFileSync(path, secret, { mode: 0o600 });
+    const retained = readFileSync(path);
+    assert.throws(() => f.inspect(), error => causeHas(error, "credential-maintenance-live-authority-copy-present"));
+    assert.deepEqual(readFileSync(path), retained);
   } finally { await f.cleanup(); }
 });
 

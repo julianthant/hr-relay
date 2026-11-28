@@ -1,3 +1,4 @@
+import { WorkerLogChannelError } from "../../storage/events/log-mutations.js";
 import { OcrApprovalReadResultSchema } from "../../../models/processing/ocr/approved-snapshot.js";
 import { RunContinuationRefusedError, readContinuationGate } from "../../storage/sqlite/run-continuation.js";
 import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds } from "../../logs/generated-artifact-projection.js";
@@ -526,6 +527,7 @@ export function createTaskExecution(
     try {
       const withTransaction = deps.authority.withAuthorityTransaction?.bind(deps.authority);
       if (withTransaction === undefined) throw new Error("generated-artifact-replay-requires-transaction");
+      if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
       const pending = withTransaction(repositories => pendingGeneratedUpdateIds(repositories, record, specs));
       if (pending.length === 0) return undefined;
       const projector = deps.artifactProjector;
@@ -537,6 +539,7 @@ export function createTaskExecution(
       }
       await projector.projectOutbox(pending);
     } catch (error) {
+      if (error instanceof WorkerLogChannelError) throw error;
       return await failNode(node, node.uses.id, error);
     }
     return undefined;
@@ -607,7 +610,7 @@ export function createTaskExecution(
     const backoffMs = task.impl.retry?.backoffMs ?? 0;
     const need = task.impl.sessions[0];
     for (let taskAttempt = 1; taskAttempt <= attempts; taskAttempt += 1) {
-      transitionTo(runningLifecycle(node.id));
+      await transitionTo(runningLifecycle(node.id));
       const spanPath = taskSpanPath(envelope.traceId, node.id, taskAttempt, claim.claimGeneration);
       emit({
         t: "span.started", kind: "task",
@@ -618,6 +621,7 @@ export function createTaskExecution(
       const failureCauses: FailureEvidenceCause[] = [];
       try {
         const record = await invokeTask(node, task, scope, need, capabilityWiring, spanPath, failureCauses);
+        if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
         if (refreshedRetained || refreshedMember || accounting?.plan.recompute.includes(String(node.id))) {
           pauseAtBoundary();
           if (deps.authority.withAuthorityTransaction === undefined) throw new Error("delegation-accounting-transaction-unavailable");
@@ -678,6 +682,7 @@ export function createTaskExecution(
         });
         return undefined;
       } catch (error) {
+        if (error instanceof WorkerLogChannelError) throw error;
         if (input.signal.aborted) {
           emit({
             t: "span.ended", kind: "task",

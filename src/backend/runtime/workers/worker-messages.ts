@@ -4,9 +4,24 @@ import { WorkerBrowserObservationSchema, WorkerSetupRefusalCodeSchema } from "..
 import { ErrorCatalogCodeSchema } from "../../../models/failures/error-catalog.js";
 import { BrowserSessionIdSchema, BrowserSystemIdSchema, IsoInstantSchema, RunIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
+import { MirrorLogRecordSchema } from "../../storage/events/log-mutations.js";
 
 /** The worker family of the parent/child IPC pipe; lifetime transfer and Nominatim own their own kinds. */
 export const WORKER_MESSAGE_PREFIX = "worker-";
+export const WORKER_LOG_PREFIX = "worker-log-";
+export const WorkerLogEnableSchema = z.strictObject({ kind: z.literal("worker-log-enabled") });
+
+const logSequence = z.number().int().positive();
+export const WorkerLogMessageSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("worker-log-append"), seq: logSequence, row: MirrorLogRecordSchema }),
+  z.strictObject({ kind: z.literal("worker-log-flush"), requestId: z.uuid(), throughSeq: z.number().int().nonnegative(), final: z.literal(true).optional() }),
+]);
+export type WorkerLogMessage = z.infer<typeof WorkerLogMessageSchema>;
+export const WorkerLogAckSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("worker-log-ack"), throughSeq: logSequence }),
+  z.strictObject({ kind: z.literal("worker-log-flushed"), requestId: z.uuid(), throughSeq: z.number().int().nonnegative() }),
+]);
+export type WorkerLogAck = z.infer<typeof WorkerLogAckSchema>;
 
 export const WorkerControlRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.enum(["refresh-browser", "reopen-browser"]), browserSessionId: BrowserSessionIdSchema }),
