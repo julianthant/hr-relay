@@ -668,13 +668,14 @@ const masterGroup = Object.freeze({ ...defineWorkflowStep({ key: "master-results
   } as const,
 });
 const reviewEntries = defineStepEntries(review), entries = defineStepEntries(group), hireEntries = defineStepEntries(hireGroup), masterEntries = defineStepEntries(masterGroup);
-const HireWriteResultSchema = z.union([OnboardingResultSchema, OnboardingResultSchema.extend({
-  state: z.literal("completed-with-manual-steps"),
+const HireWriteResultSchema = OnboardingResultSchema.extend({
+  state: z.enum(["filed", "master-review-required", "completed-with-manual-steps"]),
   subject: z.union([OnboardingResultSchema.shape.subject, OmittedStepResultArmSchema]),
   i9: z.union([OnboardingResultSchema.shape.i9, OmittedStepResultArmSchema]),
   hireWrite: z.union([OnboardingResultSchema.shape.hireWrite, OmittedStepResultArmSchema]),
-  rosterAccess: OmittedStepResultArmSchema,
-})]);
+  rosterAccess: z.union([OnboardingResultSchema.shape.rosterAccess, OmittedStepResultArmSchema]),
+}).refine(result => result.state === "completed-with-manual-steps" ? result.rosterAccess.state === "omitted"
+  : OnboardingResultSchema.safeParse(result).success, "Verified completion needs its verified hire and roster results");
 const omitted = (step: string) => ({ state: "omitted" as const, step });
 
 function previewProfile(dryRun: DryRunScope | undefined) {
@@ -763,7 +764,7 @@ export function buildHireWrites(author: WorkflowAuthor<typeof OnboardingInput>, 
   result: author.result(HireWriteResultSchema, [crm.plan, plan, approval, hire, receipt, remote, master, concurrentHire, concurrentReceipt, concurrentMaster], ({ outputs }) => {
     const writePlan = outputs["write-plan"];
     if (writePlan === undefined) return {
-      state: "completed-with-manual-steps", plan: outputs["hire-plan"], subject: omitted(group.key), i9: omitted(group.key),
+      state: "completed-with-manual-steps" as const, plan: outputs["hire-plan"], subject: omitted(group.key), i9: omitted(group.key),
       hireWrite: omitted(hireGroup.key), rosterAccess: omitted(masterGroup.key),
     };
     const existing = writePlan.hire.mode === "rehire";
@@ -779,8 +780,8 @@ export function buildHireWrites(author: WorkflowAuthor<typeof OnboardingInput>, 
         : { state: "verified" as const, ...I9RemoteProofSchema.parse(outputs["i9-remote-create"].output.receipt) },
       hireWrite,
     };
-    if (filled === undefined) return { ...result, state: "completed-with-manual-steps", rosterAccess: omitted(masterGroup.key) };
-    return { ...result, state: filled.state === "recorded" && filled.receiptState === "applied" ? "filed" : "master-review-required", rosterAccess: filled };
+    if (filled === undefined) return { ...result, state: "completed-with-manual-steps" as const, rosterAccess: omitted(masterGroup.key) };
+    return { ...result, state: filled.state === "recorded" && filled.receiptState === "applied" ? "filed" as const : "master-review-required" as const, rosterAccess: filled };
   }) };
 }
 

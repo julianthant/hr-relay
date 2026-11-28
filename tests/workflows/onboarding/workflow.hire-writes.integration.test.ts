@@ -17,7 +17,6 @@ import { projectRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.
 import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { CrmReadHireData } from "../../../src/models/systems/crm/read-hire-data.js";
-import { isJsonObject } from "../../../src/rules/validation/canonical-json.js";
 
 const world = createOnboardingRunWorld();
 afterAll(world.close);
@@ -63,8 +62,8 @@ describe("public onboarding write execution", () => {
     assert.deepEqual(h.database.authority.writeIntents.listByRun(root.envelope.runId), []);
     assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
     const result = h.database.authority.runResults.get(root.envelope.runId);
-    assert.ok(result && isJsonObject(result.result.value));
-    assert.equal(result.result.value.state, "completed-with-manual-steps");
+    assert.ok(result);
+    assert.partialDeepStrictEqual(result.result.value, { state: "completed-with-manual-steps" });
   });
 
   it("records a hire done outside Relay without staging it, opening a write intent, or filling unverified master results", async () => {

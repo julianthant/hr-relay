@@ -641,7 +641,7 @@ interface WorkflowTerminalRun {
     /** The one durable record of what the operator asked for. */
     dryRun: boolean;
     /** The steps this run omitted; an asserted dependency must name one of them. */
-    stepOmissions?: readonly Readonly<{ step: string }>[];
+    stepOmissions?: readonly Readonly<{ step: string; workflow?: string | undefined }>[];
     continuation?: RunContinuation;
   }>;
   readonly input: Readonly<{
