@@ -4,6 +4,7 @@ import { REFERENCE_CHECK, VerifyWorkbookPerson } from "../../../../models/proces
 import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
 import { OnboardingReadReferenceStop } from "../../../../models/workflows/onboarding/read-reference-stop.js";
 import { ONBOARDING_WRITE_REVIEW_GATE } from "../../../../models/workflows/onboarding/read-write-plan.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { REFERENCE_STOP_NODE } from "../../tasks/read-reference-stop.js";
@@ -14,8 +15,19 @@ import { buildUcpathSearch } from "../ucpath-search/step.js";
 
 export const REFERENCE_CHECK_NODE = "reference-check";
 
+export const REFERENCE_CHECK_MANUAL: StepManualDeclaration = {
+  off: "values",
+  form: { fields: [
+    { key: "referenceResult", label: "Reference spreadsheet result", kind: "enum", values: ["Confirmed", "Unconfirmed", "Not checked"] },
+  ] },
+  produces: {},
+  skips: [REFERENCE_CHECK_NODE, REFERENCE_STOP_NODE, REFERENCE_CHECK_REVIEW_GATE],
+  skipsGatesAndTransactions: true,
+};
+
 export const REFERENCE_CHECK_STEP = Object.freeze({
   ...defineWorkflowStep({ key: "reference-check", label: "Check reference spreadsheets" }), system: "local" as const,
+  manual: REFERENCE_CHECK_MANUAL,
   description: "Look the reviewed Employee ID up in each picked reference spreadsheet, and ask before the first save when one does not confirm the person.",
   operatorFields: [
     { label: "Reference spreadsheet", visibility: "logs", sources: [{ nodeId: REFERENCE_CHECK_NODE, kind: "output", fieldPath: "checks.line" }] },

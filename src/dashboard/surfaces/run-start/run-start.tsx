@@ -232,13 +232,12 @@ export function RunStartDialog({
   const handOffByStep = useMemo(() => handOffStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
   const rows = useMemo(() => startRowsOf({ steps, rows: workflow?.rows }), [steps, workflow?.rows]);
   const inputDriven = useCallback((row: StepRow): boolean => launchDraft.rowInputDriven(workflow, typedValues, row), [workflow, typedValues]);
-  const openRows: readonly OpenStepRow[] = useMemo(() => customizeSteps && !draft.interruptedRerun ? rows.flatMap(row => {
+  const openRowDrafts = useMemo(() => customizeSteps && !draft.interruptedRerun ? rows.flatMap(row => {
     if (row.form === undefined || inputDriven(row) || !rowFieldsOpen(row, selectedStepKeys, manualRows)) return [];
-    return [rowOpenFold(row, row.form, stepDrafts[row.key] ?? initialStepOmissionDraft(row.form))];
+    return [{ row, form: row.form, draft: stepDrafts[row.key] ?? initialStepOmissionDraft(row.form) }];
   }) : [], [customizeSteps, rows, selectedStepKeys, manualRows, stepDrafts, inputDriven, draft.interruptedRerun]);
-  const stepOmissions = useMemo(() => stepEntries(openRows), [openRows]);
   const requestFingerprint = runStartRequestFingerprint(draft, spreadsheets, savedRows, pdfInput, rerunSource, workflowId, typedValues,
-    customizeSteps, dryRun, captureBrowserScreenshots, selectedStepKeys, openRows);
+    customizeSteps, dryRun, captureBrowserScreenshots, selectedStepKeys, openRowDrafts);
   const [requestProblem, setRequestProblem] = useState<string | null>(null);
   const suppressStage = useRef(false);
   /** `submit` as last drawn: the one way on from this stage, for the footer button, the Enter key and a clean plan's own start. Null when refused. */
@@ -443,6 +442,10 @@ export function RunStartDialog({
   const typedInputRef = useRef<HTMLTextAreaElement>(null);
 
   const preview = useRunStartInputPreview(draft, savedRows, inputRun, typedValues, snapshot, rerunSource, pdfSurface, pdfInput);
+  const openRows: readonly OpenStepRow[] = useMemo(() => openRowDrafts.map(({ row, form, draft }) =>
+    rowOpenFold(row, form, draft, { submissions: preview.submissions })),
+    [openRowDrafts, preview.submissions]);
+  const stepOmissions = useMemo(() => stepEntries(openRows), [openRows]);
 
   /** Priority starts off when more than one person is entered, until the operator picks it. */
   const priority = launchDraft.effectivePriority(priorityChoice, preview.entries.length);

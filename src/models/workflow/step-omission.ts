@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { JsonObject, JsonValue } from "../../rules/validation/canonical-json.js";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { EID_PATTERN, type IsoInstant } from "../../rules/identity/ids.js";
+import { CRM_MANUAL_RECORDS_EXAMPLE, crmManualRecordsIssue } from "../workflows/crm-doc-download/manual-records.js";
 import type { RuntimeScope } from "./graph.js";
 import { TimelineCategoryKeySchema } from "./presentation.js";
 import { ValueFieldPathSchema } from "./rerun-values.js";
@@ -15,13 +16,15 @@ const FieldBase = {
   help: z.string().min(1).optional(),
   /** Blank is stored as null. */
   optional: z.literal(true).optional(),
+  requiredWhen: z.strictObject({ field: FieldKeySchema, equals: z.string().min(1) }).optional(),
+  withheld: z.literal(true).optional(),
   /** The produced value this field stands for; its accepted facts parse unchanged under that leaf's schema. */
   replaces: z.strictObject({ nodeId: z.string().min(1), path: ValueFieldPathSchema }).optional(),
 };
 
 /** The closed field vocabulary the Steps screen draws; each kind owns its parser. */
 export const StepOmissionFieldSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ ...FieldBase, kind: z.literal("text") }),
+  z.strictObject({ ...FieldBase, kind: z.literal("text"), format: z.literal("crm-document-records").optional() }),
   /** MM/DD/YYYY — the form every HR date in this tree is typed and staged in. */
   z.strictObject({ ...FieldBase, kind: z.literal("us-date") }),
   /** Shown and typed as MM/DD/YYYY; the server accepts and stores YYYY-MM-DD only. */
@@ -41,6 +44,12 @@ export const StepOmissionFormSchema = z.strictObject({
     for (const field of fields) {
       if (seen.has(field.key)) ctx.addIssue({ code: "custom", message: `omission field "${field.key}" is declared twice` });
       seen.add(field.key);
+      const condition = field.requiredWhen;
+      if (condition === undefined) continue;
+      const choice = fields.find(candidate => candidate.key === condition.field);
+      if (field.optional !== true || choice?.kind !== "enum" || choice.key === field.key || !choice.values.includes(condition.equals)) {
+        ctx.addIssue({ code: "custom", message: `omission field "${field.key}" needs an optional field and an existing choice in another field` });
+      }
     }
   }),
 });
@@ -51,9 +60,17 @@ export const UsDateFactSchema = z.string().regex(US_DATE_PATTERN, "a date fact m
 export const IsoDateFactSchema = z.iso.date();
 export const EidFactSchema = z.string().regex(EID_PATTERN, "an employee id fact must be eight digits beginning with 10");
 
-function fieldSchema(field: StepOmissionField): z.ZodType {
+export type StepOmissionInput = Readonly<{ submissions: readonly unknown[] }> | Readonly<{ canonicalInput: unknown }>;
+
+function fieldSchema(field: StepOmissionField, input?: StepOmissionInput): z.ZodType<JsonValue> {
   switch (field.kind) {
-    case "text": return z.string().trim().min(1);
+    case "text": {
+      const text = z.string().trim().min(1);
+      return field.format === undefined ? text : text.superRefine((value, context) => {
+        const message = crmManualRecordsIssue(value, input);
+        if (message !== undefined) context.addIssue({ code: "custom", message });
+      });
+    }
     case "us-date": return UsDateFactSchema;
     case "iso-date": return IsoDateFactSchema;
     case "eid": return EidFactSchema;
@@ -65,15 +82,24 @@ function fieldSchema(field: StepOmissionField): z.ZodType {
 }
 
 /** The schema of one field's stored fact; an optional field also accepts null. */
-export function stepOmissionFieldFactSchema(field: StepOmissionField): z.ZodType {
-  return field.optional === true ? fieldSchema(field).nullable() : fieldSchema(field);
+export function stepOmissionFieldFactSchema(field: StepOmissionField, input?: StepOmissionInput): z.ZodType<JsonValue> {
+  const schema = fieldSchema(field, input);
+  return field.optional === true ? schema.nullable() : schema;
 }
 
 /** ONE strict facts schema per form — every key is present; absence is a refusal, not a default. */
-export function stepOmissionFactsSchema(form: StepOmissionForm): z.ZodObject<Record<string, z.ZodType>> {
-  const shape: Record<string, z.ZodType> = {};
-  for (const field of StepOmissionFormSchema.parse(form).fields) shape[field.key] = stepOmissionFieldFactSchema(field);
-  return z.strictObject(shape);
+export function stepOmissionFactsSchema(form: StepOmissionForm, input?: StepOmissionInput): z.ZodObject<Record<string, z.ZodType<JsonValue>>> {
+  const { fields } = StepOmissionFormSchema.parse(form);
+  const shape: Record<string, z.ZodType<JsonValue>> = {};
+  for (const field of fields) shape[field.key] = stepOmissionFieldFactSchema(field, input);
+  return z.strictObject(shape).superRefine((facts, ctx) => {
+    for (const field of fields) {
+      const condition = field.requiredWhen;
+      if (condition !== undefined && facts[condition.field] === condition.equals && facts[field.key] === null) {
+        ctx.addIssue({ code: "custom", path: [field.key], message: "Enter a value for the selected choice." });
+      }
+    }
+  });
 }
 
 /** The finite set a field accepts, when it has one; the representation check parses each value. */
@@ -176,16 +202,19 @@ export interface StepManualIssue {
 
 /** A step folder's declaration; a producer returns a COMPLETE output the executor parses with the node's own contract output schema — never a partial object or a placeholder. */
 export interface StepManualDeclaration {
+  readonly off?: StartRowOff;
   readonly form: StepOmissionForm;
   readonly produces: Readonly<Record<string, (context: StepOmissionProduceContext) => unknown>>;
   /** Reading nodes that do not run when the values are typed; every node neither produced nor skipped runs. */
   readonly skips?: readonly string[];
   /** Cross-field rules checked by the server at plan time, after the form parses. */
-  readonly refine?: (facts: JsonObject) => readonly StepManualIssue[];
+  readonly refine?: (facts: JsonObject, submission: JsonValue | undefined) => readonly StepManualIssue[];
   /** Allows `skips` to name the step's gates and transactions: the typed values stand for their decision or write. */
   readonly skipsGatesAndTransactions?: true;
   /** Nodes in other steps that depend on a skipped member only to run after it and read none of its output. */
   readonly orderOnlyReaders?: readonly string[];
+  /** Ingress approvals and local validation that still run when the operator supplies values. */
+  readonly keeps?: readonly string[];
 }
 
 /** The descriptor-retained form of one declaration, bound to its step key. */
@@ -200,6 +229,8 @@ export const StartRowLockReasonSchema = z.enum(["form-action", "approval", "boun
 export type StartRowLockReason = z.infer<typeof StartRowLockReasonSchema>;
 export const StartRowKindSchema = z.enum(["switch", "locked-manual", "locked"]);
 export type StartRowKind = z.infer<typeof StartRowKindSchema>;
+export const StartRowOffSchema = z.enum(["manual", "values"]);
+export type StartRowOff = z.infer<typeof StartRowOffSchema>;
 
 /** What a row shows: a whole step, some of its nodes, or one phase of its transaction nodes. */
 export const StartRowMemberSchema = z.strictObject({
@@ -288,6 +319,8 @@ export interface StepOmissionPlan {
   readonly asserted: ReadonlyMap<string, Readonly<{ step: string; facts: JsonObject; produce: (context: StepOmissionProduceContext) => unknown }>>;
   /** node id → the omitted step it belongs to; nothing runs and nothing is produced */
   readonly omitted: ReadonlyMap<string, string>;
+  /** node id → the step completed outside Relay; nothing runs or produces proof */
+  readonly manual: ReadonlyMap<string, string>;
   readonly refusals: readonly StepOmissionRefusal[];
 }
 
@@ -295,6 +328,7 @@ export interface StepOmissionPlan {
 export function planStepOmissions(graph: StepOmissionGraphView, requested: readonly StepOmissionEntry[]): StepOmissionPlan {
   const asserted = new Map<string, { step: string; facts: JsonObject; produce: (context: StepOmissionProduceContext) => unknown }>();
   const omitted = new Map<string, string>();
+  const manual = new Map<string, string>();
   const refusals: StepOmissionRefusal[] = [];
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
   const stepByNode = new Map<string, string>();
@@ -329,7 +363,7 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
       // Skipped gates record no decision; dependent running nodes must refuse.
       const produce = node.kind === "task" ? spec.produces[id] : undefined;
       if (produce !== undefined) asserted.set(id, { step: entry.step, facts: JsonFactsSchema.parse(facts.data), produce });
-      else if (skipped.has(id)) omitted.set(id, entry.step);
+      else if (skipped.has(id)) (spec.off === "manual" ? manual : omitted).set(id, entry.step);
     }
     for (const producedId of Object.keys(spec.produces)) {
       const owner = stepByNode.get(producedId);
@@ -343,9 +377,9 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
   }
 
   for (const node of graph.nodes) {
-    if (asserted.has(node.id) || omitted.has(node.id)) continue;
+    if (asserted.has(node.id) || omitted.has(node.id) || manual.has(node.id)) continue;
     for (const dependency of node.dependsOn) {
-      const blockedBy = omitted.get(dependency);
+      const blockedBy = omitted.get(dependency) ?? manual.get(dependency);
       if (blockedBy === undefined) continue;
       if (specByStep.get(blockedBy)?.orderOnlyReaders?.includes(node.id) === true) continue;
       const ownStep = stepByNode.get(node.id);
@@ -357,7 +391,7 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
       });
     }
   }
-  return Object.freeze({ asserted, omitted, refusals: Object.freeze(refusals) });
+  return Object.freeze({ asserted, omitted, manual, refusals: Object.freeze(refusals) });
 }
 
 /** One step's cascade row: the other steps forced out with it, or the step that cannot be omitted and so blocks it. */
@@ -376,7 +410,7 @@ export function stepOmissionPlaceholderFacts(form: StepOmissionForm): JsonObject
       case "us-date": return "01/01/2000";
       case "iso-date": return "2000-01-01";
       case "eid": return "10000000";
-      case "text": return "cascade";
+      case "text": return field.format === "crm-document-records" ? CRM_MANUAL_RECORDS_EXAMPLE : "cascade";
     }
   };
   return JsonFactsSchema.parse(Object.fromEntries(
