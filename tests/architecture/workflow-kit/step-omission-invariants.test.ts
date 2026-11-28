@@ -301,7 +301,7 @@ const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asse
     omitted: ["crm-only-recovery", "cross-verify"],
   },
   [ONBOARDING_ID]: {
-    asserted: ["crm-source", "hire-plan"],
+    asserted: ["crm-source"],
     omitted: ["hire-findings", "hire-review", "hire-subject", "i9-lookup", "i9-lookup-child", "reference-check", "reference-check-review", "reference-stop", "ucpath-source"],
     manual: ["concurrent-hire-create", "concurrent-hire-receipt", "concurrent-master-results", "hire-create", "hire-receipt", "i9-profile-plan",
       "i9-profile-save", "i9-remote-create", "i9-route", "master-results", "write-plan"],
