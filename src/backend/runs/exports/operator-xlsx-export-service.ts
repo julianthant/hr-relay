@@ -2,6 +2,7 @@ import { ActivityReportSelectionSchema, type ActivityReportSelection } from "../
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { createHash } from "node:crypto";
 import type { Readable } from "node:stream";
+import type { z } from "zod";
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";

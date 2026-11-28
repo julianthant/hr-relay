@@ -165,7 +165,7 @@ describe("canonical notification producers", () => {
       expect(report.counts).toEqual({ runs: 2, failures: 1, receipts: 1, publications: 1 });
       expect(report.samples).toHaveLength(1);
       const [sample] = report.samples;
-      expect(sample.order).toEqual(["scan", "click", "rerun"]);
+      expect(sample.order).toEqual(["click", "scan", "rerun"]);
       expect(sample.scanMs).toBeGreaterThan(0);
       expect(sample.clickMs).toBeGreaterThan(0);
     } finally { await f.close(); }

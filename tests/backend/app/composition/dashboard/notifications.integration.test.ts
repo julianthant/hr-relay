@@ -160,7 +160,7 @@ it("coalesces sustained polling churn into one rerun, lets the queued click thro
     await Promise.all([click, scansDone.promise, allPublished.promise]);
     await observer.stop();
     expect(scans).toBe(2);
-    expect(order).toEqual(["scan 1", "click", "scan 2"]);
+    expect(order).toEqual(["click", "scan 1", "scan 2"]);
     expect(published.toSorted()).toEqual(expected.toSorted());
     expect(f.inbox.list("local-operator").map(row => row.count)).toEqual(Array<number>(expected.length).fill(1));
     expect(track).not.toHaveBeenCalled();

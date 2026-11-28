@@ -52,9 +52,19 @@ export interface LaneReadContext {
 /** What a read's warm step sees at lane boot: no request, so no process facts and no position to report. */
 export type LaneWarmContext = Pick<LaneReadContext, "start" | "native" | "history" | "nowMs" | "retain">;
 
-type LaneReadExecution<Args, Result> =
-  | { readonly priority: "interactive" | "background"; readonly source?: never; run(context: LaneReadContext, args: Args): Result; chunks?: never }
-  | { readonly priority: "background"; readonly source?: "native"; run?: never; chunks(context: LaneReadContext, args: Args): Generator<void, Result, void> };
+type AtomicLaneRead<Args, Result> = {
+  readonly priority: "interactive" | "background";
+  readonly source?: never;
+  readonly run: (context: LaneReadContext, args: Args) => Result;
+  readonly chunks?: never;
+};
+type ChunkedLaneRead<Args, Result> = {
+  readonly priority: "background";
+  readonly source?: "native";
+  readonly run?: never;
+  readonly chunks: (context: LaneReadContext, args: Args) => Generator<void, Result, void>;
+};
+type LaneReadExecution<Args, Result> = AtomicLaneRead<Args, Result> | ChunkedLaneRead<Args, Result>;
 
 export type LaneReadDefinition<Args, Result> = LaneReadExecution<Args, Result> & {
   readonly id: string;
@@ -78,12 +88,16 @@ export type LaneReadDefinition<Args, Result> = LaneReadExecution<Args, Result> &
 const definitions = new Map<string, LaneReadDefinition<unknown, unknown>>();
 const laneReadId = (module: string, name: string) => `${module}#${name}`;
 
-/** Declares a read a lane can run, loaded by its lane entry and addressed by id. */
-export function defineLaneRead<Args, Result>(module: string, name: string, spec: LaneReadExecution<Args, Result> & Readonly<{
+type LaneReadOptions<Args> = Readonly<{
   lane: ReadLaneName; args: z.ZodType<Args>; tables?: readonly AuthorityTableName[];
   timeline?: boolean; processFacts?: boolean; cacheMs?: number;
   warm?(context: LaneWarmContext): void; prebuild?(context: LaneWarmContext): void; sourceProof?: "per-statement" | "per-read";
-}>): LaneReadDefinition<Args, Result> {
+}>;
+
+/** Declares a read a lane can run, loaded by its lane entry and addressed by id. */
+export function defineLaneRead<Args, Result>(module: string, name: string, spec: LaneReadOptions<Args> & AtomicLaneRead<Args, Result>): LaneReadDefinition<Args, Result> & AtomicLaneRead<Args, Result>;
+export function defineLaneRead<Args, Result>(module: string, name: string, spec: LaneReadOptions<Args> & ChunkedLaneRead<Args, Result>): LaneReadDefinition<Args, Result> & ChunkedLaneRead<Args, Result>;
+export function defineLaneRead<Args, Result>(module: string, name: string, spec: LaneReadOptions<Args> & LaneReadExecution<Args, Result>): LaneReadDefinition<Args, Result> {
   const id = laneReadId(module, name);
   if (definitions.has(id)) throw new Error(`read-lane-read-duplicate: ${name}`);
   const execution = spec.chunks === undefined ? { priority: spec.priority, run: spec.run }
@@ -606,6 +620,7 @@ interface CacheEntry {
 interface ReadJob {
   readonly requests: LaneReadMessage[];
   chunks?: { iterator: Generator<void, unknown, void>; position: ReadPosition };
+  restarted?: true;
 }
 
 function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<string, () => Promise<unknown>>) {
@@ -687,7 +702,11 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
         const previous = job.chunks?.position;
         if (previous !== undefined && (previous.schemaCookie !== position.schemaCookie || previous.timelineThrough !== position.timelineThrough
           || (definition.tables.length === 0 ? previous.authorityGeneration !== position.authorityGeneration || previous.changeLogSeq !== position.changeLogSeq
-            : !database.readChangeInterval(previous.changeLogSeq, definition.tables).clear))) throw new AuthoritySnapshotChangedError();
+            : !database.readChangeInterval(previous.changeLogSeq, definition.tables).clear))) {
+          if (definition.tables.length === 0 || job.restarted === true) throw new AuthoritySnapshotChangedError();
+          delete job.chunks;
+          job.restarted = true;
+        }
         const iterator = job.chunks?.iterator ?? definition.chunks(context, args);
         const next = iterator.next();
         if (!next.done) { job.chunks = { iterator, position }; return undefined; }

@@ -40,7 +40,7 @@ export const notificationScanClick = defineLaneRead(import.meta.url, "notificati
 export const heldNotificationSourceScan = defineLaneRead(import.meta.url, "held-notification-source-scan", {
   ...notificationSourceScan,
   processFacts: true,
-  run(context, args) {
+  *chunks(context, args) {
     const barrier = z.instanceof(SharedArrayBuffer).parse(context.processFacts);
     const gate = new Int32Array(barrier);
     const started = systemClock.monotonicMs();
@@ -50,8 +50,9 @@ export const heldNotificationSourceScan = defineLaneRead(import.meta.url, "held-
         throw new Error("notification-scan-bench-barrier-not-released");
       }
       Atomics.store(gate, SCAN_PAUSE_US, Math.floor((systemClock.monotonicMs() - started) * 1000));
+      yield;
     }
-    return notificationSourceScan.run(context, args);
+    return yield* notificationSourceScan.chunks(context, args);
   },
 });
 
@@ -119,7 +120,7 @@ export async function measureNotificationScan(admission: RuntimeAdmission, datab
     }
     return { runs: retained.length, failures, receipts, publications: database.authority.notificationPublications.list().length };
   });
-  const passed = samples.every(sample => sample.scanMs <= SCAN_LIMIT_MS && sample.order.join(",") === "scan,click,rerun");
+  const passed = samples.every(sample => sample.scanMs <= SCAN_LIMIT_MS && sample.order.join(",") === "click,scan,rerun");
   return { gate: "G2-4", passed, scanLimitMs: SCAN_LIMIT_MS, counts, samples };
 }
 
