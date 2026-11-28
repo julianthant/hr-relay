@@ -194,7 +194,9 @@ function seedAssistantReadRun({ context, clock }: Pick<ServedAssistantFixture, '
   const run = RunRecordSchema.parse({ ...candidate, createdAt: now, updatedAt: now, envelope: { ...candidate.envelope,
     traceId: deriveTraceId('pl', candidate.envelope.runId, clock), enqueuedAt: now,
     configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } });
-  const descriptor = DESCRIPTORS.find(value => value.id === run.envelope.workflow), node = descriptor?.timeline?.[0]?.nodes[0]; assert.ok(node);
+  const descriptor = DESCRIPTORS.find(value => value.id === run.envelope.workflow);
+  const node = descriptor?.timeline?.flatMap(category => category.nodes).find(candidate => candidate.id === "searching");
+  assert.ok(node);
   context.database.withAuthorityTransaction(repositories => {
     assert.equal(repositories.runs.enqueue(run).state, 'inserted');
     const writer = createTimelineEmitter({ repository: repositories.timelineEvents, clock });

@@ -28,13 +28,13 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
   </PageCard>;
   if (entry.kind === "click") return <ClickLine label={entry.label} />;
   // A step row carries its own time, so rows of one stage line up; the stage heading keeps its own.
-  return <div className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-x-3"><time className="pt-2 text-caption tabular-nums text-ui-muted">{entry.time}</time><div className="min-w-0"><LogNote entry={entry} />{entry.captureFailure && <RequiredCaptureStatus state={entry.captureFailure} />}</div></div>;
+  return <div className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-x-3"><time className="pt-2 text-caption tabular-nums text-ui-muted">{entry.time}</time><div className="min-w-0" data-log-note-message={entry.captureFailure === undefined ? entry.id : undefined}><LogNote entry={entry} />{entry.captureFailure && <RequiredCaptureStatus state={entry.captureFailure} />}</div></div>;
 }
 const STEP_STATE_ICON = { done: CircleCheck, active: LoaderCircle, failed: CircleX } as const;
 function LogNote({ entry }: { entry: Extract<LogEntry, { kind: "note" }> }) {
   const Icon = entry.state === undefined ? undefined : STEP_STATE_ICON[entry.state];
-  return <div data-log-note-message={entry.id}><NoteLine message={entry.message} tone={entry.tone} announce={entry.announce} announceKey={entry.id}
-    icon={Icon === undefined ? undefined : <Icon aria-hidden className="size-3.5 self-start translate-y-0.5" />} /></div>;
+  return <NoteLine message={entry.message} tone={entry.tone} announce={entry.announce} announceKey={entry.id}
+    icon={Icon === undefined ? undefined : <Icon aria-hidden className="size-3.5 self-start translate-y-0.5" />} />;
 }
 
 /** Shorter logs mount every step; longer ones mount only the steps near the viewport. */

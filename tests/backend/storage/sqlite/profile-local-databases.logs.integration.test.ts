@@ -52,6 +52,13 @@ it("opens independently versioned log files and copies the retained log rows wit
         const matches = reader.searchStepNotes("chma");
         assert.deepEqual(matches.map(record => record.payload.kind === "note" ? record.payload.note.message : undefined), ["Verified benchmark note"]);
         assert.deepEqual(reader.page({}), repository.page({}).slice(0, -1));
+        const since = reader.highWaterMark();
+        note.emitNote({ workflow: "person-lookup", address: { workerId: "person-lookup-worker-1", spanPath: "worker" },
+          level: "step", message: "Later worker publication" });
+        const newer = repository.page({ after: since }).at(-1);
+        assert.ok(newer);
+        logs.apply([{ kind: "append", row: newer }]);
+        assert.deepEqual(reader.page({ after: since }), repository.page({ after: since }));
       } finally { reader.close(); }
       repository.pruneBefore("2026-12-01");
       repository.pruneDebugBefore("2026-12-01");

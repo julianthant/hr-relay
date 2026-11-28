@@ -79,7 +79,7 @@ export function createDetailQueries(transport: DashboardTransport): DetailQuerie
       const context = `GET ${path}`;
       const response = parseOrThrow(RunLogSearchResponseSchema, context,
         await transport.requestJson(`/api/v1/runs/${encodeURIComponent(runId)}/log-search?${params.toString()}`, { signal }));
-      if (response.runId !== runId) throw runIdentityError(context, "RUN_LOG_SEARCH_IDENTITY_MISMATCH", runId);
+      if (response.runId !== runId) throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
       return response;
     },
 

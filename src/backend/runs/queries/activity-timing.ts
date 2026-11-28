@@ -2,6 +2,7 @@ import type { ActivitySuccessfulTiming } from "../../../models/dashboard/activit
 import type { ActivityWorkflowTotal } from "../../../models/dashboard/activity.js";
 import type { TimelineEventRecord } from "../../../models/events/timeline.js";
 import type { RunRecord } from "../../../models/run/record.js";
+import { RunIdSchema } from "../../../rules/identity/ids.js";
 
 export type ActivityTimingSource = Readonly<{
   runTimingRows(runIds: readonly string[]): readonly TimelineEventRecord[];
@@ -18,7 +19,7 @@ export function readActivityDurations(source: ActivityTimingSource, runs: readon
     if (event.t !== "run.queued" && (event.t !== "span.ended" || event.kind !== "run")) {
       throw new Error("activity-timing-span-kind-invalid");
     }
-    const terminal = terminals.get(event.runId);
+    const terminal = terminals.get(RunIdSchema.parse(event.runId));
     if (terminal === undefined || event.workflow !== terminal.envelope.workflow || event.traceId !== terminal.envelope.traceId
       || event.attempt > terminal.envelope.attempt) throw new Error("activity-timing-run-identity-mismatch");
     const at = Date.parse(event.ts);

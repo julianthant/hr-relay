@@ -51,7 +51,7 @@ const activityLaneRead = defineLaneRead(import.meta.url, "activity", {
   args: z.strictObject({ signingKey: FingerprintSchema, request: ActivityLaneRequestSchema, readLogTiming: z.boolean() }),
   run({ history, nowMs, start, logs }, { signingKey, request, readLogTiming }): z.infer<typeof ActivityLaneReplySchema> {
     const timing = readLogTiming ? logs.timeline() : undefined;
-    const read = () => {
+    const read = (): z.infer<typeof ActivityLaneReplySchema> => {
       const logRevision = timing?.revision();
       let held = lanePopulations.get(history);
       if (held?.signingKey !== signingKey || held.logRevision !== logRevision) {

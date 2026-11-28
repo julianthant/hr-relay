@@ -5,6 +5,7 @@ import { localDatePart } from "../../../../rules/time/clock.js";
 import type { createOperatorProjection } from "./queue.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { createNoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
+import type { LogWriter } from "../../../storage/events/log-writer.js";
 import { createDashboardBackgroundReader } from "../../../storage/sqlite/dashboard-background-read-worker.js";
 import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { AuthoritySnapshotChangedError } from "../../../storage/sqlite/authority-errors.js";
@@ -21,7 +22,7 @@ const RETENTION_SWEEP_MS = 24 * 60 * 60 * 1000;
 
 export const GATE_PARK_WATCH_MS = 1_000;
 
-export function composeDashboardTimeline(input: { database: AuthorityDatabase; clock: Clock; loggingRepository: Parameters<typeof createNoteTimelineWriter>[0]["repository"]; projection: ReturnType<typeof createOperatorProjection>; startupCleanups: StartupCleanup[]; admission: RuntimeAdmission; readLanes?: DashboardReadLanes; logRevision?: () => number; lifecycle: DiagnosticRetentionSweepDependencies["lifecycle"]; debugEvents: Pick<ReturnType<typeof createDebugEventWriter>, "emit"> }) {
+export function composeDashboardTimeline(input: { database: AuthorityDatabase; clock: Clock; loggingRepository: Parameters<typeof createNoteTimelineWriter>[0]["repository"]; projection: ReturnType<typeof createOperatorProjection>; startupCleanups: StartupCleanup[]; admission: RuntimeAdmission; readLanes?: DashboardReadLanes; logs?: Pick<LogWriter, "ready" | "committedRevision">; lifecycle: DiagnosticRetentionSweepDependencies["lifecycle"]; debugEvents: Pick<ReturnType<typeof createDebugEventWriter>, "emit"> }) {
   const { database, clock, loggingRepository, projection, startupCleanups, admission, readLanes, lifecycle, debugEvents } = input;
   const noteWriter = createNoteTimelineWriter({ repository: loggingRepository, clock });
 
@@ -84,7 +85,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   const startupWorkers = workerRevision();
   let startupTimeline = startupTimelineRevision();
   let observed = revision();
-  let observedLog = input.logRevision?.();
+  let observedLog = input.logs?.committedRevision();
   let lastWall = clock.nowMs(), leaseExpiry = Infinity;
   let safetyAt = clock.monotonicMs() + 60_000;
 
@@ -108,8 +109,10 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       return { readUnchanged: current !== undefined && current === workersAtStart,
         startupUnchanged: current !== undefined && current === startupWorkers };
     };
-    pending = projection.pollBackground(request => reader.read(input.logRevision === undefined ? request : { ...request, readLogFiles: true },
-      stopping.signal), now, workerRevisionState).then(expiry => {
+    pending = projection.pollBackground(async request => {
+      await input.logs?.ready;
+      return reader.read(input.logs === undefined ? request : { ...request, readLogFiles: true }, stopping.signal);
+    }, now, workerRevisionState).then(expiry => {
       observation?.(expiry === undefined ? "superseded" : "completed");
       if (expiry === undefined) {
         key = { state: "retry" };
@@ -145,7 +148,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       const degraded = projection.health().state === "degraded";
       const current = safety || leaseDue || degraded ? database.capturedChangeKey() : database.pollCapturedChangeKey();
       const unchanged = !("state" in key) && key.changeLogSeq === current.changeLogSeq && key.schemaCookie === current.schemaCookie;
-      const currentLog = input.logRevision?.();
+      const currentLog = input.logs?.committedRevision();
       const logChanged = currentLog !== observedLog;
       if (unchanged && !logChanged && !safety && !leaseDue && !degraded) {
         lastWall = now;
@@ -154,7 +157,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       if (pending !== undefined) {
         checkAfterRead = true;
         // Initial worker validation can take longer than the timeline's publication deadline.
-        if (input.logRevision === undefined && initialRead && !degraded && !unchanged) {
+        if (input.logs === undefined && initialRead && !degraded && !unchanged) {
           const nextTimeline = startupTimelineRevision();
           if (nextTimeline === undefined || nextTimeline !== startupTimeline) projection.ingestFromTimeline();
           startupTimeline = nextTimeline;

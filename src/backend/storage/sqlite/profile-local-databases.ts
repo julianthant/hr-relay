@@ -575,6 +575,7 @@ export function openLogDatabases(statePath: string, root: string) {
       return { ...sidecar, cursorOffset: isTimeline ? offset : 0, history: isTimeline ? archiveIdentity : "",
         sourceRow: state.prepare(`SELECT * FROM ${source} WHERE cursor=? AND ${predicate}`),
         sourceRows: state.prepare(`SELECT * FROM ${source} WHERE ${predicate} ORDER BY cursor`),
+        sourceRange: state.prepare(`SELECT * FROM ${source} WHERE cursor>? AND cursor<=? AND ${predicate} ORDER BY cursor`),
         sourcePosition: state.prepare("SELECT coalesce((SELECT seq FROM main.sqlite_sequence WHERE name=?),0) AS cursor"),
       };
     });
@@ -606,11 +607,18 @@ export function openLogDatabases(statePath: string, root: string) {
         }
       }),
       apply: (mutations: readonly LogMutation[]) => inTransaction(state, "BEGIN", () => {
-        for (const { db, table, sourceRow, append, read, remove, removeRun, advance, cursorOffset } of tables) {
+        for (const { db, table, sourceRow, sourceRange, append, read, remove, removeRun, position, advance, cursorOffset } of tables) {
           const relevant = mutations.filter(mutation => mutation.kind === "purge-runs"
             || (mutation.kind === "remove" ? mutation.table === table : (mutation.row.payload.kind === "debug") === (table === "debug_events")));
           if (!relevant.length) continue;
           inTransaction(db, "BEGIN IMMEDIATE", () => {
+            const { cursor: after } = LogPositionSchema.extend({ history: z.string() }).parse(position.get());
+            const through = relevant.reduce((cursor, mutation) => mutation.kind === "append" ? Math.max(cursor, mutation.row.cursor + cursorOffset) : cursor, after);
+            // Different workers can publish their SQLite cursors out of order. Close the range before advancing the tail.
+            if (through > after) {
+              for (const row of sourceRange.iterate(after, through)) append(read(row), row.payload_json);
+              advance.run(through);
+            }
             for (const mutation of relevant) {
               if (mutation.kind === "remove") for (const cursor of mutation.cursors) remove.run(cursor + cursorOffset);
               else if (mutation.kind === "purge-runs") for (const runId of mutation.runIds) removeRun.run(runId);
@@ -620,8 +628,6 @@ export function openLogDatabases(statePath: string, root: string) {
                 if (source === undefined) continue;
                 const committed = read(source);
                 if (canonicalJsonStringify({ ...mutation.row, cursor }) !== canonicalJsonStringify(committed)) throw new Error("log-database-source-mismatch");
-                append(committed, source.payload_json);
-                advance.run(cursor);
               }
             }
           });

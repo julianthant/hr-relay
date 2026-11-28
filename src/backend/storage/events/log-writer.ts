@@ -74,7 +74,7 @@ export function startLogWriter(input: { statePath: string; root: string; onFault
       if (failure !== undefined) throw failure;
       return through;
     },
-    async waitForPending() {
+    waitForPending: async () => {
       await ready.promise;
       if (failure !== undefined) throw failure;
       if (through === sent) return;
