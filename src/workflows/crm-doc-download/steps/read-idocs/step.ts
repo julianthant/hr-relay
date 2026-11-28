@@ -76,7 +76,7 @@ export function buildReadIdocs(author: WorkflowAuthor<typeof CrmDocDownloadInput
     (input: z.output<typeof CrmDocumentRecordsSchema>) => input);
   const dependencies = reference === undefined ? [search.records] as const : [search.records, reference.choice] as const;
   const documents = author.task(call.identity, dependencies, ({ outputs }) => call.bind({ input: outputs["document-records"] }));
-  return { documents, steps: [[group, [documents]]] as const,
+  return { documents, steps: [[reference === undefined ? group : author.group(group, { manual: CRM_DOCUMENT_READ_IDOCS_MANUAL }), [documents]]] as const,
     result: author.result(CrmDownloadedPeopleSchema, [documents], ({ outputs }) => outputs["document-pdfs"]) };
 }
 
@@ -87,7 +87,7 @@ export const crmDocumentReadIdocsDefinition = defineStep({
     build: (parent: WorkflowDefinition<typeof CrmDocDownloadInput>) => ({
       ...inheritStepProof(parent), code: "cdd", label: group.label, summary: "Proves identity-bound iDocs downloads and retained PDF artifacts for the batch.",
       steps: (author: WorkflowAuthor<typeof CrmDocDownloadInput>) => {
-        const search = buildSearchRecords(author), downloaded = buildReadIdocs(author, search);
+        const search = buildSearchRecords(author, false), downloaded = buildReadIdocs(author, search);
         return { steps: [...search.steps, ...downloaded.steps], result: downloaded.result };
       },
     }),

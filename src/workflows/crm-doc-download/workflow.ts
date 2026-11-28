@@ -1,15 +1,14 @@
-import { defineWorkflow, type WorkflowTimelineTuple } from "../../workflow-kit/workflow-definition.js";
+import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
-import type { StepManualDeclaration } from "../../models/workflow/step-omission.js";
 import { CrmDocDownloadInput, CrmDocDownloadCanonicalInput, CRM_DOCUMENT_INPUT_PARSER } from "../../models/workflows/crm-doc-download/input.js";
 import { ONBOARDING_ROSTER_TYPE_ID } from "../../models/workflows/onboarding/roster.js";
 import { CRM_DOCUMENT_ROSTER_FIELDS } from "../../models/workflows/crm-doc-download/documents.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import { CRM_DOCUMENT_SEARCH_MANUAL, crmDocumentSearchRecordsDefinition } from "./steps/search-records/step.js";
-import { CRM_DOCUMENT_REFERENCE_MANUAL, crmDocumentReferenceDefinition } from "./steps/reference/step.js";
-import { CRM_DOCUMENT_READ_IDOCS_MANUAL, crmDocumentReadIdocsDefinition } from "./steps/read-idocs/step.js";
-import { CRM_DOCUMENT_PACKAGE_MANUAL, crmDocumentPackageWorksheetsDefinition } from "./steps/package-worksheets/step.js";
+import { crmDocumentSearchRecordsDefinition } from "./steps/search-records/step.js";
+import { crmDocumentReferenceDefinition } from "./steps/reference/step.js";
+import { crmDocumentReadIdocsDefinition } from "./steps/read-idocs/step.js";
+import { crmDocumentPackageWorksheetsDefinition } from "./steps/package-worksheets/step.js";
 
 const packageStep = crmDocumentPackageWorksheetsDefinition.group.key;
 
@@ -41,16 +40,6 @@ export const crmDocDownloadWorkflow = defineWorkflow({
     const reference = crmDocumentReferenceDefinition.build(author, search);
     const downloaded = crmDocumentReadIdocsDefinition.build(author, search, reference);
     const packaged = crmDocumentPackageWorksheetsDefinition.build(author, downloaded, reference);
-    const omittable = ([group, members]: WorkflowTimelineTuple, manual: StepManualDeclaration): WorkflowTimelineTuple =>
-      [author.group(group, { manual }), members];
-    return {
-      steps: [
-        omittable(search.steps[0], CRM_DOCUMENT_SEARCH_MANUAL),
-        omittable(reference.steps[0], CRM_DOCUMENT_REFERENCE_MANUAL),
-        omittable(downloaded.steps[0], CRM_DOCUMENT_READ_IDOCS_MANUAL),
-        omittable(packaged.steps[0], CRM_DOCUMENT_PACKAGE_MANUAL),
-      ],
-      result: packaged.result,
-    };
+    return { steps: [...search.steps, ...reference.steps, ...downloaded.steps, ...packaged.steps], result: packaged.result };
   },
 });

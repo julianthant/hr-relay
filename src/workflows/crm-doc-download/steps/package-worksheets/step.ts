@@ -91,7 +91,7 @@ export function buildPackageWorksheets(author: WorkflowAuthor<typeof CrmDocDownl
     [downloaded.documents, reference.rows, reference.choice], ({ outputs }) => ({ people: bindCrmWorksheetPeople(
       outputs["document-pdfs"], outputs["document-rows"], outputs["document-row-choice"]),
     }));
-  return { archives, steps: [[group, [archives]]] as const,
+  return { archives, steps: [[author.group(group, { manual: CRM_DOCUMENT_PACKAGE_MANUAL }), [archives]]] as const,
     result: author.result(resultSchema, [archives], ({ outputs }) => outputs["worksheet-archives"] ?? { state: "omitted", step: group.key }) };
 }
 

@@ -102,11 +102,11 @@ const group = Object.freeze({
   } as const,
 } as const);
 
-export function buildSearchRecords(author: WorkflowAuthor<typeof CrmDocDownloadInput>) {
+export function buildSearchRecords(author: WorkflowAuthor<typeof CrmDocDownloadInput>, allowManual = true) {
   const call = reuseTask(group, { id: "document-records", contract: CrmSearchDocumentRecords, replay: "checkpoint" },
     (input: CrmDocDownloadInputValue) => ({ subjects: input.people }));
   const records = author.task(call.identity, [], call.bind);
-  return { records, steps: [[group, [records]]] as const,
+  return { records, steps: [[allowManual ? author.group(group, { manual: CRM_DOCUMENT_SEARCH_MANUAL }) : group, [records]]] as const,
     result: author.result(CrmDocumentRecordsSchema, [records], ({ outputs }) => outputs["document-records"]) };
 }
 
@@ -116,7 +116,7 @@ export const crmDocumentSearchRecordsDefinition = defineStep({
   proof: { id: "crm-doc-download-search-records", order: 21,
     build: (parent: WorkflowDefinition<typeof CrmDocDownloadInput>) => ({
       ...inheritStepProof(parent), code: "cds", label: group.label, summary: "Proves exact-identity CRM record selection for the complete submitted batch.",
-      steps: buildSearchRecords,
+      steps: (author: WorkflowAuthor<typeof CrmDocDownloadInput>) => buildSearchRecords(author, false),
     }),
   },
 });

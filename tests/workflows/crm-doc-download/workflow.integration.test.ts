@@ -210,6 +210,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       const reader = testRunService(f.db, f.clock), descriptors = { resolve: (id: string) => id === descriptor.id ? descriptor : undefined };
       const projection = createOperatorProjection({ database: f.db, reader, descriptors, stateRoot: f.root, clock: f.clock,
         appVersion: "fixture", descriptorSetHash: descriptor.contractFingerprint, ledger: createTransactionHistory(f.db.authority) });
+      projection.ingestFromTimeline();
       const deps = createOperatorRunDetail({ database: f.db, runReader: reader, projection, stateRoot: f.root });
       const logs = buildRunSection(deps, runId, "logs"); assert.equal(logs.section, "logs");
       const view = projectRunLogs({ detail: buildRunDetail(deps, runId), logs: logs.payload, sections: [], unavailableEvidence: [] },
