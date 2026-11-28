@@ -41,6 +41,7 @@ export type StepOmissionField = z.infer<typeof StepOmissionFieldSchema>;
 
 export const StepOmissionFormSchema = z.strictObject({
   format: z.literal("i9-signer-result").optional(),
+  allOrNone: z.literal(true).optional(),
   fields: z.array(StepOmissionFieldSchema).superRefine((fields, ctx) => {
     const seen = new Set<string>();
     for (const field of fields) {
@@ -54,7 +55,8 @@ export const StepOmissionFormSchema = z.strictObject({
       }
     }
   }),
-});
+}).refine(form => form.allOrNone !== true || form.fields.length >= 2 && form.fields.every(field => field.optional === true),
+  { path: ["allOrNone"], message: "An all-or-none form needs at least two fields, all optional." });
 export type StepOmissionForm = z.infer<typeof StepOmissionFormSchema>;
 
 const US_DATE_PATTERN = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/u;
@@ -91,13 +93,17 @@ export function stepOmissionFieldFactSchema(field: StepOmissionField, input?: St
 
 /** ONE strict facts schema per form — every key is present; absence is a refusal, not a default. */
 export function stepOmissionFactsSchema(form: StepOmissionForm, input?: StepOmissionInput): z.ZodObject<Record<string, z.ZodType<JsonValue>>> {
-  const { fields, format } = StepOmissionFormSchema.parse(form);
+  const { fields, format, allOrNone } = StepOmissionFormSchema.parse(form);
   const shape: Record<string, z.ZodType<JsonValue>> = {};
   for (const field of fields) shape[field.key] = stepOmissionFieldFactSchema(field, input);
   return z.strictObject(shape).superRefine((facts, ctx) => {
+    const requireAll = allOrNone === true && fields.some(field => facts[field.key] !== null);
     for (const field of fields) {
+      if (facts[field.key] !== null) continue;
       const condition = field.requiredWhen;
-      if (condition !== undefined && facts[condition.field] === condition.equals && facts[field.key] === null) {
+      if (requireAll) {
+        ctx.addIssue({ code: "custom", path: [field.key], message: "Enter all fields or leave them all blank." });
+      } else if (condition !== undefined && facts[condition.field] === condition.equals) {
         ctx.addIssue({ code: "custom", path: [field.key], message: "Enter a value for the selected choice." });
       }
     }

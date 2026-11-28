@@ -74,6 +74,22 @@ it("requires both matched-person values before starting", () => {
   assert.ok(stepEntries([rowOpenFold(row, row.form, { status: "not-found", eid: "", name: "" })]));
 });
 
+it("accepts a complete employment candidate or no candidate before starting", () => {
+  const rows = startRowsOf({ steps: projectStartSteps(descriptor), rows: projectStartRows(descriptor).map(startRowWire) });
+  const row = rows.find(candidate => candidate.key === "ucpath-dates");
+  assert.ok(row?.form);
+  const form = row.form;
+  const complete = { emplId: "10812345", name: "Example Person", hireDate: "06/15/2020" };
+  const blank = { emplId: "", name: "", hireDate: "" };
+  for (const key of ["emplId", "name", "hireDate"] as const) {
+    assert.equal(stepEntries([rowOpenFold(row, form, { ...blank, [key]: complete[key] })]), null);
+    assert.equal(stepEntries([rowOpenFold(row, form, { ...complete, [key]: "" })]), null);
+  }
+  const entry = { workflow: "i9-check", step: "person-lookup" };
+  assert.deepEqual(stepEntries([rowOpenFold(row, form, complete)]), [{ ...entry, facts: complete }]);
+  assert.deepEqual(stepEntries([rowOpenFold(row, form, blank)]), [{ ...entry, facts: { emplId: null, name: null, hireDate: null } }]);
+});
+
 it.each(["roster-reference", "retention", "publication"])("keeps the steps needed to rerun a failed %s", failed => {
   const workflow: RunStartWorkflow = {
     workflowId: "i9-check-start", version: descriptor.version, label: "I-9 Check", categoryId: "operations",

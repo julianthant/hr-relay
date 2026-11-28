@@ -14,12 +14,11 @@ import { i9CheckPersonMatchDefinition, personMatchEntries } from "../person-matc
 const CandidateFactsSchema = z.strictObject({ emplId: EidSchema.nullable(), name: z.string().min(1).nullable(), hireDate: UsDateFactSchema.nullable() });
 const CANDIDATES_MANUAL: StepManualDeclaration = {
   off: "values",
-  form: { fields: [
+  form: { allOrNone: true, fields: [
     { key: "emplId", label: "UCPath Employee ID", kind: "eid", optional: true, help: "Leave all three fields blank when UCPath shows no person by this name.", replaces: { nodeId: "employment-candidates", path: "candidates.0.emplId" } },
     { key: "name", label: "UCPath name", kind: "text", optional: true, replaces: { nodeId: "employment-candidates", path: "candidates.0.name" } },
     { key: "hireDate", label: "UCPath hire date", kind: "us-date", optional: true, help: "This candidate decides the identity only when Match person in UCPath did not find one person.", replaces: { nodeId: "employment-candidates", path: "candidates.0.hireDate" } },
   ] },
-  refine: facts => Object.values(facts).every(value => value === null) ? [] : ["emplId", "name", "hireDate"].filter(field => facts[field] === null).map(field => ({ field, message: "Enter all three candidate fields or leave all three blank." })),
   produces: {
     "employment-candidates": ({ facts }) => {
       const typed = CandidateFactsSchema.parse(facts);
