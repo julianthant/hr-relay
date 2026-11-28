@@ -11,12 +11,10 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 
 vi.mock("../../../../src/backend/storage/admission/admission-identity.js", () => ({ requireRuntimeAdmission: (input: unknown) => input }));
 vi.mock("../../../../src/backend/storage/sqlite/backup-inspection.js", () => ({ inspectVerifiedBackupCopyReadOnly: vi.fn() }));
-vi.mock("../../../../src/backend/storage/events/log-writer.js", () => ({
-  startLogWriter: ({ root }: { root: string }) => ({
-    ready: Promise.resolve().then(() => {
-      for (const name of ["timeline.db", "dashboard.db"]) writeFileSync(join(root, name), name, { mode: 0o600 });
-    }),
-    close: () => Promise.resolve(),
+vi.mock("../../../../src/backend/storage/sqlite/backup-inspection-worker.js", async actual => ({
+  ...await actual<typeof import("../../../../src/backend/storage/sqlite/backup-inspection-worker.js")>(),
+  buildBackupLogsOffThread: (_source: string, root: string) => Promise.resolve().then(() => {
+    for (const name of ["timeline.db", "dashboard.db"]) writeFileSync(join(root, name), name, { mode: 0o600 });
   }),
 }));
 

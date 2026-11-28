@@ -135,11 +135,12 @@ export async function backupLogFileMatches(path: string, expected: Readonly<{ by
   if (metadata === undefined || !metadata.isFile() || BigInt(metadata.nlink) !== 1n
     || privatePathRejects(path, metadata, "owner") || BigInt(metadata.size) !== BigInt(expected.byteSize)
     || sqliteCompanions.some(suffix => fileStatus(path + suffix, true) !== undefined)) return false;
-  try { return await sha256File(path) === expected.sha256; }
+  let digest: string | undefined;
+  try { digest = await sha256File(path); }
   catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
-    throw error;
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
   }
+  return digest === expected.sha256;
 }
 
 export async function verifyBackupLogFile(path: string, expected: Readonly<{ byteSize: number; sha256: string }>): Promise<void> {

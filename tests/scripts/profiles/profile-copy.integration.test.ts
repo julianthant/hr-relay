@@ -62,10 +62,10 @@ it("imports the newest production workbook library into the independently signed
     const query = `SELECT cursor,id,payload_json FROM ${table} ORDER BY cursor`;
     expect(mirror.prepare(query).all()).toEqual(local.prepare(query).all());
   }
-  const companion = `${backup.backupPath}.timeline.db`;
+  const companion = backup.manifestPath.replace(/\.manifest\.json$/u, ".timeline.db");
   const original = readFileSync(companion);
   writeFileSync(companion, "tampered log backup");
-  await expect(importProfileLibrary(options, lock)).rejects.toThrow(/byte size|checksum/u);
+  await expect(importProfileLibrary(options, lock)).rejects.toThrow(/authority-backup-snapshot-digest-mismatch/u);
   writeFileSync(companion, original);
 
   const schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION + 1;

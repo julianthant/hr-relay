@@ -72,8 +72,8 @@ it("preserves each run's state order when four runs send interleaved notes", asy
   const writer = startLogWriter({ statePath: path, root: stateRoot, onFault: () => {} });
   const channels = Array.from({ length: 4 }, () => {
     const child = createWorkerLogChannel();
-    const receiver = createWorkerLogReceiver(writer, child.receive, child.fail);
-    child.attach(receiver.receive);
+    const receiver = createWorkerLogReceiver(writer, message => child.receive(message), child.fail);
+    child.attach(message => receiver.receive(message));
     return { child, receiver };
   });
   const channelByRun = new Map<string, ReturnType<typeof createWorkerLogChannel>>();

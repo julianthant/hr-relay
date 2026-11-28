@@ -1,3 +1,4 @@
+import { WorkerLogMessageSchema } from "../../../../src/backend/runtime/workers/worker-messages.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import * as privateFiles from "../../../../src/backend/storage/configuration/credential-safe-file.js";
@@ -365,7 +366,19 @@ describe("composed worker runtime", () => {
     let routed = false, reported: unknown;
     try {
       Object.defineProperty(process, "send", { configurable: true, writable: true,
-        value: (_message: unknown, _handle: unknown, _options: unknown, callback?: (error: Error | null) => void) => { callback?.(null); return true; } });
+        value: (message: unknown, _handle: unknown, _options: unknown, callback?: (error: Error | null) => void) => {
+          callback?.(null);
+          const fromWorker = WorkerLogMessageSchema.safeParse(message);
+          const log = fromWorker.data;
+          if (log?.kind === "worker-log-append") {
+            queueMicrotask(() => process.emit("message", { kind: "worker-log-ack", throughSeq: log.seq }, undefined));
+          } else if (log?.kind === "worker-log-flush") {
+            queueMicrotask(() => process.emit("message", { kind: "worker-log-flushed", requestId: log.requestId, throughSeq: log.throughSeq }, undefined));
+          } else if (typeof message === "object" && message !== null && "kind" in message && message.kind === "worker-ready") {
+            queueMicrotask(() => process.emit("message", { kind: "worker-log-enabled" }, undefined));
+          }
+          return true;
+        } });
       Object.defineProperty(process, "connected", { configurable: true, get: () => true });
       Object.defineProperty(process, "disconnect", { configurable: true, writable: true, value: () => undefined });
       reported = await composeWorkerRuntime({
