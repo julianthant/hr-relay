@@ -36,7 +36,8 @@ afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose
 afterAll(() => profiles.close());
 
 const Input = z.strictObject({ eid: EidSchema });
-const Output = z.strictObject({ transactionId: z.string().min(1).nullable() });
+const Output = z.strictObject({ transactionId: z.string().min(1) });
+const ManualImportOutput = Output.extend({ transactionId: Output.shape.transactionId.nullable() });
 const Pair = z.strictObject({ eid: EidSchema });
 const EID_A = "10800001", EID_B = "10800002";
 const common = { version: 1, icon: "ShieldCheck" as const, category: "operations" as const, input: Input,
@@ -46,17 +47,24 @@ const common = { version: 1, icon: "ShieldCheck" as const, category: "operations
   role: defineWorkflowRole({ kind: "standalone" }) };
 const policy = { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" } as const;
 
-const writeChild = compileWorkflow(defineWorkflow({ ...common, id: "child-phases-write", code: "cpw", label: "Child phases write",
-  scenarios: ["write-fixture/happy"], steps: ({ transaction, group, result }) => {
-    const write = transaction({ id: "write", label: "Write", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
-      dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 }, [], {
-      prepareBind: ({ input }) => input, commitBind: ({ input }) => input,
-    });
-    const step = group({ key: "write", label: "Import" }, { manual: {
-      off: "manual", form: { fields: [] }, produces: {}, skips: ["write"], skipsGatesAndTransactions: true,
-    } });
-    return { steps: [[step, [write]]], result: result(Output, [write], ({ outputs }) => outputs.write?.output ?? { transactionId: null }) };
-  } })).descriptor;
+function writeChildFixture(id: string, withOmission: boolean) {
+  return compileWorkflow(defineWorkflow({ ...common, id, code: "cpw", label: "Child phases write",
+    scenarios: ["write-fixture/happy"], steps: ({ transaction, group, result }) => {
+      const write = transaction({ id: "write", label: "Write", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
+        dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 }, [], {
+        prepareBind: ({ input }) => input, commitBind: ({ input }) => input,
+      });
+      const step = { key: "write", label: "Write" };
+      const writeStep = withOmission ? group(step, { manual: {
+        off: "manual", form: { fields: [] }, produces: {}, skips: ["write"], skipsGatesAndTransactions: true,
+      } }) : step;
+      return { steps: [[writeStep, [write]]],
+        result: result(withOmission ? ManualImportOutput : Output, [write], ({ outputs }) => outputs.write?.output ?? { transactionId: null }) };
+    } })).descriptor;
+}
+
+const writeChild = writeChildFixture("child-phases-write", false);
+const manualImportChild = writeChildFixture("child-phases-manual-import", true);
 
 /** Two read nodes in one step: the first fails for the second person, the second fails for the first. */
 const pairChild = compileWorkflow(defineWorkflow({ ...common, id: "child-phases-pair", code: "cpp", label: "Child phases pair",
@@ -142,9 +150,9 @@ const facts = (nodes: readonly { phase?: string; state: string; reason: string }
 
 describe("child step facts over a transaction's phases and several child runs", () => {
   it("keeps a delegated Import done outside Relay off when Rerun opens", async () => {
-    const target = { workflow: writeChild.id, step: "write" };
+    const target = { workflow: manualImportChild.id, step: "write" };
     const row: StartRowDeclaration = { key: "import", label: "Import", members: [target], target };
-    const h = await harness(writeChild, Output, [WRITE_FIXTURE_EID], [members, row]);
+    const h = await harness(manualImportChild, ManualImportOutput, [WRITE_FIXTURE_EID], [members, row]);
     const run = await runThrough(h, false, [{ ...target, facts: {} }]);
     assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify(run.lifecycle));
     const [child] = h.database.authority.runs.listChildren(run.envelope.runId);
