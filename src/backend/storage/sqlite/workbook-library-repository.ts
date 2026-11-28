@@ -322,6 +322,43 @@ export const WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION = Object.freeze({ version: 3
   `ALTER TABLE workbook_library_state ADD COLUMN sync_json TEXT CHECK(sync_json IS NULL OR json_valid(sync_json))`,
 ]) });
 
+export const WORKBOOK_VERSION_NAMES_CONVERSION_ID = 'workbook-version-names:v1';
+export const WORKBOOK_VERSION_NAMES_MIGRATION = Object.freeze({ version: 48, statements: Object.freeze([
+  `SELECT '${WORKBOOK_VERSION_NAMES_CONVERSION_ID}'`,
+]) });
+
+function versionNames(versions: WorkbookLibraryState['versions']): Set<string> {
+  return new Set(versions.map(version => version.name.trim()));
+}
+
+function availableVersionName(name: string, names: ReadonlySet<string>): string {
+  const base = name.trim();
+  if (!names.has(base)) return name;
+  let suffix = 2;
+  while (names.has(`${base} (${suffix})`)) suffix++;
+  return `${base} (${suffix})`;
+}
+
+export function migrateWorkbookVersionNames(database: DatabaseSync): void {
+  const update = database.prepare('UPDATE workbook_library_state SET payload_json=? WHERE id=?');
+  const Row = z.strictObject({ id: z.string(), payload_json: z.string() });
+  for (const raw of database.prepare('SELECT id,payload_json FROM workbook_library_state ORDER BY id').all()) {
+    const row = Row.parse(raw), state = WorkbookLibraryStateSchema.parse(JSON.parse(row.payload_json));
+    const reserved = versionNames(state.versions);
+    if (reserved.size === state.versions.length) continue;
+    const seen = new Set<string>();
+    for (const version of state.versions) {
+      const name = version.name.trim();
+      if (seen.has(name)) {
+        version.name = availableVersionName(name, reserved);
+        reserved.add(version.name);
+      }
+      seen.add(name);
+    }
+    update.run(canonicalJsonStringify(state), row.id);
+  }
+}
+
 /**
  * Before schema 13 each library row has one history row for every version 1 to its own, and the latest is the live record.
  * Migration 13 builds the creation record and named versions from that history, so a gap or a differing latest record refuses the upgrade first.
@@ -712,7 +749,8 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
             if (snapshotId !== undefined) changes++;
             putLibraryState({ ...state, revision: state.revision + 1,
               ...(snapshotId === undefined ? {} : { selectedVersionId: versionId,
-                versions: [...state.versions, { id: versionId, snapshotId, name: operation.source.kind === 'sync' ? 'Synced from SharePoint' : `Saved revision ${updated.version}`,
+                versions: [...state.versions, { id: versionId, snapshotId,
+                  name: availableVersionName(operation.source.kind === 'sync' ? 'Synced from SharePoint' : `Saved revision ${updated.version}`, versionNames(state.versions)),
                   version: updated.version, savedAt: updated.savedAt, source: operation.source.kind === 'sync' ? 'sharepoint' : operation.source.kind === 'run' || operation.source.kind === 'run-reference' ? 'workflow' : 'operator' }] }) });
             changes++;
           }
@@ -1053,6 +1091,9 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
           return version;
         };
         if (change.kind === 'create-version') {
+          const names = versionNames(state.versions);
+          if (change.from.kind !== 'sharepoint' && names.has(change.name.trim())) throw new WorkbookLibraryError('WORKBOOK_VERSION_NAME_EXISTS');
+          const name = availableVersionName(change.name, names);
           let version: number, snapshotId: string;
           if (change.from.kind === 'sharepoint') {
             const meta = metadata(id);
@@ -1083,7 +1124,7 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
               change: { kind: 'save', expectedVersion: before.version, workbook: { ...snapshot.workbook, name: before.workbook.name } } });
             next.versions = [...state.versions];
           }
-          next.versions.push({ id: action.operationId, snapshotId, name: change.name, version, savedAt: at,
+          next.versions.push({ id: action.operationId, snapshotId, name, version, savedAt: at,
             source: change.from.kind === 'sharepoint' ? 'sharepoint' : 'operator' });
           next.selectedVersionId = change.useNow ? action.operationId : state.selectedVersionId;
         } else if (change.kind === 'sync') {
@@ -1092,6 +1133,9 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
             change: { kind: 'sync', expectedVersion: before.version, workbook: sharePointWorkbook } });
         } else if (change.kind === 'rename-version') {
           selected(change.versionId);
+          if (state.versions.some(version => version.id !== change.versionId && version.name.trim() === change.name.trim())) {
+            throw new WorkbookLibraryError('WORKBOOK_VERSION_NAME_EXISTS');
+          }
           next.versions = next.versions.map(version => version.id === change.versionId ? { ...version, name: change.name } : version);
         } else if (change.kind === 'delete-version') {
           const version = selected(change.versionId);

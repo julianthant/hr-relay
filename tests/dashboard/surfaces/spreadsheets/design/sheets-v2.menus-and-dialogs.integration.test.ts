@@ -143,6 +143,19 @@ it('creates a version from another version under a name', async () => {
   assert.deepEqual(lastChange(), { kind: 'create-version', name: 'Before audit', from: { kind: 'version', versionId: 'v2' }, useNow: false });
 });
 
+it.each(['Create', 'Rename'] as const)('shows the saved-version name refusal after %s', async action => {
+  wiring.adapter.changeLibrary = vi.fn(async () => ({ state: 'refused', message: 'A version with this name exists.' }));
+  await openVersions();
+  if (action === 'Create') await click(byText('button', 'New version'));
+  else await click(document.body.querySelector('button[aria-label="Rename v1"]'));
+  await type(document.body.querySelector('input[aria-label="Name"]'), 'v2');
+  await click(byText('button', action));
+  assert.deepEqual(lastChange(), action === 'Create'
+    ? { kind: 'create-version', name: 'v2', from: { kind: 'version', versionId: 'v2' }, useNow: false }
+    : { kind: 'rename-version', versionId: 'v1', name: 'v2' });
+  assert.ok(byText('[data-slot="toast-description"]', 'A version with this name exists.'));
+});
+
 it('creates a version from a chosen non-current version', async () => {
   await openVersions();
   await click(byText('button', 'New version'));
@@ -213,6 +226,7 @@ it('creates a version from SharePoint when the spreadsheet is linked', async () 
   await type(document.body.querySelector('input[aria-label="Name"]'), 'Fresh pull');
   await click(byText('button', 'Create'));
   assert.deepEqual(lastChange(), { kind: 'create-version', name: 'Fresh pull', from: { kind: 'sharepoint' }, useNow: false });
+  assert.ok(byText('[data-slot="toast-title"]', 'Created the version'));
 });
 
 it('renames a version', async () => {
