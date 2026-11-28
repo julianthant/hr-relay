@@ -14,7 +14,7 @@ import { createOperatorProjection, createOperatorRunDetail } from "../../../src/
 import { readRunDetail } from "../../../src/backend/runs/queries/run-detail.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { PersonLookupResultSchema } from "../../../src/models/workflows/person-lookup/result.js";
-import { descriptorSetHash, SERVER_REGISTRY } from "../../../src/backend/app/registries/workflow-registry.js";
+import { descriptorSetHash, READABLE_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 const world = createI9CheckStartWorld();
@@ -25,7 +25,7 @@ const ChildResultSchema = z.looseObject({ identity: I9IdentitySchema });
 const ROW_ONLY_NAME = "Zebedee Quillfeather";
 /** Holds both people; Blair's row carries another name. */
 const ROSTER = { name: "Fall roster", sheet: "Hires", fields: ["eid", "fullName", "dob"],
-  rows: [["10000001", "Avery Example", "2000-01-15"], ["10000002", ROW_ONLY_NAME, "2000-01-15"]] };
+  rows: [["10000001", "Avery Example", "2001-02-03"], ["10000002", ROW_ONLY_NAME, "2001-02-03"]] };
 /** Holds Avery only and has no name column. */
 const BADGES = { name: "Badge list", sheet: "Issued", fields: ["eid"], rows: [["10000001"]] };
 
@@ -56,7 +56,7 @@ async function fixture(options: Parameters<typeof world.fixture>[0] = {}) {
   const cardContext = async (run: RunRecord) => {
     const { stateRoot } = f.admission;
     const reader = testRunService(f.database, f.clock);
-    const descriptors = { resolve: (id: string) => SERVER_REGISTRY[id]?.descriptor };
+    const descriptors = { resolve: (id: string) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor };
     const projection = createOperatorProjection({ database: f.database, stateRoot, clock: f.clock, reader, appVersion: "0.1.0",
       descriptorSetHash: descriptorSetHash([run.envelope.contractFingerprint]), ledger: createTransactionHistory(f.database.authority), descriptors });
     projection.ingestFromTimeline();
@@ -122,7 +122,7 @@ describe("I-9 Check reference spreadsheet check", () => {
 
   it("compares the earlier DOB at lookup and stops a dry run at the later Action History separation date", async () => {
     const f = await fixture({ dryRun: true, checks: [{ ...ROSTER, fields: ["eid", "dob", "separationDate"],
-      rows: [["10000001", "2000-01-15", "2024-01-01"], ["10000002", "2000-01-15", "2024-01-02"]] }] });
+      rows: [["10000001", "2001-02-03", "2024-01-01"], ["10000002", "2001-02-03", "2024-01-02"]] }] });
     await f.runToEnd();
     const parked = f.people().find(child => child.lifecycle.state === "parked-gate");
     assert.ok(parked?.lifecycle.state === "parked-gate");
