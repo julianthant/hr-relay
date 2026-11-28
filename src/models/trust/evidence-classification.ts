@@ -636,6 +636,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...[workflowResult("emergency-contact"), workflowResult("emergency-contact-members"), taskOutput("workflow:emergency-contact/read-result")].flatMap(scope => [
     ...approvedOcrReferenceLeaves(scope, "approval."), ...ocrPrivateLeaves(scope, "members"),
   ]),
+  ...["emergency-contact", "emergency-contact-members"].flatMap(id => open(workflowResult(id), "state", "reason")),
   ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-people"), "people"),
   ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-requests"), "people", "children"),
   ...i9ReferenceLeaves(taskOutput("workflow:i9-check-start/read-requests")),

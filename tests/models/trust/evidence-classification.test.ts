@@ -18,13 +18,24 @@ import {
 EvidenceFieldClassificationSchema,
 classifyEvidenceLeaf,
 evidenceLeaves,
+redactEvidenceLeaf,
 } from "../../../src/models/trust/evidence-classification.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
+import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import {
 WriteFixtureCommit,
 WriteFixtureSaveCommit,
 } from "../../support/fixtures/write-sequencer-fixtures.js";
+
+it.each(["emergency-contact", "emergency-contact-members"])("serves the %s stopped result as safe diagnostic evidence", id => {
+  const scope = { kind: "workflow-result", workflowId: WorkflowIdSchema.parse(id) } as const;
+  const result = { state: "stopped", reason: "existing-contacts-not-read" };
+  for (const leaf of evidenceLeaves(result)) {
+    assert.partialDeepStrictEqual(classifyEvidenceLeaf(scope, leaf.path), { classification: "safe-diagnostic", transform: "allow" });
+    assert.partialDeepStrictEqual(redactEvidenceLeaf(scope, leaf), { value: leaf.value });
+  }
+});
 
 /* ── the write-proof redaction table is total over every commit contract ─── */
 

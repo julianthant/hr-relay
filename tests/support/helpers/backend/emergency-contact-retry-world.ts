@@ -246,11 +246,11 @@ export function createEmergencyContactRetryWorld() {
     }) });
     return { control, hooks, persistence, sessions, approvedReader, accountingStore, member, now, tickCount: () => ticks, approvedReadFailed: () => approvedReadFailed, filing, clock };
   }
-  async function build(options: RetryOptions, startSteps?: OcrFixtureStartSteps) {
+  async function build(options: RetryOptions, startSteps?: OcrFixtureStartSteps, dryRun = false) {
     const live = pieces({ ...options, onFencedSave: undefined }, await onbaseFilingFixture());
     live.filing.next.unavailable = options.filingFailures ?? 0;
     const ids = sequentialIdFactory("b");
-    const f = await world.fixture({ ids, coordinator: true, member: live.member, approvedStore: live.accountingStore, documentBytes: live.filing.bytes,
+    const f = await world.fixture({ ids, coordinator: true, member: live.member, approvedStore: live.accountingStore, documentBytes: live.filing.bytes, dryRun,
       ...(startSteps === undefined ? {} : { startSteps }),
       onHarness: harness => { live.clock.current = harness.authority.clock; },
       approvedReader: live.approvedReader, onSpan: event => live.hooks.onSpan?.(event),
@@ -379,8 +379,8 @@ export function createEmergencyContactRetryWorld() {
     return template;
   }
   process.on("exit", releaseTemplates);
-  return { prepareTemplate, reopenTemplate: reopen, releaseTemplates, async startWithSteps(startSteps: OcrFixtureStartSteps) {
-    const { live, ...started } = await build({ failures: 0 }, startSteps);
+  return { prepareTemplate, reopenTemplate: reopen, releaseTemplates, async startWithSteps(startSteps: OcrFixtureStartSteps, dryRun = false) {
+    const { live, ...started } = await build({ failures: 0 }, startSteps, dryRun);
     return present(started, live);
   }, async releaseSources() {
     releaseTemplates();

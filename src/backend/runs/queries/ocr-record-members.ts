@@ -380,6 +380,7 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
     const member = bound.get(row.record.recordId);
     if (member === undefined) {
       const status = deriveRunStatus({ ...parent,delegationWait: repositories.dependencies.waitState(parent.envelope.runId) });
+      if (status === "done") return { ...row, status: "cancelled", statusLabel: "Skipped" };
       return { ...row, status: ["failed","blocked","cancelled"].includes(status) ? status : "running",
         statusLabel: status === "failed" ? "Failed" : status === "blocked" ? "Blocked" : status === "cancelled" ? "Cancelled" : parent.envelope.dryRun ? "Previewing" : "Saving" };
     }
@@ -400,8 +401,11 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
     const status = deriveRunStatus({ ...child,delegationWait: repositories.dependencies.waitState(child.envelope.runId) });
     const terminal = member.terminal;
     if (status === "done" && terminal?.state !== "satisfied") throw new OcrReviewRefusedError();
+    const omittedWrite = child.envelope.workflow === "emergency-contact-member"
+      && child.envelope.stepOmissions?.some(({ workflow, step }) => workflow === undefined && (step === "contact-preview" || step === "onbase-filing")) === true;
     const statusLabel = status === "failed" ? "Failed" : status === "blocked" ? "Blocked" : status === "cancelled" ? "Cancelled"
-      : terminal?.state === "satisfied" ? terminal.kind === "preview" ? "Previewed" : !exactDescriptor ? "Done" : readOnly ? "Verified" : "Saved"
+      : terminal?.state === "satisfied" ? terminal.kind === "preview" ? "Previewed" : omittedWrite ? "Done outside Relay"
+        : !exactDescriptor ? "Done" : readOnly ? "Verified" : "Saved"
       : !exactDescriptor ? "Running" : readOnly ? "Looking up" : child.envelope.dryRun ? "Previewing" : "Saving";
     return { ...row, status: status === "done" || status === "failed" || status === "blocked" || status === "cancelled" ? status : "running", statusLabel,
       childRunIds: [...new Set([...row.childRunIds,...member.history])],

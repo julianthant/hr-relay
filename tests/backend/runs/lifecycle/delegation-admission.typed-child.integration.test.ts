@@ -33,10 +33,11 @@ const READ_TYPED: StepManualDeclaration = {
   form: { fields: [{ key: "disposition", label: "Disposition", kind: "text", replaces: { nodeId: "read", path: "disposition" } }] },
   produces: { read: ({ facts, scope }) => Plan1Output.parse({ eid: (scope.input as { emplId: string }).emplId, disposition: facts.disposition, providerState: "typed" }) },
 };
+const FINISH_MANUALLY = { off: "manual", form: { fields: [] }, produces: {}, skips: ["finish"] } satisfies StepManualDeclaration;
 
 /** The child reads then finishes; the parent releases one member, two for mode "repeat", and an ok and a failing one for "confirmed". */
 /** `evolved` is version 2 of the child and parent: the child's result gains an optional field. */
-function workflows(nested = false, evolved = false) {
+function workflows(nested = false, evolved = false, finishManual?: StepManualDeclaration, exposeChild = true) {
   const version = evolved ? 2 : 1, Result = evolved ? Plan1Output.extend({ note: z.string().optional() }) : Plan1Output;
   const leaf = compileWorkflow(defineWorkflow({ ...common, id: "fixture-typed-child-leaf", code: "ftl", steps: ({ task, result }) => {
     const read = task({ id: "read", contract: plan1Contract, replay: "checkpoint" }, [], ({ input }) => input);
@@ -49,14 +50,19 @@ function workflows(nested = false, evolved = false) {
       policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" } }, [read], {
       bind: ({ input }) => [input], deriveChildItemId: (_input, identity) => identity.canonicalItemId,
     }) : task({ id: "finish", contract: plan1Contract, replay: "checkpoint" }, [read], ({ input }) => input);
-    return { steps: [[group({ key: "reading", label: "Reading" }, { manual: READ_TYPED }), [read]], [{ key: "finish", label: "Finish" }, [finish]]],
+    const finishStep = { key: "finish", label: "Finish" };
+    return { steps: [[group({ key: "reading", label: "Reading" }, { manual: READ_TYPED }), [read]],
+      [finishManual === undefined ? finishStep : group(finishStep, { manual: finishManual }), [finish]]],
       result: result(Result, nested ? [read] : [read, finish], ({ outputs }) => outputs.read) };
   } }));
   const parent = compileWorkflow(defineWorkflow({ ...common, version, id: "fixture-typed-child-parent", code: "ftp",
     rows: [
       { key: "members", label: "Members", members: [{ step: "members" }] },
-      { key: "member-read", label: "Member read", members: [{ workflow: CHILD, step: "reading" }], target: { workflow: CHILD, step: "reading" } },
-      { key: "member-finish", label: "Member finish", members: [{ workflow: CHILD, step: "finish" }] },
+      ...(exposeChild ? [
+        { key: "member-read", label: "Member read", members: [{ workflow: CHILD, step: "reading" }], target: { workflow: CHILD, step: "reading" } },
+        { key: "member-finish", label: "Member finish", members: [{ workflow: CHILD, step: "finish" }],
+          ...(finishManual === undefined || finishManual.ownStartOnly === true ? {} : { target: { workflow: CHILD, step: "finish" } }) },
+      ] : []),
     ],
     steps: ({ delegate, result }) => {
       const members = delegate({ id: "members", target: { id: CHILD, input: Plan1Input, result: Result }, edgeId: "members",
@@ -76,8 +82,9 @@ function workflows(nested = false, evolved = false) {
   return { parent, modules };
 }
 
-async function harness(nested = false) {
-  const { parent, modules } = workflows(nested);
+async function harness(nested = false, finishManual?: StepManualDeclaration) {
+  const { parent, modules } = workflows(nested, false, finishManual);
+  let resolve = (id: string) => modules.find(module => module.descriptor.id === id)?.descriptor;
   const h = await world.executorHarness({ descriptor: parent.descriptor, stores: plan1Stores });
   const { database, clock, path, stateRoot } = h.authority;
   const patch = { "actor.label": { set: "Synthetic operator" } } as const;
@@ -88,7 +95,7 @@ async function harness(nested = false) {
     requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { expectedRevision: 1 },
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
   }).state, "applied");
-  const execution = canonicalChildExecution(h.deps, database, path, id => modules.find(module => module.descriptor.id === id)?.descriptor);
+  const execution = canonicalChildExecution(h.deps, database, path, id => resolve(id));
   const rerun = (runId: string) => {
     const run = database.authority.runs.get(runId);
     assert.ok(run !== undefined);
@@ -96,7 +103,14 @@ async function harness(nested = false) {
     assert.equal(response.state, "available", JSON.stringify(response));
     return response.snapshot;
   };
-  return { database, path, execution, parent: parent.descriptor, rerun };
+  return { database, path, execution, parent: parent.descriptor, rerun,
+    useAdmissionDescriptors(manual: StepManualDeclaration, exposeChild: boolean) {
+      const updated = workflows(nested, false, manual, exposeChild);
+      assert.equal(updated.parent.descriptor.contractFingerprint, parent.descriptor.contractFingerprint);
+      resolve = id => id === parent.descriptor.id && exposeChild ? parent.descriptor
+        : updated.modules.find(module => module.descriptor.id === id)?.descriptor;
+    },
+  };
 }
 const stepStates = (steps: readonly { key: string; state: string }[]) => steps.map(({ key, state }) => [key, state]);
 
@@ -128,12 +142,27 @@ it("hands a typed child entry to the one released child, which records it under 
   assert.deepEqual(snapshot.children?.[0]?.steps[0]?.nodes, [{ nodeId: "read", state: "unfinished", reason: "operator-asserted" }]);
 });
 
-it("refuses a run that releases more than one person while typed child values are present, before any child exists", async () => {
-  const { database, execution, parent } = await harness();
-  const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "repeat" }, { dryRun: false, selectedStepKeys: ["members"], stepOmissions: TYPED });
+it.each([
+  { reason: "non-empty facts", stepOmissions: TYPED },
+  { reason: "off is absent", manual: { form: { fields: [] }, produces: {}, skips: ["finish"] } },
+  { reason: "own Start only", manual: { ...FINISH_MANUALLY, ownStartOnly: true } },
+  { reason: "input binding", manual: { ...FINISH_MANUALLY, bindInput: (input: Parameters<NonNullable<StepManualDeclaration["bindInput"]>>[0]) => input } },
+  { reason: "synthetic outputs", manual: { ...FINISH_MANUALLY, produces: { finish: () => plan1Contract.example }, skips: [] } },
+  { reason: "unexposed child step", manual: FINISH_MANUALLY, exposeChild: false },
+] satisfies readonly { reason: string; stepOmissions?: typeof TYPED; manual?: StepManualDeclaration; exposeChild?: boolean }[])
+("refuses admission before creating any of several children when the omission has $reason", async ({ stepOmissions, manual, exposeChild }) => {
+  const { database, execution, parent, useAdmissionDescriptors } = await harness(false, FINISH_MANUALLY);
+  const root = execution.start(parent, { emplId: "10800000", text: "same", mode: "repeat" },
+    { dryRun: false, selectedStepKeys: ["members"], stepOmissions: stepOmissions ?? [{ workflow: CHILD, step: "finish", facts: {} }] });
+  // Start validates the authored rows. Exercise admission's own checks against the retained selection.
+  if (manual !== undefined) useAdmissionDescriptors(manual, exposeChild ?? true);
   const { run } = await execution.execute(root, world.SIGNAL);
-  assert.notEqual(run?.lifecycle.state === "terminal" ? run.lifecycle.outcome : undefined, "done");
+  assert.partialDeepStrictEqual(run?.lifecycle, { state: "terminal", outcome: "failed" });
+  const [failure] = database.authority.failures.listByRun(root.envelope.runId);
+  assert.equal(failure?.code, "RUN_CONTINUATION_REFUSED");
+  assert.match(failure.summary, /delegation-typed-values-many-members/u);
   assert.equal(database.authority.runs.listChildren(root.envelope.runId).length, 0);
+  assert.deepEqual(database.authority.dependencies.groups(root.envelope.runId), []);
 });
 
 it("delegates as today with nothing typed: every member runs its own reading and carries no typed entry", async () => {

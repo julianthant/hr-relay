@@ -265,7 +265,8 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
         const sharedChildFacts = stepOmissions?.some(({ step, facts }) => Object.keys(facts).length > 0
           || !descriptor.startRows.some(({ target: rowTarget }) => rowTarget?.workflow === target.id && rowTarget.step === step)
           || !target.stepOmissions.some(spec => spec.step === step && spec.ownStartOnly !== true
-            && spec.off === "manual" && spec.bindInput === undefined));
+            && spec.off === "manual" && spec.bindInput === undefined
+            && spec.form.fields.length === 0 && Object.keys(spec.produces).length === 0));
         const sharedParentFacts = (parent.envelope.stepOmissions ?? []).some(entry => entry.workflow === undefined
           && !descriptor.stepOmissions.some(spec => spec.step === entry.step && (spec.allowsChildFanOut === true
             || Object.keys(entry.facts).length === 0 && (spec.stop !== undefined || spec.off === "manual"))));
