@@ -136,7 +136,7 @@ export function buildContactPreview(author: WorkflowAuthor<typeof EmergencyConta
   });
   return { steps: [[group, [preview]]] as const, result: author.result(EmergencyContactMemberResultSchema, [preview], ({ outputs }) => {
     const save = outputs["contact-preview"];
-    return save === undefined ? { disposition: "omitted", step: CONTACT_PREVIEW_STEP.key }
+    return save === undefined ? { disposition: "omitted" as const, step: CONTACT_PREVIEW_STEP.key }
       : { disposition: save.disposition, proof: save.output.proof };
   }) };
 }
