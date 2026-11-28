@@ -36,6 +36,10 @@ function observationHarness() {
   const observed: ObservedDataPoint[] = [];
   const collector = createTaskProvenanceCollector({
     descriptor: separationsDescriptor,
+    canonicalInput: JsonValueSchema.parse(separationsDescriptor.canonicalInput.parse({
+      documentNumber: "999999", timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST", searchTimeoutMs: 15_000,
+    })),
+    references: [],
     execution: {
       runId: RUN_ID,
       traceId: "sp-170000-aaaa",
