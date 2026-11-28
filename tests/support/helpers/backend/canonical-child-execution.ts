@@ -120,7 +120,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
         clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: LOCAL_OPERATOR_ACTOR_ID,
         configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId,
         ...(startOptions.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: startOptions.protectedSubmissionBindings }) });
-      const plan = planner.plan({ workflowId: descriptor.id, submissions: [input], dryRun: startOptions.dryRun,
+      const plan = planner.plan({ workflowId: descriptor.id, submissions: input === undefined && startOptions.rerunSource !== undefined ? [] : [input], dryRun: startOptions.dryRun,
         ...(startOptions.workbookReferences === undefined ? {} : { workbookReferences: startOptions.workbookReferences }),
         ...(startOptions.stepOmissions === undefined ? {} : { stepOmissions: startOptions.stepOmissions }),
         ...(startOptions.rerunSource === undefined ? {} : { rerunSource: startOptions.rerunSource, warningAcknowledgment: startOptions.warningAcknowledgment }),

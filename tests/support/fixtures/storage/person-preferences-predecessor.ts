@@ -5,7 +5,7 @@ import { AppSettingsSchema } from "../../../../src/models/config/app-settings.js
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../../src/models/config/person-preferences.js";
 import { SettingsInitializationCommandSchema, SettingsInitializationAuditSchema } from "../../../../src/models/config/settings-initialization.js";
-import { PRE_PANEL_MODE_RETIREMENT_SETTINGS_SCHEMA_HASH, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH, PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH, PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH,
+import { PRE_ASSISTANT_FULL_ACCESS_SETTINGS_SCHEMA_HASH, PRE_PANEL_MODE_RETIREMENT_SETTINGS_SCHEMA_HASH, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH, PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH, PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH,
   RETIRED_PANEL_MODE } from "../../../../src/models/config/settings-record-conversion.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -55,10 +55,10 @@ export function prePreferencesSettingsRow(table: string, input: unknown): Record
 /** The row as a store wrote it before the Runs and Notifications settings existed (schemas 16 through 31). */
 export function preRunsNotificationsSettingsRow(table: string, input: unknown): Record<string, unknown> {
   return predecessorSettingsRow(table, input, PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH, snapshot => {
-    const { preventSleepWhileRunning, confirmCloseDuringRun, notifications, sendShortcut, ...current } = snapshot.preferences;
+    const { preventSleepWhileRunning, confirmCloseDuringRun, notifications, sendShortcut, assistantFullAccess, ...current } = snapshot.preferences;
     const preferences = { ...current, [RETIRED_PANEL_MODE]: "floating" };
-    assert.deepEqual({ preventSleepWhileRunning, confirmCloseDuringRun, notifications, sendShortcut }, { preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run",
-      notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" }, sendShortcut: "enter" });
+    assert.deepEqual({ preventSleepWhileRunning, confirmCloseDuringRun, notifications, sendShortcut, assistantFullAccess }, { preventSleepWhileRunning: true, confirmCloseDuringRun: "active-run",
+      notifications: { runFinished: "unfocused", needsYou: true, failures: true, sound: "default" }, sendShortcut: "enter", assistantFullAccess: false });
     return { ...snapshot, preferences, preferencesFingerprint: sha256Hex(canonicalJsonStringify(preferences)) };
   });
 }
@@ -66,9 +66,10 @@ export function preRunsNotificationsSettingsRow(table: string, input: unknown): 
 /** The row as a store wrote it before the assistant send shortcut existed (schemas 32 through 34). */
 export function preSendShortcutSettingsRow(table: string, input: unknown): Record<string, unknown> {
   return predecessorSettingsRow(table, input, PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH, snapshot => {
-    const { sendShortcut, ...current } = snapshot.preferences;
+    const { sendShortcut, assistantFullAccess, ...current } = snapshot.preferences;
     const preferences = { ...current, [RETIRED_PANEL_MODE]: "floating" };
     assert.equal(sendShortcut, "enter");
+    assert.equal(assistantFullAccess, false);
     return { ...snapshot, preferences, preferencesFingerprint: sha256Hex(canonicalJsonStringify(preferences)) };
   });
 }
@@ -94,13 +95,26 @@ export function restorePreRunsNotificationsSettingsRows(database: DatabaseSync):
 export function restorePreSendShortcutSettingsRows(database: DatabaseSync): void { restorePredecessorSettingsRows(database, preSendShortcutSettingsRow); }
 
 export function prePanelModeRetirementSnapshot(snapshot: z.infer<typeof ConfigSnapshotRecordSchema>, mode: "floating" | "sidebar") {
-  const preferences = { ...snapshot.preferences, [RETIRED_PANEL_MODE]: mode };
+  const { assistantFullAccess, ...current } = snapshot.preferences;
+  assert.equal(assistantFullAccess, false);
+  const preferences = { ...current, [RETIRED_PANEL_MODE]: mode };
   return { ...snapshot, preferences, preferencesFingerprint: sha256Hex(canonicalJsonStringify(preferences)) };
 }
 
 export function restorePrePanelModeRetirementSettingsRows(database: DatabaseSync): void {
   restorePredecessorSettingsRows(database, (table, row) => predecessorSettingsRow(table, row, PRE_PANEL_MODE_RETIREMENT_SETTINGS_SCHEMA_HASH,
     snapshot => prePanelModeRetirementSnapshot(snapshot, snapshot.revision === 1 ? "floating" : "sidebar")));
+}
+
+export function preAssistantFullAccessSnapshot(snapshot: z.infer<typeof ConfigSnapshotRecordSchema>) {
+  const { assistantFullAccess, ...preferences } = snapshot.preferences;
+  assert.equal(assistantFullAccess, false);
+  return { ...snapshot, preferences, preferencesFingerprint: sha256Hex(canonicalJsonStringify(preferences)) };
+}
+
+export function restorePreAssistantFullAccessSettingsRows(database: DatabaseSync): void {
+  restorePredecessorSettingsRows(database, (table, row) =>
+    predecessorSettingsRow(table, row, PRE_ASSISTANT_FULL_ACCESS_SETTINGS_SCHEMA_HASH, preAssistantFullAccessSnapshot));
 }
 
 export function removeSchema16PersonPreferences(database: DatabaseSync): void {

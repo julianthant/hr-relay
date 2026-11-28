@@ -15,7 +15,7 @@ import { systemClock } from "../../../../src/rules/time/clock.js";
 import { restoreSchema42AssistantStorage } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-it("upgrades populated schema-42 history to 44, verifies its backup and settles the retained turn", async () => {
+it("upgrades populated schema-42 history to 46, verifies its backup and settles the retained turn", async () => {
   const profile = await createBoundProfileFixture();
   const profileId = profile.admission.profileBinding.profileId;
   const options = {
@@ -39,7 +39,7 @@ it("upgrades populated schema-42 history to 44, verifies its backup and settles 
     let originalMessages;
     {
       using raw = new DatabaseSync(profile.path);
-      assert.equal(inspectNativeAuthority(raw).schemaVersion, 44);
+      assert.equal(inspectNativeAuthority(raw).schemaVersion, 46);
       for (const table of tables) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
       restoreSchema42AssistantStorage(raw);
       original = inspectNativeAuthority(raw, 42);
@@ -48,11 +48,11 @@ it("upgrades populated schema-42 history to 44, verifies its backup and settles 
     }
 
     assert.deepEqual(await upgradeProfileAtStartup(profileBrowserClosure, profile.machine, profileId, { primaryDisplay: null }, systemClock),
-      { state: "upgraded", fromSchemaVersion: 42, toSchemaVersion: 44, credentials: "unchanged" });
+      { state: "upgraded", fromSchemaVersion: 42, toSchemaVersion: 46, credentials: "unchanged" });
     assert.deepEqual(migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION).filter(table => !migrationTableNames(42).includes(table)), tables);
     {
       using upgraded = new DatabaseSync(profile.path, { readOnly: true });
-      assert.equal(inspectNativeAuthority(upgraded).schemaVersion, 44);
+      assert.equal(inspectNativeAuthority(upgraded).schemaVersion, 46);
       const parts = [{ kind: "text", runs: [{ kind: "plain", text: "Explain" }] }];
       assert.deepEqual(upgraded.prepare("SELECT * FROM assistant_messages").all().map(row => ({ ...row })), originalMessages.map(row => ({ ...row,
         payload_json: JSON.stringify({ parts, recording: { kind: "unrecorded", usage: { state: "unrecorded" } } }) })));

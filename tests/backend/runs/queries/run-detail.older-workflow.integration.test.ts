@@ -1,7 +1,7 @@
 import { afterAll, afterEach, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
+import { buildRunDetail, buildRunSection, readRunPanel, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
 import { LogDisplayRefusedError, LogIdentityRefusedError } from "../../../../src/backend/runs/commands/refusals.js";
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
 import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
@@ -10,7 +10,12 @@ import { TimelineAppendSchema, TimelineEventRecordSchema } from "../../../../src
 import { assertRunTimelineCompatible } from "../../../../src/backend/runs/queries/run-timeline-compatibility.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
+import { DiagnosticBundleSchema } from "../../../../src/models/trust/diagnostic.js";
+import { deriveDiagnosticContentDigest } from "../../../../src/models/trust/diagnostic-capture.js";
+import { VerifiedArtifactSourceMissingError } from "../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { redactDiagnosticFields } from "../../../../src/rules/redaction/redaction.js";
 import { HASH_B } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import { failureRecordOf, runEndedEventOf, taskEventsOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -19,12 +24,12 @@ import { personLookupModule } from "../../../support/helpers/registered-workflow
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
-const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld(profileFixtures.create);
+const { world, queuedEventOf, runRecordOf, cleanup } = createRunQueueProjectionTestWorld(profileFixtures.create);
 afterEach(cleanup);
 
-async function fixture() {
+async function fixture(attempt = 1) {
   const w = await world();
-  queuedEventOf(w, { seed: 81, descriptor: personLookupModule.descriptor });
+  queuedEventOf(w, { seed: 81, attempt, descriptor: personLookupModule.descriptor });
   const run = w.authority.getRun(uuidOf(81));
   assert.ok(run);
   const descriptor = {
@@ -67,6 +72,55 @@ it.each([0, 1])("loads older run detail and Logs with current names after a fing
   assert.equal(projected.timeline[0].label, "Current person search");
   assert.equal(projected.steps[0].title, "Current person search");
   assert.match(JSON.stringify(projected.steps[0].entries), /Quillan, Petra A\./u);
+});
+
+it("opens a historical run's timeline across attempts when its earlier screenshot is unavailable", async () => {
+  const { w, run, descriptor, deps } = await fixture(2);
+  descriptor.version++;
+  const { runId, traceId, workflow, enqueuedAt } = run.envelope;
+  const at = w.clock.now().toISOString();
+  const notes = createNoteTimelineWriter({ repository: w.timeline, clock: w.clock, pid: 4242 });
+  const identity = { workflow, runId, traceId };
+  const [bundleId, artifactId, sessionId] = [uuidOf(82), uuidOf(83), uuidOf(84)];
+  const firstTask = { ...identity, ts: at, attempt: 1, kind: "task", spanPath: `${traceId}/searching#1` } as const;
+  w.writer.emit({ ...firstTask, t: "span.started", parentSpanPath: traceId, name: "searching" });
+  const firstAttempt = runRecordOf({ seed: 81, enqueuedAt, descriptor: personLookupModule.descriptor });
+  notes.emitRunAction({
+    workflow,
+    address: { runId, traceId, attempt: 1, spanPath: firstTask.spanPath },
+    action: { kind: "screenshot", targetId: "ucpath.task-capture", value: `${bundleId}:${artifactId}`, physicalSessionId: sessionId, at },
+  }, firstAttempt);
+  w.writer.emit({ ...firstTask, t: "span.ended", outcome: "done" });
+  w.writer.emit({ ...identity, t: "run.requeued", ts: at, spanPath: traceId, attempt: 1, nextAttempt: 2, cause: "recovery" });
+  taskEventsOf(w, 81, "active-status", "done");
+  w.authority.put(runRecordOf({ seed: 81, enqueuedAt, attempt: 2, descriptor: personLookupModule.descriptor,
+    lifecycle: { state: "terminal", outcome: "done", endedAt: at } }));
+  const content = {
+    runId, origin: { kind: "operator-request", requestedBy: "local-operator" },
+    configFingerprint: run.envelope.configFingerprint, descriptorFingerprint: run.envelope.contractFingerprint,
+    redaction: redactDiagnosticFields(Object.entries({ captureStage: "task-point", nodeId: "searching", runAttempt: 1,
+      browserSessionId: sessionId }).map(([key, value]) => ({ key, value, classification: "safe-diagnostic", transform: "allow" }))),
+    attachments: [{ kind: "screenshot", artifactId, mediaType: "image/png", byteLength: 1, digest: HASH_B,
+      width: 1280, height: 720, sensitivity: "restricted" }],
+  };
+  const bundle = DiagnosticBundleSchema.parse({ ...content, bundleId, createdAt: at,
+    contentDigest: deriveDiagnosticContentDigest({ ...content, capturedAt: at }),
+    retention: { kind: "ordinary", purgeAfter: at } });
+  const panel = await readRunPanel({ ...deps, captures: {
+    authority: { listByRun: () => [bundle], get: () => bundle,
+      listAttachments: () => bundle.attachments.map(attachment => ({ bundleId: bundle.bundleId, attachment, createdAt: bundle.createdAt })) },
+    artifactReader: { verify: async () => { throw new VerifiedArtifactSourceMissingError(); },
+      prepare: async () => assert.fail("availability does not prepare a download") },
+  } }, runId, new AbortController().signal);
+  assert.equal(panel.detail.header.attempt, 2);
+  assert.ok(panel.detail.captures?.state === "error");
+  assert.equal(panel.detail.captures.code, "DIAGNOSTIC_BUNDLE_BYTES_MISSING");
+  assert.deepEqual(panel.detail.timeline.events.map(event => event.native?.attempt), [1, 2]);
+  assert.ok(panel.logs.rows?.some(row => row.kind === "note" && row.native?.attempt === 1 && row.note.screenshot !== undefined));
+  const projected = projectRunLogs({ ...panel, unavailableEvidence: [] }, { artifactUrl: () => assert.fail("unavailable screenshot has no URL") });
+  const completed = projected.timeline.flatMap(stage => stage.substeps).filter(step => step.state === "completed");
+  assert.deepEqual(completed.map(step => step.id), ["searching", "active-status"]);
+  assert.ok(projected.steps.some(step => step.entries.some(entry => entry.kind === "note" && entry.message === "Screenshot unavailable.")));
 });
 
 it.each(["historical", "current"] as const)("checks unmapped observations when opening failed-run Logs (%s)", async definition => {
