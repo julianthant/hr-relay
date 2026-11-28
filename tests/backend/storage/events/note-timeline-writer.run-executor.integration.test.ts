@@ -53,10 +53,7 @@ it("writes no timeline rows after an acknowledgement timeout at the task checkpo
   const { database, clock } = harness.authority;
   const claimed = enqueueAndClaim(database, actionBindingQueuedRun(clock.now().toISOString()), clock.now().toISOString(), ACTION_BINDING_WORKFLOW_ID);
   const stop = new AbortController();
-  const child = createWorkerLogChannel(error => {
-    database.refuseWritesAfterLogFailure(error);
-    stop.abort(error);
-  });
+  const child = createWorkerLogChannel(error => stop.abort(error));
   const unbind = database.bindLogPublisher(child.publish);
   const reached = Promise.withResolvers<ReturnType<typeof database.authority.timelineEvents.page>>();
   let taskNoteSent = false;
@@ -76,7 +73,7 @@ it("writes no timeline rows after an acknowledgement timeout at the task checkpo
     await executed;
     assert.ok(stop.signal.aborted);
     assert.deepEqual(database.authority.timelineEvents.page({}), prior);
-    assert.throws(() => database.withAuthorityTransaction(() => assert.fail("transaction ran")), /worker-log-flush-deadline/u);
+    assert.deepEqual(database.authority.runCheckpoints.listByItem(claimed.run.envelope.workflow, claimed.run.envelope.itemId), []);
   } finally {
     vi.useRealTimers();
     unbind();

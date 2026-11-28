@@ -160,6 +160,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const assertAssistantEffect = (commandId: string): void => { composedAssistant.assertEffect(commandId); };
   profile.runtime.beginSupervisorConstruction(profile.token);
   const nominatim = createNominatimGeocodeAdapter({clock});
+  const spawnWorker = realWorkerProcessSpawner(input.lifetimeLock, nominatim, logWriter);
   const workers = composeWorkerPool({
     admission,
     sessionGeneration: context.profileEpoch,
@@ -169,7 +170,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),
     ids,
     launch: input.workerProcess?.launch ?? productionWorkerLaunch(repoRoot, env, frontend === "vite-dev"),
-    spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(input.lifetimeLock, nominatim, logWriter),
+    spawn: request => input.workerProcess?.spawn?.(request, spawnWorker) ?? spawnWorker(request),
     settleExit: member => { profile.runtime.workerExited(admission, WorkerPoolMemberSchema.parse(member)); },
     onChange: () => { projection.reconcileWorkerAuthority(); },
     onFault: reportSupervisorFault,

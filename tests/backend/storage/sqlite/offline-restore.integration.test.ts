@@ -66,7 +66,7 @@ describe("corruption → degraded → automatic restore → rebuild", () => {
         writeFileSync(join(root, `${name}.db`), "damaged live log", { mode: 0o600 });
         writeFileSync(join(root, `${name}.db-wal`), "stale live WAL", { mode: 0o600 });
       }
-      await restore.restore({ manifestPath }, operation);
+      await restore.restore({ manifestPath }, admission.acquireOfflineMaintenance());
       for (const [name, table, index] of [["timeline", "timeline_events", 0], ["dashboard", "debug_events", 1]] as const) {
         using restoredLog = new DatabaseSync(join(root, `${name}.db`), { readOnly: true });
         using backedUpLog = new DatabaseSync(backupLogs[index], { readOnly: true });

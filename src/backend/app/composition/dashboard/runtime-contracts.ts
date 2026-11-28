@@ -13,7 +13,7 @@ import type { RuntimeIsolation } from "../../../../models/config/define-runtime-
 import { type IdFactory } from "../../../../rules/identity/identifiers.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
-import { type WorkerCliLaunchSpec,type WorkerProcessSpawner } from "./worker-process.js";
+import { type WorkerCliLaunchSpec,type WorkerProcessSpawner,type WorkerSpawnRequest } from "./worker-process.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
 import { composeProfileRuntime,type ShutdownBackup } from "../storage-compose.js";
@@ -73,7 +73,7 @@ export interface DashboardComposeInput {
   readonly frontendProbe?: typeof probeOwnedViteServer;
 
   readonly workerProcess?: Readonly<{
-    spawn?: WorkerProcessSpawner;
+    spawn?(request: WorkerSpawnRequest, productionSpawn: WorkerProcessSpawner): ReturnType<WorkerProcessSpawner>;
     launch?: WorkerCliLaunchSpec;
     scheduler?: MonotonicDeadlineScheduler;
     /** Receives one structured JSON line per supervisor fault; default writes to stderr. */

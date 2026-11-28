@@ -1700,7 +1700,7 @@ export class AuthorityDatabase implements Disposable {
     if (this.#dashboardReadSources.size > 0) throw new Error("dashboard-background-reader-open");
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");
     let plannerFailure: { error: unknown } | undefined;
-    if (this.#optimizeOnClose && !this.#database.isTransaction) {
+    if (this.#logWriteFailure === undefined && this.#optimizeOnClose && !this.#database.isTransaction) {
       let admitted = false;
       try {
         this.#admitMutation();
