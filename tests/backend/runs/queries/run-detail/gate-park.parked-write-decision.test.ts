@@ -9,6 +9,7 @@ const writeTarget = { writeIntentId: "11111111-1111-4111-8111-111111111111", int
 const confirmOf = (key: string) => ({ title: `${key} title`, confirmLabel: key, tone: "neutral" as const });
 const action = (key: string, command: string) => ActionDescriptorWireSchema.parse({ key, label: key, intent: "neutral", placement: ["footer"], kind: "command", command, expectedVersion: 3, writeTarget, confirm: confirmOf(key) });
 const RECHECK = action("recheck-write", "recheck-write"), ABSENT = action("resolve-write-absent", "resolve-write-absent");
+const QUEUED_CHECK = action("read-back-check-again", "recheck-write");
 const FAIL = action("fail-read-back", "fail-read-back");
 const HELD = { ...RECHECK, key: "check-parked-write", command: "check-parked-write" as const, confirm: confirmOf("check-parked-write") };
 const TERMINATION = { taskId: "ucpath/create-termination", parkedCode: "ambiguous", readBack: false, acceptsTransactionId: true };
@@ -56,11 +57,11 @@ describe("parkedWriteDecision", () => {
   });
 
   it("says the system accepted the write but its status could not be read when the saved-effect read failed", () => {
-    const decision = parkedWriteDecision({ ...TERMINATION, readBack: true, recordId: "10807012" }, [RECHECK, ABSENT, FAIL]);
+    const decision = parkedWriteDecision({ ...TERMINATION, readBack: true, recordId: "10807012" }, [RECHECK, ABSENT, QUEUED_CHECK, FAIL]);
     assert.equal(decision.title, "Termination saved, but the read-back failed");
     assert.equal(decision.context, "UCPath accepted the submit; status unreadable. Check Smart HR Transactions for 10807012.");
     assert.deepEqual(decision.options.map(({ label, send, recommended }) => [label, send, recommended]), [
-      ["Check again", { via: "action", actionKey: "recheck-write" }, true],
+      ["Check again", { via: "action", actionKey: "read-back-check-again" }, true],
       ["Checked by hand, continue", { via: "action", actionKey: "recheck-write" }, undefined],
       ["Withdrawn in UCPath, file again", { via: "action", actionKey: "resolve-write-absent" }, undefined],
       ["Mark as failed", { via: "action", actionKey: "fail-read-back" }, undefined],
@@ -72,8 +73,8 @@ describe("parkedWriteDecision", () => {
 
   it("names the written system and omits file again when the fresh read is unavailable", () => {
     const readBack = { ...KUALI, readBack: true };
-    assert.equal(parkedWriteDecision(readBack, [RECHECK, ABSENT, FAIL]).options[2]?.label, "Withdrawn in Kuali, file again");
-    assert.deepEqual(parkedWriteDecision(readBack, [RECHECK, FAIL]).options.map(({ label }) => label),
+    assert.equal(parkedWriteDecision(readBack, [RECHECK, ABSENT, QUEUED_CHECK, FAIL]).options[2]?.label, "Withdrawn in Kuali, file again");
+    assert.deepEqual(parkedWriteDecision(readBack, [RECHECK, QUEUED_CHECK, FAIL]).options.map(({ label }) => label),
       ["Check again", "Checked by hand, continue", "Mark as failed"]);
   });
 

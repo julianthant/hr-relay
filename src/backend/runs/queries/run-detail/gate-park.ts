@@ -406,33 +406,38 @@ function parkedWriteProofContract(
 }
 
 
+const READ_BACK_CHECK_KEY = "read-back-check-again";
+
 function parkedWriteActions(
   authority: RunRecord,
   intent: Extract<WriteIntentRecord, { status: "parked" }>,
   canFileAgain: boolean,
   canMarkFailed: boolean,
+  needsQueuedCheck: boolean,
 ): unknown[] {
   const writeTarget = publicWriteTarget({ writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
     writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest });
-  return [
-    {
-      key: "recheck-write",
-      label: "Check again",
-      detail: "Files nothing.",
-      intent: "warning",
-      icon: "resolve",
-      placement: ["banner", "footer"],
-      kind: "command",
-      command: "recheck-write",
-      expectedVersion: authority.version,
-      confirm: {
-        title: "Check the target system again",
-        body: `Reads ${intent.system}; submits nothing.`,
-        confirmLabel: "Check again",
-        tone: "neutral",
-      },
-      writeTarget,
+  const recheck = {
+    key: "recheck-write",
+    label: "Check again",
+    detail: "Files nothing.",
+    intent: "warning",
+    icon: "resolve",
+    placement: ["banner", "footer"],
+    kind: "command",
+    command: "recheck-write",
+    expectedVersion: authority.version,
+    confirm: {
+      title: "Check the target system again",
+      body: `Reads ${intent.system}; submits nothing.`,
+      confirmLabel: "Check again",
+      tone: "neutral",
     },
+    writeTarget,
+  };
+  return [
+    recheck,
+    ...(needsQueuedCheck ? [{ ...recheck, key: READ_BACK_CHECK_KEY, placement: ["review"] }] : []),
     ...(canFileAgain ? [{
       key: "resolve-write-absent",
       label: "I confirmed it is NOT there",
@@ -886,7 +891,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     && evaluateWriteResolutionBinding({ arm: "operator-confirmed-absent", descriptor, run: authority, intent, repositories }).state !== "incompatible");
   const canMarkFailed = readBack && descriptor !== undefined && descriptor.version === authority.envelope.descriptorVersion
     && descriptor.contractFingerprint === authority.envelope.contractFingerprint;
-  const actions = ActionDescriptorWireSchema.array().parse(parkedWriteActionsWithCheck(authority, intent, check, canFileAgain, canMarkFailed));
+  const actions = ActionDescriptorWireSchema.array().parse(parkedWriteActionsWithCheck(authority, intent, check, canFileAgain, canMarkFailed, readBack));
   return ParkedWriteDetailWireSchema.parse({ acceptsTransactionId, check, ...(lastCheck === undefined ? {} : { lastCheck: { ...lastCheck, target: publicWriteTarget(lastCheck.target) } }),
     ...(intent.taskId === "ucpath/create-termination" ? { ucpathFindings: retainedUcpathFindings(deps, authority, intent, latest) } : {}),
     ...(native === undefined || nativeEvent === undefined ? {} : { native: {
@@ -927,7 +932,7 @@ export function parkedWriteDecision(parked: Readonly<{ taskId: string; parkedCod
   if (parked.readBack) {
     const system = record?.system ?? parked.system;
     return projectDecision("read-back-failed", [
-      ...sending("check-again", find("check-parked-write") ?? find("recheck-write"), {}),
+      ...sending("check-again", find("check-parked-write") ?? actions.find(action => action.key === READ_BACK_CHECK_KEY), {}),
       ...sending("saved", find("recheck-write"), transaction === undefined ? {} : { hint: "Relay verifies this number first." }, transaction),
       ...sending("not-saved", find("resolve-write-absent"), system === undefined ? {} : { label: withdrawnFileAgainLabel(system) }),
       ...sending("mark-as-failed", find("fail-read-back"), {}),
@@ -958,8 +963,10 @@ function parkedWriteActionsWithCheck(
   check: { state: "available"; target: ParkedWriteCheckTarget } | { state: "unavailable"; code: "PARKED_CHECK_UNAVAILABLE" },
   canFileAgain: boolean,
   canMarkFailed: boolean,
+  readBack: boolean,
 ): unknown[] {
-  return [...parkedWriteActions(authority, intent, canFileAgain, canMarkFailed), ...(intent.taskId !== "ucpath/create-termination" || check.state !== "available" ? [] : [{
+  const serveHeldCheck = intent.taskId === "ucpath/create-termination" && check.state === "available";
+  return [...parkedWriteActions(authority, intent, canFileAgain, canMarkFailed, readBack && !serveHeldCheck), ...(!serveHeldCheck ? [] : [{
       key: "check-parked-write", label: "Check again", detail: "Files nothing.",
       intent: "warning", icon: "resolve", placement: ["review"], kind: "command", command: "check-parked-write",
       expectedVersion: authority.version, checkTarget: check.target,

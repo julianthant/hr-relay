@@ -86,7 +86,7 @@ export const logDecisionExamples = [
         "title": "Termination saved, but the read-back failed",
         "state": "parked",
         "answerNoun": "Transaction",
-        "message": "Clicked Save and Submit, but no confirmation returned.",
+        "message": "UCPath accepted the submit, but Relay could not read its status.",
         "caution": "The result is unknown. Check UCPath before continuing.",
         "screenshots": [
           {
@@ -102,10 +102,10 @@ export const logDecisionExamples = [
         ],
         "footer": "Alex Morgan · DEMO-1042",
         "served": {
-          "type": "write-unknown",
+          "type": "read-back-failed",
           "title": "Termination saved, but the read-back failed",
           "context": "UCPath accepted the submit, but Relay could not read its status. Check Smart HR Transactions for DEMO-1042.",
-          "choiceLabel": "Answer",
+          "choiceLabel": "Next step",
           "options": [
             {
               "id": "check-again",
@@ -119,7 +119,7 @@ export const logDecisionExamples = [
             },
             {
               "id": "saved",
-              "label": "Saved in UCPath",
+              "label": "Checked by hand, continue",
               "hint": "Relay checks this number, then the run continues.",
               "send": {
                 "via": "action",
@@ -134,11 +134,20 @@ export const logDecisionExamples = [
             },
             {
               "id": "not-saved",
-              "label": "Not saved, file it again",
-              "hint": "Relay files the termination once more.",
+              "label": "Withdrawn in UCPath, file again",
+              "hint": "Relay checks the system before filing again.",
               "send": {
                 "via": "action",
                 "actionKey": "resolve-write-absent"
+              }
+            },
+            {
+              "id": "mark-as-failed",
+              "label": "Mark as failed",
+              "hint": "Ends the run and files nothing.",
+              "send": {
+                "via": "action",
+                "actionKey": "fail-read-back"
               }
             }
           ]
