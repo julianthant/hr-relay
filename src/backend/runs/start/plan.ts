@@ -331,7 +331,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(canonicalInput), subtitle: planning.subtitle(canonicalInput) }));
     // A dry run publishes nothing, so it plans no outputs.
     const outputs = request.dryRun ? [] : planning.plannedOutputs(canonicalInput, workbookReferences.map(parseRunWorkbookReference)
-      .filter(reference => reference.request.typeId === planning.workbookReference?.id));
+      .filter(reference => reference.request.typeId === planning.workbookReference?.id), request.stepOmissions);
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
       ...(outputs.length === 0 ? {} : { outputs }),

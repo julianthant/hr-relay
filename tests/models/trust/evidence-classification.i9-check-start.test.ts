@@ -20,6 +20,14 @@ const values: readonly { scope: EvidenceValueScope; value: unknown }[] = [
   ...[["i9-check-start", ReadI9CheckPublication.example], ["i9-check-start-documents", ReadI9CheckPeople.example],
     ["i9-check-start-roster-reference", ReadI9CheckRequests.example], ["i9-check-start-retention", ReadI9CheckPublication.example]]
     .map(([id, value]) => ({ scope: { kind: "workflow-result" as const, workflowId: WorkflowIdSchema.parse(id) }, value })),
+  ...["i9-check-start", "i9-check-start-retention"].map(id => ({
+    scope: { kind: "workflow-result" as const, workflowId: WorkflowIdSchema.parse(id) },
+    value: { ...ReadI9CheckRows.example, workbook: { state: "omitted", step: "publication" } },
+  })),
+  ...["i9-check-start", "i9-check-start-documents", "i9-check-start-roster-reference", "i9-check-start-retention"].map(id => ({
+    scope: { kind: "workflow-result" as const, workflowId: WorkflowIdSchema.parse(id) },
+    value: { state: "stopped", reason: "retention-results-unavailable" },
+  })),
 ];
 for (const { scope, value } of values) it(`classifies every I-9 parent evidence leaf for ${JSON.stringify(scope)}`, () => {
   for (const leaf of evidenceLeaves(value)) {

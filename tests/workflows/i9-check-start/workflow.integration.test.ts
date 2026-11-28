@@ -1,12 +1,21 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import readXlsxFile from "read-excel-file/node";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createI9CheckStartWorld } from "../../support/helpers/backend/i9-check-start-world.js";
 import { I9CheckStartResultSchema } from "../../../src/models/workflows/i9-check/batch.js";
 import { I9CheckRowSchema } from "../../../src/models/workflows/i9-check/check.js";
 import { I9CheckCanonicalInput } from "../../../src/models/workflows/i9-check/input.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
+import { createOperatorProjection, createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/operator.js";
+import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
+import { buildRunDetail } from "../../../src/backend/runs/queries/run-detail.js";
+import { buildRunLogsWhole } from "../../../src/backend/runs/queries/run-logs.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { readDelegationEvidence } from "../../../src/backend/storage/sqlite/delegation-authority.js";
+import { projectRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 
 describe("one I-9 PDF Start through admitted children", () => {
   const world = createI9CheckStartWorld();
@@ -177,5 +186,65 @@ describe("an I-9 dry run previews the workbook and leaves every local output unt
     expect(f.projections).toEqual([]);
     expect(f.database.authority.generatedArtifacts.list().flatMap(file => file.updates.filter(update => update.record.sourceRunId === f.run.envelope.runId))).toEqual([]);
     expect(trackerBytes()).toEqual(trackerBefore);
+  });
+});
+
+describe("I-9 Check Start omissions", () => {
+  const world = createI9CheckStartWorld();
+  afterEach(world.cleanup);
+
+  it.each([
+    { step: "documents", omitted: ["documents", "roster-reference", "retention", "publication"], review: false },
+    { step: "roster-reference", omitted: ["roster-reference", "retention", "publication"], review: true },
+    { step: "retention", omitted: ["retention", "publication"], review: true },
+    { step: "publication", omitted: ["publication"], review: true },
+  ])("settles the $step omission without saving or projecting the tracker", async ({ step, omitted, review }) => {
+    const signal = new AbortController().signal;
+    const f = await world.fixture({ selection: {
+      selectedStepKeys: ["documents", "roster-reference", "retention", "publication"].filter(key => !omitted.includes(key)),
+      stepOmissions: omitted.map(key => ({ step: key, facts: {} })),
+    } });
+    const { root: { descriptor }, database, run: queued, clock } = f;
+    const runId = queued.envelope.runId;
+    if (review) for (let i = 0; i < 2; i++) {
+      await f.canonical.execute(queued, signal);
+      f.approveNext();
+    }
+    const { run } = await f.canonical.execute(queued, signal);
+    assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
+    const result = database.authority.runResults.get(runId);
+    assert.ok(result);
+    const publication = step === "publication";
+    if (publication) expect(result.result.value).toMatchObject({ personCount: 2, workbook: { state: "omitted", step } });
+    else expect(result.result.value).toEqual({ state: "stopped", reason: "retention-results-unavailable" });
+    expect(f.plan?.planned[0]?.outputs).toBeUndefined();
+    expect(f.publishCalls).toEqual([]);
+    expect(f.projections).toEqual([]);
+    expect(database.authority.writeIntents.listByRun(runId)).toEqual([]);
+    expect(database.authority.runs.listChildren(runId).some(child => child.envelope.workflow === "i9-check")).toBe(publication);
+    if (!review) expect(database.authority.runs.listChildren(runId)).toEqual([]);
+
+    const { receipt } = deriveRunEvidenceReceipt({ descriptor, run, result,
+      checkpoints: database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId),
+      delegations: result.dependencies.flatMap(entry => entry.state === "delegation-resolved" || entry.state === "child-resolved"
+        ? [readDelegationEvidence(database.authority, entry.parentRunId, entry.nodeId)] : []),
+    });
+    const receiptField = publication ? "workbook.step" : "reason";
+    expect(receipt.output.find(fact => fact.field === receiptField)?.value)
+      .toMatchObject({ value: publication ? "publication" : "retention-results-unavailable" });
+
+    const reader = f.canonical.lifecycle;
+    const descriptors = { resolve: (id: string) => id === descriptor.id ? descriptor : undefined };
+    const stateRoot = f.harness.authority.stateRoot;
+    const projection = createOperatorProjection({ database, stateRoot, clock, reader, appVersion: "0.1.0",
+      descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(database.authority), descriptors });
+    projection.ingestFromTimeline();
+    const deps = createOperatorRunDetail({ database, stateRoot, projection, runReader: reader, canonical: { database, reader, descriptors } });
+    const detail = buildRunDetail(deps, runId);
+    const section = buildRunLogsWhole(deps, runId, projection.runFold(runId), run);
+    const log = projectRunLogs({ detail, logs: section.payload, sections: [], unavailableEvidence: [] }, { artifactUrl: () => "unused" });
+    const line = log.steps.find(entry => entry.title === "Save workflow workbook");
+    assert.ok(line, JSON.stringify(detail.timeline.events.map(event => event.label)));
+    expect(logPlainText([line])).toContain(publication ? "Done outside Relay" : "Required evidence unavailable");
   });
 });

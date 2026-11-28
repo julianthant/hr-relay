@@ -32,6 +32,9 @@ import { CROSS_VERIFY_MANUAL } from "../../../src/workflows/person-lookup/steps/
 import { SEARCHING_MANUAL } from "../../../src/workflows/person-lookup/steps/searching/step.js";
 import { TRANSACTION_STEP } from "../../../src/workflows/work-study/steps/transaction/step.js";
 import { UCPATH_AUTH_STEP } from "../../../src/workflows/work-study/steps/ucpath-auth/step.js";
+import { DOCUMENTS_STEP } from "../../../src/workflows/i9-check-start/steps/documents/step.js";
+import { PUBLICATION_STEP, RETENTION_STEP } from "../../../src/workflows/i9-check-start/steps/retention/step.js";
+import { ROSTER_REFERENCE_STEP } from "../../../src/workflows/i9-check-start/steps/roster-reference/step.js";
 import { FixtureCommit, FixtureStage } from "../../support/fixtures/descriptor-fixtures.js";
 import { CRM_DATA_MANUAL } from "../../../src/workflows/onboarding/steps/crm-data/step.js";
 import { UCPATH_SEARCH_MANUAL } from "../../../src/workflows/onboarding/steps/ucpath-search/step.js";
@@ -159,6 +162,7 @@ const SEPARATIONS_ID = "separations";
 const PERSON_LOOKUP_ID = "person-lookup";
 const ONBOARDING_ID = "onboarding";
 const WORK_STUDY_ID = "work-study";
+const I9_CHECK_START_ID = "i9-check-start";
 const FIXTURE_ID = "step-omission-guard-valid";
 
 /** The one legitimate fixture descriptor every positive check runs against too. */
@@ -246,6 +250,8 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
     descriptor: WORK_STUDY_ID, step: "transaction", declaration: TRANSACTION_STEP.manual,
     fieldKeys: [], produces: [],
   },
+  ...[DOCUMENTS_STEP, ROSTER_REFERENCE_STEP, RETENTION_STEP, PUBLICATION_STEP]
+    .map(step => ({ descriptor: I9_CHECK_START_ID, step: step.key, declaration: step.manual, fieldKeys: [], produces: [] })),
 ];
 
 /** Every `<descriptor>::<step>` row a complete sweep MUST have visited — the production declarations plus the fixture's one. */
@@ -277,6 +283,10 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
   "onboarding::master-results": { state: "omittable", forces: [] },
   "work-study::ucpath-auth": { state: "omittable", forces: [] },
   "work-study::transaction": { state: "omittable", forces: [] },
+  "i9-check-start::documents": { state: "omittable", forces: ["roster-reference", "retention", "publication"] },
+  "i9-check-start::roster-reference": { state: "omittable", forces: ["retention", "publication"] },
+  "i9-check-start::retention": { state: "omittable", forces: ["publication"] },
+  "i9-check-start::publication": { state: "omittable", forces: [] },
 };
 
 
@@ -302,6 +312,10 @@ const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly st
   "onboarding::master-results": { asserted: [], omitted: [], manual: ["concurrent-master-results", "master-results"] },
   "work-study::ucpath-auth": { asserted: ["paypath-position"], omitted: [] },
   "work-study::transaction": { asserted: [], omitted: ["save-transaction", "transaction-plan"] },
+  "i9-check-start::documents": { asserted: [], omitted: ["read-approved-records", "read-documents", "read-people"] },
+  "i9-check-start::roster-reference": { asserted: [], omitted: ["read-reference", "read-requests"] },
+  "i9-check-start::retention": { asserted: [], omitted: ["check-people", "read-rows"] },
+  "i9-check-start::publication": { asserted: [], omitted: [], manual: ["publish-results", "save-workbook"] },
 };
 
 /** The same pinning for the whole-descriptor plan: every omittable step of a descriptor omitted at once. */
@@ -324,6 +338,10 @@ const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asse
   [WORK_STUDY_ID]: {
     asserted: ["paypath-position"],
     omitted: ["save-transaction", "transaction-plan"],
+  },
+  [I9_CHECK_START_ID]: {
+    asserted: [],
+    omitted: ["check-people", "publish-results", "read-approved-records", "read-documents", "read-people", "read-reference", "read-requests", "read-rows", "save-workbook"],
   },
 };
 
@@ -533,7 +551,7 @@ describe("step-omission invariants", () => {
       assert.deepEqual(sorted(whole.manual.keys()), expectedWhole.manual ?? [], `${id}: whole-descriptor nodes done by hand changed`);
     }
     assertSweptEveryDeclaration(audited, "planner sweep");
-    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, ONBOARDING_ID, WORK_STUDY_ID, FIXTURE_ID]), "the whole-descriptor sweep visited the wrong descriptors");
+    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, ONBOARDING_ID, WORK_STUDY_ID, I9_CHECK_START_ID, FIXTURE_ID]), "the whole-descriptor sweep visited the wrong descriptors");
     // Person Lookup has no gate; the ALWAYS-GATE sweep stays non-vacuous through these gated descriptors.
     assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, ONBOARDING_ID, WORK_STUDY_ID, FIXTURE_ID]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
   });

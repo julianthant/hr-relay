@@ -304,9 +304,9 @@ export async function walkRunPlan(
       continue;
     }
     if (entry.mode === "omitted" || entry.mode === "manual") {
-
-      skippedReasons.set(String(node.id), "step-omitted");
-      if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "step-omitted" });
+      const reason = omissionPlan.stopped.has(String(node.id)) ? "required-evidence-unavailable" : "step-omitted";
+      skippedReasons.set(String(node.id), reason);
+      if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason });
       const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
       emit({
         t: "span.started", kind: "task",
@@ -317,7 +317,7 @@ export async function walkRunPlan(
         t: "span.ended", kind: "task",
         ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
         outcome: "skipped",
-        notRunReason: "step-omitted",
+        notRunReason: reason,
       });
       continue;
     }

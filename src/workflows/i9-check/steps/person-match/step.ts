@@ -13,6 +13,7 @@ import { searchPersonOrgTask } from "../../tasks/search-person-org.js";
 
 const MatchFactsSchema = z.strictObject({ status: z.enum(["found", "not-found"]), eid: EidSchema.nullable(), name: z.string().min(1).nullable() });
 const MATCH_MANUAL: StepManualDeclaration = {
+  off: "values",
   form: { fields: [
     { key: "status", label: "Found in UCPath", kind: "enum", values: ["found", "not-found"], replaces: { nodeId: "match-outcome", path: "identity.status" } },
     { key: "eid", label: "Matched Employee ID", kind: "eid", optional: true, help: "Required when found.", replaces: { nodeId: "match-outcome", path: "identity.eid" } },

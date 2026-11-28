@@ -50,7 +50,7 @@ export const SpanOutcomeWireSchema = z.enum([
 export type SpanOutcomeWire = z.infer<typeof SpanOutcomeWireSchema>;
 
 /** Why a `skipped` task span did not run; pinned against `TerminalNotRunReasonSchema` so surface and record name a skip with the same word. */
-export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]);
+export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted", "required-evidence-unavailable"]);
 
 /** Why a queued row re-queued; pinned against `RequeueCauseSchema`. */
 export const SpanRequeueCauseSchema = z.enum(["reassign", "bump", "recovery", "provider-capacity"]);

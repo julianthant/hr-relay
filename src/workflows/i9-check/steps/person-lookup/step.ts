@@ -13,6 +13,7 @@ import { i9CheckPersonMatchDefinition, personMatchEntries } from "../person-matc
 
 const CandidateFactsSchema = z.strictObject({ emplId: EidSchema.nullable(), name: z.string().min(1).nullable(), hireDate: UsDateFactSchema.nullable() });
 const CANDIDATES_MANUAL: StepManualDeclaration = {
+  off: "values",
   form: { fields: [
     { key: "emplId", label: "UCPath Employee ID", kind: "eid", optional: true, help: "Leave all three fields blank when UCPath shows no person by this name.", replaces: { nodeId: "employment-candidates", path: "candidates.0.emplId" } },
     { key: "name", label: "UCPath name", kind: "text", optional: true, replaces: { nodeId: "employment-candidates", path: "candidates.0.name" } },

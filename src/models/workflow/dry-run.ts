@@ -24,7 +24,7 @@ export const DryRunStepSchema = z.discriminatedUnion("state", [
   z.strictObject({ nodeId: NodeIdSchema, state: z.literal("transaction-preview"), preview: TransactionDryRunPreviewSchema,
     samples: z.array(DryRunSampleSchema) }),
   z.strictObject({ nodeId: NodeIdSchema, state: z.literal("unavailable"), reason: z.literal("requires-unsubmitted-output") }),
-  z.strictObject({ nodeId: NodeIdSchema, state: z.literal("not-run"), reason: z.enum(["condition-false", "branch-not-selected", "step-omitted", "operator-asserted"]) }),
+  z.strictObject({ nodeId: NodeIdSchema, state: z.literal("not-run"), reason: z.enum(["condition-false", "branch-not-selected", "step-omitted", "operator-asserted", "required-evidence-unavailable"]) }),
 ]);
 export type DryRunStep = z.infer<typeof DryRunStepSchema>;
 export const PublicationPreviewStepSchema = z.strictObject({ nodeId: NodeIdSchema, state: z.literal("publication-preview") });

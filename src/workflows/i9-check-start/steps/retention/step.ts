@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { ReadWorkbookResult } from "../../../../models/processing/workbooks/read-result.js";
+import { OmittedStepResultArmSchema } from "../../../../models/workflow/step-omission.js";
 import { ReadRetentionRow } from "../../../../models/workflows/i9-check/read-retention-row.js";
 import { I9CheckInput } from "../../../../models/workflows/i9-check/input.js";
 import { ReadI9CheckRows } from "../../../../models/workflows/i9-check-start/read-rows.js";
@@ -10,11 +12,12 @@ import { i9CheckWorkbookTable } from "../../../../rules/i9-check/workbook.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { buildDocuments } from "../documents/step.js";
+import { buildDocuments, i9CheckStoppedResult, stopWithoutRead } from "../documents/step.js";
 import { buildRosterReference } from "../roster-reference/step.js";
 
-const step = Object.freeze({
-  ...defineWorkflowStep({ key: "retention", label: "Check retention and save results" }),
+export const RETENTION_STEP = Object.freeze({
+  ...defineWorkflowStep({ key: "retention", label: "Check retention and collect results" }),
+  manual: stopWithoutRead("Stops before saving without the person checks.", ["check-people", "read-rows"]),
   review: {
     starts: [{ nodeId: "check-people", each: "Each approved person" }],
     pages: [
@@ -22,12 +25,10 @@ const step = Object.freeze({
         id: "results-workbook",
         title: "I-9 Check results",
         mode: "Read only",
-        nodeIds: ["read-rows", "save-workbook", "publish-results"],
+        nodeIds: ["read-rows"],
         lines: [
           { id: "rows", kind: "check", text: "Account for each approved person’s settled retention result.", nodeIds: ["read-rows"] },
           { id: "collect", kind: "read", text: "Collect one retention result for every approved person after the person checks finish.", nodeIds: ["read-rows"] },
-          { id: "save", kind: "action", text: "Save one results workbook and verify its publication receipt.", nodeIds: ["save-workbook", "publish-results"], when: [{ "dry-run": ["false"] }] },
-          { id: "dry", kind: "check", text: "Preview the results workbook without saving it or changing the tracker.", nodeIds: ["save-workbook"], when: [{ "dry-run": ["true"] }] },
         ],
         fields: [
           { id: "name", label: "Employee name", taskFields: [{ nodeId: "read-rows", kind: "output", fieldPath: "tracker.rows.employeeName" }], example: "Morrow, Bea",
@@ -43,13 +44,39 @@ const step = Object.freeze({
       }
     ],
     branchLabels: [],
+  } as const
+});
+
+export const PUBLICATION_STEP = Object.freeze({
+  ...defineWorkflowStep({ key: "publication", label: "Save results and append to the tracker" }),
+  manual: { off: "manual" as const, form: { fields: [] }, produces: {}, skips: ["save-workbook", "publish-results"] },
+  review: {
+    pages: [{
+      id: "publish-results", title: "Publish I-9 Check results", mode: "Fill form", nodeIds: ["save-workbook", "publish-results"],
+      lines: [
+        { id: "save", kind: "action", text: "Save one results workbook and verify its publication receipt.", nodeIds: ["save-workbook", "publish-results"], when: [{ "dry-run": ["false"] }] },
+        { id: "dry", kind: "check", text: "Preview the results workbook without saving it or changing the tracker.", nodeIds: ["save-workbook"], when: [{ "dry-run": ["true"] }] },
+      ],
+      fields: [{
+        id: "workbook-state", label: "Results workbook", taskFields: [{ nodeId: "publish-results", kind: "output", fieldPath: "workbook.state" }],
+        example: "Saved", source: { origin: "Spreadsheets", detail: "The workbook library receipt confirms the results were saved.", chain: [] },
+      }],
+    }],
+    branchLabels: [],
     decisions: [{ id: "results-publication", label: "Results workbook", reads: { nodeId: "publish-results", fieldPath: "workbook.state" },
-      nodeIds: ["read-rows", "save-workbook", "publish-results"], initial: "saved", outcomes: [
+      nodeIds: ["save-workbook", "publish-results"], initial: "saved", outcomes: [
         { value: "saved", label: "Workbook saved", then: "Finishes with one results workbook and the retained rows for the tracker.", when: [{ "dry-run": ["false"] }] },
       ] }],
   } as const
 });
+const step = RETENTION_STEP, publication = PUBLICATION_STEP;
 const entries = defineStepEntries(step);
+const publicationEntries = defineStepEntries(publication);
+const resultSchema = z.union([
+  ReadI9CheckPublication.output,
+  ReadI9CheckRows.output.extend({ workbook: OmittedStepResultArmSchema.extend({ step: z.literal(publication.key) }) }),
+  i9CheckStoppedResult,
+]);
 type Author = WorkflowAuthor<typeof I9CheckStartInput>;
 export function buildRetention(author: Author, reference: ReturnType<typeof buildRosterReference>) {
   const children = author.delegate({ id: "check-people", label: "Check each approved person in UCPath",
@@ -60,12 +87,18 @@ export function buildRetention(author: Author, reference: ReturnType<typeof buil
   const rows = author.task(entries.task("read-rows", ReadI9CheckRows, { replay: "checkpoint" }), [reference.prepared, children], ({ input, outputs }) => ({
     batchKey: FingerprintSchema.parse(i9CheckStartMatchKey(input)), prepared: outputs["read-requests"], outcomes: [...outputs["check-people"]],
   }));
-  const workbook = author.task(entries.task("save-workbook", ReadWorkbookResult, { replay: "checkpoint", dryRun: "stop-before-publish" }), [rows], ({ outputs }) => ({
+  const workbook = author.task(publicationEntries.task("save-workbook", ReadWorkbookResult, { replay: "checkpoint", dryRun: "stop-before-publish" }), [rows], ({ outputs }) => ({
     name: "I-9 Check results", table: i9CheckWorkbookTable(outputs["read-rows"].tracker.rows),
   }));
-  const published = author.task(entries.task("publish-results", ReadI9CheckPublication, { replay: "checkpoint" }), [rows, workbook], ({ outputs }) => ({ rows: outputs["read-rows"], workbook: outputs["save-workbook"] }));
-  return { published, steps: [[step, [children, rows, workbook, published]]] as const,
-    result: author.result(ReadI9CheckPublication.output, [published], ({ outputs }) => outputs["publish-results"]) };
+  const published = author.task(publicationEntries.task("publish-results", ReadI9CheckPublication, { replay: "checkpoint" }), [rows, workbook], ({ outputs }) => ({ rows: outputs["read-rows"], workbook: outputs["save-workbook"] }));
+  return { published, steps: [[step, [children, rows]], [publication, [workbook, published]]] as const,
+    result: author.result(resultSchema, [rows, published], ({ outputs }): z.input<typeof resultSchema> => {
+      const saved = outputs["publish-results"];
+      if (saved !== undefined) return saved;
+      const retained = outputs["read-rows"];
+      return retained === undefined ? { state: "stopped", reason: "retention-results-unavailable" }
+        : { ...retained, workbook: { state: "omitted", step: publication.key } };
+    }) };
 }
 export const i9CheckStartRetentionDefinition = defineStep({ group: step, build: buildRetention,
   nodePurposes: [

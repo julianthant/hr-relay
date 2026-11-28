@@ -98,6 +98,7 @@ export function projectTypedSteps(run: RunRecord, descriptor: AnyWorkflowDescrip
   const protectedValues = protectedValuesOf(run);
   const nodes = new Map(descriptorRuntimeNodes(descriptor).map((node) => [String(node.id), node]));
   for (const entry of entries) {
+    if (descriptor.stepOmissions.some(spec => spec.step === entry.step && spec.stop !== undefined)) continue;
     const fields = currentFields(descriptor, entry.step);
     const copied = copiedKeys(run, entry.step);
     const doneByHand = (descriptor.stepOmissions.find((spec) => spec.step === entry.step)?.skips ?? [])

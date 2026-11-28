@@ -15,7 +15,8 @@ export const i9CheckStartWorkflow = defineWorkflow({
   input: I9CheckStartInput, canonicalInput: I9CheckStartCanonicalInput, inputSubject: "document",
   identity: { matchKey: i9CheckStartMatchKey },
   referenceKeys: () => [],
-  plannedOutputs: () => [{ kind: "workbook", name: "I-9 Check results", rowSubject: "person", rows: { state: "after-review" } }],
+  plannedOutputs: (_input, _references, omissions) => omissions?.some(entry => entry.workflow === undefined && entry.step === "publication") ? []
+    : [{ kind: "workbook", name: "I-9 Check results", rowSubject: "person", rows: { state: "after-review" } }],
   presentation: { title: ({ documents }) => documents.length === 1 && documents[0] !== undefined ? documents[0].fileName : `I-9 Check · ${documents.length} PDFs`, subtitle: () => "One results workbook" },
   surface: { shape: "single" }, surfaces: {
     uploadRun: { title: { segments: [{ kind: "literal", text: "I-9 PDFs" }] }, fields: [],
@@ -25,21 +26,23 @@ export const i9CheckStartWorkflow = defineWorkflow({
   },
   enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, role: defineWorkflowRole({ kind: "composition" }),
   scenarios: ["i9-check-start/pdfs"], details: [
-    { key: "people", label: "People", source: { kind: "result", fieldPath: "personCount" }, display: "text" },
-    { key: "reference", label: "Reference version", source: { kind: "result", fieldPath: "reference.snapshot.versionName" }, display: "text" },
+    { key: "people", label: "People", source: { nodeId: "read-rows", fieldPath: "personCount" }, display: "text" },
+    { key: "reference", label: "Reference version", source: { nodeId: "read-rows", fieldPath: "reference.snapshot.versionName" }, display: "text" },
   ],
   nodePurposes: [...i9CheckStartDocumentsDefinition.nodePurposes, ...i9CheckStartRosterReferenceDefinition.nodePurposes, ...i9CheckStartRetentionDefinition.nodePurposes],
   artifactProjections: [{ id: "i9-check-tracker", source: { nodeId: "publish-results", fieldPath: "tracker" }, keyFields: ["batchKey"], sink: "xlsx-retention", blocking: true }],
   rows: [
     { key: "read-forms", label: "Read I-9 forms", members: [{ step: "documents", nodes: ["read-documents"] },
-      { workflow: "ocr", step: "source-pages" }, { workflow: "ocr", step: "page-readings" }] },
+      { workflow: "ocr", step: "source-pages" }, { workflow: "ocr", step: "page-readings" }], target: { step: "documents" } },
     { key: "match-people", label: "Match extracted people", members: [{ step: "documents", nodes: ["read-approved-records", "read-people"] },
-      { workflow: "ocr", step: "review-records" }, { workflow: "ocr", step: "identity-lookups" }, { workflow: "ocr", step: "signer-lookups" }] },
-    { key: "review-records", label: "Review extracted records", members: [{ workflow: "ocr", step: "approval" }] },
+      { workflow: "ocr", step: "review-records" }, { workflow: "ocr", step: "identity-lookups" }, { workflow: "ocr", step: "signer-lookups" }], target: { step: "documents" } },
+    { key: "review-records", label: "Review extracted records", members: [{ workflow: "ocr", step: "approval" }], target: { step: "documents" } },
+    { key: "roster-reference", label: "Read Action History", members: [{ step: "roster-reference" }], target: { step: "roster-reference" } },
     { key: "ucpath-match", label: "Match person in UCPath", members: [{ workflow: "i9-check", step: "person-match" },
       { workflow: "i9-check", step: "reference-check" }], target: { workflow: "i9-check", step: "person-match" } },
     { key: "ucpath-dates", label: "Read employment dates", members: [{ workflow: "i9-check", step: "person-lookup" }], target: { workflow: "i9-check", step: "person-lookup" } },
-    { key: "tracker-row", label: "Append retention tracker row", members: [{ step: "roster-reference" }, { workflow: "i9-check", step: "roster-match" }, { step: "retention" }] },
+    { key: "retention", label: "Collect retention results", members: [{ workflow: "i9-check", step: "roster-match" }, { step: "retention" }], target: { step: "retention" } },
+    { key: "tracker-row", label: "Append retention tracker row", members: [{ step: "publication" }], target: { step: "publication" } },
   ],
   steps: author => {
     const documents = i9CheckStartDocumentsDefinition.build(author), reference = i9CheckStartRosterReferenceDefinition.build(author, documents);

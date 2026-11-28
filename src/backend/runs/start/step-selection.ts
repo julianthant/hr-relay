@@ -24,7 +24,7 @@ export interface StartStepProjection {
   readonly includedByDefault: boolean;
   readonly control:
     | Readonly<{ state: "selectable"; inputField: string; selectedWhen: boolean }>
-    | Readonly<{ state: "omittable"; form: StepOmissionForm; forces: readonly string[] }>
+    | Readonly<{ state: "omittable"; form: StepOmissionForm; forces: readonly string[]; stop?: string }>
     | Readonly<{ state: "required"; reason: string }>;
 }
 
@@ -35,6 +35,8 @@ export interface StartRowProjection {
   readonly includedByDefault: boolean;
   readonly kind: StartRowKind;
   readonly off?: StartRowOff;
+  readonly stop?: string;
+  readonly requiresStep?: string;
   readonly lockReason?: StartRowLockReason;
   readonly members: readonly StartRowMember[];
   readonly target?: StartRowTarget;
@@ -140,7 +142,7 @@ export function projectStartSteps(descriptor: AnyWorkflowDescriptor): readonly S
       return Object.freeze(row.state === "omittable"
         ? {
           key, label: step.label, includedByDefault: true,
-          control: Object.freeze({ state: "omittable" as const, form: spec.form, forces }),
+          control: Object.freeze({ state: "omittable" as const, form: spec.form, forces, ...(spec.stop === undefined ? {} : { stop: spec.stop }) }),
         }
         : {
           key, label: step.label, includedByDefault: true,
@@ -253,6 +255,10 @@ export function resolveStartStepOmissions(
     if (workflow === undefined || row.target === undefined) continue;
     const entry = children.get(JSON.stringify([workflow, row.target.step]));
     if (entry === undefined) continue;
+    const required = delegatedStopStep(descriptor, workflow);
+    if (required !== undefined && !selected.has(required)) {
+      throw new StartStepOmissionRefusedError("cascade-refused", `${descriptor.id} step "${required}" is off, so ${workflow}/${entry.step} will not run.`);
+    }
     const child = workflowDelegatedDescriptor(descriptor, workflow);
     const spec = child.stepOmissions.find(({ step }) => step === entry.step);
     if (spec === undefined) throw new Error(`${descriptor.id} start row ${row.key} targets ${workflow}/${entry.step}, which declares no manual entry`);
@@ -366,6 +372,7 @@ export function projectStartRows(descriptor: AnyWorkflowDescriptor): readonly St
     const view = row.target === undefined ? undefined : viewOf(row.target.workflow);
     const step = row.target === undefined ? undefined : view?.steps.get(row.target.step);
     const spec = row.target === undefined ? undefined : view?.specByStep.get(row.target.step);
+    const requiresStep = row.target?.workflow === undefined ? undefined : delegatedStopStep(descriptor, row.target.workflow);
     const kind: StartRowKind = step === undefined || view === undefined ? "locked"
       : step.control.state === "selectable" || step.control.state === "omittable" ? "switch"
         : spec !== undefined && manualKind(view.descriptor, spec) === "locked-manual" ? "locked-manual" : "locked";
@@ -381,6 +388,8 @@ export function projectStartRows(descriptor: AnyWorkflowDescriptor): readonly St
       includedByDefault: step?.includedByDefault ?? true,
       kind,
       ...(kind === "switch" && spec?.off !== undefined ? { off: spec.off } : {}),
+      ...(spec?.stop === undefined ? {} : { stop: spec.stop }),
+      ...(requiresStep === undefined ? {} : { requiresStep }),
       ...(reason === undefined ? {} : { lockReason: reason }),
       members: row.members,
       ...(row.target === undefined ? {} : { target: row.target }),
@@ -388,6 +397,13 @@ export function projectStartRows(descriptor: AnyWorkflowDescriptor): readonly St
       ...(step?.control.state === "selectable" ? { selection: Object.freeze({ inputField: step.control.inputField }) } : {}),
     });
   }));
+}
+
+function delegatedStopStep(descriptor: AnyWorkflowDescriptor, workflow: string): string | undefined {
+  const delegates = descriptorRuntimeNodes(descriptor).filter(node => node.kind === "child-run" && node.target.id === workflow);
+  const stop = descriptor.stepOmissions.find(spec => spec.stop !== undefined && delegates.length > 0
+    && delegates.every(node => spec.skips?.includes(node.id) === true));
+  return stop?.step;
 }
 
 function rowView(descriptor: AnyWorkflowDescriptor) {
@@ -405,7 +421,7 @@ export function startStepWireControl(
 ): WorkflowStartWire["steps"][number]["control"] {
   switch (control.state) {
     case "selectable": return { state: "selectable", inputField: control.inputField };
-    case "omittable": return { state: "omittable", form: control.form, forces: [...control.forces] };
+    case "omittable": return { state: "omittable", form: control.form, forces: [...control.forces], ...(control.stop === undefined ? {} : { stop: control.stop }) };
     case "required": return { state: "required", reason: control.reason };
   }
 }
@@ -414,6 +430,8 @@ export function startRowWire(row: StartRowProjection): NonNullable<WorkflowStart
   return {
     key: row.key, label: row.label, includedByDefault: row.includedByDefault, kind: row.kind,
     ...(row.off === undefined ? {} : { off: row.off }),
+    ...(row.stop === undefined ? {} : { stop: row.stop }),
+    ...(row.requiresStep === undefined ? {} : { requiresStep: row.requiresStep }),
     ...(row.lockReason === undefined ? {} : { lockReason: row.lockReason }),
     members: row.members.map((member) => ({ ...member, ...(member.nodes === undefined ? {} : { nodes: [...member.nodes] }) })),
     ...(row.target === undefined ? {} : { target: { ...row.target } }),

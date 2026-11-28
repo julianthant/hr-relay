@@ -11,13 +11,13 @@ it("compiles one PDF batch with admitted OCR and existing person children, one w
   const descriptor = compileWorkflow(i9CheckStartWorkflow).descriptor;
   const nodes = descriptorRuntimeNodes(descriptor);
   expect(descriptor.surface).toEqual({ shape: "single" });
-  expect(descriptor.timeline.map(step => step.key)).toEqual(["documents", "roster-reference", "retention"]);
+  expect(descriptor.timeline.map(step => step.key)).toEqual(["documents", "roster-reference", "retention", "publication"]);
   expect(nodes.filter(node => node.kind === "child-run").map(node => node.target.id)).toEqual(["ocr", "i9-check"]);
   expect(nodes.every(node => node.kind === "task" || node.kind === "child-run")).toBe(true);
   expect(workflowProjections(descriptor).contracts.every(contract => contract.effect === "read")).toBe(true);
   expect(nodes.filter(node => node.kind === "task" && node.uses.id === "workbooks/read-result")).toHaveLength(1);
   expect(descriptor.artifactProjections).toEqual([{ id: "i9-check-tracker", source: { nodeId: "publish-results", fieldPath: "tracker" }, keyFields: ["batchKey"], sink: "xlsx-retention", blocking: true }]);
-  expect(workflowTerminalResultExecution(descriptor).dependsOn).toEqual(["publish-results"]);
+  expect(workflowTerminalResultExecution(descriptor).dependsOn).toEqual(["read-rows", "publish-results"]);
   const documents = nodes.find(node => node.id === "read-documents");
   if (documents?.kind !== "child-run" || documents.cardinality !== "many") throw new Error("Missing PDF delegation");
   const first = i9ApprovedSource(1, [{ eid: "10000001", kind: "i9-section1" }]);

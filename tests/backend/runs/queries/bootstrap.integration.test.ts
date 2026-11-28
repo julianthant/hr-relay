@@ -117,7 +117,7 @@ describe("bootstrap start-surface block", () => {
           "i9-creation": ["i9"], "ucpath-hire": ["ucpath"], "master-results": [] },
         "emergency-contact": { "read-document": [], members: [] },
         "emergency-contact-member": { "contact-plan": ["ucpath"], "reference-check": [], "contact-preview": ["ucpath"] },
-        "i9-check-start": { documents: [], "roster-reference": [], retention: [] },
+        "i9-check-start": { documents: [], "roster-reference": [], retention: [], publication: [] },
         "work-study": { "ucpath-auth": ["ucpath"], "reference-check": [], transaction: ["ucpath"] },
       };
       for (const descriptor of DESCRIPTORS) {

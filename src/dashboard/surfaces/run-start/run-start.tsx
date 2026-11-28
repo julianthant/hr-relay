@@ -30,7 +30,7 @@ import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 import { useDashboardCommandBinding, useDashboardClient } from "../../state/client-context.js";
 import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
 import { SYSTEM_NAME } from "../shared/status/system-chip-model.js";
-import { planRefusalNotice, forcedStepOmissions, handOffStepOmissions, initialStepOmissionDraft, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable } from "./run-start-model.js";
+import { planRefusalNotice, forcedStepOmissions, handOffStepOmissions, initialStepOmissionDraft, stoppedStepOmissions, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable } from "./run-start-model.js";
 import { includedRowCount, rowFieldsOpen, rowOpenFold, startRowsOf, stepEntries, type OpenStepRow, type StartStep, type StepRow } from "./run-steps-model.js";
 import { reconcileRunStartStage, runStartStages } from "./run-start-timeline.js";
 import { pdfRunOcrFooter, pdfRunSelectValue, pdfRunSwitchValue, restorePdfRun, usePdfRunInput } from "./run-start-pdfs.js";
@@ -213,7 +213,12 @@ export function RunStartDialog({
       ? typedValues[control.inputField] === true
       : step.includedByDefault;
   }).map(step => step.key) ?? [], [workflow, declaredInput, typedValues]);
-  const selectedStepKeys = customizeSteps || isRerun ? customizedStepKeys : defaultStepKeys;
+  const steps = workflow?.steps ?? EMPTY_STEPS;
+  const requestedStepKeys = customizeSteps || isRerun ? customizedStepKeys : defaultStepKeys;
+  const stoppedByStep = useMemo(() => draft.interruptedRerun ? new Map<string, readonly string[]>() : stoppedStepOmissions(steps, requestedStepKeys),
+    [draft.interruptedRerun, steps, requestedStepKeys]);
+  const selectedStepKeys = useMemo(() => stoppedByStep.size === 0 ? requestedStepKeys : requestedStepKeys.filter(key => !stoppedByStep.has(key)),
+    [requestedStepKeys, stoppedByStep]);
   const savedRows = useRunStartWorkbookRows(spreadsheets, draft, client, commandBinding, open, isRerun, actorId, workflowId, workflow, inputRun);
   const supportsDryRun = (inputRun.state === "present" && inputRun.surface.supportsDryRun === true) || workflow?.uploadRun?.supportsDryRun === true;
   const dryRunDescription = pdfSurface?.supportsDryRun === true
@@ -227,8 +232,7 @@ export function RunStartDialog({
   }, [launchStages, setCurrentStage]);
 
   /** Lock forced omissions using the descriptor cascade; the planner owns the rule. */
-  const steps = workflow?.steps ?? EMPTY_STEPS;
-  const forcedByStep = useMemo(() => forcedStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
+  const forcedByStep = useMemo(() => new Map([...forcedStepOmissions(steps, selectedStepKeys), ...stoppedByStep]), [steps, selectedStepKeys, stoppedByStep]);
   const handOffByStep = useMemo(() => handOffStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
   const rows = useMemo(() => startRowsOf({ steps, rows: workflow?.rows }), [steps, workflow?.rows]);
   const inputDriven = useCallback((row: StepRow): boolean => launchDraft.rowInputDriven(workflow, typedValues, row), [workflow, typedValues]);

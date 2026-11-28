@@ -1,6 +1,7 @@
 
 import { z } from "zod";
 import { DataObservationOriginsSchema } from "../../models/events/data-observation-origin.js";
+import { SpanNotRunReasonSchema } from "../../models/events/types.js";
 import { DiagnosticSafetyVersionSchema } from "../../models/trust/failure.js";
 import {
   BrowserSessionIdSchema,
@@ -42,7 +43,7 @@ export const SpanOutcomeSchema = z.enum([
 ]);
 
 
-export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]);
+export { SpanNotRunReasonSchema };
 
 /** Run/task span identity — `(runId, attempt, spanPath)` (ref dashboard-surfaces ). */
 const RunSpanIdentityFields = {

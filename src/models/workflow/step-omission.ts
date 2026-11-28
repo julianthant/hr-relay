@@ -193,6 +193,8 @@ export interface StepManualIssue {
 /** A step folder's declaration; a producer returns a COMPLETE output the executor parses with the node's own contract output schema — never a partial object or a placeholder. */
 export interface StepManualDeclaration {
   readonly off?: StartRowOff;
+  /** The run cannot continue from this read without its original evidence. */
+  readonly stop?: string;
   readonly form: StepOmissionForm;
   readonly produces: Readonly<Record<string, (context: StepOmissionProduceContext) => unknown>>;
   /** Reading nodes that do not run when the values are typed; every node neither produced nor skipped runs. */
@@ -311,6 +313,8 @@ export interface StepOmissionPlan {
   readonly omitted: ReadonlyMap<string, string>;
   /** node id → the step completed outside Relay; nothing runs or produces proof */
   readonly manual: ReadonlyMap<string, string>;
+  /** Skipped nodes in a stopped branch, including downstream form actions. */
+  readonly stopped: ReadonlySet<string>;
   readonly refusals: readonly StepOmissionRefusal[];
 }
 
@@ -381,7 +385,19 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
       });
     }
   }
-  return Object.freeze({ asserted, omitted, manual, refusals: Object.freeze(refusals) });
+  const stopped = new Set([...omitted].flatMap(([node, step]) => specByStep.get(step)?.stop === undefined ? [] : [node]));
+  for (;;) {
+    const before = stopped.size;
+    for (const node of graph.nodes) {
+      const step = manual.get(node.id);
+      if (step === undefined || !node.dependsOn.some(dependency => stopped.has(dependency))) continue;
+      manual.delete(node.id);
+      omitted.set(node.id, step);
+      stopped.add(node.id);
+    }
+    if (stopped.size === before) break;
+  }
+  return Object.freeze({ asserted, omitted, manual, stopped, refusals: Object.freeze(refusals) });
 }
 
 /** One step's cascade row: the other steps forced out with it, or the step that cannot be omitted and so blocks it. */
