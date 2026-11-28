@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import { retainCleanShutdownBackups, resumeShutdownBackupRetirement } from "../../../../src/backend/storage/maintenance/clean-shutdown-backups.js";
-import { verifyBackupBytesAtPath, verifyBackupManifestAtPath, type VerifiedBackup } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { backupLogPaths, verifyBackupBytesAtPath, verifyBackupManifestAtPath, type VerifiedBackup } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { authoritySourceDatabaseIdentity } from "../../../../src/backend/storage/sqlite/database-identity.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
@@ -28,7 +28,7 @@ vi.mock("node:fs", async actual => {
 });
 
 /** `firstGeneration` numbers the six backups from it; `sameInstant` gives them one creation time, as a frozen clock does. */
-function fixture(firstGeneration = 0, sameInstant = false) {
+function fixture(firstGeneration = 0, sameInstant = false, withLogs = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "shutdown-backup-retention-"))), directory = join(root, "backups", "authority");
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const proofs = new Map<string, VerifiedBackup>();
@@ -47,9 +47,11 @@ function fixture(firstGeneration = 0, sameInstant = false) {
     const observed = { applicationId: AUTHORITY_APPLICATION_ID, schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, installationId, profileId, pageCount: 1, authorityGeneration: firstGeneration + index, authorityContentFingerprint: digest };
     const manifest = AuthorityBackupManifestSchema.parse({ ...observed, kind: "hrauto-authority-backup", manifestVersion: 4, backupFileName,
       sourceDatabaseIdentity: sourceIdentity, createdAt: new Date(Date.parse("2026-11-01T12:00:00.000Z") + (sameInstant ? 0 : index * 1000)).toISOString(), byteSize: 2, sha256: digest,
+      ...(withLogs ? { logFiles: { timeline: { byteSize: 2, sha256: digest }, dashboard: { byteSize: 2, sha256: digest } } } : {}),
       verification: { ...observed, state: "verified", observedFrom: "backup-copy", observedAt: clock.now().toISOString(), quickCheck: "ok", foreignKeyViolations: 0, invariantViolations: [], exactTableRegistry: true } });
     const backupPath = join(directory, backupFileName), manifestPath = `${backupPath}.manifest.json`;
     writeFileSync(backupPath, "db", { mode: 0o600 }); writeFileSync(manifestPath, JSON.stringify(manifest), { mode: 0o600 });
+    if (withLogs) for (const path of backupLogPaths(backupPath)) writeFileSync(path, "db", { mode: 0o600 });
     proofs.set(manifestPath, { backupPath, manifestPath, manifest });
   }
   const before = new Map(readdirSync(directory).map(name => [name, readFileSync(join(directory, name))]));
@@ -102,6 +104,22 @@ for (const target of [".shutdown.sqlite", ".retiring"]) it(`resumes the exact re
     await f.retain();
     assert.equal(readdirSync(f.directory).length, 8);
     assert.equal(readdirSync(f.directory).filter(name => name.endsWith(".retiring")).length, 0);
+  } finally { f.close(); }
+});
+
+it("resumes a shutdown backup retirement interrupted between its log companions", async () => {
+  const f = fixture(0, false, true);
+  const doomed = [...f.proofs.values()].find(value => value.manifest.authorityGeneration === 1);
+  assert.ok(doomed);
+  faults.target = ".sqlite.dashboard.db";
+  try {
+    await assert.rejects(f.retain(), /interrupted shutdown backup retirement/u);
+    assert.equal(readdirSync(f.directory).includes(doomed.manifest.backupFileName), true);
+    assert.equal(readdirSync(f.directory).includes(`${doomed.manifest.backupFileName}.timeline.db`), false);
+    await f.resume();
+    await f.retain();
+    assert.equal(readdirSync(f.directory).length, 16);
+    assert.equal(readdirSync(f.directory).some(name => name.startsWith(doomed.manifest.backupFileName)), false);
   } finally { f.close(); }
 });
 

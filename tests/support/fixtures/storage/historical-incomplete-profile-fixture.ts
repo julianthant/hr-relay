@@ -6,6 +6,7 @@ import { restoreEmptyPreMasterWorkbookFixture } from "../../helpers/workbooks/pr
 import { SavedWorkbookSchema, encodeSavedWorkbook } from "../../../../src/models/dashboard/workbooks.js";
 import { DatabaseSync } from "node:sqlite";
 import { inspectOpenDatabase } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { restoreLogDatabases } from "../../../../src/backend/storage/sqlite/profile-local-databases.js";
 import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { StoppedAuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
@@ -130,7 +131,7 @@ function fixtureJson(path: string, value: unknown): void {
 }
 
 function historicalAuthorityArchive(profileRoot: string, binding: { installationId: string; profileId: string },
-  version: 6 | 7 | 8, lifetime: RuntimeLifetimeLock, copyValue?: string) {
+  version: 6 | 7 | 8 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION, lifetime: RuntimeLifetimeLock, copyValue?: string) {
   const primaryPath = join(profileRoot, "state.db"), primaryDigest = createHash("sha256").update(readFileSync(primaryPath)).digest("hex");
   let primary: ReturnType<typeof inspectOpenDatabase>;
   try { primary = withReadonlyAuthoritySnapshot(primaryPath, database => inspectOpenDatabase(database, CURRENT_AUTHORITY_SCHEMA_VERSION)); }
@@ -138,55 +139,75 @@ function historicalAuthorityArchive(profileRoot: string, binding: { installation
   const directory = join(profileRoot, "backups", "authority"), createdAt = new Date().toISOString();
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const backupFileName = `authority-g${primary.authorityGeneration}-${Date.parse(createdAt)}-${randomUUID()}.sqlite`, path = join(directory, backupFileName);
-  writeFileSync(path, Buffer.alloc(0), { mode: 0o600, flag: "wx" });
-  const database = new DatabaseSync(path);
-  let inspection: ReturnType<typeof inspectOpenDatabase> | undefined, failure: { error: unknown } | undefined;
-  try {
-    for (const migration of SQLITE_MIGRATIONS.filter(row => row.version <= version)) for (const statement of migration.statements) database.exec(statement);
-    if (version >= 7) database.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,?,?,?,NULL,'unbuilt',?,?)")
-      .run(version, primary.authorityGeneration, createdAt, binding.installationId, binding.profileId);
-    else database.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state) VALUES(1,?,?,?,NULL,'unbuilt')")
-      .run(version, primary.authorityGeneration, createdAt);
-    database.exec(`PRAGMA user_version=${version}; PRAGMA application_id=${AUTHORITY_APPLICATION_ID}`);
-    if (copyValue !== undefined) {
-      const libraryId = randomUUID();
-      const saved = SavedWorkbookSchema.parse({ libraryId, version: 1, createdAt, savedAt: createdAt,
-        workbook: { libraryId, name: "Synthetic historical copy.xlsx", themes: [], hasFormulas: false,
-          sheets: [{ id: "sheet", name: "Synthetic", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: copyValue }] }] }] } });
-      const values = [saved.libraryId, saved.version, saved.createdAt, saved.savedAt, JSON.stringify(encodeSavedWorkbook(saved))];
-      database.exec('BEGIN');
-      try {
-        database.prepare('INSERT INTO workbook_library(id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(...values);
-        database.prepare('INSERT INTO workbook_library_history(workbook_id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(...values);
-        database.exec('COMMIT');
-      } catch (error) {
-        try { database.exec('ROLLBACK'); }
-        catch (cleanup) {
-          const retained = retainAuthoritySourceClosure([error, cleanup], { database, admission: { lifetime } });
-          lifetime.retainSourceClosure(retained); throw retained;
+  let inspection: ReturnType<typeof inspectOpenDatabase> | undefined;
+  if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) {
+    writeFileSync(path, readFileSync(primaryPath), { mode: 0o600, flag: "wx" });
+    inspection = primary;
+  } else {
+    writeFileSync(path, Buffer.alloc(0), { mode: 0o600, flag: "wx" });
+    const database = new DatabaseSync(path);
+    let failure: { error: unknown } | undefined;
+    try {
+      for (const migration of SQLITE_MIGRATIONS.filter(row => row.version <= version)) for (const statement of migration.statements) database.exec(statement);
+      if (version >= 7) database.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,?,?,?,NULL,'unbuilt',?,?)")
+        .run(version, primary.authorityGeneration, createdAt, binding.installationId, binding.profileId);
+      else database.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state) VALUES(1,?,?,?,NULL,'unbuilt')")
+        .run(version, primary.authorityGeneration, createdAt);
+      database.exec(`PRAGMA user_version=${version}; PRAGMA application_id=${AUTHORITY_APPLICATION_ID}`);
+      if (copyValue !== undefined) {
+        const libraryId = randomUUID();
+        const saved = SavedWorkbookSchema.parse({ libraryId, version: 1, createdAt, savedAt: createdAt,
+          workbook: { libraryId, name: "Synthetic historical copy.xlsx", themes: [], hasFormulas: false,
+            sheets: [{ id: "sheet", name: "Synthetic", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: copyValue }] }] }] } });
+        const values = [saved.libraryId, saved.version, saved.createdAt, saved.savedAt, JSON.stringify(encodeSavedWorkbook(saved))];
+        database.exec('BEGIN');
+        try {
+          database.prepare('INSERT INTO workbook_library(id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(...values);
+          database.prepare('INSERT INTO workbook_library_history(workbook_id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(...values);
+          database.exec('COMMIT');
+        } catch (error) {
+          try { database.exec('ROLLBACK'); }
+          catch (cleanup) {
+            const retained = retainAuthoritySourceClosure([error, cleanup], { database, admission: { lifetime } });
+            lifetime.retainSourceClosure(retained); throw retained;
+          }
+          throw error;
         }
-        throw error;
       }
+      inspection = inspectOpenDatabase(database, version);
+    } catch (error) { failure = { error }; }
+    if (failure !== undefined && hasUnprovedSourceClosure(failure.error)) {
+      lifetime.retainSourceClosure(failure.error); retainUnprovedSourceOwners(failure.error, { database, admission: { lifetime } }); throw failure.error;
     }
-    inspection = inspectOpenDatabase(database, version);
-  } catch (error) { failure = { error }; }
-  if (failure !== undefined && hasUnprovedSourceClosure(failure.error)) {
-    lifetime.retainSourceClosure(failure.error); retainUnprovedSourceOwners(failure.error, { database, admission: { lifetime } }); throw failure.error;
+    try { database.close(); }
+    catch (error) {
+      const retained = retainAuthoritySourceClosure(failure === undefined ? [error] : [failure.error, error], { database, admission: { lifetime } });
+      lifetime.retainSourceClosure(retained); throw retained;
+    }
+    if (failure !== undefined) throw failure.error;
   }
-  try { database.close(); }
-  catch (error) {
-    const retained = retainAuthoritySourceClosure(failure === undefined ? [error] : [failure.error, error], { database, admission: { lifetime } });
-    lifetime.retainSourceClosure(retained); throw retained;
-  }
-  if (failure !== undefined) throw failure.error;
   assert.ok(inspection);
   const observed = inspection, bytes = readFileSync(path), sha256 = createHash("sha256").update(bytes).digest("hex");
   const source = version === 6 ? { kind: "unbound-predecessor" as const, schemaVersion: 6 as const,
     authorityContentFingerprint: observed.authorityContentFingerprint } : { kind: "profile" as const, binding };
+  let logFiles;
+  if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) {
+    const stage = mkdtempSync(join(directory, ".fixture-logs-"));
+    try {
+      restoreLogDatabases(path, stage);
+      const publish = (name: string) => {
+        const sourcePath = join(stage, `${name}.db`), bytes = readFileSync(sourcePath);
+        renameSync(sourcePath, `${path}.${name}.db`);
+        return { byteSize: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
+      };
+      logFiles = { timeline: publish("timeline"), dashboard: publish("dashboard") };
+    } finally { rmSync(stage, { recursive: true }); }
+  }
   const manifest = StoppedAuthorityBackupManifestSchema.parse({ kind: "hrauto-authority-backup", manifestVersion: version === 6 ? 3 : 4,
     backupFileName, sourceDatabaseIdentity: authoritySourceDatabaseIdentity(source), applicationId: observed.applicationId,
     schemaVersion: version, ...(version === 6 ? {} : binding), pageCount: observed.pageCount, authorityGeneration: observed.authorityGeneration,
     authorityContentFingerprint: observed.authorityContentFingerprint, createdAt, byteSize: bytes.length, sha256,
+    ...(logFiles === undefined ? {} : { logFiles }),
     verification: { state: "verified", observedFrom: "backup-copy", observedAt: createdAt, applicationId: observed.applicationId,
       schemaVersion: version, ...(version === 6 ? {} : binding), pageCount: observed.pageCount, authorityGeneration: observed.authorityGeneration,
       authorityContentFingerprint: observed.authorityContentFingerprint, quickCheck: observed.quickCheck,
@@ -213,7 +234,7 @@ export function historicalPlaintextProtectedDocument(document: CredentialDocumen
     history: document.history.map(entry => ({ ...entry, receipt: { ...entry.receipt, requestReceipt } })) };
 }
 
-export async function createHistoricalIncompleteProfileFixture(options: { keyFormat?: "metadata" | "inline"; protectedFormat?: 2 | 3; wiped?: true; archivedAuthorityVersion?: 6 | 7 | 8; archivedAuthorityCopy?: "password" | "native-key" } = {}) {
+export async function createHistoricalIncompleteProfileFixture(options: { keyFormat?: "metadata" | "inline"; protectedFormat?: 2 | 3; wiped?: true; archivedAuthorityVersion?: 6 | 7 | 8 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION; archivedAuthorityCopy?: "password" | "native-key" } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "incomplete-publication-")));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
   const lifetime = await RuntimeLifetimeLock.acquire(0);

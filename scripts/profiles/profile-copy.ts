@@ -51,10 +51,11 @@ export async function importProfileLibrary(options: ImportOptions, lock: Runtime
     throw new ProfileCopyRefusedError("source-backup-mismatch", "The newest backup does not match the chosen production profile.");
   }
 
-  const [{ acquireEntrypointAdmission }, { createCredentialStore }, { AuthorityDatabase }] = await Promise.all([
+  const [{ acquireEntrypointAdmission }, { createCredentialStore }, { AuthorityDatabase }, { openLogDatabases }] = await Promise.all([
     import("../../src/backend/storage/admission/bootstrap-admission.js"),
     import("../../src/backend/storage/configuration/credential-store.js"),
     import("../../src/backend/storage/sqlite/authority-database.js"),
+    import("../../src/backend/storage/sqlite/profile-local-databases.js"),
   ]);
   const machine = acquireEntrypointAdmission(targetWorkspace, "exclusive", lock);
   try {
@@ -67,9 +68,12 @@ export async function importProfileLibrary(options: ImportOptions, lock: Runtime
         path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "isolated-library-import",
       }, systemClock, undefined, undefined, undefined, credentials);
       try {
-        return await importIsolatedProfileData(admission, database, {
+        const report = await importIsolatedProfileData(admission, database, {
           source: { manifestPath: join(directory, newest.name), binding }, destination: admission.profileBinding,
         });
+        const logs = openLogDatabases(join(admission.stateRoot, "state.db"), admission.stateRoot);
+        try { logs.reconcile(); } finally { logs.close(); }
+        return report;
       } finally { database.close(); }
     } finally { admission.release(); }
   } finally { machine.release(); }

@@ -6,7 +6,7 @@ import { IsoInstantSchema, type BrowserSystemId } from "../../../rules/identity/
 import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import { WorkerChildMessageSchema, type WorkerActivity, type WorkerChildBrowserObservation, type WorkerControlRequest,
   type WorkerDirective, type WorkerParentMessage, type WorkerStopReason } from "./worker-messages.js";
-import { WorkerIpcProtocolError } from "./worker-ipc-router.js";
+import { isWorkerIpcChannelClosed, WorkerIpcProtocolError } from "./worker-ipc-router.js";
 
 export interface WorkerPoolMember {
   readonly workflowId: string;
@@ -97,9 +97,6 @@ export interface WorkerPoolDependencies {
   /** A stop send that failed only because the member's channel had closed and its exit was observed. */
   readonly onStopChannelClosed?: (member: WorkerPoolMember, error: unknown) => void;
 }
-
-const isChannelClosed = (error: unknown): boolean =>
-  error instanceof Error && "code" in error && (error.code === "EPIPE" || error.code === "ERR_IPC_CHANNEL_CLOSED");
 
 interface PendingReply {
   resolve(result: JsonValue): void;
@@ -225,7 +222,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       } else error = timeout;
     }
     if (error === null) return;
-    if (isChannelClosed(error)) {
+    if (isWorkerIpcChannelClosed(error)) {
       if (record.state !== "exited") {
         const observed = Promise.withResolvers<void>();
         const window = after(timeouts.exitObservationMs, observed.resolve);

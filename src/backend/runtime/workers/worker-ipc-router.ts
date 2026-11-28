@@ -1,10 +1,15 @@
 import { Server } from "node:net";
+import type { LogWriter } from "../../storage/events/log-writer.js";
+import { WorkerLogMessageSchema, type WorkerLogAck } from "./worker-messages.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
 export class WorkerIpcProtocolError extends Error {
   readonly code = "WORKER_IPC_PROTOCOL_INVALID";
   constructor(readonly kind: string) { super(ERROR_CATALOG.WORKER_IPC_PROTOCOL_INVALID.text); this.name = "WorkerIpcProtocolError"; }
 }
+
+export const isWorkerIpcChannelClosed = (error: unknown): boolean =>
+  error instanceof Error && "code" in error && (error.code === "EPIPE" || error.code === "ERR_IPC_CHANNEL_CLOSED");
 
 /** Either end of the parent/child pipe: a ChildProcess in the parent, `process` in the child. */
 export interface IpcEndpoint {
@@ -44,3 +49,34 @@ export function createIpcRouter(endpoint: IpcEndpoint, onInvalid: (error: Worker
   });
 }
 export type IpcRouter = ReturnType<typeof createIpcRouter>;
+
+export function createWorkerLogReceiver(writer: Pick<LogWriter, "publish" | "flush">, send: (reply: WorkerLogAck) => void, onFault: (error: unknown) => void) {
+  let received = 0, committed = 0, replyScheduled = false, drained = false;
+  return {
+    receive(raw: unknown): void {
+      const entry = WorkerLogMessageSchema.parse(raw);
+      if (entry.kind === "worker-log-flush") {
+        if (entry.throughSeq !== received) throw new Error("worker-log-flush-sequence-invalid");
+        void writer.flush().then(() => {
+          if (entry.final && received === entry.throughSeq) drained = true;
+          send({ kind: "worker-log-flushed", requestId: entry.requestId, throughSeq: entry.throughSeq });
+        }, onFault);
+        return;
+      }
+      if (entry.seq !== received + 1) throw new Error("worker-log-sequence-gap");
+      drained = false;
+      received = entry.seq;
+      writer.publish({ kind: "append", row: entry.row }, error => {
+        if (error !== undefined) { onFault(error); return; }
+        committed = entry.seq;
+        if (replyScheduled) return;
+        replyScheduled = true;
+        queueMicrotask(() => {
+          replyScheduled = false;
+          send({ kind: "worker-log-ack", throughSeq: committed });
+        });
+      });
+    },
+    get drained() { return drained; },
+  };
+}

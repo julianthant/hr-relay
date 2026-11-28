@@ -77,6 +77,7 @@ const PREFLIGHT_RETRY_CAP_MS = 60_000;
 const WORKER_REPORT_OUTCOME_LIMIT = 32;
 
 export interface WorkerLoopDependencies {
+  readonly beforeConfirmedWrite?: () => Promise<void>;
   readonly debugEvents?: import("../execution/run-execution-contract.js").RunExecutorDependencies["debugEvents"];
  readonly resourcesForRun?: (run:RunRecord)=>WorkerRunResources;
  readonly idleCadence?: ()=>number;
@@ -170,6 +171,7 @@ function startHeartbeat(input: Readonly<{
   clock: Clock;
   scheduler: MonotonicDeadlineScheduler;
   intervalMs: number;
+  beforeConfirmedWrite?: () => Promise<void>;
   onLost: () => void;
   onFailure: (cause: unknown) => void;
 }>): Readonly<{ stop: () => void }> {
@@ -179,9 +181,11 @@ function startHeartbeat(input: Readonly<{
     stopped = true;
     handle.cancel();
   };
-  const tick = (): void => {
+  const tick = async (): Promise<void> => {
     if (stopped) return;
     try {
+      if (input.beforeConfirmedWrite !== undefined) await input.beforeConfirmedWrite();
+      if (stopped) return;
       const outcome = input.lifecycle.renewClaim({
         commandId: lifecycleCommandId("heartbeat", { runId: input.runId, claim: input.claim, nonce: input.ids.uuid() }),
         runId: input.runId,
@@ -193,13 +197,13 @@ function startHeartbeat(input: Readonly<{
         return;
       }
       requireLifecycleApplied(outcome);
-      handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
+      handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, () => { void tick(); });
     } catch (error) {
       stop();
       input.onFailure(error);
     }
   };
-  handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
+  handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, () => { void tick(); });
   return Object.freeze({ stop });
 }
 
@@ -443,6 +447,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         clock,
         scheduler: deps.scheduler,
         intervalMs: deps.heartbeatIntervalMs,
+        ...(deps.beforeConfirmedWrite === undefined ? {} : { beforeConfirmedWrite: deps.beforeConfirmedWrite }),
         onLost: (): void => {
           runController.abort(new Error("claim lost during heartbeat renewal: lost"));
         },
@@ -483,6 +488,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             log: deps.log,
             debugEvents: deps.debugEvents,
             retainCallback,
+            ...(deps.beforeConfirmedWrite === undefined ? {} : { beforeConfirmedWrite: deps.beforeConfirmedWrite }),
             ...(deps.taskNotes === undefined ? {} : { taskNotes: deps.taskNotes }),
             ...(writeSequencer === undefined ? {} : { writeSequencer }),
             ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),

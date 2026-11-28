@@ -4,13 +4,19 @@ import { mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, it, vi } from "vitest";
-import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { AuthorityBackupService, backupLogPaths } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { inspectVerifiedBackupCopyReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
 vi.mock("../../../../src/backend/storage/admission/admission-identity.js", () => ({ requireRuntimeAdmission: (input: unknown) => input }));
 vi.mock("../../../../src/backend/storage/sqlite/backup-inspection.js", () => ({ inspectVerifiedBackupCopyReadOnly: vi.fn() }));
+vi.mock("../../../../src/backend/storage/sqlite/backup-inspection-worker.js", async actual => ({
+  ...await actual<typeof import("../../../../src/backend/storage/sqlite/backup-inspection-worker.js")>(),
+  buildBackupLogsOffThread: (_source: string, root: string) => Promise.resolve().then(() => {
+    for (const name of ["timeline.db", "dashboard.db"]) writeFileSync(join(root, name), name, { mode: 0o600 });
+  }),
+}));
 
 const reads = vi.hoisted(() => ({ log: [] as { path: string; manifests: number }[], directory: "" }));
 vi.mock("node:fs", async actual => {
@@ -50,9 +56,10 @@ it("reads a new quit-time backup's bytes twice and inspects it once, publishing 
   const report = await f.service.request({ trigger: "graceful-drain", requiredGeneration: 7 });
   const manifest = report.manifests.at(-1); assert.ok(manifest);
   assert.equal(vi.mocked(inspectVerifiedBackupCopyReadOnly).mock.calls.length, 1);
-  assert.equal(reads.log.length, 2);
-  assert.deepEqual(reads.log.map(read => read.manifests), [0, 0]);
-  assert.deepEqual(readdirSync(f.directory).sort(), [manifest.backupFileName, `${manifest.backupFileName}.manifest.json`].sort());
+  assert.equal(reads.log.filter(entry => /\.sqlite(?:\.tmp)?$/u.test(entry.path)).length, 2);
+  assert.deepEqual(reads.log.map(read => read.manifests), [0, 0, 0, 0, 0, 0]);
+  assert.deepEqual(readdirSync(f.directory).sort(),
+    [manifest.backupFileName, `${manifest.backupFileName}.manifest.json`, ...backupLogPaths(manifest.backupFileName)].sort());
 });
 
 it("publishes no backup when its bytes change after the inspection", async () => {

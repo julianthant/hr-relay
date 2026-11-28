@@ -1,5 +1,6 @@
 import { readStartupFile, type StartupFile } from "./startup-file-proof.js";
 import { createDashboardSnapshotQuery } from "./authority-dashboard-snapshot.js";
+import type { LogMutation } from "../events/log-mutations.js";
 import type { FileIdentitySchema } from "../../../models/storage/file-identity.js";
 import { createWorkerSlotRepository } from "./worker-slots.js";
 import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
@@ -317,6 +318,8 @@ export class AuthorityDatabase implements Disposable {
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
 
   #authorityCommitCallbacks: (() => void)[] = [];
+  #logWriteFailure: Error | undefined;
+  #logPublisher: ((mutation: LogMutation) => void) | undefined;
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
   #slowOperation: SlowOperationHook | undefined;
   /** Nonzero while an outermost operation is being timed, and again while its hook runs. */
@@ -1728,7 +1731,7 @@ export class AuthorityDatabase implements Disposable {
     if (this.#dashboardReadSources.size > 0) throw new Error("dashboard-background-reader-open");
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");
     let plannerFailure: { error: unknown } | undefined;
-    if (this.#optimizeOnClose && !this.#database.isTransaction) {
+    if (this.#logWriteFailure === undefined && this.#optimizeOnClose && !this.#database.isTransaction) {
       let admitted = false;
       try {
         this.#admitMutation();
@@ -2540,6 +2543,20 @@ export class AuthorityDatabase implements Disposable {
     }
     if (this.#transactionMode !== "authority") throw new Error("authority publication requires an authority transaction");
     this.#authorityCommitCallbacks.push(publish);
+  }
+
+  bindLogPublisher(publish: (mutation: LogMutation) => void): () => void {
+    this.#assertOpen();
+    if (this.#logPublisher !== undefined) throw new Error("log-publisher-already-bound");
+    this.#logPublisher = publish;
+    return () => { if (this.#logPublisher === publish) this.#logPublisher = undefined; };
+  }
+
+  refuseWritesAfterLogFailure(error: Error): void { this.#logWriteFailure ??= error; }
+
+  #publishLogAfterCommit(mutation: LogMutation): void {
+    const publish = this.#logPublisher;
+    if (publish !== undefined) this.afterAuthorityCommit(() => { publish(mutation); });
   }
 
 
@@ -3520,6 +3537,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result, searchValidation: "all" | "progress" | "none" = "all"): Result {
+    if (this.#logWriteFailure !== undefined) throw this.#logWriteFailure;
     if (this.#historyOwner !== undefined) throw new Error("isolated-history-read-only");
     return withOperationProof(() => {
       if (this.#transactionDepth === 0) clearOperationProofSlots();
@@ -4189,6 +4207,7 @@ export class AuthorityDatabase implements Disposable {
         read: (work) => this.#withReadSnapshot(work),
         mutate: (work) => this.#authorityWrite("timeline_events", work),
         assertOwner: (record, appending) => assertTimelineOwner(this.#database, record, appending),
+        publishCommitted: mutation => this.#publishLogAfterCommit(mutation),
       }),
       runs: this.#buildRunRepository(),
       failures: Object.freeze({
@@ -5759,6 +5778,7 @@ export class AuthorityDatabase implements Disposable {
           const record = executeNativeRunDeletion(this.#database,prepared,step => this.#lifecycleHooks?.afterDeleteStep?.({runId:request.runId,step}));
           // Debug entries are diagnostics, not run evidence: they leave with the run and stay out of its deletion receipt.
           this.#database.prepare("DELETE FROM debug_events WHERE run_id=?").run(request.runId);
+          this.#publishLogAfterCommit({ kind: "purge-runs", runIds: [request.runId] });
           return {result:record,changes:1 + record.removed.reduce((sum,entry) => sum + entry.rows,0)};
         });
       },

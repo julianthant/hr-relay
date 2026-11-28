@@ -12,7 +12,7 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 import { createChatGptCredentialRepository,type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { AuthorityBackupService, backupLogPaths } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { DatabaseSync } from "node:sqlite";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -56,9 +56,9 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
       const backup = await new AuthorityBackupService(profile.admission, database, { directory: backupDirectory }, clock).request({
         trigger: "schema-migration", requiredGeneration: database.getMeta().authorityGeneration });
       const latest = backup.manifests.at(-1); assert.ok(latest);
-      assert.equal(existsSync(join(backupDirectory, `${latest.backupFileName}.manifest.json`)), true);
+      const name = latest.backupFileName;
+      assert.deepEqual(readdirSync(backupDirectory).sort(), [name, `${name}.manifest.json`, ...backupLogPaths(name)].sort());
     } finally { database.close(); }
-    assert.ok(readdirSync(backupDirectory).every(name => name.endsWith(".sqlite") || name.endsWith(".manifest.json")));
     for (const name of readdirSync(backupDirectory)) assert.equal(readFileSync(join(backupDirectory, name)).includes(Buffer.from("synthetic-before-backup")), false);
     const originalSession = original.session; assert.ok(originalSession);
     await repository.withLock(async tx => { tx.replace({ ...original, revision: 2, session: { ...originalSession, accessToken: "synthetic-current-access", refreshToken: "synthetic-current-refresh" } }, 1); });

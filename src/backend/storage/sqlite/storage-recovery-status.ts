@@ -1,6 +1,7 @@
 import { fileStatus, descriptorStatus, fileIdentityObservation, privateFileNumber } from "../file-identity.js";
 import { readPrivateFile } from "../configuration/credential-safe-file.js";
 import { privatePathRejects } from "../private-path.js";
+import { PROFILE_LOG_FILES } from "../events/log-mutations.js";
 import { createHash } from "node:crypto";
 import { closeSync, constants, openSync, readdirSync, type BigIntStats, type Stats } from "node:fs";
 import { join } from "node:path";
@@ -61,7 +62,7 @@ export function inspectStorageRecovery(admission: Readonly<Pick<RuntimeAdmission
     if(!root.isDirectory())throw new Error("recovery-root-unavailable");
     const entries=readdirSync(stateRoot).sort();
     for(const name of entries.filter(name=>(name.startsWith(".") && !RUNTIME_ROOT_AUTHORITY_ENTRY_NAMES.includes(name))
-      || (/\.(?:sqlite|db)(?:-(?:wal|shm))?$/u.test(name) && !["state.db","state.db-wal","state.db-shm"].includes(name)))) {
+      || (/\.(?:sqlite|db)(?:-(?:wal|shm))?$/u.test(name) && !["state.db","state.db-wal","state.db-shm", ...PROFILE_LOG_FILES].includes(name)))) {
       const marker=owned.has(name) ? "authority-restore" as const : "unowned-recovery-entry" as const;
       if(marker === "unowned-recovery-entry") {
         findings.push({marker,state:"unavailable"});identities.push(`${name}:unowned`);continue;

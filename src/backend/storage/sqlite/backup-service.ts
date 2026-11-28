@@ -1,4 +1,4 @@
-import { descriptorStatus, fileStatus, privateFileNumber, type DirectoryIdentity } from "../file-identity.js";
+import { descriptorStatus, fileStatus, privateFileNumber, sameDirectory, type DirectoryIdentity } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { AuthorityDatabase } from "./authority-database.js";
@@ -17,6 +17,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -30,13 +31,16 @@ import { AuthorityUpgradeRecordSchema, type AuthorityUpgradeRecord } from "../..
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { type Clock, systemClock } from "../../../rules/time/clock.js";
 import { inspectOpenDatabase, inspectVerifiedBackupCopyReadOnly, type AuthorityBackupSourceReadOnly, type BackupCopyInspection } from "./backup-inspection.js";
-import { inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
+import { backupThreadIdle, buildBackupLogsOffThread, inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
+import { LOG_DATABASE_NAMES, PROFILE_LOG_FILES } from "../events/log-mutations.js";
+import { isCurrentAuthoritySchemaVersion } from "./migrations.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import {
   StoppedAuthorityBackupManifestSchema,
+  AuthorityBackupManifestSchema,
   UnboundPredecessorBackupManifestSchema,
   AuthorityBackupRequestSchema,
   AuthorityBackupRunReportSchema,
@@ -113,6 +117,43 @@ export async function verifyBackupBytesAtPath(
   }
 }
 
+export const backupLogPaths = (backupPath: string) => LOG_DATABASE_NAMES.map(name => `${backupPath}.${name}.db`);
+export function verifiedBackupLogs({ backupPath, manifest }: VerifiedBackup) {
+  const files = manifest.manifestVersion === 4 ? manifest.logFiles : undefined;
+  return files === undefined ? [] : LOG_DATABASE_NAMES.map(name => ({
+    path: `${backupPath}.${name}.db`,
+    digest: files[name],
+    table: name === "timeline" ? "timeline_events" as const : "debug_events" as const,
+  }));
+}
+export const verifiedBackupFiles = (backup: VerifiedBackup) => [backup.backupPath, ...verifiedBackupLogs(backup).map(log => log.path)];
+
+const sqliteCompanions = ["-wal", "-shm", "-journal"] as const;
+
+export async function backupLogFileMatches(path: string, expected: Readonly<{ byteSize: number; sha256: string }>): Promise<boolean> {
+  const metadata = fileStatus(path, true);
+  if (metadata === undefined || !metadata.isFile() || BigInt(metadata.nlink) !== 1n
+    || privatePathRejects(path, metadata, "owner") || BigInt(metadata.size) !== BigInt(expected.byteSize)
+    || sqliteCompanions.some(suffix => fileStatus(path + suffix, true) !== undefined)) return false;
+  let digest: string | undefined;
+  try { digest = await sha256File(path); }
+  catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+  }
+  return digest === expected.sha256;
+}
+
+export async function verifyBackupLogFile(path: string, expected: Readonly<{ byteSize: number; sha256: string }>): Promise<void> {
+  if (!await backupLogFileMatches(path, expected)) throw new Error("backup-log-file-unverified");
+}
+
+export async function verifyBackupLogFiles(backupPath: string, manifest: Pick<AuthorityBackupManifest, "logFiles">): Promise<void> {
+  if (manifest.logFiles === undefined) return;
+  for (const name of LOG_DATABASE_NAMES) {
+    await verifyBackupLogFile(`${backupPath}.${name}.db`, manifest.logFiles[name]);
+  }
+}
+
 function parseCurrentBackupManifest(value: unknown): AuthorityBackupManifest {
   const manifest = StoppedAuthorityBackupManifestSchema.parse(value);
   if (manifest.manifestVersion !== 4) throw new Error("backup-profile-binding-required");
@@ -149,6 +190,7 @@ export function readVerifiedBackupManifestAtPath<T>(admissionInput: RuntimeAdmis
   }
   assertExpectedBackupSource(source, manifest);
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);
+  assertBackupLogFiles(backupPath, manifest);
   const copy = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
   try {
     const { inspection, value } = withAuthorityDatabaseReadOnly(copy, backupPath, database => {
@@ -181,6 +223,16 @@ function assertSnapshotBytes(path: string, manifest: Readonly<{ byteSize: number
   if (count !== manifest.byteSize || hash.digest("hex") !== manifest.sha256) throw new Error("authority-backup-snapshot-digest-mismatch");
 }
 
+function assertBackupLogFiles(backupPath: string, manifest: Pick<AuthorityBackupManifest, "logFiles">): void {
+  if (manifest.logFiles === undefined) return;
+  for (const name of LOG_DATABASE_NAMES) {
+    const path = `${backupPath}.${name}.db`, metadata = fileStatus(path);
+    if (!metadata.isFile() || BigInt(metadata.nlink) !== 1n || privatePathRejects(path, metadata, "owner")
+      || ["-wal", "-shm", "-journal"].some(suffix => existsSync(path + suffix))) throw new Error("backup-log-file-unsafe");
+    assertSnapshotBytes(path, manifest.logFiles[name]);
+  }
+}
+
 async function verifyManifest(
   admissionInput: RuntimeAdmission,
   manifestPathInput: string,
@@ -198,6 +250,7 @@ async function verifyManifest(
   assertExpectedBackupSource(expected, manifest);
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);
   await verifyBackupBytesAtPath(backupPath, manifest);
+  await verifyBackupLogFiles(backupPath, manifest);
   const copyAdmission = offThread === undefined ? admission.verifiedReadOnlyCopy(backupPath, manifest.sha256)
     : await admission.verifiedReadOnlyCopyAsync(backupPath, manifest.sha256);
   let inspection: BackupCopyInspection;
@@ -258,6 +311,10 @@ function verifyStoppedManifest(manifestPath: string, expected: AuthorityBackupEx
   if (expected.kind === "profile" && manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity(expected)) throw new Error("profile-maintenance-backup-source-mismatch");
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);
   assertPath(backupPath);
+  if (manifest.manifestVersion === 4) {
+    if (manifest.logFiles !== undefined) backupLogPaths(backupPath).forEach(assertPath);
+    assertBackupLogFiles(backupPath, manifest);
+  }
   const snapshot = createReadonlyAuthoritySnapshot(backupPath);
   let result: VerifiedBackup | undefined;
   const failures: unknown[] = [];
@@ -308,8 +365,10 @@ function backupSuffix(purpose: "clean-shutdown" | "in-session" | undefined): str
 
 const BackupAttemptToken = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const BackupStageName = new RegExp(`^\\.authority-${BackupAttemptToken}\\.(?:sqlite\\.tmp(?:-(?:journal|wal|shm))?|manifest\\.json\\.tmp)$`, "u");
+const BackupLogStageName = new RegExp(`^\\.authority-${BackupAttemptToken}\\.logs\\.tmp$`, "u");
 const FinalBackupName = new RegExp(`^authority-g\\d+-\\d{17}-${BackupAttemptToken}(?:\\.shutdown|\\.session)?\\.sqlite$`, "u");
 const RestoreStageName = new RegExp(`^(\\.restore-${BackupAttemptToken}\\.sqlite\\.tmp)(?:-(?:journal|wal|shm))?$`, "u");
+const RestoreLogStageName = new RegExp(`^\\.restore-${BackupAttemptToken}\\.logs$`, "u");
 
 export function reconcileBackupsAfterBrowserClosure(browserClosure: ProfileBrowserClosure, machine: RuntimeAdmission,
   operation: OfflineMaintenanceOperation): ProfileBrowserClosure {
@@ -347,7 +406,9 @@ export function reconcileStartupAuthorityStages(machine: RuntimeAdmission, profi
     const file = abandonedFile(root, name);
     return file === undefined ? [] : [file];
   });
-  if (restores.length > 0) assertMaintenanceCustodyAvailable("restore");
+  const scratch = join(root, "scratch");
+  const logRestores = noSymlinkAncestry(scratch, ancestry) ? readdirSync(scratch).filter(name => RestoreLogStageName.test(name)) : [];
+  if (restores.length > 0 || logRestores.length > 0) assertMaintenanceCustodyAvailable("restore");
   const backups = reconcileAbandonedBackups(root, assertHeld, () => {
     if (!machine.readStartupProfileIds().includes(id)) throw new Error("profile-startup-registration-required");
     const binding = { installationId: context.locator.installationId, profileId: id };
@@ -358,7 +419,12 @@ export function reconcileStartupAuthorityStages(machine: RuntimeAdmission, profi
         .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
     });
   });
-  return backups + removeAbandonedFiles(root, ancestry, restores, assertHeld, "restore-stage-custody-changed");
+  for (const stage of logRestores) removeLogStage(join(scratch, stage), () => {
+    assertHeld();
+    noSymlinkAncestry(scratch, ancestry);
+  });
+  if (logRestores.length > 0) fsyncPath(scratch);
+  return backups + logRestores.length + removeAbandonedFiles(root, ancestry, restores, assertHeld, "restore-stage-custody-changed");
 }
 
 function reconcileAbandonedBackups(root: string, assertHeld: () => void, readUpgrades: () => readonly AuthorityUpgradeRecord[]): number {
@@ -367,9 +433,11 @@ function reconcileAbandonedBackups(root: string, assertHeld: () => void, readUpg
   if (!noSymlinkAncestry(directory, ancestry)) return 0;
   const names = new Set(readdirSync(directory));
   const stages = [...names].filter(name => BackupStageName.test(name));
-  const unpaired = [...names].filter(name => FinalBackupName.test(name)
+  const logStages = [...names].filter(name => BackupLogStageName.test(name));
+  const candidateNames = new Set([...names].map(name => name.replace(/\.(?:timeline|dashboard)\.db(?:-wal|-shm|-journal)?$/u, "")));
+  const unpaired = [...candidateNames].filter(name => FinalBackupName.test(name)
     && !names.has(`${name}.manifest.json`) && !names.has(`${name}.manifest.json.retiring`));
-  if (stages.length === 0 && unpaired.length === 0) return 0;
+  if (stages.length === 0 && logStages.length === 0 && unpaired.length === 0) return 0;
   assertMaintenanceCustodyAvailable("backup");
   statDirectory(directory, "authority backup", 0o700);
 
@@ -391,12 +459,36 @@ function reconcileAbandonedBackups(root: string, assertHeld: () => void, readUpg
   for (const name of orphans) {
     if (["-wal", "-shm", "-journal"].some(suffix => names.has(`${name}${suffix}`))) throw new Error("abandoned-backup-companion-unproved");
   }
-  const abandoned = [...stages, ...orphans].map(name => {
+  const orphanLogs = orphans.flatMap(name => backupLogPaths(name).flatMap(path =>
+    [...sqliteCompanions.map(suffix => path + suffix), path].filter(entry => names.has(entry))));
+  const abandoned = [...stages, ...orphanLogs, ...orphans.filter(name => names.has(name))].map(name => {
     const file = abandonedFile(directory, name);
     if (file === undefined) throw new Error("abandoned-backup-file-unsafe");
     return file;
   });
-  return removeAbandonedFiles(directory, ancestry, abandoned, assertHeld, "abandoned-backup-file-changed");
+  const removed = removeAbandonedFiles(directory, ancestry, abandoned, assertHeld, "abandoned-backup-file-changed");
+  for (const stage of logStages) removeLogStage(join(directory, stage), assertHeld);
+  if (logStages.length > 0) fsyncPath(directory);
+  return removed + logStages.length;
+}
+
+function removeLogStage(root: string, assertHeld: () => void): void {
+  assertHeld();
+  const identity = statDirectory(root, "log staging", 0o700);
+  const owned = new Set(PROFILE_LOG_FILES);
+  const files = readdirSync(root).map(name => {
+    const file = owned.has(name) ? abandonedFile(root, name) : undefined;
+    if (file === undefined) throw new Error("abandoned-log-stage-unsafe");
+    return file;
+  });
+  for (const file of files) {
+    assertHeld();
+    if (!sameDirectory(statDirectory(root, "log staging", 0o700), identity)) throw new Error("abandoned-log-stage-changed");
+    removeExactPath(file.path, file, false, "abandoned-log-stage-changed");
+  }
+  assertHeld();
+  if (!sameDirectory(statDirectory(root, "log staging", 0o700), identity)) throw new Error("abandoned-log-stage-changed");
+  rmdirSync(root);
 }
 
 function abandonedFile(directory: string, name: string): (DirectoryIdentity & { path: string }) | undefined {
@@ -502,6 +594,7 @@ export class AuthorityBackupService {
     const token = randomUUID();
     const temporaryBackupPath = join(this.#directory, `.authority-${token}.sqlite.tmp`);
     const temporaryManifestPath = join(this.#directory, `.authority-${token}.manifest.json.tmp`);
+    const temporaryLogRoot = join(this.#directory, `.authority-${token}.logs.tmp`);
     const temporaryPaths = [temporaryBackupPath, temporaryManifestPath];
     const finalPaths: string[] = [];
     let finalManifestPath: string | undefined;
@@ -531,8 +624,34 @@ export class AuthorityBackupService {
       const stem = `authority-g${String(inspection.authorityGeneration)}-${compactTime}-${token}`;
       const backupFileName = `${stem}${backupSuffix(this.#purpose)}.sqlite`;
       const finalBackupPath = join(this.#directory, backupFileName);
+      let logFiles: z.input<typeof AuthorityBackupManifestSchema>["logFiles"];
+      const withLogs = expected.kind === "profile" && isCurrentAuthoritySchemaVersion(inspection.schemaVersion);
+      if (withLogs) {
+        mkdirSync(temporaryLogRoot, { mode: 0o700 });
+        try { await buildBackupLogsOffThread(temporaryBackupPath, temporaryLogRoot, this.#signal); }
+        finally { await backupThreadIdle(); }
+        this.#signal?.throwIfAborted();
+        this.#admission.assertAuthorityBackupWrite(this.#directory);
+        removeReadOnlyInspectionCompanions(temporaryBackupPath);
+      }
       renameSync(temporaryBackupPath, finalBackupPath);
       finalPaths.push(finalBackupPath);
+      if (withLogs) {
+        const publish = async (name: typeof LOG_DATABASE_NAMES[number]) => {
+          const source = join(temporaryLogRoot, `${name}.db`), target = `${finalBackupPath}.${name}.db`;
+          if (sqliteCompanions.some(suffix => (fileStatus(source + suffix, true)?.size ?? 0n) > 0n)) {
+            throw new Error("backup-log-file-not-self-contained");
+          }
+          fsyncPath(source);
+          const byteSize = statSync(source).size, sha256 = await sha256File(source);
+          this.#admission.assertAuthorityBackupWrite(this.#directory);
+          renameSync(source, target);
+          finalPaths.push(target);
+          return { byteSize, sha256 };
+        };
+        logFiles = { timeline: await publish("timeline"), dashboard: await publish("dashboard") };
+        removeLogStage(temporaryLogRoot, () => this.#admission.assertAuthorityBackupWrite(this.#directory));
+      }
       const stats = statSync(finalBackupPath);
       this.#admission.assertAuthorityBackupWrite(this.#directory);
       fsyncPath(this.#directory);
@@ -567,10 +686,12 @@ export class AuthorityBackupService {
         createdAt,
         byteSize: stats.size,
         sha256: inspectedDigest,
+        ...(logFiles === undefined ? {} : { logFiles }),
         verification,
       });
       // The one read of the final bytes: they must still be the bytes that were inspected.
       await verifyBackupBytesAtPath(finalBackupPath, manifest);
+      if (manifest.manifestVersion === 4) await verifyBackupLogFiles(finalBackupPath, manifest);
       const manifestFileName = `${backupFileName}.manifest.json`, manifestText = `${canonicalJsonStringify(manifest)}\n`;
       writeFileSync(temporaryManifestPath, manifestText, { encoding: "utf8", mode: 0o600, flag: "wx" });
       fsyncPath(temporaryManifestPath);
@@ -586,10 +707,13 @@ export class AuthorityBackupService {
     } catch (error) { primary = { error }; }
     if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw primary.error;
     const cleanupFailures: unknown[] = [];
+    try {
+      if (existsSync(temporaryLogRoot)) removeLogStage(temporaryLogRoot, () => this.#admission.assertAuthorityBackupWrite(this.#directory));
+    } catch (error) { cleanupFailures.push(error); }
     if (primary !== undefined) {
       try { if (finalManifestPath !== undefined && existsSync(finalManifestPath)) rmSync(finalManifestPath); }
       catch (error) { cleanupFailures.push(error); }
-      for (const finalPath of finalPaths) {
+      for (const finalPath of finalPaths.reverse()) {
         for (const path of [finalPath, `${finalPath}-wal`, `${finalPath}-shm`]) {
           try { if (existsSync(path)) rmSync(path); } catch (error) { cleanupFailures.push(error); }
         }
