@@ -1,17 +1,18 @@
-import {
-  READABLE_WORKFLOW_MODULES,
-} from "../../registries/workflow-registry.js";
-import { stepProofModuleOf } from "../../registries/step-proof-modules.js";
+import { readFileSync } from "node:fs";
+import { systemClock } from "../../../../rules/time/clock.js";
+import { DESCRIPTORS, READABLE_WORKFLOW_MODULES, descriptorSetHash } from "../../registries/workflow-registry.js";
+import { stepProofDescriptorOf, stepProofModuleOf } from "../../registries/step-proof-modules.js";
 
-import {
-  AuthorityDatabase,
-} from "../../../storage/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 
-import type {
-  RunDetailQueryDeps,
-} from "../../../runs/queries/run-detail.js";
+import { defineRunDetailLaneRead, MissingLaneReceipt, type RunDetailQueryDeps } from "../../../runs/queries/run-detail.js";
 import { gateNodeViewsOf, writeContractViewsOf, dataOriginViewsOf } from "./run-detail-descriptors.js";
-import { createItemAttemptHistoryQuery } from "../../../runs/queries/item-attempt-history.js";
+import { createItemAttemptHistoryQuery, createRunReadLaneReader } from "../../../runs/queries/item-attempt-history.js";
+import { createFailureResolutionQuery } from "../../../runs/queries/failure-resolution.js";
+import { ProjectionDegradedError } from "../../../runs/commands/refusals.js";
+import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
+import { createOperatorProjection } from "./queue.js";
+import { PackageVersionSchema } from "./runtime-contracts.js";
 
 export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRoot" | "projection" | "trust" | "captures" | "canonical" | "runReader" | "workerMembers" | "operatorName"> & { database: AuthorityDatabase }): RunDetailQueryDeps {
   const { stateRoot, projection, database, trust, captures, canonical, runReader } = input;
@@ -60,3 +61,51 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
     ...(captures === undefined ? {} : { captures }),
   };
 }
+
+const resolveWorkflow = (id: string) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor;
+export const detailDescriptors = { resolve: (id: string) => resolveWorkflow(id) ?? stepProofDescriptorOf(id) };
+
+export const runDetailLane = defineRunDetailLaneRead(import.meta.url, ({ native, history, start }, initialFacts) => {
+  let facts = initialFacts;
+  const { stateRoot } = start;
+  const reader = createRunReadLaneReader(history);
+  const { authority } = history;
+  const projection = createOperatorProjection({
+    stateRoot, clock: systemClock,
+    appVersion: PackageVersionSchema.parse(JSON.parse(readFileSync(new URL("../../../../../package.json", import.meta.url), "utf8"))).version,
+    descriptorSetHash: descriptorSetHash(DESCRIPTORS.map(descriptor => descriptor.contractFingerprint)),
+    ledger: createTransactionHistory(authority), database: history, descriptors: { resolve: resolveWorkflow }, reader,
+  });
+  const failureResolution = createFailureResolutionQuery(authority);
+  const deps = createOperatorRunDetail({
+    stateRoot, projection, database: history, runReader: reader, workerMembers: () => facts.workers, operatorName: () => facts.operatorName,
+    canonical: { reader, database: history, descriptors: detailDescriptors },
+    trust: {
+      failureResolution, getFailure: failureResolution.getFailure,
+      countFailuresByFingerprint: fingerprint => authority.failures.countByFingerprint(fingerprint),
+      ...(history === native ? {} : { receiptAvailable: (id: string) =>
+        authority.evidenceReceipts.findByRun(id) !== undefined || native.authority.runs.get(id) !== undefined }),
+      ensureReceipt(id) {
+        const receipt = authority.evidenceReceipts.findByRun(id);
+        if (receipt === undefined) throw new MissingLaneReceipt();
+        return receipt;
+      },
+    },
+    // The failure section validates capture metadata. Byte verification stays with the server reader.
+    captures: { runReader: reader, authority: authority.diagnosticBundles, artifactReader: {
+      verify() { throw new Error("run-read-lane-capture-verification-refused"); },
+      prepare() { throw new Error("run-read-lane-capture-verification-refused"); },
+    } },
+  });
+  projection.rebuildFromTimeline();
+  return {
+    deps,
+    update(next, through) {
+      facts = next;
+      if (projection.position() > through || projection.health().state === "degraded") projection.rebuildFromTimeline();
+      else if (projection.position() < through) projection.ingestFromTimeline();
+      const health = projection.health();
+      if (health.state === "degraded") throw new ProjectionDegradedError(health.lastError ?? "run read lane projection is degraded");
+    },
+  };
+});

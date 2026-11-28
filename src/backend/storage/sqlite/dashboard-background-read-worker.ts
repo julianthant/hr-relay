@@ -3,9 +3,8 @@ import { TimelineEventRecordSchema, TimelinePageRequestSchema } from "../../../m
 import { BrowserSystemIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, RunSessionIdSchema,
   WorkerIdSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 import type { AuthorityDatabase } from "./authority-database.js";
-import { createDashboardSnapshotQuery, type DashboardSnapshotPosition } from "./authority-dashboard-snapshot.js";
+import type { DashboardSnapshotPosition } from "./authority-dashboard-snapshot.js";
 import { defineLaneRead, ReadLaneRestartedError, type DashboardReadLanes } from "./dashboard-read-host.js";
-import { openReadOnlyDatabase } from "./readonly-authority-snapshot.js";
 
 const WorkerCursorSchema = z.strictObject({ offset: PositiveIntSchema, digest: FingerprintSchema });
 const RequestSchema = TimelinePageRequestSchema.pick({ after: true, through: true, limit: true, spanTypes: true })
@@ -22,7 +21,7 @@ const ResultSchema = z.strictObject({
 export type DashboardBackgroundReadResult = z.infer<typeof ResultSchema>;
 
 /** One native connection per lane validates peer commits and captures a page and its reconciliation facts together. */
-const snapshotQueries = new WeakMap<AuthorityDatabase, ReturnType<typeof createDashboardSnapshotQuery>>();
+const snapshotQueries = new WeakMap<AuthorityDatabase, ReturnType<AuthorityDatabase["createReadLaneTimelineQuery"]>>();
 
 /**
  * Timeline pages and worker facts, read in the navigation lane. Archive rows come from the lane's history reader below the
@@ -33,10 +32,7 @@ const dashboardTimelinePage = defineLaneRead(import.meta.url, "dashboard-timelin
   run(context, request) {
     let query = snapshotQueries.get(context.native);
     if (query === undefined) {
-      const connection = openReadOnlyDatabase(context.start.path, 250);
-      connection.exec("PRAGMA query_only=ON");
-      context.retain({ close: () => { connection.close(); }, inTransaction: () => connection.isOpen && connection.isTransaction });
-      query = createDashboardSnapshotQuery(connection, context.start.binding);
+      query = context.native.createReadLaneTimelineQuery();
       snapshotQueries.set(context.native, query);
     }
     // The reply's position is the native snapshot's, the one the native rows and worker facts were read in.
