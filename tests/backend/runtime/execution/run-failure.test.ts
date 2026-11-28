@@ -187,17 +187,22 @@ describe("refused sign-in detail", () => {
   });
 
   it.each([
-    { step: "verify-landing", origin: "https://act-crm.my.site.com", path: "/hr/ONB_SearchOnboardings",
+    { system: "crm", code: "CRM_SIGN_IN_FAILED", step: "verify-landing",
+      origin: "https://act-crm.my.site.com", path: "/hr/ONB_SearchOnboardings",
       expected: "Relay could not verify the signed-in CRM page." },
-    { step: "sso-form", origin: "https://a5.ucsd.edu", path: "/tritON/profile/SAML2/Redirect/SSO",
+    { system: "crm", code: "CRM_SIGN_IN_FAILED", step: "sso-form",
+      origin: "https://a5.ucsd.edu", path: "/tritON/profile/SAML2/Redirect/SSO",
       expected: "Relay could not verify the UCSD sign-in form for CRM." },
-  ] as const)("shows the CRM $step refusal in Logs without exposing diagnostics", ({ step, origin, path, expected }) => {
+    { system: "ucpath", code: "UCPATH_SIGN_IN_FAILED", step: "verify-landing",
+      origin: "https://ucphrprdpub.universityofcalifornia.edu", path: PEOPLESOFT_PREFIX,
+      expected: "UCPath sign-in failed." },
+  ] as const)("shows the $code $step refusal in Logs without exposing diagnostics", ({ system, code, step, origin, path, expected }) => {
     const failure = storedSignInFailure("the sign-in check refused", `${origin}${path}?EMPLID=${FIXTURE_EMPLOYEE_ID}`,
-      "crm", undefined, step);
-    assert.equal(failure.code, "CRM_SIGN_IN_FAILED");
+      system, undefined, step);
+    assert.equal(failure.code, code);
     assert.equal(failure.debug?.signInRefusal?.check, undefined);
     assert.deepEqual(failure.debug?.signInRefusal, {
-      system: "crm",
+      system,
       step,
       pageOrigin: origin,
       pagePath: path,
@@ -212,7 +217,7 @@ describe("refused sign-in detail", () => {
     const source = original.payload.value;
     const section = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: {
       ...source, code: failure.code, summary: `private ${FIXTURE_EMPLOYEE_ID}`,
-      display: { title: "Read CRM hire data", observation: projected.summary },
+      display: { title: "Sign in", observation: system === "ucpath" ? `private observation ${FIXTURE_EMPLOYEE_ID}` : projected.summary },
     } } });
     const detail = FIXTURE_RUN_DETAILS[FIXTURE_IDS.failedRun];
     assert.ok(detail);
@@ -222,7 +227,7 @@ describe("refused sign-in detail", () => {
     const entry = projection.steps.find(step => step.id === source.failureId)?.entries[0];
     assert.ok(entry?.kind === "decision");
     assert.equal(entry.decision.message, expected);
-    assert.equal(entry.decision.message.includes(FIXTURE_EMPLOYEE_ID), false);
+    assert.equal(JSON.stringify(entry.decision).includes(FIXTURE_EMPLOYEE_ID), false);
   });
 
   it("stores a landing stall as the registry origin when the path is not listed", () => {
