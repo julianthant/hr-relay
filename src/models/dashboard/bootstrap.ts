@@ -78,6 +78,7 @@ export const WorkflowStartWireSchema = z.strictObject({
       z.strictObject({
         state: z.literal("omittable"),
         form: StepOmissionFormSchema,
+        stop: z.string().min(1).optional(),
         forces: z.array(StepKeySchema),
       }),
       z.strictObject({ state: z.literal("required"), reason: z.string().min(1) }),
@@ -90,6 +91,8 @@ export const WorkflowStartWireSchema = z.strictObject({
     includedByDefault: z.boolean(),
     kind: StartRowKindSchema,
     off: StartRowOffSchema.optional(),
+    stop: z.string().min(1).optional(),
+    requiresStep: StepKeySchema.optional(),
     startWithValuesAlone: z.literal(true).optional(),
     lockReason: StartRowLockReasonSchema.optional(),
     members: z.array(StartRowMemberSchema).min(1),

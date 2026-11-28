@@ -649,6 +649,9 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ]),
   ...[taskOutput("workflow:i9-check-start/read-publication"), workflowResult("i9-check-start"), workflowResult("i9-check-start-retention")]
     .flatMap(scope => [...ocrPrivateLeaves(scope, "workbook.libraryId", "workbook.operationId"), ...open(scope, "workbook.state", "workbook.version")]),
+  ...["i9-check-start", "i9-check-start-retention"].flatMap(id => open(workflowResult(id), "workbook.step")),
+  ...["i9-check-start", "i9-check-start-documents", "i9-check-start-roster-reference", "i9-check-start-retention"]
+    .flatMap(id => open(workflowResult(id), "state", "reason")),
   ...["i9-check-start", "i9-check-start-documents", "i9-check-start-roster-reference", "i9-check-start-retention"].flatMap(id => [
     ...open(workflowInput(id), "asOf"), ...ocrPrivateLeaves(workflowInput(id), "documents", "reviewerName"),
   ]),

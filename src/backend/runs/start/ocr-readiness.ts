@@ -44,7 +44,7 @@ function hasPendingExtraction(repositories: AuthorityRepositories, descriptor: A
       implFingerprint: taskImplFingerprint(extraction.uses), outputSchemaHash: deriveSchemaHash(extraction.uses.output, "output"),
     }), extraction.uses.output).found;
   }
-  if (!workflowPlanning(descriptor).requiresOcrProvider(input)) return false;
+  if (!workflowPlanning(descriptor).requiresOcrProvider(input, run.envelope.stepOmissions)) return false;
   const groups = repositories.dependencies.groups(run.envelope.runId);
   const delegates = nodes.flatMap(node => node.kind === "child-run" && OCR_EDGES.has(node.edgeId) ? [node] : []);
   return delegates.length === 0 || delegates.some(node => {
@@ -64,7 +64,7 @@ export function requiresOcrForStart(repositories: AuthorityRepositories, descrip
   const target = delegate?.kind === "child-run" ? workflowDelegatedDescriptor(descriptor, delegate.target.id) : undefined;
   const omissions = target === undefined ? undefined : delegatedStepOmissions(plan.stepOmissions, target.id);
   const requiresOcr = plan.planned.some(({ input }) => {
-    if (!requiresOcrProvider(input.value)) return false;
+    if (!requiresOcrProvider(input.value, plan.stepOmissions)) return false;
     if (target === undefined || !target.stepOmissions.some(spec => spec.bindInput !== undefined && omissions?.some(entry => entry.step === spec.step))) return true;
     const childInput = bindSingleStartChild(descriptor, target.id, input.value);
     return workflowPlanning(target).requiresOcrProvider(applyStepOmissionInputs(target, childInput, omissions));

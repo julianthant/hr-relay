@@ -3,6 +3,7 @@ import { z } from "zod";
 import { DateOnlySchema, PositiveIntSchema } from "../../rules/identity/ids.js";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { UsDateFactSchema } from "./step-omission.js";
+import { TimelineCategoryKeySchema } from "./presentation.js";
 import { collapseWhitespace } from "../fields/cell-coercion.js";
 
 /** A field name as it appears in a workflow input schema. */
@@ -430,6 +431,7 @@ export const UploadRunSurfaceSchema = z.strictObject({
     z.strictObject({ documentsField: InputFieldNameSchema, asOfField: InputFieldNameSchema, reviewerField: InputFieldNameSchema }),
     z.strictObject({ documentField: InputFieldNameSchema, fileNameField: InputFieldNameSchema, readingIdField: InputFieldNameSchema, fixed: z.record(z.string(), JsonValueSchema) }),
   ]).optional(),
+  ocrStep: TimelineCategoryKeySchema.optional(),
   title: TextTemplateSchema,
   fields: z.array(UploadFieldSpecSchema),
   accepts: z.array(FileAcceptSpecSchema).min(1),

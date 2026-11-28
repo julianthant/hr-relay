@@ -60,7 +60,7 @@ import {
   projectFailureForOperator,
   type FailureRecord,
 } from "../../../models/trust/failure.js";
-import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../models/events/types.js";
+import { SpanEventWireSchema, SpanNotRunReasonSchema, type RunQueuedWire, type SpanEventWire } from "../../../models/events/types.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { RunSessionRecord } from "../../../models/run/session.js";
 import type { WorkerPoolRecord } from "../../../models/run/worker-pool.js";
@@ -88,7 +88,7 @@ const TaskSpanFoldSchema = z.strictObject({
   endedAt: z.iso.datetime({ offset: true }).optional(),
   outcome: z.enum(["done", "failed", "cancelled", "discarded", "skipped", "interrupted", "superseded"]).optional(),
 
-  notRunReason: z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]).optional(),
+  notRunReason: SpanNotRunReasonSchema.optional(),
 });
 
 const RunFoldRecordSchema = z.strictObject({

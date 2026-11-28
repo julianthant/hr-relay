@@ -9,7 +9,7 @@ import {
   defaultRerunSteps, initialRerunValueDrafts, partialRerunTypedInput, plainRerunInputText, rerunsInOneClick, type RerunValueDraft,
 } from "./run-start-rerun-model.js";
 import {
-  changeTypedInput, foldStepOmissionFacts, initialStepOmissionDraft, restoreTypedInput, toggleStepSelection, typedControlAvailable, typedInputDefaults, typedInputText, typedDateControls, usDateText,
+  changeTypedInput, foldStepOmissionFacts, initialStepOmissionDraft, restoreTypedInput, stoppedStepOmissions, toggleStepSelection, typedControlAvailable, typedInputDefaults, typedInputText, typedDateControls, usDateText,
   type BrowserMode, type StartPriority, type StepOmissionDraft, type StepOmissionFactDraft,
 } from "./run-start-model.js";
 import type { RerunLaunchSource } from "./run-launch-model.js";
@@ -297,12 +297,16 @@ function preselectRerunSteps(draft: LaunchDraft, snapshot: RerunValuesSnapshot, 
   const rows = startRowsOf(workflow), badges = rows.map(row => preselectionBadge(row, snapshot));
   const failed = badges.indexOf("failed"), restart = failed >= 0 ? failed : rerunsInOneClick(snapshot) ? 0 : Math.max(0, badges.indexOf("not-started"));
   const leavesOut = (index: number) => badges[index] === "skipped" || badges[index] === "completed" && index < restart;
+  const includedSteps = (choice: LaunchDraft) => {
+    const requested = selectedStepKeys(choice, workflow), stopped = stoppedStepOmissions(workflow.steps, requested);
+    return requested.filter(key => !stopped.has(key));
+  };
   let next = draft;
   for (const [index, row] of rows.entries()) {
     if (!leavesOut(index) || rowInputDriven(workflow, typedDraftOf(next, workflow.workflowId, workflow), row)) continue;
     const candidate = row.kind === "switch" ? toggleRow(next, workflow, snapshot, row, false)
       : badges[index] === "skipped" ? toggleManual(next, snapshot, row, true) : next;
-    const before = selectedStepKeys(next, workflow), after = selectedStepKeys(candidate, workflow);
+    const before = includedSteps(next), after = includedSteps(candidate);
     const losesLater = rows.some((other, position) => !leavesOut(position) && rowIncluded(other, before, next.manualRows) && !rowIncluded(other, after, candidate.manualRows));
     const complete = rows.every(other => other.form === undefined || !rowFieldsOpen(other, after, candidate.manualRows)
       || foldStepOmissionFacts(other.form, candidate.stepDrafts[other.key] ?? initialStepOmissionDraft(other.form)).state === "facts");

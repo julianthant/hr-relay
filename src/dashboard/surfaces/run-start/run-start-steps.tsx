@@ -55,20 +55,25 @@ export function RunStartSteps({
                     {rows.map((row) => {
                       const included = rowIncluded(row, selectedStepKeys, manualRows, snapshot);
                       const retained = snapshot?.retainedSteps === undefined ? undefined : retainedRowSteps(row, snapshot);
-                      const forcedBy = (row.stepKey === undefined ? forcedByChild.get(row.key) : forcedByStep.get(row.stepKey)) ?? [];
+                      const missingPrerequisite = row.requiresStep !== undefined && !selectedStepKeys.includes(row.requiresStep) ? row.requiresStep : undefined;
+                      const forcedBy = missingPrerequisite === undefined
+                        ? (row.stepKey === undefined ? forcedByChild.get(row.key) : forcedByStep.get(row.stepKey)) ?? []
+                        : [missingPrerequisite];
                       const open = openRows.find(candidate => candidate.row.key === row.key);
                       const badge = isRerun && snapshot !== null ? sourceBadge(row, snapshot) : undefined;
-                      const doneByHand = row.form !== undefined && row.form.fields.length === 0;
-                      const oneSubjectOnly = multiSubject && row.form !== undefined && !doneByHand && included;
+                      const doneByHand = row.stop === undefined && row.form !== undefined && row.form.fields.length === 0;
+                      const oneSubjectOnly = multiSubject && (row.form?.fields.length ?? 0) > 0 && included;
                       const disabled = forcedBy.length > 0 || inputDriven(row) || sending || lastIncludedSwitch(row, rows, selectedStepKeys, manualRows) || oneSubjectOnly;
                       const check = retained !== undefined
                         ? { checked: included, disabled: sending || retained.length === 0 || retained.some(step => !step.repeatable), onChange: (next: boolean) => toggleRow(row, next) }
                         : row.kind === "switch" ? { checked: included, disabled, onChange: (next: boolean) => toggleRow(row, next) } : undefined;
                       const needs = row.stepKey === undefined ? [] : handOffByStep.get(row.stepKey) ?? [];
                       const note = retained !== undefined ? included ? undefined : "Uses the earlier result."
-                        : forcedBy.length > 0 ? `Omitted with ${row.child === undefined ? stepLabels(forcedBy) : rows.filter(other => forcedBy.includes(other.key)).map(other => other.label).join(", ")}.`
+                        : forcedBy.length > 0 ? `Omitted with ${row.child === undefined || missingPrerequisite !== undefined ? stepLabels(forcedBy) : rows.filter(other => forcedBy.includes(other.key)).map(other => other.label).join(", ")}.`
                         : needs.length > 0 ? `Needs ${stepLabels(needs)}. Turn off if done by hand.`
-                        : oneSubjectOnly ? "One person only." : doneByHand && !included ? "Done outside Relay." : row.note;
+                        : oneSubjectOnly ? "One person only." : !included && row.stop !== undefined
+                          ? row.note === undefined ? row.stop : `${row.note.replace(/\.?$/u, ".")} ${row.stop}`
+                          : doneByHand && !included ? "Done outside Relay." : row.note;
                       const failure = stepsFailure !== null && stepsFailure.rowKey === row.key ? { [stepsFailure.fieldKey]: stepsFailure.text } : {};
                       return <RunListRow key={row.key} title={row.label} description={note}
                         {...(check === undefined ? { locked: true } : { check })}

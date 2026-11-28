@@ -418,7 +418,7 @@ describe("child step facts over a transaction's phases and several child runs", 
       assert.equal(response.snapshot.source.outcome, "cancelled");
       // The cascade-cancelled PDFs settle the all-settled join, and nothing after it ran, so Rerun starts every step again.
       assert.deepEqual(response.snapshot.steps[0]?.nodes[0], { nodeId: "read-documents", state: "completed", reason: "delegation-settled" });
-      assert.deepEqual(restartKeys(response.snapshot, startWorkflow(descriptor)), { steps: ["documents", "roster-reference", "retention"], off: [] });
+      assert.deepEqual(restartKeys(response.snapshot, startWorkflow(descriptor)), { steps: ["documents", "roster-reference", "retention", "publication"], off: [] });
     });
   });
 });

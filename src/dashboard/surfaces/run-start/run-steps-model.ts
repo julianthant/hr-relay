@@ -1,6 +1,6 @@
 import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
 import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
-import type { StartRowKind, StartRowLockReason, StepOmissionField, StepOmissionForm, StepOmissionInput } from "../../../models/workflow/step-omission.js";
+import type { StartRowKind, StartRowLockReason, StartRowOff, StepOmissionField, StepOmissionForm, StepOmissionInput } from "../../../models/workflow/step-omission.js";
 import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-model.js";
 import { foldStepOmissionFacts, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue, type StepOmissionStepView } from "./run-start-model.js";
 
@@ -14,7 +14,7 @@ export type StartStep = Readonly<{
   control:
     | { state: "selectable"; inputField: string }
     /** the step declares an omission the operator may take instead of running */
-    | { state: "omittable"; form: StepOmissionForm; forces: readonly string[] }
+    | { state: "omittable"; form: StepOmissionForm; forces: readonly string[]; stop?: string }
     | { state: "required"; reason: string };
 }>;
 
@@ -29,6 +29,9 @@ export interface StepRow {
   readonly key: string;
   readonly label: string;
   readonly kind: StartRowKind;
+  readonly off?: StartRowOff;
+  readonly stop?: string;
+  readonly requiresStep?: string;
   readonly startWithValuesAlone?: true;
   readonly lockReason?: StartRowLockReason;
   /** The grey line under the title. */
@@ -77,16 +80,22 @@ export function startRowsOf(source: StepRowSource): readonly StepRow[] {
     const own = row.target !== undefined && row.target.workflow === undefined ? row.target.step : undefined;
     const systems = systemNote([...new Set(row.members.flatMap(member => member.workflow === undefined ? stepOf(member.step)?.systems ?? [] : []))]);
     const workflow = row.target?.workflow;
-    const childRows = source.rows?.filter(other => other.target?.workflow === workflow);
+    const childRows = workflow === undefined ? undefined : source.rows?.filter(other => other.target?.workflow === workflow);
     const forces = (row.manual?.forces ?? []).map(step => workflow === undefined ? step
       : childRows?.find(other => other.target?.step === step)?.key ?? step);
-    const cascadeNote = row.off !== undefined && forces.length > 0
-      ? `Also skips: ${forces.map(key => workflow === undefined ? labelOf(key) : childRows?.find(other => other.key === key)?.label ?? key).join(", ")}`
-      : forcesNote(forces);
+    const skippedRows = row.stop === undefined
+      ? forces.map(key => workflow === undefined ? labelOf(key) : childRows?.find(other => other.key === key)?.label ?? key)
+      : source.rows?.filter(other => other.key !== row.key
+        && (other.target?.workflow === undefined && other.target?.step !== undefined && (other.target.step === own || forces.includes(other.target.step))
+          || other.requiresStep !== undefined && (other.requiresStep === own || forces.includes(other.requiresStep)))).map(other => other.label) ?? [];
+    const cascadeNote = row.off !== undefined && skippedRows.length > 0 ? `Also skips: ${skippedRows.join(", ")}` : forcesNote(forces);
     const note = row.kind === "switch" ? cascadeNote ?? systems
       : row.lockReason === undefined ? systems ?? "Automatic" : LOCK_NOTE[row.lockReason];
     return {
       key: row.key, label: row.label, kind: row.kind, note, includedByDefault: row.includedByDefault, forces, selectable: row.selection !== undefined,
+      ...(row.off === undefined ? {} : { off: row.off }),
+      ...(row.stop === undefined ? {} : { stop: row.stop }),
+      ...(row.requiresStep === undefined ? {} : { requiresStep: row.requiresStep }),
       ...(row.startWithValuesAlone === undefined ? {} : { startWithValuesAlone: row.startWithValuesAlone }),
       members: row.members.map(({ workflow, step, nodes }) => ({ step, ...(workflow === undefined ? {} : { workflow }), ...(nodes === undefined ? {} : { nodes }) })),
       ...(row.lockReason === undefined ? {} : { lockReason: row.lockReason }),
@@ -120,13 +129,14 @@ export function rowIncluded(row: StepRow, selectedStepKeys: readonly string[], m
     if (retained.length > 0) return retained.some(({ key }) => selectedStepKeys.includes(key));
     if (row.members.every(member => member.workflow !== undefined)) return sourceBadge(row, snapshot) !== "completed";
   }
+  if (row.requiresStep !== undefined && !selectedStepKeys.includes(row.requiresStep)) return false;
   if (row.kind !== "switch") return true;
   return row.stepKey === undefined ? !manualRows.includes(row.key) : selectedStepKeys.includes(row.stepKey);
 }
 
 /** The row's typed fields are showing: a switch that is off, or a locked row the operator opened. */
 export function rowFieldsOpen(row: StepRow, selectedStepKeys: readonly string[], manualRows: ManualRows): boolean {
-  if (row.form === undefined) return false;
+  if (row.form === undefined || row.requiresStep !== undefined && !selectedStepKeys.includes(row.requiresStep)) return false;
   return row.kind === "switch" ? !rowIncluded(row, selectedStepKeys, manualRows) : manualRows.includes(row.key);
 }
 
@@ -137,8 +147,8 @@ export function includedRowCount(rows: readonly StepRow[], selectedStepKeys: rea
 
 /** A single typed-values row can supply the entire run. */
 export function lastIncludedSwitch(row: StepRow, rows: readonly StepRow[], selectedStepKeys: readonly string[], manualRows: ManualRows): boolean {
-  if (row.startWithValuesAlone === true) return false;
-  return row.kind === "switch" && rowIncluded(row, selectedStepKeys, manualRows) && includedRowCount(rows, selectedStepKeys, manualRows) === 1;
+  return row.kind === "switch" && row.stop === undefined && row.startWithValuesAlone !== true
+    && rowIncluded(row, selectedStepKeys, manualRows) && includedRowCount(rows, selectedStepKeys, manualRows) === 1;
 }
 
 /** One row whose typed fields are open, with what the operator has typed and how it reads. */
@@ -154,10 +164,15 @@ export type StepEntry = Readonly<{ step: string; workflow?: string; facts: Reado
 /** The `stepOmissions` the request carries, or null while one open row does not parse. */
 export function stepEntries(open: readonly OpenStepRow[]): readonly StepEntry[] | null {
   const entries: StepEntry[] = [];
+  const stopped = new Set<string>();
   for (const { row, fold } of open) {
     if (fold.state !== "facts") return null;
     const target = row.child ?? (row.stepKey === undefined ? undefined : { step: row.stepKey });
     if (target === undefined) throw new Error(`row "${row.key}" opened typed fields but names no step to file them under`);
+    if (row.stop !== undefined) {
+      if (stopped.has(target.step)) continue;
+      stopped.add(target.step);
+    }
     entries.push({ ...("workflow" in target ? { workflow: target.workflow } : {}), step: target.step, facts: fold.facts });
   }
   return Object.freeze(entries);
