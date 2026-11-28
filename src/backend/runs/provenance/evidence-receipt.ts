@@ -240,6 +240,7 @@ const NOT_RUN_SENTENCE: Record<TerminalNotRunReason, (id: string) => string> = {
   "condition-false": (id) => `node "${id}" did not run: its declared \`when\` condition was false for this run's input`,
   "branch-not-selected": (id) => `node "${id}" did not run: the branch controller selected another case`,
   "step-omitted": (id) => `node "${id}" did not run: the operator omitted its step at start`,
+  "required-evidence-unavailable": (id) => `node "${id}" did not run: required evidence was unavailable after a Start omission`,
   // Unreachable by construction (the sealed factory refuses it as a not-run
   // reason), authored so the closed map stays exhaustive rather than defaulted.
   "operator-asserted": (id) => `node "${id}" did not run: the operator asserted its facts at start`,

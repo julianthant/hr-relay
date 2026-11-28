@@ -11,13 +11,13 @@ it("compiles one PDF batch with admitted OCR and existing person children, one w
   const descriptor = compileWorkflow(i9CheckStartWorkflow).descriptor;
   const nodes = descriptorRuntimeNodes(descriptor);
   expect(descriptor.surface).toEqual({ shape: "single" });
-  expect(descriptor.timeline.map(step => step.key)).toEqual(["documents", "roster-reference", "retention"]);
+  expect(descriptor.timeline.map(step => step.key)).toEqual(["documents", "roster-reference", "retention", "publication"]);
   expect(nodes.filter(node => node.kind === "child-run").map(node => node.target.id)).toEqual(["ocr", "i9-check"]);
   expect(nodes.every(node => node.kind === "task" || node.kind === "child-run")).toBe(true);
   expect(workflowProjections(descriptor).contracts.every(contract => contract.effect === "read")).toBe(true);
   expect(nodes.filter(node => node.kind === "task" && node.uses.id === "workbooks/read-result")).toHaveLength(1);
   expect(descriptor.artifactProjections).toEqual([{ id: "i9-check-tracker", source: { nodeId: "publish-results", fieldPath: "tracker" }, keyFields: ["batchKey"], sink: "xlsx-retention", blocking: true }]);
-  expect(workflowTerminalResultExecution(descriptor).dependsOn).toEqual(["publish-results"]);
+  expect(workflowTerminalResultExecution(descriptor).dependsOn).toEqual(["read-rows", "publish-results"]);
   const documents = nodes.find(node => node.id === "read-documents");
   if (documents?.kind !== "child-run" || documents.cardinality !== "many") throw new Error("Missing PDF delegation");
   const first = i9ApprovedSource(1, [{ eid: "10000001", kind: "i9-section1" }]);
@@ -27,7 +27,10 @@ it("compiles one PDF batch with admitted OCR and existing person children, one w
   expect(children.map(child => child.document.id)).toEqual(input.documents.map(source => source.document.id));
   expect(children.every(child => child.formType === "i9" && child.approval === "release" && child.sourceRunId === undefined)).toBe(true);
   expect(children.map(child => child.fileName)).toEqual(input.documents.map(source => source.fileName));
-  const { title } = workflowPlanning(descriptor);
+  const { title, requiresOcrProvider } = workflowPlanning(descriptor);
+  const subscription = { ...input, documents: input.documents.map(document => ({ ...document, reading: { kind: "subscription" } })) };
+  expect(requiresOcrProvider(subscription)).toBe(true);
+  expect(requiresOcrProvider(subscription, [{ step: "documents", facts: {} }])).toBe(false);
   expect(title({ ...input, documents: [input.documents[0]] })).toBe(input.documents[0]?.fileName);
   expect(title(input)).toBe("I-9 Check · 2 PDFs");
   expect(i9CheckStartMatchKey(input)).toBe(i9CheckStartMatchKey({ ...input, documents: input.documents.toReversed() }));

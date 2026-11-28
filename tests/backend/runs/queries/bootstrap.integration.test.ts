@@ -117,7 +117,7 @@ describe("bootstrap start-surface block", () => {
           "i9-creation": ["i9"], "ucpath-hire": ["ucpath"], "master-results": [] },
         "emergency-contact": { "read-document": [], members: [] },
         "emergency-contact-member": { "contact-plan": ["ucpath"], "reference-check": [], "contact-preview": ["ucpath"] },
-        "i9-check-start": { documents: [], "roster-reference": [], retention: [] },
+        "i9-check-start": { documents: [], "roster-reference": [], retention: [], publication: [] },
         "work-study": { "ucpath-auth": ["ucpath"], "reference-check": [], transaction: ["ucpath"] },
       };
       for (const descriptor of DESCRIPTORS) {
@@ -143,12 +143,15 @@ describe("bootstrap start-surface block", () => {
             control: step.control.state === "selectable"
               ? { state: "selectable", inputField: step.control.inputField }
               : step.control.state === "omittable"
-                ? { state: "omittable", form: step.control.form, forces: step.control.forces }
+                ? { state: "omittable", form: step.control.form, forces: step.control.forces,
+                  ...(step.control.stop === undefined ? {} : { stop: step.control.stop }) }
                 : { state: "required", reason: step.control.reason },
           })),
           rows: projectStartRows(descriptor).map((row) => ({
             key: row.key, label: row.label, includedByDefault: row.includedByDefault, kind: row.kind,
             ...(row.off === undefined ? {} : { off: row.off }),
+            ...(row.stop === undefined ? {} : { stop: row.stop }),
+            ...(row.requiresStep === undefined ? {} : { requiresStep: row.requiresStep }),
             ...(row.lockReason === undefined ? {} : { lockReason: row.lockReason }),
             members: row.members.map((member) => ({ ...member })),
             ...(row.target === undefined ? {} : { target: { ...row.target } }),

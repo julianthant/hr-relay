@@ -151,7 +151,7 @@ describe("frontend workflow catalog", () => {
     expect(parent).toHaveLength(1);
     expect(parent[0]).toMatchObject({ source: "served", launch: { state: "served" },
       served: { uploadRun: { pdfInput: { documentsField: "documents", asOfField: "asOf", reviewerField: "reviewerName" } },
-        workbookReference: { id: "action-history" }, steps: [{ key: "documents" }, { key: "roster-reference" }, { key: "retention" }] } });
+        workbookReference: { id: "action-history" }, steps: [{ key: "documents" }, { key: "roster-reference" }, { key: "retention" }, { key: "publication" }] } });
     expect(product.filter(entry => ["i9-check", "i9-lookup", "ocr"].includes(entry.id))).toEqual([]);
     expect(childWorkflowModuleOf("i9-check-start", "i9-check").descriptor.id).toBe("i9-check");
     for (const owner of ["ocr", "onboarding"]) expect(childWorkflowModuleOf(owner, "i9-lookup").descriptor.id).toBe("i9-lookup");

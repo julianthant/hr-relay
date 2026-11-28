@@ -42,6 +42,7 @@ export const TerminalNotRunReasonSchema = z.enum([
   "operator-asserted",
     /** A transaction, or a task no producer rebuilds, in a step the operator omitted. */
   "step-omitted",
+  "required-evidence-unavailable",
 ]);
 
 export const ResolvedTerminalDependencySchema = z.strictObject({

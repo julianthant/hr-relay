@@ -252,7 +252,7 @@ function buildTimelineSteps(
         ...(member.replayedFrom === undefined ? {} : { replayedFrom: member.replayedFrom }),
         ...(member.notRunReason === undefined ? {} : { notRunReason: member.notRunReason }),
       })),
-      ...(category.key === undefined ? {} : typed.get(category.key)),
+      ...(category.key === undefined || members.every(member => member.notRunReason === "required-evidence-unavailable") ? {} : typed.get(category.key)),
     })];
   });
   if (runCancelled) {
@@ -337,7 +337,7 @@ export function buildRunDetail(
     at: string;
     label: string;
     state: "pending" | "active" | "done" | "failed" | "blocked" | "cancelled" | "skipped";
-    notRun: { state: "absent"; reason: string } | { state: "present"; reason: "condition-false" | "branch-not-selected" | "operator-asserted" | "step-omitted" };
+    notRun: { state: "absent"; reason: string } | { state: "present"; reason: TimelineNotRunReason };
     durationMs: TimelineDuration;
     seed: string;
     native: NativeRunEventWire;

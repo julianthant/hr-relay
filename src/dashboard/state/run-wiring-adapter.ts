@@ -293,6 +293,7 @@ function operatorActionReason(reason: string): string | undefined {
     case "branch-not-selected": return "Another path was selected";
     case "operator-asserted": return "Manual values";
     case "step-omitted": return "Done outside Relay";
+    case "required-evidence-unavailable": return "Required evidence unavailable";
     case "dry-run": return "Dry run";
     case "cancelled": return "Cancelled";
     case "callback-failed": return "Action failed";
