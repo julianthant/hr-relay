@@ -57,9 +57,11 @@ function WorksheetMenu({ owner, worksheets, picked, mode, disabled, max, readOnl
       <DropdownMenuGroup aria-label={`${owner} worksheets`} className="max-h-56 overflow-y-auto">
         {mode === "one"
           ? <DropdownMenuRadioGroup value={picked[0] ?? ""} onValueChange={sheetId => { if (!readOnly) onChange([sheetId]); }}>
-            {found.map(worksheet => <DropdownMenuRadioItem key={worksheet.sheetId} value={worksheet.sheetId} aria-disabled={readOnly || undefined}>{worksheet.sheetName}</DropdownMenuRadioItem>)}
+            {found.map(worksheet => <DropdownMenuRadioItem key={worksheet.sheetId} value={worksheet.sheetId}
+              {...(readOnly ? { "aria-disabled": true } : {})}>{worksheet.sheetName}</DropdownMenuRadioItem>)}
           </DropdownMenuRadioGroup>
-          : found.map(worksheet => <DropdownMenuCheckboxItem key={worksheet.sheetId} checked={picked.includes(worksheet.sheetId)} aria-disabled={readOnly || undefined}
+          : found.map(worksheet => <DropdownMenuCheckboxItem key={worksheet.sheetId} checked={picked.includes(worksheet.sheetId)}
+            {...(readOnly ? { "aria-disabled": true } : {})}
             disabled={!readOnly && max !== undefined && picked.length >= max && !picked.includes(worksheet.sheetId)}
             onCheckedChange={on => {
               if (readOnly) return;
