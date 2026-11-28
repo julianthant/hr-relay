@@ -336,7 +336,7 @@ describe("served start rows", () => {
     "crm-doc-download": [["search-records", "switch", null], ["reference", "switch", null], ["read-idocs", "switch", null], ["package-worksheets", "switch", null]],
     "emergency-contact": [["ocr-source-pages", "switch", null], ["read-emergency-contact", "switch", null], ["ocr-group-records", "switch", null],
       ["match-extracted-people", "switch", null], ["ocr-signer-lookups", "switch", null], ["review-extracted-records", "switch", null],
-      ["read-existing-contacts", "locked", "bound-read"], ["fill-emergency-contact", "locked", "form-action"], ["save-emergency-contact", "locked", "form-action"]],
+      ["read-existing-contacts", "switch", null], ["fill-emergency-contact", "switch", null], ["file-to-onbase", "switch", null]],
   };
 
   it("serves one row per step with its kind and lock reason for every public workflow", () => {

@@ -44,10 +44,11 @@ export const emergencyContactWorkflow = defineWorkflow({
     { key: "ocr-signer-lookups", label: "Look up official signers", members: [{ workflow: "ocr", step: "signer-lookups" }], target: { workflow: "ocr", step: "signer-lookups" } },
     { key: "review-extracted-records", label: "Review extracted records", members: [{ workflow: "ocr", step: "approval" }], target: { workflow: "ocr", step: "approval" } },
     { key: "read-existing-contacts", label: "Read existing contacts", members: [{ workflow: "emergency-contact-member", step: "contact-plan" },
-      { workflow: "emergency-contact-member", step: "reference-check" }] },
-    { key: "fill-emergency-contact", label: "Fill emergency contact", members: [{ workflow: "emergency-contact-member", step: "contact-preview", phase: "prepare" }] },
-    { key: "save-emergency-contact", label: "Save emergency contact", members: [{ workflow: "emergency-contact-member", step: "contact-preview", phase: "commit" },
-      { workflow: "emergency-contact-member", step: "onbase-filing" }, { step: "members" }] },
+      { workflow: "emergency-contact-member", step: "reference-check" }, { step: "members" }], target: { step: "members" } },
+    { key: "fill-emergency-contact", label: "Fill and save emergency contact", members: [{ workflow: "emergency-contact-member", step: "contact-preview" }],
+      target: { workflow: "emergency-contact-member", step: "contact-preview" } },
+    { key: "file-to-onbase", label: "File to OnBase", members: [{ workflow: "emergency-contact-member", step: "onbase-filing" }],
+      target: { workflow: "emergency-contact-member", step: "onbase-filing" } },
   ],
   steps: author => {
     const records = emergencyContactReadDocumentDefinition.build(author), members = emergencyContactMembersDefinition.build(author, records);

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, it } from "vitest";
 import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
-import { StartStepOmissionRefusedError, projectStartRows, projectStartSteps, resolveStartStepOmissions } from "../../../src/backend/runs/start/step-selection.js";
+import { StartStepOmissionRefusedError, projectStartRows, projectStartSteps, resolveStartStepOmissions, startRowWire } from "../../../src/backend/runs/start/step-selection.js";
+import { rowFieldsOpen, rowIncluded, startRowsOf } from "../../../src/dashboard/surfaces/run-start/run-steps-model.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { emergencyContactMemberModule } from "../../support/helpers/registered-workflows.js";
 
@@ -11,7 +12,7 @@ const nodeDigest = (nodes: ReturnType<typeof descriptorRuntimeNodes>): string =>
   [String(node.id), node.kind, node.dependsOn.map(String), "dryRun" in node ? node.dryRun ?? null : null]))).digest("hex");
 
 describe("Emergency Contact Start run rows", () => {
-  it("serves the OCR switches and keeps the Emergency Contact member rows locked", () => {
+  it("serves every OCR and Emergency Contact row as a switch", () => {
     const member = "emergency-contact-member";
     assert.deepEqual(projectStartRows(descriptor).map(({ key, label, kind, lockReason, members }) => ({ key, label, kind, lockReason: lockReason ?? null, members })), [
       { key: "ocr-source-pages", label: "Prepare source pages", kind: "switch", lockReason: null, members: [{ workflow: "ocr", step: "source-pages" }] },
@@ -22,11 +23,10 @@ describe("Emergency Contact Start run rows", () => {
         { workflow: "ocr", step: "identity-lookups" }] },
       { key: "ocr-signer-lookups", label: "Look up official signers", kind: "switch", lockReason: null, members: [{ workflow: "ocr", step: "signer-lookups" }] },
       { key: "review-extracted-records", label: "Review extracted records", kind: "switch", lockReason: null, members: [{ workflow: "ocr", step: "approval" }] },
-      { key: "read-existing-contacts", label: "Read existing contacts", kind: "locked", lockReason: "bound-read", members: [{ workflow: member, step: "contact-plan" },
-        { workflow: member, step: "reference-check" }] },
-      { key: "fill-emergency-contact", label: "Fill emergency contact", kind: "locked", lockReason: "form-action", members: [{ workflow: member, step: "contact-preview", phase: "prepare" }] },
-      { key: "save-emergency-contact", label: "Save emergency contact", kind: "locked", lockReason: "form-action", members: [{ workflow: member, step: "contact-preview", phase: "commit" },
-        { workflow: member, step: "onbase-filing" }, { step: "members" }] },
+      { key: "read-existing-contacts", label: "Read existing contacts", kind: "switch", lockReason: null, members: [{ workflow: member, step: "contact-plan" },
+        { workflow: member, step: "reference-check" }, { step: "members" }] },
+      { key: "fill-emergency-contact", label: "Fill and save emergency contact", kind: "switch", lockReason: null, members: [{ workflow: member, step: "contact-preview" }] },
+      { key: "file-to-onbase", label: "File to OnBase", kind: "switch", lockReason: null, members: [{ workflow: member, step: "onbase-filing" }] },
     ]);
   });
 
@@ -39,17 +39,34 @@ describe("Emergency Contact Start run rows", () => {
     assert.ok(memberRow.manual);
     const parentRow = projectStartRows(descriptor).find(row => row.key === "read-existing-contacts");
     assert.ok(parentRow);
-    assert.equal(parentRow.kind, "locked");
-    assert.equal(parentRow.lockReason, "bound-read");
-    assert.equal(parentRow.manual, undefined);
+    assert.deepEqual(parentRow.target, { step: "members" });
+    assert.ok(parentRow.stop);
+    assert.deepEqual(parentRow.manual?.form.fields, []);
   });
 
   it("offers typed fields only for OCR child steps", () => {
     for (const row of projectStartRows(descriptor)) {
-      assert.deepEqual(row.target, row.kind === "switch" ? row.members.find(({ workflow }) => workflow === "ocr") : undefined, row.key);
-      assert.equal(row.manual !== undefined, row.kind === "switch", row.key);
+      const ocr = row.members.find(({ workflow }) => workflow === "ocr");
+      if (ocr !== undefined) assert.deepEqual(row.target, ocr, row.key);
+      assert.equal((row.manual?.form.fields.length ?? 0) > 0, ocr !== undefined, row.key);
       assert.equal(row.selection, undefined, row.key);
     }
+  });
+
+  it("switches off both member actions when reading existing contacts is off", () => {
+    const steps = projectStartSteps(descriptor);
+    const rows = startRowsOf({ steps, rows: projectStartRows(descriptor).map(startRowWire) });
+    const selected = steps.map(({ key }) => key).filter(key => key !== "members");
+    assert.equal(rows.find(({ key }) => key === "read-existing-contacts")?.note,
+      "Also skips: Fill and save emergency contact, File to OnBase");
+    for (const row of rows.filter(({ child }) => child?.workflow === "emergency-contact-member")) {
+      assert.equal(rowIncluded(row, selected, []), false, row.key);
+      assert.equal(rowFieldsOpen(row, selected, []), false, row.key);
+      assert.ok(row.child);
+      assert.throws(() => resolveStartStepOmissions(descriptor, selected, [{ step: "members", facts: {} }, { ...row.child, facts: {} }]),
+        (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "cascade-refused", row.key);
+    }
+    assert.deepEqual(resolveStartStepOmissions(descriptor, selected, [{ step: "members", facts: {} }]), [{ step: "members", facts: {}, labels: {} }]);
   });
 
   it("refuses typed facts for the parent's own steps", () => {
@@ -58,6 +75,19 @@ describe("Emergency Contact Start run rows", () => {
       assert.throws(() => resolveStartStepOmissions(descriptor, keys, [{ step, facts: { value: "typed" } }]),
         (error: unknown) => error instanceof StartStepOmissionRefusedError, step);
     }
+  });
+
+  it("accepts a manual omission without letting the parent supply shared contact facts", () => {
+    const selected = projectStartSteps(descriptor).map(({ key }) => key);
+    const workflow = "emergency-contact-member";
+    for (const step of ["contact-preview", "onbase-filing"]) {
+      assert.deepEqual(resolveStartStepOmissions(descriptor, selected, [{ workflow, step, facts: {} }]),
+        [{ workflow, step, facts: {}, labels: {} }]);
+      assert.throws(() => resolveStartStepOmissions(descriptor, selected, [{ workflow, step, facts: { value: "typed" } }]),
+        (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "facts-invalid", step);
+    }
+    assert.throws(() => resolveStartStepOmissions(descriptor, selected, [{ workflow, step: "contact-plan", facts: {} }]),
+      (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "unknown-step");
   });
 
   it("plans nothing new and keeps today's node lists of the run and its member run", () => {

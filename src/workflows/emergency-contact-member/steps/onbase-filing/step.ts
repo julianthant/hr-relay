@@ -10,7 +10,7 @@ import { CONTACT_PLAN_INCLUDED, buildContactPlan } from "../contact-plan/step.js
 import { buildContactPreview } from "../contact-preview/step.js";
 
 export const ONBASE_FILING_MANUAL: StepManualDeclaration = {
-  off: "manual", ownStartOnly: true, form: { fields: [] }, produces: {}, skips: ["onbase-filing"],
+  off: "manual", form: { fields: [] }, produces: {}, skips: ["onbase-filing"],
 };
 
 export const ONBASE_FILING_STEP = Object.freeze({ ...defineWorkflowStep({ key: "onbase-filing", label: "Import to OnBase" }), system: "onbase" as const,

@@ -62,6 +62,8 @@ interface ReviewedPageFacts {
   readonly correctedContactName: string;
 }
 
+export type OcrFixtureStartSteps = Pick<Parameters<ReturnType<typeof canonicalChildExecution>["start"]>[2], "selectedStepKeys" | "stepOmissions">;
+
 export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfileStorageFixture>) {
   const world = profileFixture === undefined ? createRunExecutorTestWorld() : createRunExecutorTestWorld(profileFixture);
   return {
@@ -69,6 +71,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
     async fixture(options: Readonly<{ actorId?: string; onbaseFiling?: "file" | "skip"; record?: boolean; release?: boolean; pageCount?: number;
       retainedProducer?: boolean; coordinator?: boolean; fileName?: string; dryRun?: boolean; extractWithOcr?: boolean;
       parent?: WorkflowModule; ocr?: Pick<WorkflowModule, "descriptor"> & Partial<Pick<WorkflowModule, "stores">>; ocrPage?: WorkflowModule;
+      startSteps?: OcrFixtureStartSteps;
       lookupNames?: readonly string[]; employeeIds?: readonly (string | null)[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; holdPages?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
       failManualPageOnce?: number; stopAfterPageFailure?: boolean; ocrProviderAvailable?: () => boolean;
       signerLookup?: Readonly<{ firstNames: readonly string[]; failOnce?: string }>;
@@ -296,7 +299,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       const submission = coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, ...(options.fileName === undefined ? {} : { fileName: options.fileName }), readingId: request.readingId, roster: request.roster, reading: request.reading,
         ...(options.extractWithOcr === undefined ? {} : { extractWithOcr: options.extractWithOcr }), onbaseFiling: options.onbaseFiling ?? "file" });
       const parentRun = canonical.start(root.descriptor, submission, { dryRun: options.dryRun ?? false,
-        ...(workbookReferences === undefined ? {} : { workbookReferences }) });
+        ...(workbookReferences === undefined ? {} : { workbookReferences }), ...options.startSteps });
       const signal = new AbortController().signal;
       const lookupAdmitted = () => database.authority.dependencies.groups(parentRun.envelope.runId)
         .some(({ group }) => group.invocation.nodeId === "lookup-identities");

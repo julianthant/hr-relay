@@ -32,7 +32,7 @@ import fixture from "../../fixtures/ui/ucpath/emergency-contact.fixture.json" wi
 import type { BoundProfileStorageFixture } from "../admission-fixture.js";
 import { registerBoundFixtureWorker, registerBoundProfile, unregisterBoundProfile } from "../synthetic-database-admission.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { createOcrReviewWorld } from "./ocr-review-world.js";
+import { createOcrReviewWorld, type OcrFixtureStartSteps } from "./ocr-review-world.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { onbaseFilingFixture } from "./onbase-filing-fixture.js";
 
@@ -246,11 +246,12 @@ export function createEmergencyContactRetryWorld() {
     }) });
     return { control, hooks, persistence, sessions, approvedReader, accountingStore, member, now, tickCount: () => ticks, approvedReadFailed: () => approvedReadFailed, filing, clock };
   }
-  async function build(options: RetryOptions) {
+  async function build(options: RetryOptions, startSteps?: OcrFixtureStartSteps) {
     const live = pieces({ ...options, onFencedSave: undefined }, await onbaseFilingFixture());
     live.filing.next.unavailable = options.filingFailures ?? 0;
     const ids = sequentialIdFactory("b");
     const f = await world.fixture({ ids, coordinator: true, member: live.member, approvedStore: live.accountingStore, documentBytes: live.filing.bytes,
+      ...(startSteps === undefined ? {} : { startSteps }),
       onHarness: harness => { live.clock.current = harness.authority.clock; },
       approvedReader: live.approvedReader, onSpan: event => live.hooks.onSpan?.(event),
       onTransactionSettled: run => {
@@ -266,6 +267,7 @@ export function createEmergencyContactRetryWorld() {
       assert.equal(f.canonical.kernel.execute({ ...command, payload: { ...command.payload, assertedEid: String(10800000 + index) } }).state, "applied");
     }
     assert.equal(f.canonical.kernel.execute(f.approval()).state, "applied");
+    if (startSteps !== undefined) return { ...f, live, mintedIds: ids.minted().length };
     if (options.secondMemberAlreadyPresent) {
       const review = f.database.authority.ocrReviews.latest(f.run.envelope.runId); assert.ok(review);
       const record = review.records.find(record => record.assertedEid === "10800001"); assert.ok(record);
@@ -377,7 +379,10 @@ export function createEmergencyContactRetryWorld() {
     return template;
   }
   process.on("exit", releaseTemplates);
-  return { prepareTemplate, reopenTemplate: reopen, releaseTemplates, async releaseSources() {
+  return { prepareTemplate, reopenTemplate: reopen, releaseTemplates, async startWithSteps(startSteps: OcrFixtureStartSteps) {
+    const { live, ...started } = await build({ failures: 0 }, startSteps);
+    return present(started, live);
+  }, async releaseSources() {
     releaseTemplates();
     await world.cleanup();
   }, cleanup: async () => {

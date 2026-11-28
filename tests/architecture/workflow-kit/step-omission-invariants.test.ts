@@ -6,6 +6,7 @@ import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
 import { CONTACT_PLAN_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/contact-plan/step.js";
+import { MEMBERS_STEP } from "../../../src/workflows/emergency-contact/steps/members/step.js";
 import { CONTACT_PREVIEW_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/contact-preview/step.js";
 import { ONBASE_FILING_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/onbase-filing/step.js";
 import { manualReferenceReview, REFERENCE_RESULT_FORM } from "../../../src/workflow-kit/reference-check.js";
@@ -171,6 +172,7 @@ const PERSON_LOOKUP_ID = "person-lookup";
 const ONBOARDING_ID = "onboarding";
 const WORK_STUDY_ID = "work-study";
 const I9_CHECK_START_ID = "i9-check-start";
+const EC_ID = "emergency-contact";
 const EC_MEMBER_ID = "emergency-contact-member";
 const FIXTURE_ID = "step-omission-guard-valid";
 
@@ -277,6 +279,7 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
   },
   ...[DOCUMENTS_STEP, ROSTER_REFERENCE_STEP, RETENTION_STEP, PUBLICATION_STEP]
     .map(step => ({ descriptor: I9_CHECK_START_ID, step: step.key, declaration: step.manual, fieldKeys: [], produces: [] })),
+  { descriptor: EC_ID, step: MEMBERS_STEP.key, declaration: MEMBERS_STEP.manual, fieldKeys: [], produces: [] },
   { descriptor: EC_MEMBER_ID, step: "contact-plan", declaration: CONTACT_PLAN_MANUAL, fieldKeys: ["emplId"], produces: ["map-contact"] },
   { descriptor: EC_MEMBER_ID, step: "reference-check", declaration: { form: REFERENCE_RESULT_FORM, produces: { "reference-fields-read-contacts": manualReferenceReview } },
     fieldKeys: ["referenceResult"], produces: ["reference-fields-read-contacts"] },
@@ -321,6 +324,7 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
   "i9-check-start::roster-reference": { state: "omittable", forces: ["retention", "publication"] },
   "i9-check-start::retention": { state: "omittable", forces: ["publication"] },
   "i9-check-start::publication": { state: "omittable", forces: [] },
+  "emergency-contact::members": { state: "omittable", forces: [] },
   "emergency-contact-member::contact-plan": { state: "omittable", forces: ["onbase-filing", "contact-preview"] },
   "emergency-contact-member::reference-check": { state: "omittable", forces: [] },
   "emergency-contact-member::contact-preview": { state: "omittable", forces: [] },
@@ -364,6 +368,7 @@ const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly st
   "i9-check-start::roster-reference": { asserted: [], omitted: ["read-reference", "read-requests"] },
   "i9-check-start::retention": { asserted: [], omitted: ["check-people", "read-rows"] },
   "i9-check-start::publication": { asserted: [], omitted: [], manual: ["publish-results", "save-workbook"] },
+  "emergency-contact::members": { asserted: [], omitted: ["members", "read-result"] },
   "emergency-contact-member::contact-plan": { asserted: ["map-contact"], omitted: ["contact-plan", "read-contacts"] },
   "emergency-contact-member::reference-check": { asserted: ["reference-fields-read-contacts"], omitted: EC_SKIPPED_REFERENCE_NODES },
   "emergency-contact-member::contact-preview": { asserted: [], omitted: [], manual: ["contact-preview"] },
@@ -399,6 +404,7 @@ const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asse
     asserted: [],
     omitted: ["check-people", "publish-results", "read-approved-records", "read-documents", "read-people", "read-reference", "read-requests", "read-rows", "save-workbook"],
   },
+  [EC_ID]: { asserted: [], omitted: ["members", "read-result"] },
   [EC_MEMBER_ID]: {
     asserted: ["map-contact", "reference-fields-read-contacts"],
     omitted: sorted(["contact-plan", "read-contacts", ...EC_SKIPPED_REFERENCE_NODES]),

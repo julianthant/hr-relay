@@ -260,11 +260,16 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
       if (journal.state === "divergent") throw new Error("delegation-replay-divergent");
       let manifest = repositories.delegationManifests.get(manifestId);
       const stepOmissions = delegatedStepOmissions(parent.envelope.stepOmissions, target.id);
-      // Document facts stay with the parent. Never apply the same typed child facts to multiple members.
-      if (plan.children.length > 1 && (stepOmissions !== undefined || (parent.envelope.stepOmissions ?? []).some(entry => entry.workflow === undefined
-        && !descriptor.stepOmissions.some(spec => spec.step === entry.step && (spec.allowsChildFanOut === true
-           || Object.keys(entry.facts).length === 0 && (spec.stop !== undefined || spec.off === "manual")))))) {
-        throw new RunContinuationRefusedError("delegation-typed-values-many-members");
+      if (plan.children.length > 1) {
+        // Only exposed, input-independent manual actions can be omitted across multiple children.
+        const sharedChildFacts = stepOmissions?.some(({ step, facts }) => Object.keys(facts).length > 0
+          || !descriptor.startRows.some(({ target: rowTarget }) => rowTarget?.workflow === target.id && rowTarget.step === step)
+          || !target.stepOmissions.some(spec => spec.step === step && spec.ownStartOnly !== true
+            && spec.off === "manual" && spec.bindInput === undefined));
+        const sharedParentFacts = (parent.envelope.stepOmissions ?? []).some(entry => entry.workflow === undefined
+          && !descriptor.stepOmissions.some(spec => spec.step === entry.step && (spec.allowsChildFanOut === true
+            || Object.keys(entry.facts).length === 0 && (spec.stop !== undefined || spec.off === "manual"))));
+        if (sharedChildFacts || sharedParentFacts) throw new RunContinuationRefusedError("delegation-typed-values-many-members");
       }
       if (journal.state === "new") {
         if (manifest !== undefined) throw new Error("delegation-manifest-orphaned");

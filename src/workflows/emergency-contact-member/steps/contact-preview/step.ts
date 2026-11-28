@@ -8,7 +8,7 @@ import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { CONTACT_PLAN_INCLUDED, buildContactPlan } from "../contact-plan/step.js";
 
 export const CONTACT_PREVIEW_MANUAL: StepManualDeclaration = {
-  off: "manual", ownStartOnly: true, form: { fields: [] }, produces: {}, skips: ["contact-preview"], skipsGatesAndTransactions: true,
+  off: "manual", form: { fields: [] }, produces: {}, skips: ["contact-preview"], skipsGatesAndTransactions: true,
 };
 
 export const CONTACT_PREVIEW_STEP = Object.freeze({ ...defineWorkflowStep({ key: "contact-preview", label: "Preview primary contact changes" }), system: "ucpath" as const,
