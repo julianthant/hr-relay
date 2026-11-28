@@ -5,7 +5,7 @@ import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import type { StartRowDeclaration, StepOmissionEntry } from "../../../../src/models/workflow/step-omission.js";
-import { EidSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
+import { EidSchema, IsoInstantSchema, ItemIdSchema, PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
@@ -36,7 +36,7 @@ afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose
 afterAll(() => profiles.close());
 
 const Input = z.strictObject({ eid: EidSchema });
-const Output = z.strictObject({ transactionId: z.string().min(1) });
+const Output = z.strictObject({ transactionId: z.string().min(1).nullable() });
 const Pair = z.strictObject({ eid: EidSchema });
 const EID_A = "10800001", EID_B = "10800002";
 const common = { version: 1, icon: "ShieldCheck" as const, category: "operations" as const, input: Input,
@@ -47,12 +47,15 @@ const common = { version: 1, icon: "ShieldCheck" as const, category: "operations
 const policy = { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" } as const;
 
 const writeChild = compileWorkflow(defineWorkflow({ ...common, id: "child-phases-write", code: "cpw", label: "Child phases write",
-  scenarios: ["write-fixture/happy"], steps: ({ transaction, result }) => {
+  scenarios: ["write-fixture/happy"], steps: ({ transaction, group, result }) => {
     const write = transaction({ id: "write", label: "Write", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
       dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 }, [], {
       prepareBind: ({ input }) => input, commitBind: ({ input }) => input,
     });
-    return { steps: [[{ key: "write", label: "Write" }, [write]]], result: result(Output, [write], ({ outputs }) => outputs.write.output) };
+    const step = group({ key: "write", label: "Import" }, { manual: {
+      off: "manual", form: { fields: [] }, produces: {}, skips: ["write"], skipsGatesAndTransactions: true,
+    } });
+    return { steps: [[step, [write]]], result: result(Output, [write], ({ outputs }) => outputs.write?.output ?? { transactionId: null }) };
   } })).descriptor;
 
 /** Two read nodes in one step: the first fails for the second person, the second fails for the first. */
@@ -106,8 +109,10 @@ async function harness(child: AnyWorkflowDescriptor, result: z.ZodType, binds: r
 }
 type Harness = Awaited<ReturnType<typeof harness>>;
 
-async function runThrough(h: Harness, dryRun: boolean): Promise<RunRecord> {
-  const root = h.start(h.proposal(undefined, undefined, dryRun));
+async function runThrough(h: Harness, dryRun: boolean, stepOmissions?: readonly StepOmissionEntry[]): Promise<RunRecord> {
+  const plan = stepOmissions === undefined ? h.proposal(undefined, undefined, dryRun)
+    : h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: WRITE_FIXTURE_EID }], dryRun, selectedStepKeys: ["members"], stepOmissions });
+  const root = h.start(plan);
   await h.execute(root);
   for (const child of h.database.authority.runs.listChildren(root.envelope.runId)) {
     // The harness's write sequencer leases the parent workflow's session manager, so a child's transaction needs the run's config bound there too.
@@ -136,6 +141,37 @@ const restartKeys = (snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow) 
 const facts = (nodes: readonly { phase?: string; state: string; reason: string }[]) => nodes.map(({ phase, state, reason }) => [phase, state, reason]);
 
 describe("child step facts over a transaction's phases and several child runs", () => {
+  it("keeps a delegated Import done outside Relay off when Rerun opens", async () => {
+    const target = { workflow: writeChild.id, step: "write" };
+    const row: StartRowDeclaration = { key: "import", label: "Import", members: [target], target };
+    const h = await harness(writeChild, Output, [WRITE_FIXTURE_EID], [members, row]);
+    const run = await runThrough(h, false, [{ ...target, facts: {} }]);
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify(run.lifecycle));
+    const [child] = h.database.authority.runs.listChildren(run.envelope.runId);
+    assert.ok(child);
+    assert.deepEqual(child.envelope.stepOmissions, [{ step: "write", facts: {}, labels: {} }]);
+    assert.deepEqual(h.database.authority.writeIntents.listByRun(child.envelope.runId), []);
+
+    const rerun = readRerunValues(rerunValuesDeps(h), { runId: run.envelope.runId, expectedVersion: run.version });
+    assert.ok(rerun.state === "available", JSON.stringify(rerun));
+    assert.deepEqual(facts(rerun.snapshot.children?.[0]?.steps[0]?.nodes ?? []), [
+      ["prepare", "unfinished", "step-omitted"], ["commit", "unfinished", "step-omitted"],
+    ]);
+    assert.deepEqual(restartKeys(rerun.snapshot, startWorkflow(h.descriptor)), { steps: ["members"], off: ["import"] });
+
+    const { completion: _completion, sessionId: _sessionId, envelope, ...retained } = child;
+    const { stepOmissions: _omissions, ...pendingEnvelope } = envelope;
+    const pending: RunRecord = { ...retained, lifecycle: { state: "queued" }, envelope: { ...pendingEnvelope,
+      runId: RunIdSchema.parse("00000000-0000-4000-8000-00000000fa18"), itemId: ItemIdSchema.parse("00000000-0000-4000-8000-00000000fa19"),
+    } };
+    const deps = rerunValuesDeps(h);
+    const runs = { ...h.database.authority.runs, listChildren: () => [child, pending] };
+    const mixed = readRerunValues({ ...deps, database: { authority: { ...h.database.authority, runs },
+      withAuthorityReadSnapshot: h.database.withAuthorityReadSnapshot.bind(h.database) } }, { runId: run.envelope.runId, expectedVersion: run.version });
+    assert.ok(mixed.state === "available", JSON.stringify(mixed));
+    assert.deepEqual(restartKeys(mixed.snapshot, startWorkflow(h.descriptor)), { steps: ["members"], off: [] });
+  });
+
   it("shows a dry-run child's transaction prepared by preview and its commit unfinished", async () => {
     const h = await harness(writeChild, Output, [WRITE_FIXTURE_EID], writeRows);
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
