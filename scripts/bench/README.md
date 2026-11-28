@@ -51,6 +51,22 @@ A base comparison reports no measurable difference when the ranges overlap. If a
 a gap, use an extra profiling run to identify the underlying limiter before attributing an
 improvement. The two-run threshold verdict and RSS endpoints are the measurements for #485 and #415.
 
+# Logs and step-note search
+
+Use the stopped, enrolled development copy with imported history. Supply a mode-600 JSON
+fixture containing `runId`, `day`, `workflow`, and a partial step-note `query` that matches the
+same rendered note on both commits. Pick an existing Queue row that mounts on that day.
+
+```sh
+node --import tsx scripts/bench/logs-window.ts <base-sha> <target-sha> --fixture <private-json> --output <report-json>
+```
+
+The benchmark alternates five fresh dashboard launches per commit and uses one Chromium
+window. It times opening Logs from Queue, then entering the query, through the rendered
+result and two animation frames. The target must serve a matching step-note search response.
+The report contains timings, match counts, failures, and host load. It omits the fixture
+values. The checkout returns to its original commit when the run ends.
+
 # Read-lane start benchmark (G2)
 
 Run this from a Relay checkout with its dependencies installed. Stop the copy dashboard first. The copy must be
