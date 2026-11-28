@@ -313,9 +313,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const ocrSources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent });
   const attachment = (conversationId: string, id: string) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString());
   const assistantPluginDeps = createAssistantPluginDeps({ database, runs: lifecycle, runDetail: runDetailDeps, assertCurrent, facts: assistantFacts,
-    search: () => shell.search, notifications: () => notifications, workbooks: () => workbookLibrary, attachment });
+    search: () => shell.search, notifications: () => notifications, workbooks: () => workbookLibrary, attachment,
+    edits: { apply: (context, work) => composedAssistant.applyEdit(context, work),
+      notification: notificationId => database.authority.notifications.get(notificationId), workbooks: () => workbookLibrary } });
   database.bindAssistantEpoch(() => context.profileEpoch);
-  const composedAssistant = composeAssistant({ database, readPlugins: () => createAssistantPlugins(assistantPluginDeps),
+  const composedAssistant: ReturnType<typeof composeAssistant> = composeAssistant({ database, executeEditCommand: command => commands.execute(command), readPlugins: () => createAssistantPlugins(assistantPluginDeps),
     starts: { descriptors, served: workflowId => workflowSources[workflowId] === "served", plans: startPlans, runs: lifecycle,
       rerunValues: request => dataQueries.rerunValues(request), attachment, ocrSources: () => ocrSources, submit: command => commands.submit(command) },
     service: { debugEvents, account: { ...chatGptAccount, ...context.accountAuthority },

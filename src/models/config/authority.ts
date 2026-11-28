@@ -71,6 +71,7 @@ export const AuthorityTableNameSchema = z.enum([
   "workbook_payloads",
   "debug_events",
   ...ASSISTANT_PHASE_ONE_TABLES,
+  "assistant_applied_edits",
 ]);
 
 /** The change log every connection reads after another connection commits; derived, never evidence: outside the registry, fingerprints and inspection lists, and rebaselined at open. */
