@@ -332,7 +332,7 @@ describe("served start rows", () => {
     "work-study": [["ucpath-auth", "switch", null], ["transaction", "switch", null]],
     "i9-check-start": [["read-forms", "locked", null], ["match-people", "locked", null], ["review-records", "locked", "approval"],
       ["ucpath-match", "switch", null], ["ucpath-dates", "switch", null], ["tracker-row", "locked", "form-action"]],
-    "crm-doc-download": [["search-records", "locked", null], ["reference", "locked", "approval"], ["read-idocs", "locked", null], ["package-worksheets", "locked", null]],
+    "crm-doc-download": [["search-records", "switch", null], ["reference", "switch", null], ["read-idocs", "switch", null], ["package-worksheets", "switch", null]],
     "emergency-contact": [["read-emergency-contact", "locked", null], ["match-extracted-people", "locked", null], ["review-extracted-records", "locked", "approval"],
       ["read-existing-contacts", "locked", "bound-read"], ["fill-emergency-contact", "locked", "form-action"], ["save-emergency-contact", "locked", "form-action"]],
   };
