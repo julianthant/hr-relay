@@ -172,7 +172,7 @@ export function createCommandKernelTestWorld(profileFixture: () => Promise<Bound
   }
 
   function requeueingWriteResolution(calls: string[], database: AuthorityDatabase, clock: ReturnType<typeof manualClock>): WriteResolutionExecutor {
-    const executor = createWriteResolutionExecutor({ authority: database,
+    const executor = createWriteResolutionExecutor({
       continuation: testRunContinuation(database, clock), ids: sequentialIdFactory("c"),
       descriptors: { resolve: id => id === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined }  });
     return {
