@@ -4,7 +4,7 @@ import { availableParallelism, loadavg } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { parseArgs } from "node:util";
+import { isDeepStrictEqual, parseArgs } from "node:util";
 import { z } from "zod";
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
 import { RUNTIME_PROFILE_ENV } from "../../src/models/config/secrets.js";
@@ -61,11 +61,18 @@ async function measure(shape: Shape, workspace: string, lockPort: number): Promi
             const readyMs = performance.now() - started;
             const rssReadyBytes = process.memoryUsage.rss();
             const reading = performance.now();
-            const page = await createDashboardBackgroundReader(lanes).read({ after: 0, limit: 100, nowMs: systemClock.nowMs() });
+            const reader = createDashboardBackgroundReader(lanes);
+            const page = await reader.read({ after: 0, limit: 100, nowMs: systemClock.nowMs() });
             const firstReadMs = performance.now() - reading;
             if (page.through !== timelineHighWater) throw new Error("read-lanes-bench-history-mismatch");
             await delay(SETTLE_MS);
             const rssAfterReadBytes = process.memoryUsage.rss();
+            const boundary = { after: Math.max(0, cursorOffset - 3), through: timelineHighWater, limit: 100 };
+            const mixed = await reader.read({ ...boundary, nowMs: systemClock.nowMs() });
+            if (!isDeepStrictEqual(page.records, history.authority.timelineEvents.page({ ...boundary, after: 0 }))
+              || !isDeepStrictEqual(mixed.records, history.authority.timelineEvents.page(boundary))) {
+              throw new Error("read-lanes-bench-timeline-records-mismatch");
+            }
             return RunSchema.parse({ shape, readyMs, firstReadMs, rssBeforeBytes, rssReadyBytes, rssAfterReadBytes,
               addedRssBytes: Math.max(rssReadyBytes, rssAfterReadBytes) - rssBeforeBytes, historyArchive: true, cursorOffset, timelineHighWater });
           } finally { await lanes.close(); }
