@@ -140,7 +140,7 @@ it("truncates at the boundary between a running Search read and its queued succe
   const navigation = await launch("navigation"), search = await launch("search");
   const postSearch = (id: number, dir: string) => search.worker.postMessage({ kind: "read", id, beginSeq: id,
     module: laneSearchBarrier.module, name: laneSearchBarrier.name, key: String(id), args: { tag: String(id), dir },
-    nowMs: systemClock.nowMs(), processRevision: null, processFacts: null });
+    priority: laneSearchBarrier.priority, nowMs: systemClock.nowMs(), processRevision: null, processFacts: null });
   postSearch(1, first.dir);
   await until(() => existsSync(join(first.dir, "started")));
   postSearch(2, next.dir);
@@ -190,7 +190,7 @@ it("keeps reads queued and answers a cancel while a checkpoint holds the gate, t
   const read = (id: number, definition: typeof laneSleep, tag: string) => {
     const args = { tag, ms: 0 };
     worker.postMessage({ kind: "read", id, beginSeq: id, module: definition.module, name: definition.name, key: `${definition.name}:${tag}`,
-      args, nowMs: systemClock.nowMs(), processRevision: null, processFacts: null });
+      args, priority: definition.priority, nowMs: systemClock.nowMs(), processRevision: null, processFacts: null });
   };
   // A background read arrives first; the interactive ones arrive while the gate is still held.
   read(1, laneBackground, "scan");
@@ -206,5 +206,6 @@ it("keeps reads queued and answers a cancel while a checkpoint holds the gate, t
   await until(() => replies.filter(reply => reply.kind === "read").length === 2);
   const reads = replies.filter(reply => reply.kind === "read").map(reply => ({ ids: reply.ids, ...RunSchema.parse(JSON.parse(reply.body ?? "")) }));
   assert.deepEqual(reads, [{ ids: [2], tag: "click", run: 1 }, { ids: [1], tag: "scan", run: 2 }]);
-  assert.equal(Atomics.load(gate, SEARCH_READING), 0);
+  // The worker posts the reply before it clears the shared reading flag.
+  await until(() => Atomics.load(gate, SEARCH_READING) === 0);
 });

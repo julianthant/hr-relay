@@ -6,9 +6,7 @@ import { defineTaskContract } from "../../../../src/models/task/task-contract.js
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
-import { REFERENCE_CHECK } from "../../../../src/models/processing/workbooks/verify-person.js";
-import { REFERENCE_CHECK_REVIEW_GATE, ReferenceCheckReviewSchema } from "../../../../src/models/processing/workbooks/reference-check-stop.js";
-import { SeparationsReadReferenceStop } from "../../../../src/models/workflows/separations/read-reference-stop.js";
+import { CompareReferenceFields, EMPLOYEE_REFERENCE_CHECK, ReferenceReviewSchema, referenceReviewId } from "../../../../src/models/processing/workbooks/reference-fields.js";
 import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 import { UcpathDeletePendingTerminations, ucpathPendingSweepIdempotencyKey, ucpathPersonSweepIdempotencyKey } from "../../../../src/models/systems/ucpath/delete-pending-terminations.js";
 import { UcpathStagePendingTerminationSweep } from "../../../../src/models/systems/ucpath/stage-pending-termination-sweep.js";
@@ -242,21 +240,21 @@ async function parkPendingSweep(keyRule: "current" | "retired" = "retired", revi
     expected: subject, observed: subject, match: "match" };
   const descriptor = defineWorkflowDescriptor({
     id: writeFixtureDescriptor.id, version: 1, contractFingerprint: review === undefined ? WRITE_FIXTURE_MOVED_FINGERPRINT : queued.envelope.contractFingerprint,
-    workbookCheck: REFERENCE_CHECK,
+    workbookCheck: EMPLOYEE_REFERENCE_CHECK,
     code: "wf", label: "Sweep fixture", icon: "ShieldCheck", category: "operations",
     canonicalInput: defineCanonicalInput(input, input, [{ eid }]), inputSubject: "eid",
     surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
     surfaces: {}, details: [], identity: { matchKey: value => `eid:${value.eid}` },
     presentation: { title: () => "Sweep fixture" }, scenarios: ["write-fixture/happy"],
-    flow: flow(input).step("reference-stop", SeparationsReadReferenceStop, {
-      dependsOn: [], replay: "always-rerun", bind: () => ({ check: null, writes: true }),
+    flow: flow(input).step("reference-fields-start", CompareReferenceFields, {
+      dependsOn: [], replay: "always-rerun", bind: () => ({ keyField: "eid", read: null, sheets: null, fields: [], approved: [], last: false }),
       when: review === "required-source" ? { kind: "equals", of: { from: "input", path: "eid" }, value: eid }
-        : { kind: "is-present", of: { from: "reference", typeId: REFERENCE_CHECK.id } },
-    }).gate(REFERENCE_CHECK_REVIEW_GATE, {
-      dependsOn: ["reference-stop"], resolvedBy: "operator", label: "Review reference spreadsheets", result: ReferenceCheckReviewSchema,
-      when: { kind: "is-present", of: { from: "node", nodeId: "reference-stop", path: "ask" } },
+        : { kind: "is-present", of: { from: "reference", typeId: EMPLOYEE_REFERENCE_CHECK.id } },
+    }).gate(referenceReviewId("start"), {
+      dependsOn: ["reference-fields-start"], resolvedBy: "operator", label: "Review reference spreadsheets", result: ReferenceReviewSchema,
+      when: { kind: "is-present", of: { from: "node", nodeId: "reference-fields-start", path: "review" } },
     }).transaction(WRITE_FIXTURE_NODE_ID, {
-      dependsOn: review === undefined ? [] : [REFERENCE_CHECK_REVIEW_GATE],
+      dependsOn: review === undefined ? [] : [referenceReviewId("start")],
       prepare: { uses: UcpathStagePendingTerminationSweep, bind: () => changed },
       commit: { uses: commit, bind: () => changed }, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000,
     }).build({ schema: commit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output }),
@@ -340,17 +338,17 @@ describe("write-resolution binding — what a parked write may survive", () => {
     assert.deepEqual(authority.writeIntents.get(intent.writeIntentId), intent);
   });
 
-  it.each([null, true] as const)("uses the recorded review decision (ask=%s) when the gate result is absent", async ask => {
+  it.each([false, true] as const)("uses the recorded review condition (%s) when the gate result is absent", async review => {
     const { descriptor, run, intent, authority } = await parkPendingSweep("current", "required-source");
-    const source = SeparationsReadReferenceStop;
+    const source = CompareReferenceFields;
     assert.equal(authority.runCheckpoints.insert({
-      workflowId: intent.workflowId, itemId: intent.itemId, nodeId: "reference-stop", attempt: intent.runAttempt,
+      workflowId: intent.workflowId, itemId: intent.itemId, nodeId: "reference-fields-start", attempt: intent.runAttempt,
       claimGeneration: run.claimGeneration, runId: intent.runId, descriptorVersion: descriptor.version,
       contractFingerprint: descriptor.contractFingerprint, implFingerprint: taskImplFingerprint(source),
-      output: { schemaHash: deriveSchemaHash(source.output, "output"), value: { ask } }, provenance: [], writtenAt: WRITE_FIXTURE_NOW,
+      output: { schemaHash: deriveSchemaHash(source.output, "output"), value: { captured: null, matches: [], mismatches: [], review: review ? true : null } }, provenance: [], writtenAt: WRITE_FIXTURE_NOW,
     }).state, "inserted");
     const evaluate = () => requireWriteResolutionBinding({ arm: "operator-confirmed-absent", descriptor, run, intent, repositories: authority });
-    if (ask === null) assert.equal(evaluate().binding.state, "identical");
+    if (!review) assert.equal(evaluate().binding.state, "identical");
     else assert.throws(evaluate, /missing-evidence/);
   });
 

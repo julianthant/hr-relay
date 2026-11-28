@@ -40,24 +40,38 @@ function includeDashboardFactChange(changes: DashboardFactChanges, entry: Change
 /** One worker connection validates peer commits and captures a page and its reconciliation facts together. */
 export type DashboardSnapshotPosition = Readonly<{ schemaVersion: number; schemaCookie: number; authorityGeneration: number; changeLogSeq: number }>;
 
-export function createDashboardSnapshotQuery(database: DatabaseSync, binding: z.infer<typeof ProfileDatabaseBindingSchema>) {
+export function createDashboardSnapshotQuery(database: DatabaseSync, binding: z.infer<typeof ProfileDatabaseBindingSchema>,
+  withValidatedSnapshot?: <T>(read: () => T) => T) {
   const timeline = createTimelineRepository({ database, read: read => read(),
     mutate: () => { throw new Error("dashboard-background-read-only"); }, assertOwner: record => assertTimelineOwner(database, record) });
   let baseline: ChangeLogReader | undefined;
   let validatedVersion: number | undefined;
   let facts: ReturnType<typeof createDashboardWorkerFacts> | undefined;
-  /** onSnapshot receives the store position of the transaction the page and its worker facts were read in. */
-  return (request: DashboardBackgroundReadRequest, onSnapshot?: (position: DashboardSnapshotPosition) => void) => {
+  const ownSnapshot = <T>(read: () => T): T => {
     database.exec("BEGIN");
     try {
+      const result = read();
+      database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      if (database.isTransaction) database.exec("ROLLBACK");
+      throw error;
+    }
+  };
+  const snapshot = withValidatedSnapshot ?? ownSnapshot;
+  /** onSnapshot receives the store position of the transaction the page and its worker facts were read in. */
+  return (request: DashboardBackgroundReadRequest, onSnapshot?: (position: DashboardSnapshotPosition) => void) =>
+    snapshot(() => {
       const meta = readMetaRow(database);
       if (meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) throw new Error("profile-database-binding-mismatch");
       if (meta.schema_version !== CURRENT_AUTHORITY_SCHEMA_VERSION || readIntPragma(database, "user_version") !== meta.schema_version
         || readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("dashboard-background-schema-mismatch");
       const version = readIntPragma(database, "data_version");
       if (baseline === undefined || facts === undefined) {
-        assertNativeSchema(database);
-        validateAuthorityStore(database);
+        if (withValidatedSnapshot === undefined) {
+          assertNativeSchema(database);
+          validateAuthorityStore(database);
+        }
         baseline = changeLogBaseline(database);
         facts = createDashboardWorkerFacts(database);
       } else if (validatedVersion !== version) {
@@ -80,13 +94,8 @@ export function createDashboardSnapshotQuery(database: DatabaseSync, binding: z.
       const workers = facts.page(request);
       onSnapshot?.({ schemaVersion: meta.schema_version, schemaCookie: readIntPragma(database, "schema_version"),
         authorityGeneration: meta.authority_generation, changeLogSeq: changeLogHighWater(database) });
-      database.exec("COMMIT");
       return { records, cursor, through, workers };
-    } catch (error) {
-      if (database.isTransaction) database.exec("ROLLBACK");
-      throw error;
-    }
-  };
+    });
 }
 
 function createDashboardWorkerFacts(database: DatabaseSync) {

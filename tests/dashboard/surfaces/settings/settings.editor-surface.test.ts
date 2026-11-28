@@ -14,7 +14,7 @@ import { StreamRowSchema } from "../../../../src/models/dashboard/subscription.j
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { ProtectedPencilRow } from "../../../../src/dashboard/surfaces/settings/providers/protected-pencil-row.js";
-import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
+import { SettingsPage, SettingsRefreshMark } from "../../../../src/dashboard/surfaces/settings/settings.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -535,3 +535,26 @@ for (const section of ["general", "performance"]) for (const mode of ["failed", 
     assert.doesNotMatch(failure.textContent ?? "", /private fixture error/);
   });
 }
+
+it("marks a reload of the kept document with a named spinner after the wait, and drops it when the read lands", async () => {
+  let reads = 0;
+  let land!: () => void;
+  const second = new Promise<void>(resolve => { land = resolve; });
+  const client = { editableSettings: async () => { reads += 1; if (reads > 1) await second; return DOCUMENT; } } as unknown as DashboardClient;
+  let controller: ReturnType<typeof useEditableSettings> | undefined;
+  function Surface() {
+    controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) });
+    return controller.refreshing && controller.editor.state === "loaded" ? createElement(SettingsRefreshMark) : null;
+  }
+  host = document.createElement("div"); document.body.append(host);
+  await act(async () => { root = createRoot(host!); root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(Surface) }) })); });
+  const spinner = () => host?.querySelector('[data-settings-stale] [role="status"][aria-label="Refreshing"]')?.parentElement ?? undefined;
+  assert.ok(spinner() === undefined);
+  await act(async () => { controller?.reload(); });
+  assert.ok(spinner()?.classList.contains("invisible"), "a fast reload shows a named spinner, still hidden");
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });
+  assert.equal(spinner()?.classList.contains("invisible"), false, "a slow reload shows the spinner");
+  assert.doesNotMatch(host.textContent ?? "", /Updating/u);
+  await act(async () => { land(); await second; });
+  assert.ok(spinner() === undefined);
+});

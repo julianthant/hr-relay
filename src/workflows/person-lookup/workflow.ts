@@ -9,9 +9,8 @@ import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { personLookupActiveStatusDefinition } from "./steps/active-status/step.js";
 import { personLookupCrmDatesDefinition } from "./steps/crm-dates/step.js";
 import { personLookupCrossVerifyDefinition } from "./steps/cross-verify/step.js";
-import { personLookupReferenceCheckDefinition } from "./steps/reference-check/step.js";
 import { personLookupSearchingDefinition } from "./steps/searching/step.js";
-import { REFERENCE_CHECK } from "../../models/processing/workbooks/verify-person.js";
+import { defineReferenceCheck } from "../../workflow-kit/reference-check.js";
 
 export { PersonLookupCanonicalInput, PersonLookupInput };
 
@@ -23,7 +22,12 @@ const SEARCH_ENTRIES = { split: { kind: "delimited", delimiters: [";", "\n"] }, 
 export const personLookupWorkflow = defineWorkflow({
   id: "person-lookup",
   requiredWorkbookFields: [],
-  workbookCheck: REFERENCE_CHECK,
+  referenceCheck: defineReferenceCheck({ key: "eid", input: { eid: "emplId", fullName: "name", firstName: "firstName", lastName: "lastName", dob: "dob" }, outputs: {
+    matching: { eid: "confirmed[].emplId", fullName: "confirmed[].name" },
+    "search-identity": { eid: "selected.emplId", fullName: "selected.name" },
+    "crm-identity": { eid: "crmIdentity.emplId", fullName: "crmIdentity.name" },
+    "active-status": { eid: "details.eid", fullName: "details.name" },
+  } }),
   version: 4,
   code: "pl",
   label: "Person Lookup",
@@ -110,7 +114,6 @@ export const personLookupWorkflow = defineWorkflow({
     const crossverify = personLookupCrossVerifyDefinition.build(author, searching);
     const activestatus = personLookupActiveStatusDefinition.build(author, searching, crossverify);
     const crmdates = personLookupCrmDatesDefinition.build(author, searching, crossverify, activestatus);
-    const referencecheck = personLookupReferenceCheckDefinition.build(author, searching, crossverify, activestatus);
-    return { steps: [...searching.steps, ...crossverify.steps, ...activestatus.steps, ...crmdates.steps, ...referencecheck.steps], result: crmdates.result };
+    return { steps: [...searching.steps, ...crossverify.steps, ...activestatus.steps, ...crmdates.steps], result: crmdates.result };
   },
 });

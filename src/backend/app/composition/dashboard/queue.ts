@@ -9,7 +9,7 @@ import { WorkerPoolMemberSchema, WorkerSlotRecordSchema } from "../../../../mode
 import { ErrorCatalogCodeSchema } from "../../../../models/failures/error-catalog.js";
 import { BrowserSystemIdSchema, IsoInstantSchema, LocalDateSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import { systemIdFactory } from "../../../../rules/identity/identifiers.js";
-import { capturedInstantClock, localDatePart, systemClock, type Clock } from "../../../../rules/time/clock.js";
+import { capturedInstantClock, systemClock, type Clock } from "../../../../rules/time/clock.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import type { CopySamples } from "./copy-samples.js";
 
@@ -34,6 +34,8 @@ function operatorAuthority(input: Readonly<{ database: AuthorityDatabase; reader
   samples?: Pick<CopySamples, "slots" | "leases"> }>): ProjectionAuthority {
   const { database, descriptors } = input;
   const changeKey = database.trackAuthorityTables(["runs", "run_batches", "worker_pools"]);
+  const commandsKey = database.trackAuthorityTables(["commands"]);
+  let assistantRuns: { revision: number; ids: ReadonlySet<string> } | undefined;
   return {
     batchMemberRetryAvailable: run => batchMemberRetryAvailable(database.authority, run, descriptors.resolve(run.envelope.workflow), workflowQueueCapabilities(run.envelope.workflow)),
     aggregateMemberRetryAvailable: run => aggregateMemberRetryAvailable(database.authority, input.reader, run, id => descriptors.resolve(id)),
@@ -65,6 +67,15 @@ function operatorAuthority(input: Readonly<{ database: AuthorityDatabase; reader
     delegationWait: runId => database.authority.dependencies.waitState(runId),
     getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
     canonicalPerson: (runId) => database.canonicalPerson(runId),
+    startedByAssistant: runId => {
+      const revision = commandsKey();
+      if (revision === undefined || assistantRuns?.revision !== revision) {
+        const ids = database.assistantStartedRunIds();
+        if (revision === undefined) return ids.has(runId);
+        assistantRuns = { revision, ids };
+      }
+      return assistantRuns.ids.has(runId);
+    },
     // Ref dashboard-surfaces: the one stored node output a queue row reads — the
     // subject's name, at the leaf the descriptor declares.
     latestCheckpoint: (workflowId, itemId, nodeId) =>
@@ -180,40 +191,9 @@ const QueueDayArgsSchema = z.strictObject({
   day: LocalDateSchema,
 });
 
-/** The most runs a warm day may hold, so the warm stays a small part of the lane's boot. */
-export const WARM_DAY_RUN_LIMIT = 25;
-const WARM_WINDOW_DAYS = 31;
-
-/** The smallest day with runs, the most recent of a tie, from the window's day counts; none when every day is over the limit. */
-export function warmDayOf(counts: ReadonlyMap<string, number>): string | undefined {
-  let best: { day: string; count: number } | undefined;
-  for (const [day, count] of counts) {
-    if (count === 0 || count > WARM_DAY_RUN_LIMIT) continue;
-    if (best === undefined || count < best.count || (count === best.count && day > best.day)) best = { day, count };
-  }
-  return best?.day;
-}
-
-/**
- * Queue day, Sessions and the stream snapshot, built on the navigation lane from its replica. The body is the day without
- * main's stamp, plus the facts main frames it with; the replica folds the timeline once before the lane is ready.
- */
+/** Queue and Sessions use a replica built on the first day read from the timeline in that read's snapshot. */
 export const queueDayRead = defineLaneRead(import.meta.url, "dashboard-queue-day", {
   lane: "navigation", priority: "interactive", processFacts: true, args: QueueDayArgsSchema, sourceProof: "per-read",
-  warm(context) {
-    const { projection } = laneReplica(context);
-    projection.ingestFromTimeline();
-    const health = projection.health();
-    if (health.state === "degraded") throw new Error(`queue-day-fold-degraded: ${health.lastError ?? "unknown"}`);
-  },
-  // One small day build, so the first read does not pay this isolate's cold build of the day code.
-  prebuild(context) {
-    const { projection, state } = laneReplica(context);
-    const now = state.at.now();
-    const day = (back: number) => localDatePart(new Date(now.getFullYear(), now.getMonth(), now.getDate() - back));
-    const warmDay = warmDayOf(context.history.readQueueDayCounts(day(WARM_WINDOW_DAYS), day(1)));
-    if (warmDay !== undefined) projection.buildLaneDay(warmDay);
-  },
   run(context, { day }) {
     const replica = laneReplica(context);
     replica.state.at = capturedInstantClock(new Date(context.nowMs).toISOString());
@@ -224,6 +204,8 @@ export const queueDayRead = defineLaneRead(import.meta.url, "dashboard-queue-day
       replica.projection.processFactsChanged();
     }
     replica.projection.ingestFromTimeline();
+    const health = replica.projection.health();
+    if (health.state === "degraded") throw new Error(`queue-day-fold-degraded: ${health.lastError ?? "unknown"}`);
     return replica.projection.buildLaneDay(day);
   },
 });

@@ -6,6 +6,7 @@ import type { ObservedDataPoint } from "../../../../../src/backend/logs/span-emi
 import { createTaskProvenanceCollector,jsonLeafPaths } from "../../../../../src/backend/runs/provenance/task-provenance.js";
 import { createDeterministicUcpathSmartHrDriver } from "../../../../../src/backend/systems/ucpath/driver/smart-hr-fake.js";
 import { readPendingTerminationSetTask } from "../../../../../src/backend/systems/ucpath/tasks/read-pending-termination-set.js";
+import { referenceReviewId } from "../../../../../src/models/processing/workbooks/reference-fields.js";
 import { UcpathReadPendingTerminationSet } from "../../../../../src/models/systems/ucpath/read-pending-termination-set.js";
 import type { UcpathTransactionRow } from "../../../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { UcpathTransactionRowSchema,UcpathTransactionScanSchema } from "../../../../../src/models/ui/ucpath-smart-hr-termination.js";
@@ -35,6 +36,10 @@ function observationHarness() {
   const observed: ObservedDataPoint[] = [];
   const collector = createTaskProvenanceCollector({
     descriptor: separationsDescriptor,
+    canonicalInput: JsonValueSchema.parse(separationsDescriptor.canonicalInput.parse({
+      documentNumber: "999999", timekeeperName: "Synthetic Timekeeper", timekeeperInitials: "ST", searchTimeoutMs: 15_000,
+    })),
+    references: [],
     execution: {
       runId: RUN_ID,
       traceId: "sp-170000-aaaa",
@@ -44,6 +49,8 @@ function observationHarness() {
       taskId: UcpathReadPendingTerminationSet.id,
     },
     upstreamEvidence: {
+      skippedGates: [referenceReviewId("approval")],
+      conditionEvidence: { checkpoints: [], gateResults: [], skippedGates: [], skippedTasks: ["reference-fields-approval"] },
       checkpoints: [RunCheckpointRecordSchema.parse({
         workflowId: separationsDescriptor.id,
         itemId: "33333333-3333-4333-8333-333333333333",

@@ -212,13 +212,25 @@ it("uses the typed reference result to open the downstream review before a live 
   const runId = f.run.envelope.runId;
   const blocked = f.database.authority.runs.get(runId);
   assert.ok(blocked?.lifecycle.state === "parked-gate");
-  assert.equal(blocked.lifecycle.gateId, "reference-check-review");
-  const asserted = f.database.authority.runCheckpoints.latest(f.run.envelope.workflow, f.run.envelope.itemId, "reference-stop");
+  assert.equal(blocked.lifecycle.gateId, "reference-field-review-read-contacts");
+  const asserted = f.database.authority.runCheckpoints.latest(f.run.envelope.workflow, f.run.envelope.itemId, "reference-fields-read-contacts");
   assert.equal(asserted?.assertion?.step, "reference-check");
-  assert.deepEqual(asserted?.output.value, { ask: true });
+  assert.deepEqual(asserted?.output.value, { captured: null, matches: [], mismatches: [], review: true });
   assert.deepEqual(f.failures, []);
   assert.deepEqual(f.children(), []);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(runId), []);
+  const { stateRoot } = f.authority;
+  const reader = testRunService(f.database, f.clock);
+  const descriptors = { resolve: (id: string) => id === compiled.descriptor.id ? compiled.descriptor : undefined };
+  const projection = createOperatorProjection({ database: f.database, stateRoot, clock: f.clock, reader, appVersion: "0.1.0",
+    descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(f.database.authority), descriptors });
+  projection.ingestFromTimeline();
+  const panel = await readRunPanel(createOperatorRunDetail({ database: f.database, stateRoot, projection, runReader: reader,
+    canonical: { database: f.database, reader, descriptors } }), runId, world.SIGNAL);
+  const { gate } = panel.detail;
+  assert.ok(gate.state === "open" && gate.decision !== undefined);
+  assert.ok(gate.decision.options.some(option => option.id === "continue"));
+  assert.equal(gate.decision.context, "Reference spreadsheet result: Unconfirmed");
 });
 
 it("records the receipt after a confirmed manual reference read", async () => {

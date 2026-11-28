@@ -27,8 +27,7 @@ import { WorkbookLibraryError } from "../workbooks/workbook-library-error.js";
 import { snapshotRetainedWorkbookReference, writeRecordedRunWorkbook, readRetainedWorkbookReference, verifyRetainedNamedWorkbookReference } from "../workbooks/workbook-library-service.js";
 import type { AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
 import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema } from "../../models/processing/workbooks/read-reference.js";
-import { WorkbookPersonCheckRequestSchema, WorkbookPersonCheckSchema } from "../../models/processing/workbooks/verify-person.js";
-import { checkReferenceRows, referenceCheckLine, referenceCheckResult } from "../../rules/matching/reference-check.js";
+import { ReadReferenceFieldsRequestSchema, ReadReferenceFieldsResultSchema } from "../../models/processing/workbooks/reference-fields.js";
 import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema, OnboardingInput } from "../../models/workflows/onboarding/input.js";
 import { ONBOARDING_ROSTER_GATE_ID, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterChoiceSchema } from "../../models/workflows/onboarding/roster.js";
 import { bindOnboardingRosterSources, onboardingRosterRow } from "../../rules/onboarding/roster.js";
@@ -746,23 +745,6 @@ function claimedRun(repositories: AuthorityRepositories, captured: RunRecord): R
   return run;
 }
 
-/** Looks one Employee ID up in the sheet a check pick pinned; the row's name is compared here and never returned. */
-function checkReferencePerson(repository: AuthorityRepositories["workbooks"], reference: Reference, eid: string, name: string | null) {
-  const { selected, matchesFor } = verifyRetainedNamedWorkbookReference(repository, reference, "retained");
-  const worksheet = reference.snapshot.worksheets[0];
-  const sheet = selected.workbook.sheets.find(candidate => candidate.id === worksheet?.sheetId);
-  if (reference.snapshot.worksheets.length !== 1 || worksheet === undefined || sheet === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
-  const nameColumns = sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === "fullName" && binding.basis !== "unmapped" ? [index] : []) ?? [];
-  const nameColumn = nameColumns.length === 1 ? nameColumns[0] : undefined;
-  const rows = matchesFor(eid).map(({ row, rowNumber }) => {
-    const cell = nameColumn === undefined ? undefined : row.cells[nameColumn]?.value;
-    return { row: rowNumber, name: typeof cell === "string" ? cell : null };
-  });
-  const check = checkReferenceRows(name, rows, nameColumn !== undefined);
-  return { spreadsheet: reference.snapshot.type.name, sheet: worksheet.name, ...check,
-    line: referenceCheckLine(reference.snapshot.type.name, worksheet.name, check) };
-}
-
 export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDatabase; clock: Clock;
   resolveDescriptor?: (workflowId: string) => AnyWorkflowDescriptor | undefined }>) {
   return Object.freeze({
@@ -779,14 +761,35 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
         return WorkbookReferenceReadSchema.parse({ state: "read", ...first, sources });
       });
     },
-    verifyPerson(captured: RunRecord, value: z.input<typeof WorkbookPersonCheckRequestSchema>) {
-      const command = WorkbookPersonCheckRequestSchema.parse(value);
+    readReferenceFields(captured: RunRecord, value: z.input<typeof ReadReferenceFieldsRequestSchema>) {
+      const command = ReadReferenceFieldsRequestSchema.parse(value);
       return deps.database.withAuthorityReadSnapshot(() => {
-        const repositories = deps.database.authority, sources = referencesFor(claimedRun(repositories, captured), command.typeId);
-        const eid = command.eid;
-        const checks = eid === null ? [] : sources.map(reference => checkReferencePerson(repositories.workbooks, reference.value, eid, command.name));
-        return WorkbookPersonCheckSchema.parse({ state: "checked",
-          result: eid === null ? "no-person" : referenceCheckResult(checks.map(check => check.outcome)), checks });
+        const repositories = deps.database.authority;
+        const run = claimedRun(repositories, captured);
+        const sheets = referencesFor(run, command.typeId).flatMap(({ value: reference, digest }) => {
+          const keyField = reference.snapshot.type.keyFieldId;
+          if (keyField === null) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+          const { matchesFor } = verifyRetainedNamedWorkbookReference(repositories.workbooks, reference, "retained",
+            keyField === "email" ? key => key.trim().toLowerCase() : key => key.trim());
+          const matches = matchesFor(command.key);
+          return reference.snapshot.worksheets.map(worksheet => ({
+            source: `${digest}/${worksheet.sheetId}`, sheet: worksheet.name,
+            rows: matches.filter(({ sheet }) => sheet.id === worksheet.sheetId).map(({ sheet, row, rowNumber }) => ({
+              row: rowNumber,
+              values: command.columns.flatMap(field => {
+                const columns = sheet.columnBindings?.flatMap((binding, index) =>
+                  binding.fieldId === field && binding.basis !== "unmapped" ? [index] : []) ?? [];
+                if (columns.length > 1) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+                if (columns[0] === undefined) return [];
+                const cell = row.cells[columns[0]]?.value;
+                const value = cell !== null && typeof cell === "object" ? cell.value.slice(0, 10)
+                  : typeof cell === "string" || typeof cell === "number" ? String(cell).trim() : "";
+                return [{ field, value }];
+              }),
+            })),
+          }));
+        });
+        return ReadReferenceFieldsResultSchema.parse({ state: "read-fields", sheets });
       });
     },
     resolveReference(repositories: AuthorityRepositories, command: ReferenceCommand, capturedAt: string) {

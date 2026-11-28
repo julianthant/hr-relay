@@ -210,10 +210,10 @@ it.each([{ useMatch: false, matchFound: false }, { useMatch: true, matchFound: f
   assert.ok(f.checkpoints.every(row => row.assertion === undefined));
 });
 
-it("adds only the two candidate nodes and replaces the retention dependencies, keeping every read condition and policy", () => {
+it("keeps the retention reads and their conditions alongside the generated reference comparison", () => {
   const initialWhen = { kind: "is-false", of: { from: "input", path: "person.useMatch" } };
   const lookupWhen = { kind: "is-true", of: { from: "node", nodeId: "match-outcome", path: "shouldLookup" } };
-  assert.deepEqual(descriptorRuntimeNodes(descriptor).map(node => {
+  assert.deepEqual(descriptorRuntimeNodes(descriptor).filter(node => !String(node.id).startsWith("reference-")).map(node => {
     assert.equal(node.kind, "task");
     if (node.kind !== "task") throw new Error("Expected read-only I-9 node");
     return [String(node.id), String(node.uses.id), node.dependsOn.map(String), node.replay, node.when ?? null];
@@ -225,7 +225,6 @@ it("adds only the two candidate nodes and replaces the retention dependencies, k
     ["name-search", "ucpath/search-person-org", ["match-outcome"], "checkpoint", lookupWhen],
     ["employment-candidates", "workflow:i9-check/read-employment-candidates", ["match-outcome", "name-search"], "always-rerun", lookupWhen],
     ["retention-row", "workflow:i9-check/read-retention-row", ["match-outcome", "initial-candidates", "employment-candidates"], "always-rerun", null],
-    ["reference-check", "workbooks/verify-person", ["retention-row"], "checkpoint", { kind: "is-present", of: { from: "reference", typeId: "reference-check" } }],
   ]);
 });
 

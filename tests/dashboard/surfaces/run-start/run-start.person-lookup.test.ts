@@ -85,7 +85,7 @@ describe("served Person Lookup Run and Rerun", () => {
       { mode: "search", emplId: "10000001", crmCheck: true, keepNonHdh: false, includeCrmDates: true },
       { mode: "search", name: "Example, Person", crmCheck: true, keepNonHdh: false, includeCrmDates: true },
     ]);
-    assert.deepEqual(planned.selectedStepKeys, ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"]);
+    assert.deepEqual(planned.selectedStepKeys, ["reference-check", "searching", "cross-verify", "active-status", "crm-dates"]);
   });
   it("switches to Match defaults, rejects missing identifiers and masks confirmation", async () => {
     let request: unknown;
@@ -99,7 +99,7 @@ describe("served Person Lookup Run and Rerun", () => {
     await dialog.press("Next"); await dialog.press("Start run");
     const planned = StartPlanRequestSchema.parse(request);
     assert.deepEqual(planned.submissions, [{ mode: "match", lastName: "Example", firstName: "Person", ssn: "123456789", crmCheck: false, includeCrmDates: false }]);
-    assert.deepEqual(planned.selectedStepKeys, ["searching", "active-status", "reference-check"]);
+    assert.deepEqual(planned.selectedStepKeys, ["reference-check", "searching", "active-status"]);
     assert.equal(dialog.text().includes("123456789"), false);
   });
   it("keeps protected source input unavailable and never offers output values as its replacement", async () => {

@@ -37,26 +37,25 @@ it.each(["changed", "equal"] as const)("checks a plain Work-Study Start against 
     emplId: input.emplId, displayedName: "Lee, Jordan",
     position: { effectiveDate: "07/01/2026", positionChangeReason: "", positionPool: "", positionNumber: "40012345" },
   }) });
-  const sessions = sessionFactoryHarness({ ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(), ...paypath,
-    submitPayPathWorkStudy: async () => { throw new Error("unexpected PayPath submit"); } }) });
+  const sessions = sessionFactoryHarness({ ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(), ...paypath }) });
   const f = await referenceWorld.fixture(compileWorkflow(workStudyWorkflow).descriptor, sessions);
-  const missing = f.spreadsheet("New roster", "People", ["eid"], [["10000009"]]);
+  const missing = f.spreadsheet("New roster", "Missing people", ["eid"], [["10000009"]]);
   const prior = selection === "equal" ? missing : f.spreadsheet("Prior roster", "People", ["eid"], [[input.emplId]]);
   const dry = await f.execute(f.start(input, [prior], true));
   assert.ok(dry.lifecycle.state === "terminal" && dry.lifecycle.outcome === "done");
-  assert.deepEqual(f.checkLines(dry), [selection === "equal" ? "New roster · People: not found" : "Prior roster · People: found in row 2"]);
-  const checkpoint = f.database.authority.runCheckpoints.latest(dry.envelope.workflow, dry.envelope.itemId, "reference-check");
+  assert.deepEqual(f.checkLines(dry), [selection === "equal" ? "Not in Missing people" : "People, row 2: Employee ID matches"]);
+  const checkpoint = f.database.authority.runCheckpoints.latest(dry.envelope.workflow, dry.envelope.itemId, "reference-fields-start");
   assert.equal(checkpoint?.runId, dry.envelope.runId);
 
   const live = await f.execute(f.start(input, [missing]));
   assert.equal(live.envelope.itemId, dry.envelope.itemId);
   assert.equal(live.envelope.continuation, undefined);
-  assert.ok(live.lifecycle.state === "parked-gate" && live.lifecycle.gateId === "reference-check-review");
-  assert.deepEqual(f.checkLines(live), selection === "equal" ? [] : ["New roster · People: not found"]);
+  assert.ok(live.lifecycle.state === "terminal" && live.lifecycle.outcome === "done");
+  assert.deepEqual(f.checkLines(live), ["Not in Missing people"]);
   const sources = f.events(live).flatMap(({ payload }) => payload.kind === "checkpoint-replayed"
-    && payload.checkpoint.nodeId === "reference-check" ? [payload.checkpoint.runId] : []);
-  assert.deepEqual(sources, selection === "equal" ? [dry.envelope.runId] : []);
-  assert.deepEqual(f.database.authority.writeIntents.listByRun(live.envelope.runId), []);
+    && payload.checkpoint.nodeId === "reference-fields-start" ? [payload.checkpoint.runId] : []);
+  assert.deepEqual(sources, []);
+  assert.equal(paypath.events.filter(event => event.startsWith("commit:")).length, 1);
 });
 
 const leaf = { id: plan1Leaf.descriptor.id, input: Plan1Input, result: Plan1Output };

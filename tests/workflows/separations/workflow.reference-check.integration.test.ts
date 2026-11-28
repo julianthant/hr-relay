@@ -7,9 +7,7 @@ import { projectObservedOperatorFields } from "../../../src/backend/runs/queries
 import { readRerunValues } from "../../../src/backend/runs/start/rerun-values.js";
 import { readRunCheckpoint } from "../../../src/backend/storage/sqlite/run-continuation.js";
 import { previewRerunWarnings } from "../../../src/backend/runs/start/rerun.js";
-import { referenceCheckStop } from "../../../src/models/processing/workbooks/reference-check-stop.js";
 import { MatchIdentityOutputSchema } from "../../../src/models/workflows/separations/match-identity.js";
-import { SeparationsReadReferenceStop } from "../../../src/models/workflows/separations/read-reference-stop.js";
 import { GateDecisionWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { runClaim, type RunRecord } from "../../../src/models/run/record.js";
 import { projectFailureForOperator } from "../../../src/models/trust/failure.js";
@@ -31,7 +29,6 @@ import { KUALI_SEPARATION_FORM_TYPE } from "../../../src/models/ui/kuali-separat
 import { COMPOSITION_ACTION_ID, COMPOSITION_DOCUMENT_NAME, COMPOSITION_LAST_DAY_WORKED, COMPOSITION_SEPARATION_DATE, COMPOSITION_DOCUMENT, COMPOSITION_EID, COMPOSITION_NOW, COMPOSITION_RECEIPT,
   COMPOSITION_UCPATH_NAME } from "../../support/helpers/separations-composition-fixtures.js";
 
-const ReferenceCheckStopInput = SeparationsReadReferenceStop.input;
 const world = createReferenceCheckWriteWorld();
 afterEach(world.cleanup);
 const proof = stepProofModuleOf("separations-reference-check");
@@ -40,6 +37,8 @@ const { descriptor } = proof;
 const INPUT = { emplId: "10000001", employeeName: "Lee, Jordan" };
 /** A name the approved subject never carries, so finding it anywhere in the run proves a row value leaked. */
 const ROW_ONLY_NAME = "Zebedee Quillfeather";
+const START_GATE = "reference-field-review-start";
+const APPROVAL_GATE = "reference-field-review-approval";
 const nodes = descriptorRuntimeNodes(separationsDescriptor);
 const node = (id: string) => { const found = nodes.find(candidate => String(candidate.id) === id); assert.ok(found, id); return found; };
 /** Every node `id` waits for, directly or through another node. */
@@ -65,73 +64,61 @@ async function fixture() {
 }
 
 describe("Separations reference spreadsheet check", () => {
-  it("checks the approved person after the identity check, and every write waits for the review", () => {
+  it("checks the document as it resolves and makes every write wait for the generated reference gate", () => {
     const keys = separationsDescriptor.timeline.map(step => step.key);
-    assert.ok(keys.indexOf("reference-check") > keys.indexOf("identity-check"));
-    assert.ok(keys.indexOf("reference-check") < keys.indexOf("ucpath-transaction"));
-    assert.deepEqual(node("reference-check").dependsOn.map(String), ["approval"]);
-    const review = node("reference-check-review");
+    assert.ok(keys.indexOf("reference-check") < keys.indexOf("identity-check"));
+    assert.ok(upstreamOf("reference-fields-approval").has("approval"));
+    const review = node(APPROVAL_GATE);
     assert.ok(review.kind === "gate" && review.resolvedBy === "operator");
-    assert.deepEqual(review.when, { kind: "is-present", of: { from: "node", nodeId: "reference-stop", path: "ask" } });
+    assert.deepEqual(review.when, { kind: "is-present", of: { from: "node", nodeId: "reference-fields-approval", path: "review" } });
     for (const write of nodes.filter(candidate => candidate.kind === "transaction")) {
-      assert.ok(upstreamOf(String(write.id)).has("reference-check-review"), `${String(write.id)} waits for the reference review`);
+      assert.ok(upstreamOf(String(write.id)).has(APPROVAL_GATE), `${String(write.id)} waits for the reference review`);
     }
-    assert.deepEqual(nodes.filter(candidate => candidate.kind === "transaction" && !upstreamOf(String(candidate.id)).has("reference-check-review")), []);
-    assert.equal(upstreamOf("reference-check-review").has("clear-pending"), false, "the review comes before the first write");
+    assert.equal(upstreamOf(APPROVAL_GATE).has("clear-pending"), false, "the review comes before the first write");
   });
 
   it("skips the check with no spreadsheet picked and asks nothing", async () => {
     const f = await fixture(), run = await f.execute(f.start(INPUT, []));
     assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
-    assert.deepEqual(f.nodeSpans(run, "reference-check"), [["skipped", "condition-false"]]);
-    assert.deepEqual(f.nodeSpans(run, "reference-check-review"), [["skipped", "condition-false"]]);
+    assert.deepEqual(f.nodeSpans(run, "reference-fields-start"), [["skipped", "condition-false"]]);
+    assert.deepEqual(f.nodeSpans(run, START_GATE), [["skipped", "condition-false"]]);
     assert.deepEqual(f.checkLines(run), []);
   });
 
   it("separations/reference-check — goes on without asking when the picked spreadsheet holds the person", async () => {
     const f = await fixture(), run = await f.execute(f.start(INPUT, [f.holding()]));
     assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
-    assert.deepEqual(f.checkLines(run), ["Separations roster · People: found in row 3"]);
-    assert.deepEqual(f.nodeSpans(run, "reference-check-review"), [["skipped", "condition-false"]]);
+    assert.deepEqual(f.checkLines(run), ["People, row 3: Employee ID matches", "People, row 3: Legal name matches"]);
+    assert.deepEqual(f.nodeSpans(run, START_GATE), [["skipped", "condition-false"]]);
   });
 
-  it("separations-reference-check/reference-check — stops when the person is missing, and Continue anyway goes on", async () => {
-    const f = await fixture(), started = f.start(INPUT, [f.missing()]);
-    const parked = await f.execute(started);
-    assert.ok(parked.lifecycle.state === "parked-gate" && String(parked.lifecycle.gateId) === "reference-check-review");
+  it("separations-reference-check/reference-check — logs an absent row and continues", async () => {
+    const f = await fixture(), done = await f.execute(f.start(INPUT, [f.missing()]));
+    assert.ok(done.lifecycle.state === "terminal" && done.lifecycle.outcome === "done");
+    assert.deepEqual(f.checkLines(done), ["Not in Issued"]);
+  });
+
+  it("stops with the same card when the name differs, with the row value visible only in review, and Cancel run ends it", async () => {
+    const f = await fixture(), started = f.start(INPUT, [f.renamed()]);
+    assert.equal((await f.execute(started)).lifecycle.state, "parked-gate");
     const decision = f.card(started);
     assert.equal(decision.type, "review-before-write");
     assert.deepEqual(decision.options.map(option => [option.id, option.label, option.send.via]), [["continue", "Continue anyway", "gate-arm"], ["cancel-run", "Cancel run", "row-action"]]);
-    assert.equal(decision.context, "Badge list · Issued: not found · Compared: Employee ID, and name where the sheet has one.");
-    assert.equal(f.continueAnyway(started).state, "applied");
-    const done = await f.execute(started);
-    assert.ok(done.lifecycle.state === "terminal" && done.lifecycle.outcome === "done");
-  });
-
-  it("stops with the same card when the name differs, without recording any value from the row, and Cancel run ends it", async () => {
-    const f = await fixture(), started = f.start(INPUT, [f.renamed()]);
-    assert.equal((await f.execute(started)).lifecycle.state, "parked-gate");
-    assert.equal(f.card(started).context, "Separations roster · People: name differs in row 2 · Compared: Employee ID, and name where the sheet has one.");
-    assert.equal(JSON.stringify([f.events(started), f.card(started)]).includes(ROW_ONLY_NAME), false);
+    assert.equal(decision.context, `People, row 2 · Legal name: spreadsheet “${ROW_ONLY_NAME}”, workflow “Lee, Jordan”`);
+    assert.equal(JSON.stringify(f.events(started)).includes(ROW_ONLY_NAME), false);
     assert.equal(f.cancel(started).state, "applied");
     const cancelled = f.current(started);
     assert.ok(cancelled.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled");
   });
 
-  it("never stops a dry run: the proof refuses one, and the composition's stop reads a dry run as not writing", async () => {
+  it("keeps the standalone proof's dry-run capability unchanged", async () => {
     const f = await fixture();
     assert.throws(() => f.start(INPUT, [f.missing()], true), /dry-run-unsupported/u);
-    const stop = node("reference-stop");
-    assert.ok(stop.kind === "task");
-    const check = { state: "checked", result: "unconfirmed", checks: [{ spreadsheet: "Badge list", sheet: "Issued", outcome: "not-found", row: null, line: "Badge list · Issued: not found" }] };
-    const scope = (dryRun: unknown) => ({ input: {}, outputs: { "reference-check": check }, ...(dryRun === undefined ? {} : { dryRun }) }) as unknown as Parameters<typeof stop.bind>[0];
-    assert.deepEqual(referenceCheckStop(ReferenceCheckStopInput.parse(stop.bind(scope({ mode: "preview" })))), { ask: null });
-    assert.deepEqual(referenceCheckStop(ReferenceCheckStopInput.parse(stop.bind(scope(undefined)))), { ask: true });
   });
 });
 
 describe("Separations composition with a reference spreadsheet", () => {
-  const REFERENCE_GATE = "reference-check-review";
+  const REFERENCE_GATE = "reference-field-review-document";
   const OMIT_KRONOS = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/12/2026", separationDate: "06/19/2026" } }];
 
   async function composition(options: Readonly<{ documentEid?: string; searchOutcome?: PersonOrgSearchPageOutcome; beforeKualiFinalization?: () => void }> = {}) {
@@ -235,15 +222,11 @@ describe("Separations composition with a reference spreadsheet", () => {
     assert.deepEqual(searchedValues, [COMPOSITION_EID]);
   });
 
-  it("parks before any write when the person is missing, and Continue anyway files each write once", async () => {
+  it("logs the absent row and files each write once", async () => {
     const c = await composition(), started = c.begin([c.missing()]);
-    let run = await c.execute(started);
-    assert.equal(c.parkedAt(run), REFERENCE_GATE);
-    assert.deepEqual(c.commits(), []);
-    assert.deepEqual(c.writeIntents(started), []);
-    assert.equal(c.continueAnyway(started).state, "applied");
-    run = await c.execute(started);
+    const run = await c.execute(started);
     assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", c.parkedAt(run));
+    assert.deepEqual(c.checkLines(run), ["Not in Issued"]);
     assert.deepEqual(c.commits(), ["commit:kuali.rrss-document.save-button", "commit:ucpath.smart-hr.save-and-submit-button"]);
     assert.ok(c.writeIntents(started).length > 0);
   });
@@ -258,17 +241,19 @@ describe("Separations composition with a reference spreadsheet", () => {
     assert.deepEqual(c.writeIntents(started), []);
   });
 
-  it("never parks a dry run with the person missing, and records the check line", async () => {
+  it("continues a dry run with a missing row and records the Logs line", async () => {
     const c = await composition(), run = await c.execute(c.begin([c.missing()], true));
     assert.notEqual(c.parkedAt(run), REFERENCE_GATE);
     assert.deepEqual(c.nodeSpans(run, REFERENCE_GATE), [["skipped", "condition-false"]]);
-    assert.deepEqual(c.checkLines(run), ["Badge list · Issued: not found"]);
+    assert.deepEqual(c.checkLines(run), ["Not in Issued"]);
     assert.deepEqual(c.commits(), []);
   });
 
-  it("resumes from stored state after Continue anyway without asking again", async () => {
-    const c = await composition(), started = c.begin([c.missing()]);
+  it("resumes from stored state after Continue without asking on the same field again", async () => {
+    const c = await composition(), started = c.begin([c.renamed()]);
     assert.equal(c.parkedAt(await c.execute(started)), REFERENCE_GATE);
+    assert.deepEqual(c.commits(), []);
+    assert.deepEqual(c.writeIntents(started), []);
     assert.equal(c.continueAnyway(started).state, "applied");
     const resumed = await c.execute(c.current(started));
     assert.ok(resumed.lifecycle.state === "terminal" && resumed.lifecycle.outcome === "done", c.parkedAt(resumed));
@@ -280,7 +265,7 @@ describe("Separations composition with a reference spreadsheet", () => {
     const c = await composition(), run = await c.execute(c.begin([c.holding()]));
     assert.notEqual(c.parkedAt(run), REFERENCE_GATE);
     assert.deepEqual(c.nodeSpans(run, REFERENCE_GATE), [["skipped", "condition-false"]]);
-    assert.deepEqual(c.checkLines(run), ["Separations roster · People: found in row 3"]);
+    assert.deepEqual(c.checkLines(run), ["People, row 3: Employee ID matches", "People, row 3: Legal name matches"]);
   });
 
   it("sends no UCPath write when its form actions were done by hand, and records the typed receipt", async () => {
@@ -354,19 +339,16 @@ describe("Separations composition with a reference spreadsheet", () => {
     assert.ok(bound.lifecycle.state === "terminal" && bound.lifecycle.outcome === "done", JSON.stringify(bound.lifecycle));
   });
 
-  it("resumes past a skipped identity approval when the document carries the Employee ID and the Kronos timecard is omitted", async () => {
-    const c = await composition({ documentEid: COMPOSITION_EID }), started = c.begin([c.missing()]);
-    const parked = await c.execute(started);
-    assert.equal(c.parkedAt(parked), REFERENCE_GATE);
+  it("skips identity approval when the document carries the Employee ID and the Kronos timecard is omitted", async () => {
+    const c = await composition({ documentEid: COMPOSITION_EID }), started = c.begin([c.holding()]);
+    const resumed = await c.execute(started);
     assert.deepEqual(c.searches, [{ kind: "by-eid", emplId: COMPOSITION_EID }]);
-    assert.deepEqual(c.nodeSpans(parked, "identity-approval"), [["skipped", "condition-false"]]);
-    const checkpoint = readRunCheckpoint(c.database.authority, parked.envelope, "comparison");
+    assert.deepEqual(c.nodeSpans(resumed, "identity-approval"), [["skipped", "condition-false"]]);
+    const checkpoint = readRunCheckpoint(c.database.authority, resumed.envelope, "comparison");
     const comparison = MatchIdentityOutputSchema.parse(checkpoint?.output.value);
     assert.equal(comparison.approvalRequired, false);
     assert.ok(comparison.packet.comparisons.some(row => row.documentValue === COMPOSITION_EID
       && row.note === "the Employee ID lookup and Job Summary confirm the same person"));
-    assert.equal(c.continueAnyway(started).state, "applied");
-    const resumed = await c.execute(c.current(started));
     assert.ok(resumed.lifecycle.state === "terminal" && resumed.lifecycle.outcome === "done", JSON.stringify(resumed.lifecycle));
     assert.deepEqual(c.commits(), ["commit:kuali.rrss-document.save-button", "commit:ucpath.smart-hr.save-and-submit-button"]);
   });

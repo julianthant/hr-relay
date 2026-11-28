@@ -76,7 +76,7 @@ export interface LaneReadDefinition<Args, Result> {
 const definitions = new Map<string, LaneReadDefinition<unknown, unknown>>();
 const laneReadId = (module: string, name: string) => `${module}#${name}`;
 
-/** Declares a read a lane can run. The lane entry module imports every defining module, so the lane knows the read by id. */
+/** Declares a read a lane can run, loaded by its lane entry and addressed by id. */
 export function defineLaneRead<Args, Result>(module: string, name: string, spec: Readonly<{
   lane: ReadLaneName; priority: "interactive" | "background"; args: z.ZodType<Args>; tables?: readonly AuthorityTableName[];
   timeline?: boolean; processFacts?: boolean; cacheMs?: number; run(context: LaneReadContext, args: Args): Result;
@@ -129,7 +129,7 @@ const readingAt = (lane: number) => 1 + lane;
 
 const RequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("read"), id: z.number().int().positive(), beginSeq: z.number().int().nonnegative(), module: z.string().min(1), name: z.string().min(1), key: z.string().min(1), args: z.unknown(),
-    nowMs: z.number().int(), processRevision: z.number().int().nonnegative().nullable(), processFacts: z.unknown() }),
+    priority: z.enum(["interactive", "background"]), nowMs: z.number().int(), processRevision: z.number().int().nonnegative().nullable(), processFacts: z.unknown() }),
   z.strictObject({ kind: z.literal("cancel"), id: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("checkpoint"), id: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("close") }),
@@ -297,7 +297,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   const post = (lane: Lane, request: LaneReadRequest) => {
     if (lane.worker === undefined) throw new Error("read-lane-post-unready");
     const message: LaneRequest = { kind: "read", id: request.id, beginSeq: dispatchSeq, module: request.definition.module,
-      name: request.definition.name, key: request.key, args: request.args, nowMs: clock.nowMs(), processRevision: request.processRevision,
+      name: request.definition.name, key: request.key, args: request.args, priority: request.definition.priority, nowMs: clock.nowMs(), processRevision: request.processRevision,
       processFacts: request.processFacts };
     try { lane.worker.postMessage(message); }
     catch (error) {
@@ -593,25 +593,13 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   });
 }
 
-/** The lane loads no module on request: a read its entry did not import is unknown. */
-function resolveLaneRead(module: string, name: string): LaneReadDefinition<unknown, unknown> {
-  const known = definitions.get(laneReadId(module, name));
-  if (known === undefined) throw new Error("read-lane-read-unknown");
-  return known;
-}
-
 interface CacheEntry {
   readonly body: string;
   position: ReadPosition;
   beginSeq: number;
 }
 
-interface QueuedRead {
-  readonly message: LaneReadMessage;
-  readonly definition: LaneReadDefinition<unknown, unknown>;
-}
-
-function runReadLane(port: MessagePort, data: unknown) {
+function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<string, () => Promise<unknown>>) {
   const { start: record, gate, clock } = LaneDataSchema.parse(data);
   const lane = admitReadLane(record);
   const { start } = lane;
@@ -634,8 +622,10 @@ function runReadLane(port: MessagePort, data: unknown) {
     .map(identity => `${identity.device}:${identity.inode}`).join("+") + `@${String(start.cursorOffset)}`;
   const cache = new Map<string, CacheEntry>();
   const checkpoints: number[] = [];
-  const interactive: QueuedRead[] = [], background: QueuedRead[] = [];
+  const interactive: LaneReadMessage[] = [], background: LaneReadMessage[] = [];
   let scheduled = false, closed = false, gateWait = false, waitingForReaders = false;
+  let loading = false;
+  const unloaded = new Map(readModules);
   const leftInTransaction = () => native.hasOpenTransaction() || history.hasOpenTransaction() || resources.some(resource => resource.inTransaction());
   const close = () => {
     closed = true;
@@ -742,20 +732,19 @@ function runReadLane(port: MessagePort, data: unknown) {
    * Runs the next read, under the lane's reading mark, with every queued twin of it: same key and process revision. None of them had started, so one run
    * after all of their dispatches answers each. The latest message carries the run's clock and begin position.
    */
-  const runRead = (picked: QueuedRead) => {
-    const queue = picked.definition.priority === "interactive" ? interactive : background;
+  const runRead = (definition: LaneReadDefinition<unknown, unknown>, picked: LaneReadMessage, queue: LaneReadMessage[]) => {
     const twins = [picked];
     for (let index = 0; index < queue.length;) {
       const queued = queue[index];
-      if (queued.message.key === picked.message.key && queued.message.processRevision === picked.message.processRevision) {
+      if (queued.key === picked.key && queued.processRevision === picked.processRevision) {
         twins.push(queued);
         queue.splice(index, 1);
       } else index += 1;
     }
-    const ids = twins.map(twin => twin.message.id);
-    const latest = twins.reduce((last, twin) => twin.message.beginSeq > last.message.beginSeq ? twin : last).message;
+    const ids = twins.map(twin => twin.id);
+    const latest = twins.reduce((last, twin) => twin.beginSeq > last.beginSeq ? twin : last);
     let reply: LaneReply;
-    try { reply = { kind: "read", ids, ...serve(picked.definition, latest) }; }
+    try { reply = { kind: "read", ids, ...serve(definition, latest) }; }
     catch (error) {
       reply = { kind: "read-failed", ids, message: error instanceof Error && error.message !== "" ? error.message : "read-lane-read-failed",
         ...(error instanceof AuthoritySnapshotChangedError ? { code: error.code } : {}) };
@@ -777,7 +766,7 @@ function runReadLane(port: MessagePort, data: unknown) {
     if (message.kind === "cancel") {
       // A message that already started is not in a queue: its reply answers the host instead.
       for (const queue of [interactive, background]) {
-        const index = queue.findIndex(queued => queued.message.id === message.id);
+        const index = queue.findIndex(queued => queued.id === message.id);
         if (index === -1) continue;
         queue.splice(index, 1);
         send({ kind: "cancelled", id: message.id });
@@ -785,14 +774,33 @@ function runReadLane(port: MessagePort, data: unknown) {
       }
       return;
     }
-    let definition: LaneReadDefinition<unknown, unknown>;
-    try { definition = resolveLaneRead(message.module, message.name); }
-    catch (error) {
-      send({ kind: "read-failed", ids: [message.id], message: error instanceof Error ? error.message : "read-lane-read-unknown" });
+    (message.priority === "interactive" ? interactive : background).push(message);
+  };
+  function takeRead() {
+    const queue = interactive.length > 0 ? interactive : background;
+    const message = queue[0];
+    if (message === undefined || loading) return;
+    const definition = definitions.get(laneReadId(message.module, message.name));
+    const load = definition === undefined ? unloaded.get(message.module) : undefined;
+    if (load !== undefined) {
+      // A cold module loads without a SQLite transaction or a WAL reader mark. Its requests stay queued and cancelable.
+      loading = true;
+      void load().then(() => {
+        unloaded.delete(message.module);
+        loading = false;
+        schedule();
+      }, () => process.exit(LANE_FAILURE_EXIT_CODE));
       return;
     }
-    (definition.priority === "interactive" ? interactive : background).push({ message, definition });
-  };
+    if (definition === undefined || definition.priority !== message.priority) {
+      queue.shift();
+      send({ kind: "read-failed", ids: [message.id], message: "read-lane-read-unknown" });
+      return;
+    }
+    if (!tryEnterRead()) { waitForGate(); return; }
+    queue.shift();
+    runRead(definition, message, queue);
+  }
   /** The lane takes its own next message: a checkpoint, then interactive reads, then background ones. */
   const step = () => {
     scheduled = false;
@@ -801,18 +809,13 @@ function runReadLane(port: MessagePort, data: unknown) {
     if (id !== undefined && reserveCheckpoint()) {
       checkpoints.shift();
       send(runCheckpoint(id));
-    } else if (interactive.length + background.length > 0) {
-      if (!tryEnterRead()) { waitForGate(); return; }
-      // Pick only after admitting the read, so a gated read stays queued and cancelable.
-      const picked = interactive.shift() ?? background.shift();
-      if (picked !== undefined) runRead(picked);
-    }
+    } else takeRead();
     schedule();
   };
   // One event-loop turn between messages lets every message that arrived during a read join the queues before the next pick.
   function schedule() {
     const checkpointReady = checkpoints.length > 0 && !waitingForReaders;
-    if (scheduled || closed || gateWait || (!checkpointReady && interactive.length + background.length === 0)) return;
+    if (scheduled || closed || gateWait || (!checkpointReady && (loading || interactive.length + background.length === 0))) return;
     scheduled = true;
     setImmediate(() => {
       // A failed send or close leaves the lane in an unknown state; the host restarts it from its exit.
@@ -846,8 +849,8 @@ function runReadLane(port: MessagePort, data: unknown) {
   if (leftInTransaction()) process.exit(LANE_TRANSACTION_EXIT_CODE);
 }
 
-/** A lane entry calls this after importing its read modules; on the main thread it does nothing. */
-export function runReadLaneWorker(): void {
+/** A lane entry supplies its read loaders. The worker can load only modules selected by the entry. */
+export function runReadLaneWorker(readModules: ReadonlyMap<string, () => Promise<unknown>> = new Map()): void {
   // Admission, not this guard, refuses a start record with the wrong protocol, so the worker fails by name.
-  if (!isMainThread && parentPort !== null) runReadLane(parentPort, workerData);
+  if (!isMainThread && parentPort !== null) runReadLane(parentPort, workerData, readModules);
 }

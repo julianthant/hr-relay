@@ -1,13 +1,13 @@
 import { execFileSync, fork } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { constants, cpSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { registerHooks } from "node:module";
-import { availableParallelism, loadavg } from "node:os";
-import { join } from "node:path";
+import { availableParallelism, loadavg, tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { parseArgs } from "node:util";
+import { isDeepStrictEqual, parseArgs } from "node:util";
 import { z } from "zod";
 import { runtimeProfiles } from "../../src/models/config/define-runtime-isolation.js";
 import { RUNTIME_PROFILE_ENV, workerBootstrapEnvironment } from "../../src/models/config/secrets.js";
@@ -18,6 +18,7 @@ import { systemClock } from "../../src/rules/time/clock.js";
 const READY_LIMIT_MS = 5_000;
 const ADDED_RSS_LIMIT_BYTES = 350 * 1024 * 1024;
 const SETTLE_MS = 500;
+const CLONE_PREFIX = "relay-read-lanes-";
 
 const ShapeSchema = z.enum(["A", "B"]);
 type Shape = z.infer<typeof ShapeSchema>;
@@ -32,12 +33,6 @@ type Run = z.infer<typeof RunSchema>;
 
 /** One shape in one fresh process: open the copy's store as the dashboard does, then start the real read host. */
 async function measure(shape: Shape, workspace: string, lockPort: number): Promise<Run> {
-  const hook = withLaneRoute(shape);
-  try { return await measureReadHost(shape, workspace, lockPort); }
-  finally { hook.deregister(); }
-}
-
-async function measureReadHost(shape: Shape, workspace: string, lockPort: number): Promise<Run> {
   const [{ acquireRuntimeLifetimeLock }, { acquireEntrypointAdmission }, { createCredentialStore }, { AuthorityDatabase },
     { createDashboardReadHost }, { createDashboardBackgroundReader }] = await Promise.all([
     import("../../src/backend/storage/admission/lifetime-lock.js"),
@@ -65,18 +60,25 @@ async function measureReadHost(shape: Shape, workspace: string, lockPort: number
           await delay(SETTLE_MS);
           const rssBeforeBytes = process.memoryUsage.rss();
           const started = performance.now();
-          const lanes = createDashboardReadHost({ admission, database, clock: systemClock,
+          const lanes = createDashboardReadHost({ admission, database, clock: systemClock, lanes: LANES[shape],
             entry: new URL("../../src/backend/app/composition/dashboard/read-lane-entry.js", import.meta.url) });
           try {
             await lanes.ready;
             const readyMs = performance.now() - started;
             const rssReadyBytes = process.memoryUsage.rss();
             const reading = performance.now();
-            const page = await createDashboardBackgroundReader(lanes).read({ after: 0, limit: 100, nowMs: systemClock.nowMs() });
+            const reader = createDashboardBackgroundReader(lanes);
+            const page = await reader.read({ after: 0, limit: 100, nowMs: systemClock.nowMs() });
             const firstReadMs = performance.now() - reading;
             if (page.through !== timelineHighWater) throw new Error("read-lanes-bench-history-mismatch");
             await delay(SETTLE_MS);
             const rssAfterReadBytes = process.memoryUsage.rss();
+            const boundary = { after: Math.max(0, cursorOffset - 3), through: timelineHighWater, limit: 100 };
+            const mixed = await reader.read({ ...boundary, nowMs: systemClock.nowMs() });
+            if (!isDeepStrictEqual(page.records, history.authority.timelineEvents.page({ ...boundary, after: 0 }))
+              || !isDeepStrictEqual(mixed.records, history.authority.timelineEvents.page(boundary))) {
+              throw new Error("read-lanes-bench-timeline-records-mismatch");
+            }
             return RunSchema.parse({ shape, readyMs, firstReadMs, rssBeforeBytes, rssReadyBytes, rssAfterReadBytes,
               addedRssBytes: Math.max(rssReadyBytes, rssAfterReadBytes) - rssBeforeBytes, historyArchive: true, cursorOffset, timelineHighWater });
           } finally { await lanes.close(); }
@@ -124,19 +126,30 @@ const percentile = (values: readonly number[], fraction: number) => {
   return [...values].sort((a, b) => a - b)[Math.ceil(values.length * fraction) - 1];
 };
 
-function withLaneRoute(shape: Shape, g4 = false) {
+function withG4Routes(shape: Shape, workspace: string) {
   const target = new URL("../../src/backend/storage/sqlite/dashboard-read-host.ts", import.meta.url).href;
+  const config = new URL("../../src/backend/app/config/runtime-isolation.ts", import.meta.url).href;
+  const cli = new URL("../../src/cli.ts", import.meta.url).href;
   return registerHooks({ load(url, context, next) {
     const loaded = next(url, context);
-    if (url !== target) return loaded;
+    if (url !== target && url !== config && url !== cli) return loaded;
     if (typeof loaded.source !== "string") throw new Error("read-lanes-g4-loader-source-refused");
     const source = loaded.source;
+    if (url === config) {
+      const owner = "host ??= currentApplicationDataHostFacts();";
+      if (source.split(owner).length !== 2) throw new Error("read-lanes-g4-workspace-seam-changed");
+      return { ...loaded, source: source.replace(owner, `if (host === undefined && profile === runtimeProfile) return ${JSON.stringify(workspace)};\n${owner}`) };
+    }
+    if (url === cli) {
+      // Finish the clone's normal quit backup with its own lifecycle lock, before the harness deletes it.
+      const backup = 'shutdownBackup: detachedShutdownBackup(productionWorkerLaunch(REPOSITORY_ROOT, void 0, options.frontend === "vite-dev"))';
+      if (source.split(backup).length !== 2) throw new Error("read-lanes-g4-shutdown-seam-changed");
+      return { ...loaded, source: source.replace("composeStorageCommand, detachedShutdownBackup", "composeStorageCommand, backupRegisteredPeopleAtCleanShutdown")
+        .replace(backup, "shutdownBackup: backupRegisteredPeopleAtCleanShutdown") };
+    }
     const route = /input\.lanes\s*\?\?\s*(?:ReadLaneNameSchema\.options|\[\s*"navigation"\s*\])/u;
-    const priorityRoute = "lanes.get(definition.lane)";
-    if (source.split(route).length !== 2 || source.split(priorityRoute).length !== 2) throw new Error("read-lanes-bench-route-seam-changed");
-    const routed = source.replace(route, `input.lanes ?? ${JSON.stringify(LANES[shape])}`)
-      .replace(priorityRoute, 'lanes.get(definition.priority === "background" || ["activity", "search-metadata-export", "search-xlsx-selection"].includes(definition.name) ? "search" : "navigation")');
-    if (!g4) return { ...loaded, source: routed };
+    if (source.split(route).length !== 2) throw new Error("read-lanes-bench-route-seam-changed");
+    const routed = source.replace(route, `input.lanes ?? ${JSON.stringify(LANES[shape])}`);
     const notify = "else lane.held.push(request);";
     const key = /key:\s*canonicalJsonStringify\(\{\s*lane:\s*lane\.name,\s*read:\s*registered\.id,\s*args:\s*parsed\s*\}\)/u;
     if (routed.split(notify).length !== 2 || routed.split(key).length !== 2) {
@@ -149,8 +162,12 @@ function withLaneRoute(shape: Shape, g4 = false) {
   } });
 }
 
-async function serveG4(shape: Shape) {
+async function serveG4(shape: Shape, workspace: string) {
   if (process.send === undefined) throw new Error("read-lanes-g4-ipc-required");
+  const { Entry } = await import("@napi-rs/keyring");
+  const refuse = (): never => { throw new Error("read-lanes-g4-keychain-write-refused"); };
+  Entry.prototype.setPassword = refuse;
+  Entry.prototype.deletePassword = refuse;
   const histogram = monitorEventLoopDelay({ resolution: 1 });
   let scans: G4Probe["scans"] = [], scanFailures = 0, measuring = false, scanNumber = 0;
   Object.defineProperty(globalThis, g4Probe, { configurable: true, value: {
@@ -162,7 +179,7 @@ async function serveG4(shape: Shape) {
       void reply.then(({ cached }) => scans.push({ start, end: systemClock.nowMs(), cached }), () => { scanFailures++; });
     },
   } });
-  const hook = withLaneRoute(shape, true);
+  const hook = withG4Routes(shape, workspace);
   process.on("message", (message: unknown) => {
     if (message === "g4-start") {
       scans = []; scanFailures = 0; measuring = true;
@@ -235,7 +252,8 @@ async function withG4Cleanup<T>(run: () => Promise<T>, close: () => Promise<void
   return work.value;
 }
 
-async function measureG4(shape: Shape, profile: CopyProfile, input: { days: readonly [string, string]; workflow: string; query: string; profileId: string }) {
+async function measureG4(shape: Shape, profile: CopyProfile, workspace: string,
+  input: { days: readonly [string, string]; workflow: string; query: string; profileId: string }) {
   const [
     { chromium }, { createDashboardClient }, { operatorCredentials, resumeKey }, { CrossDateSearchPageSchema },
     { CalendarWireSchema }, { DashboardStreamEnvelopeSchema }, { CommandResultSchema, SettingsCommandRequestSchema }, { deriveSettingsPatchFingerprint, SettingsPatchSchema },
@@ -248,7 +266,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
     import("../../src/models/dashboard/bootstrap.js"), import("../../src/backend/app/bootstrap/secure-env-bootstrap.js"),
   ]);
   const startLoad = loadavg();
-  const child = fork(fileURLToPath(import.meta.url), [profile, "--g4-backend", shape], {
+  const child = fork(fileURLToPath(import.meta.url), [profile, "--g4-backend", shape, "--cloned-workspace", workspace], {
     execArgv: ["--import", "tsx"], env: workerBootstrapEnvironment(), stdio: ["ignore", "ignore", "ignore", "ipc"],
   });
   const closed = new Promise<boolean>(resolve => {
@@ -536,7 +554,7 @@ async function runG4(profile: CopyProfile, workspace: string, args: { days: stri
     for (let index = 0; index < repetitions; index++) {
       for (const shape of selected) {
         process.stderr.write(`G4 ${shape} ${String(index + 1)}/${String(repetitions)}\n`);
-        results[shape].push(await measureG4(shape, profile, { days, workflow, query, profileId }));
+        results[shape].push(await measureG4(shape, profile, workspace, { days, workflow, query, profileId }));
       }
     }
   } catch (cause) {
@@ -550,34 +568,72 @@ async function runG4(profile: CopyProfile, workspace: string, args: { days: stri
   process.stdout.write(`${JSON.stringify({ decision, shapes }, null, 2)}\nwrote ${path}\n`);
 }
 
+/** The development or staging runtime must be stopped throughout the state copy. */
+async function cloneProfile(workspace: string, target: string, lockPort: number) {
+  const { acquireRuntimeLifetimeLock } = await import("../../src/backend/storage/admission/lifetime-lock.js");
+  const { rebindControlWorkspace } = await import("../verify/prelogin-rehearsal.js");
+  const lock = await acquireRuntimeLifetimeLock(lockPort);
+  try {
+    cpSync(join(workspace, ".tracker"), join(target, ".tracker"), {
+      recursive: true, mode: constants.COPYFILE_FICLONE,
+      filter(source) {
+        if (lstatSync(source).isSymbolicLink()) throw new Error("read-lanes-bench-clone-symlink");
+        return true;
+      },
+    });
+    rebindControlWorkspace(target, target);
+  } finally { await lock.close(); }
+}
+
 const entryPath = process.argv[1];
 if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url) {
-  const { positionals, values } = parseArgs({ allowPositionals: true, options: { runs: { type: "string" }, shape: { type: "string" },
-    g4: { type: "boolean" }, "g4-backend": { type: "string" }, days: { type: "string" }, workflow: { type: "string" }, query: { type: "string" }, g2: { type: "string" } } });
+  const { positionals, values } = parseArgs({ allowPositionals: true, options: {
+    runs: { type: "string" }, shape: { type: "string" }, "fresh-copy": { type: "boolean" }, "cloned-workspace": { type: "string" },
+    g4: { type: "boolean" }, "g4-backend": { type: "string" }, days: { type: "string" }, workflow: { type: "string" }, query: { type: "string" }, g2: { type: "string" },
+  } });
   const [profile] = z.tuple([CopyProfileSchema]).parse(positionals);
   // Runtime isolation and key custody bind the profile at module initialization.
   process.env[RUNTIME_PROFILE_ENV] = profile;
   const { applicationDataWorkspace } = await import("../../src/backend/app/config/runtime-isolation.js");
   const workspace = applicationDataWorkspace(undefined, profile), lockPort = runtimeProfiles[profile].lockPort;
+  const cloneRoot = realpathSync(tmpdir());
+  const clonedWorkspace = values["cloned-workspace"];
+  if (clonedWorkspace !== undefined && ((values.shape === undefined && values["g4-backend"] === undefined) || dirname(clonedWorkspace) !== cloneRoot
+    || !basename(clonedWorkspace).startsWith(CLONE_PREFIX) || realpathSync(clonedWorkspace) !== clonedWorkspace)) {
+    throw new Error("read-lanes-bench-clone-refused");
+  }
   if (values["g4-backend"] !== undefined) {
-    await serveG4(ShapeSchema.parse(values["g4-backend"]));
+    if (clonedWorkspace === undefined) throw new Error("read-lanes-g4-fresh-copy-required");
+    await serveG4(ShapeSchema.parse(values["g4-backend"]), clonedWorkspace);
   } else if (values.g4 === true) {
-    await runG4(profile, workspace, { days: values.days, workflow: values.workflow, query: values.query, g2: values.g2, runs: values.runs, shape: values.shape });
+    if (!values["fresh-copy"]) throw new Error("read-lanes-g4-fresh-copy-required");
+    const clone = mkdtempSync(join(cloneRoot, CLONE_PREFIX));
+    try {
+      await cloneProfile(workspace, clone, lockPort);
+      await runG4(profile, clone, { days: values.days, workflow: values.workflow, query: values.query, g2: values.g2, runs: values.runs, shape: values.shape });
+    } finally { rmSync(clone, { recursive: true, force: true }); }
   } else if (values.shape !== undefined) {
-    process.stdout.write(`${JSON.stringify(await measure(ShapeSchema.parse(values.shape), workspace, lockPort))}\n`);
+    if (values["fresh-copy"]) throw new Error("read-lanes-bench-fresh-copy-requires-both-shapes");
+    process.stdout.write(`${JSON.stringify(await measure(ShapeSchema.parse(values.shape), clonedWorkspace ?? workspace, lockPort))}\n`);
   } else {
     const runs = z.coerce.number().int().min(1).max(10).parse(values.runs ?? "3");
     const script = fileURLToPath(import.meta.url);
     const results: Record<Shape, Run[]> = { A: [], B: [] };
-    // Alternate shapes so host drift touches both; every run is a cold process.
-    for (let index = 0; index < runs; index++) {
-      for (const shape of ShapeSchema.options) {
-        const output = execFileSync(process.execPath, ["--import", "tsx", script, profile, "--shape", shape], { encoding: "utf8" });
-        results[shape].push(RunSchema.parse(JSON.parse(output.trim().split("\n").at(-1) ?? "")));
+    const clone = values["fresh-copy"] ? mkdtempSync(join(cloneRoot, CLONE_PREFIX)) : undefined;
+    try {
+      if (clone !== undefined) await cloneProfile(workspace, clone, lockPort);
+      const cloneArgs = clone === undefined ? [] : ["--cloned-workspace", clone];
+      // Alternate shapes so host drift touches both; every run is a cold process.
+      for (let index = 0; index < runs; index++) {
+        for (const shape of ShapeSchema.options) {
+          const output = execFileSync(process.execPath, ["--import", "tsx", script, profile, "--shape", shape, ...cloneArgs], { encoding: "utf8" });
+          results[shape].push(RunSchema.parse(JSON.parse(output.trim().split("\n").at(-1) ?? "")));
+        }
       }
-    }
-    const report = { gate: "G2", runtime: "tsx (dashboard:prod read-worker entry and backend loader)", node: process.version,
-      profile, commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), host: { cpus: availableParallelism(), loadavg: loadavg() },
+    } finally { if (clone !== undefined) rmSync(clone, { recursive: true, force: true }); }
+    const report = { gate: "G2", runtime: "tsx (the dashboard:prod backend loader; no packaged build exists)", node: process.version,
+      profile, freshCopy: clone !== undefined, commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+      host: { cpus: availableParallelism(), loadavg: loadavg() },
       shapes: ShapeSchema.options.map(shape => summarizeShape(shape, results[shape])), runs: results };
     const path = join(process.cwd(), `read-lanes-g2-${new Date(systemClock.nowMs()).toISOString().replaceAll(":", "-")}.json`);
     writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
