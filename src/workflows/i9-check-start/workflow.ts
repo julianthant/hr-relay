@@ -1,5 +1,6 @@
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 import { I9CheckStartInput, I9CheckStartCanonicalInput, I9_CHECK_REFERENCE, i9CheckStartMatchKey } from "../../models/workflows/i9-check/start.js";
+import { usesOcrProvider } from "../../models/workflows/ocr/input.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { PositiveIntSchema } from "../../rules/identity/ids.js";
@@ -15,6 +16,8 @@ export const i9CheckStartWorkflow = defineWorkflow({
   input: I9CheckStartInput, canonicalInput: I9CheckStartCanonicalInput, inputSubject: "document",
   identity: { matchKey: i9CheckStartMatchKey },
   referenceKeys: () => [],
+  requiresOcrProvider: (input, omissions) => !omissions?.some(entry => entry.workflow === undefined && entry.step === "documents")
+    && input.documents.some(usesOcrProvider),
   plannedOutputs: (_input, _references, omissions) => omissions?.some(entry => entry.workflow === undefined && entry.step === "publication") ? []
     : [{ kind: "workbook", name: "I-9 Check results", rowSubject: "person", rows: { state: "after-review" } }],
   presentation: { title: ({ documents }) => documents.length === 1 && documents[0] !== undefined ? documents[0].fileName : `I-9 Check · ${documents.length} PDFs`, subtitle: () => "One results workbook" },

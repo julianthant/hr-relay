@@ -27,7 +27,10 @@ it("compiles one PDF batch with admitted OCR and existing person children, one w
   expect(children.map(child => child.document.id)).toEqual(input.documents.map(source => source.document.id));
   expect(children.every(child => child.formType === "i9" && child.approval === "release" && child.sourceRunId === undefined)).toBe(true);
   expect(children.map(child => child.fileName)).toEqual(input.documents.map(source => source.fileName));
-  const { title } = workflowPlanning(descriptor);
+  const { title, requiresOcrProvider } = workflowPlanning(descriptor);
+  const subscription = { ...input, documents: input.documents.map(document => ({ ...document, reading: { kind: "subscription" } })) };
+  expect(requiresOcrProvider(subscription)).toBe(true);
+  expect(requiresOcrProvider(subscription, [{ step: "documents", facts: {} }])).toBe(false);
   expect(title({ ...input, documents: [input.documents[0]] })).toBe(input.documents[0]?.fileName);
   expect(title(input)).toBe("I-9 Check · 2 PDFs");
   expect(i9CheckStartMatchKey(input)).toBe(i9CheckStartMatchKey({ ...input, documents: input.documents.toReversed() }));

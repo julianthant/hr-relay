@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { it } from "vitest";
 import { ChatGptResourceClosureUnprovedError } from "../../../../../src/backend/accounts/chatgpt-account-service.js";
+import { CHATGPT_OCR_MODEL } from "../../../../../src/backend/processing/providers/chatgpt-ocr-adapter.js";
 import { registerChatGptAccountRoutes } from "../../../../../src/backend/transports/http/routes/chatgpt-account.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { ChatGptAccountStatusSchema } from "../../../../../src/models/dashboard/chatgpt-account.js";
@@ -36,6 +37,43 @@ it("checks the account only on the guarded POST and serves what it found on GET"
     assert.equal((await app.request(`${path}/check-connection`, { method: "POST" })).status, 404);
   } finally { await f.cleanup(); }
 });
+
+it("rechecks a revoked session even while the previous successful evidence is fresh", async () => {
+  const f = await chatGptFixture(), app: DashboardApp = new Hono();
+  registerChatGptAccountRoutes(app, { clock: f.clock, chatGptAccount: f.service });
+  try {
+    await f.connected();
+    const ready = ChatGptAccountStatusSchema.parse(await (await check(app)).json());
+    assert.equal(ready.connection.state, "completed");
+    f.setModelsHook(async () => Response.json({ detail: "withheld" }, { status: 401 }));
+    assert.equal(f.service.readStatus().connection.state, "completed");
+    const result = ChatGptAccountStatusSchema.parse(await (await check(app, '{"fresh":true}')).json());
+    assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 2);
+    assert.equal(result.connection.failureCode, "CHATGPT_ACCOUNT_EXPIRED");
+    assert.deepEqual(f.service.readStatus(), result);
+  } finally { await f.cleanup(); }
+});
+
+it("serves fixed OCR model availability from the same fresh account check", async () => {
+  const f = await chatGptFixture(), app: DashboardApp = new Hono();
+  registerChatGptAccountRoutes(app, { clock: f.clock, chatGptAccount: f.service, chatGptOcrModel: CHATGPT_OCR_MODEL });
+  try {
+    await f.connected();
+    const fresh = async () => ChatGptAccountStatusSchema.parse(await (await check(app, '{"fresh":true}')).json());
+    const ready = await fresh();
+    assert.equal(ready.ocrModelAvailable, true);
+    f.setModels({ models: [{ slug: "gpt-5", display_name: "Other model", visibility: "list" }] });
+    const missing = await fresh();
+    assert.equal(missing.account.state, "connected");
+    assert.equal(missing.connection.state, "completed");
+    assert.equal(missing.usage.state, "available");
+    assert.equal(missing.ocrModelAvailable, false);
+    const passive = ChatGptAccountStatusSchema.parse(await (await app.request(path)).json());
+    assert.equal(passive.ocrModelAvailable, undefined);
+    assert.equal(f.calls.filter(call => call.url.endsWith("/models")).length, 2);
+  } finally { await f.cleanup(); }
+});
+
 for (const kind of ["closure", "unknown"] as const) it(`checks with the request signal and serves explicit ${kind} failure with no private details`, async () => {
   const app: DashboardApp = new Hono(), clock = manualClock(new Date(checkedAt)), abort = new AbortController();
   let observed: AbortSignal | undefined;

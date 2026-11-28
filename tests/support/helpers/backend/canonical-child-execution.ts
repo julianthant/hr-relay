@@ -30,6 +30,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined,
   checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord, resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>,
   options?: Readonly<{ poolIndex?: number; workbooks?: StartPlannerDeps["workbooks"]; protectedSecrets?: ProtectedSecretSource;
+    ocrProviderAvailable?: () => boolean;
     resources?(reader: Pick<RunRecordService, "read">, run: RunRecord): Pick<RunExecutorDependencies, "providers" | "artifactProjector" | "taskNotes"> }>) {
   const { clock } = deps;
   const poolIndex = options?.poolIndex ?? 1;
@@ -41,6 +42,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     } });
   const unused = (): never => { throw new Error("unrequested canonical fixture effect"); };
   const kernel = createCommandKernel({ authority: database, lifecycle, clock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
+    ...(options?.ocrProviderAvailable === undefined ? {} : { ocrProviderAvailable: options.ocrProviderAvailable }),
     ensureReceipt: runId => {
       const run = database.authority.runs.get(runId); assert.ok(run);
       const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);

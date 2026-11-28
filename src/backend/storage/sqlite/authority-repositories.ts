@@ -451,6 +451,7 @@ export type AuthorityRepositories = Readonly<{
   assistantAuthorization: ReturnType<typeof createAssistantAuthorizationRepository>;
   assistantHistory: AssistantM1HistoryRepository;
   assistantProposals: AssistantProposalRepository;
+  assistantAppliedEdits: import("./assistant-applied-edits.js").AssistantAppliedEditRepository;
   timelineEvents: TimelineRepository;
   runs: RunRepository;
   failures: FailureRepository;
