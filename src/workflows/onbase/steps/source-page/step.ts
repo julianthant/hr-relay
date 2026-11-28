@@ -5,7 +5,7 @@ import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { readOnbaseSourcePage } from "../../tasks/read-source-page.js";
 
 // Typed page numbers cannot supply the verified PDF bytes that Import needs.
-export const ONBASE_SOURCE_PAGE_MANUAL: StepManualDeclaration = {
+const sourcePageManual: StepManualDeclaration = {
   form: { fields: [{ key: "sourcePage", label: "PDF page", kind: "integer", min: 1 }] },
   produces: {},
   skips: ["source-page"],
@@ -30,14 +30,16 @@ export const ONBASE_SOURCE_STEP = Object.freeze({ ...defineWorkflowStep({ key: "
     branchLabels: []
   } as const,
 });
-export function buildSource(author: WorkflowAuthor<typeof OnbaseInputSchema>) {
+export function buildSource(author: WorkflowAuthor<typeof OnbaseInputSchema>, manual?: StepManualDeclaration) {
   const sourceTask = readOnbaseSourcePage(ONBASE_SOURCE_STEP);
   const source = author.task(sourceTask.identity, [], sourceTask.bind);
-  return { source, steps: [[ONBASE_SOURCE_STEP, [source]]] as const,
+  const step = manual === undefined ? ONBASE_SOURCE_STEP : author.group(ONBASE_SOURCE_STEP, { manual });
+  return { source, steps: [[step, [source]]] as const,
     result: author.result(OnbaseTargetSchema, [source], ({ outputs }) => outputs["source-page"]) };
 }
 export const onbaseSourcePageDefinition = defineStep({
-  group: ONBASE_SOURCE_STEP, build: buildSource,
+  group: ONBASE_SOURCE_STEP,
+  build: (author: WorkflowAuthor<typeof OnbaseInputSchema>) => buildSource(author, sourcePageManual),
   proof: { id: "onbase-source-page", order: 13,
     build: (parent: WorkflowDefinition<typeof OnbaseInputSchema>) => ({
       ...inheritStepProof(parent), code: "obs", label: "OnBase source page", summary: "Verifies source bytes and binds exactly one PDF page without importing it.",

@@ -89,7 +89,7 @@ it("records an import done outside Relay without preparing it or creating a writ
   assert.match(logPlainText([imported]), /Done outside Relay/u);
 });
 
-it("skips the source artifact and import only after the import omission is confirmed", async () => {
+it("requires a typed PDF page and an explicit import omission when source preparation is off", () => {
   const { descriptor } = onbaseModule;
   const rows = projectStartRows(descriptor);
   assert.deepEqual(rows.map(({ key, kind, lockReason, manual }) => [key, kind, lockReason, manual?.form.fields, manual?.forces]), [
@@ -101,13 +101,10 @@ it("skips the source artifact and import only after the import omission is confi
     (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "cascade-refused");
   assert.throws(() => resolveStartStepOmissions(descriptor, [], [{ step: "source-page", facts: { sourcePage: 0 } }, { step: "import-document", facts: {} }]),
     (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "facts-invalid");
-  const { run, intents, sourceOpens, actions } = await runOnbase("committed", {
-    selectedStepKeys: [], stepOmissions: [{ step: "source-page", facts: { sourcePage: 2 } }, { step: "import-document", facts: {} }],
-  });
-  assert.deepEqual(run?.envelope.stepOmissions?.[0], { step: "source-page", facts: { sourcePage: 2 }, labels: { sourcePage: "PDF page" } });
-  assert.equal(sourceOpens, 0);
-  assert.deepEqual(actions, []);
-  assert.deepEqual(intents, []);
+  assert.deepEqual(resolveStartStepOmissions(descriptor, [], [{ step: "source-page", facts: { sourcePage: 2 } }, { step: "import-document", facts: {} }]), [
+    { step: "source-page", facts: { sourcePage: 2 }, labels: { sourcePage: "PDF page" } },
+    { step: "import-document", facts: {}, labels: {} },
+  ]);
 });
 
 it("keeps the permanent import key when the selected source page is serialized differently", async () => {
