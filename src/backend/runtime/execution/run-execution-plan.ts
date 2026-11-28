@@ -334,7 +334,8 @@ export function prepareRunPlan(
         // A stale always-rerun fact is read again, and so is a stale ancestor of a plain Start;
         // only an explicit start node or a continuation refuses a stale checkpoint.
         const implicitAncestor = !explicit && envelope.continuation === undefined && !retainedAccounting;
-        if (!recheckAncestor && (node.replay === "always-rerun" || implicitAncestor) && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
+        // A receipt review must resolve the filed branch before checking freshness for any remaining commits.
+        if (!recheckAncestor && postWriteReview === undefined && (node.replay === "always-rerun" || implicitAncestor) && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
           replayed: [{ nodeId: node.id, taskId: node.uses.id, freshness: node.uses.freshness, provenance: record.provenance }],
           scheduled: pendingCommits, now: clock.now(), attempt: envelope.attempt,
           ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) }).length > 0) {
@@ -445,6 +446,10 @@ export function prepareRunPlan(
     }
     if (node.kind === "branch" || node.kind === "parallel") {
       if (postWriteReview !== undefined && node.kind === "branch") {
+        if (node.dependsOn.some(id => !Object.hasOwn(outputs, id) && plan.get(id)?.mode !== "skipped-condition")) {
+          problems.push(`missing settled context for branch "${node.id}" before the reference review`);
+          continue;
+        }
         const selected = node.choose(scopeFor(node.dependsOn));
         if (!Object.hasOwn(node.cases, selected)) throw new RunContinuationRefusedError("run-gate-resume-branch-unavailable");
         for (const [key, targets] of Object.entries(node.cases)) {
