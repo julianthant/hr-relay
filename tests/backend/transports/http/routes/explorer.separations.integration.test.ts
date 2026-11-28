@@ -96,7 +96,7 @@ it("continues an agreed identity and waits before filing when identity approval 
 it("continues without a difference and lets the operator cancel a mismatch in either mode", async () => {
   const { reviewSpec: spec } = await served();
   const [comparison, review] = blocks(spec, "reference-check", "decision"); assert.ok(comparison); assert.ok(review);
-  assert.deepEqual([comparison.id, comparison.initial], ["reference-result", "false"]);
+  assert.deepEqual([comparison.id, comparison.initial], ["reference-result", "null"]);
   assert.deepEqual([review.id, review.initial], ["reference-check-review", "continue"]);
   assert.ok(walk(spec).steps.some(entry => entry.id === "ucpath-transaction"));
   for (const dryRun of ["false", "true"]) {

@@ -5,6 +5,7 @@ import { WorkbookIdSchema } from "../../dashboard/workbooks.js";
 import { WorkbookRefusalSchema } from "./read-result.js";
 
 export const REFERENCE_CHECK_ID = "reference-check";
+export const REFERENCE_LOOKUP_NODE = "reference-person-lookup";
 export const EMPLOYEE_REFERENCE_CHECK = Object.freeze({ id: REFERENCE_CHECK_ID, keyFieldId: "eid" });
 export const ReferenceReviewSchema = z.strictObject({ decision: z.literal("continue") });
 const REVIEW_PREFIX = "reference-field-review";

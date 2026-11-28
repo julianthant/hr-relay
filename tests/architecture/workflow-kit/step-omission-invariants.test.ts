@@ -473,7 +473,6 @@ describe("step-omission invariants", () => {
     }
     assertSweptEveryDeclaration(audited, "planner sweep");
     assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, FIXTURE_ID]), "the whole-descriptor sweep visited the wrong descriptors");
-    // Person Lookup has no gate; the ALWAYS-GATE sweep stays non-vacuous through these gated descriptors.
-    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, FIXTURE_ID]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
+    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, FIXTURE_ID]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
   });
 });

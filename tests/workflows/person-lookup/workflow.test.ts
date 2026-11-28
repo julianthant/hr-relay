@@ -6,7 +6,7 @@ import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-r
 import { workflowPlanning, workflowProjections } from "../../../src/workflow-kit/workflow.js";
 import { personLookupDescriptor, personLookupModule, separationsIdentityCheckDescriptor, separationsKronosTimecardDescriptor, separationsUcpathTerminationDescriptor } from "../../support/helpers/registered-workflows.js";
 
-const referenceStages = expectedReferenceStages(["start", "search-identity", "crm-identity", "active-status"]);
+const referenceStages = expectedReferenceStages(["start", "matching", "search-identity", "crm-identity", "active-status"]);
 describe("workflow definition public equivalence characterization", () => {
   it("declares the exact Queue outcome table for Search and Match", () => {
     assert.deepEqual(personLookupDescriptor.outcomeProjection, {
@@ -658,6 +658,7 @@ describe("workflow definition public equivalence characterization", () => {
         "value": "match"
       }
     },
+    ...referenceStages[1].graph,
     {
       "id": "search-identity",
       "kind": "task",
@@ -666,7 +667,7 @@ describe("workflow definition public equivalence characterization", () => {
         "matching"
       ]
     },
-    ...referenceStages[1].graph,
+    ...referenceStages[2].graph,
     {
       "id": "cross-verify",
       "kind": "task",
@@ -702,7 +703,7 @@ describe("workflow definition public equivalence characterization", () => {
         }
       }
     },
-    ...referenceStages[2].graph,
+    ...referenceStages[3].graph,
     {
       "id": "crm-selected-record",
       "kind": "task",
@@ -772,7 +773,7 @@ describe("workflow definition public equivalence characterization", () => {
         "value": "search"
       }
     },
-    ...referenceStages[3].graph,
+    ...referenceStages[4].graph,
     {
       "id": "crm-dates",
       "kind": "task",
@@ -807,6 +808,7 @@ describe("workflow definition public equivalence characterization", () => {
       "taskId": "ucpath/search-person-match",
       "conditional": true
     },
+    ...referenceStages[1].steps,
     {
       "key": "search-identity",
       "nodeId": "search-identity",
@@ -815,7 +817,7 @@ describe("workflow definition public equivalence characterization", () => {
       "taskId": "workflow:person-lookup/read-resolved-identity",
       "conditional": false
     },
-    ...referenceStages[1].steps,
+    ...referenceStages[2].steps,
     {
       "key": "cross-verify",
       "nodeId": "cross-verify",
@@ -832,7 +834,7 @@ describe("workflow definition public equivalence characterization", () => {
       "taskId": "workflow:person-lookup/read-resolved-identity",
       "conditional": true
     },
-    ...referenceStages[2].steps,
+    ...referenceStages[3].steps,
     {
       "key": "crm-selected-record",
       "nodeId": "crm-selected-record",
@@ -865,7 +867,7 @@ describe("workflow definition public equivalence characterization", () => {
       "taskId": "workflow:person-lookup/read-active-status",
       "conditional": true
     },
-    ...referenceStages[3].steps,
+    ...referenceStages[4].steps,
     {
       "key": "crm-dates",
       "nodeId": "crm-dates",
@@ -885,6 +887,7 @@ describe("workflow definition public equivalence characterization", () => {
     "workbooks/read-reference-fields",
     "ucpath/search-person-org",
     "ucpath/search-person-match",
+    "workbooks/read-reference-fields",
     "workflow:person-lookup/read-resolved-identity",
     "workbooks/read-reference-fields",
     "crm/search-onboarding-records",

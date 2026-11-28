@@ -70,7 +70,7 @@ describe("Separations reference spreadsheet check", () => {
     assert.ok(upstreamOf("reference-fields-approval").has("approval"));
     const review = node(APPROVAL_GATE);
     assert.ok(review.kind === "gate" && review.resolvedBy === "operator");
-    assert.deepEqual(review.when, { kind: "equals", of: { from: "node", nodeId: "reference-fields-approval", path: "review" }, value: true });
+    assert.deepEqual(review.when, { kind: "is-present", of: { from: "node", nodeId: "reference-fields-approval", path: "review" } });
     for (const write of nodes.filter(candidate => candidate.kind === "transaction")) {
       assert.ok(upstreamOf(String(write.id)).has(APPROVAL_GATE), `${String(write.id)} waits for the reference review`);
     }

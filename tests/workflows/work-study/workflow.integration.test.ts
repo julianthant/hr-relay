@@ -215,7 +215,7 @@ it("rechecks a parked PayPath Save after a compatible build change without click
   const paypath = deterministicPayPathOperations({ read, submit: "answer-lost" });
   const sessions = sessionFactoryHarness({ ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(), ...paypath }) });
   const f = await referenceWorld.fixture(compiled.descriptor, sessions);
-  const reference = f.spreadsheet("Fall roster", "Awards", ["eid"], [["10000009"]]);
+  const reference = f.spreadsheet("Fall roster", "Awards", ["eid", "fullName"], [[INPUT.emplId, "Other, Person"]]);
   const review = await f.execute(f.start(INPUT, [reference]));
   assert.equal(review.lifecycle.state, "parked-gate");
   assert.equal(f.continueAnyway(review).state, "applied");

@@ -26,8 +26,14 @@ export function defineReferenceCheck(spec: ReferenceCheckDefinition) {
 function valueAt(value: unknown, path: string): string {
   let selected = value;
   for (const key of path.split(".")) {
-    if (selected === null || typeof selected !== "object" || !Object.hasOwn(selected, key)) return "";
-    selected = Reflect.get(selected, key);
+    const unique = key.endsWith("[]");
+    const member = unique ? key.slice(0, -2) : key;
+    if (selected === null || typeof selected !== "object" || !Object.hasOwn(selected, member)) return "";
+    selected = Reflect.get(selected, member);
+    if (unique) {
+      if (!Array.isArray(selected) || selected.length !== 1) return "";
+      selected = selected[0];
+    }
   }
   return typeof selected === "string" || typeof selected === "number" ? String(selected).trim() : "";
 }

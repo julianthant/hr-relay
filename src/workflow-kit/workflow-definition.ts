@@ -45,7 +45,7 @@ import type {
   WorkflowDescriptorSpec,
 } from "./workflow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes, parseWorkbookRequirement } from "./workflow.js";
-import { CompareReferenceFields, ReferenceReviewSchema, referenceReviewId } from "../models/processing/workbooks/reference-fields.js";
+import { CompareReferenceFields, REFERENCE_LOOKUP_NODE, ReferenceReviewSchema, referenceReviewId } from "../models/processing/workbooks/reference-fields.js";
 import { defineReferenceCheck, referenceFieldsAt } from "./reference-check.js";
 import { PersonLookupInput } from "../models/workflows/person-lookup/input.js";
 import { PersonLookupResultSchema } from "../models/workflows/person-lookup/result.js";
@@ -784,7 +784,7 @@ function referenceStages<Input extends z.ZodType>(
 ) {
   const order = topologicalEntries(steps, parallelMembership(steps));
   const mapped = order.filter(node => Object.hasOwn(definition.outputs, node.id));
-  const lookupId = "reference-person-lookup";
+  const lookupId = REFERENCE_LOOKUP_NODE;
   const lookupName = definition.lookupName;
   const stageIds = ["start", ...(lookupName === undefined ? [] : [lookupId]), ...mapped.map(node => node.id)];
   const checkId = (suffix: string) => `reference-fields-${suffix}`;
@@ -1040,10 +1040,13 @@ export function defineWorkflow<
   const rows = spec.referenceCheck !== undefined && spec.rows !== undefined
     && !spec.rows.some(row => row.members.some(member => member.workflow === undefined && member.step === REFERENCE_CHECK_STEP.key))
     ? [{ ...REFERENCE_CHECK_STEP, members: [{ step: REFERENCE_CHECK_STEP.key }] }, ...spec.rows] : spec.rows;
-  validateSteps(id, steps, authored.result.references);
+  const result = reference === undefined || authored.result.references.length > 0 ? authored.result : {
+    ...authored.result, references: reference[1].slice(-2),
+  };
+  validateSteps(id, steps, result.references);
 
   for (const entry of flattenEntries(steps)) Object.freeze(entry.references);
-  Object.freeze(authored.result.references);
+  Object.freeze(result.references);
   return Object.freeze({
     ...presentation,
     ...(spec.nodePurposes === undefined || reference === undefined ? {} : {
@@ -1069,7 +1072,7 @@ export function defineWorkflow<
       })),
       Object.freeze([...entries]),
     ] as const))),
-    result: authored.result,
+    result: Object.freeze(result),
   });
 }
 

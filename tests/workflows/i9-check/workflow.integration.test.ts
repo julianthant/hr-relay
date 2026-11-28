@@ -32,7 +32,11 @@ it("i9-check/person — admits I-9 only as a declared child and limits it to rea
   expect(() => workflowModuleOf("i9-check")).toThrow(/not registered/u);
   expect(descriptor.surfaces).toEqual({});
   expect(workflowProjections(descriptor).systems).toEqual(["ucpath"]);
-  expect(descriptorRuntimeNodes(descriptor).every(node => node.kind === "task")).toBe(true);
+  expect(descriptorRuntimeNodes(descriptor).filter(node => node.kind !== "task").map(node => [node.id, node.kind])).toEqual([
+    ["reference-field-review-start", "gate"], ["reference-person-lookup", "child-run"],
+    ["reference-field-review-reference-person-lookup", "gate"], ["reference-field-review-match-outcome", "gate"],
+    ["reference-field-review-retention-row", "gate"],
+  ]);
   expect(workflowProjections(descriptor).contracts.every(contract => contract.effect === "read")).toBe(true);
   expect(descriptor.timeline.map(step => step.key)).toEqual(["reference-check", "person-match", "person-lookup", "roster-match"]);
   const { fixtureWorkflow } = createSearchWorkflowDefinitionFixtures();

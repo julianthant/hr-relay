@@ -69,7 +69,7 @@ it("offers Continue anyway or Cancel run for a field difference in either mode",
   const { reviewSpec: spec } = await served("work-study");
   const [check, approval] = blocks(spec, "reference-check", "decision"); assert.ok(check); assert.ok(approval);
   assert.deepEqual([check.id, approval.id], ["reference-result", "reference-check-review"]);
-  assert.deepEqual(check.outcomes.slice(0, 2).map(outcome => outcome.value), ["false", "true"]);
+  assert.deepEqual(check.outcomes.slice(0, 2).map(outcome => outcome.value), ["null", "true"]);
   assert.deepEqual(approval.outcomes.map(outcome => [outcome.value, outcome.stops]), [["continue", false], ["cancelled", true]]);
   for (const dryRun of ["false", "true"]) {
     const stopped = walk(spec, { "dry-run": dryRun }, { "reference-result": "true", "reference-check-review": "cancelled" });

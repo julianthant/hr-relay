@@ -121,7 +121,7 @@ it("rejects forged gates, values, initial outcomes and missing failures without 
   const dropped = withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, outcomes: block.outcomes.filter(outcome => outcome.value !== "PERSON_LOOKUP_UCPATH_SEARCH_FAILED") } : block));
   assert.equal(ExplorerReviewSpecSchema.safeParse(dropped).success, true);
   assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...entry, reviewSpec: dropped }).success, false);
-  assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...entry, reviewSpec: { ...spec, steps: rest } }).success, false);
+  assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...entry, reviewSpec: { ...spec, steps: spec.steps.filter(step => step !== first) } }).success, false);
 });
 
 it("refuses a Search by option whose choice no review row reads", () => {

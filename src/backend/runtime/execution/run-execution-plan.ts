@@ -8,7 +8,7 @@ import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import type { NodeId } from "../../../rules/identity/ids.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { TerminalDependencyEvidence } from "../../../models/run/result.js";
-import { CompareReferenceFields, referenceComparisonForGate } from "../../../models/processing/workbooks/reference-fields.js";
+import { CompareReferenceFields, REFERENCE_CHECK_ID, REFERENCE_LOOKUP_NODE, referenceComparisonForGate } from "../../../models/processing/workbooks/reference-fields.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, RunCheckpointRecordSchema, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "../checkpoints/checkpoint-patch.js";
@@ -196,6 +196,11 @@ export function prepareRunPlan(
       plan.set(String(node.id), { mode: "omitted" });
       continue;
     }
+    if (node.kind === "child-run" && node.id === REFERENCE_LOOKUP_NODE && node.target.id === "person-lookup"
+      && !runWorkbookReferenceTypeIds(initial.input.workbookReferences).includes(REFERENCE_CHECK_ID)) {
+      plan.set(String(node.id), { mode: "skipped-condition" });
+      continue;
+    }
     if (omissionPlan.asserted.has(String(node.id))) {
       // A typed value stands for a reading that would have run: a node this input never runs stays skipped.
       if (node.kind === "task" && node.when?.of.from === "input" && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
@@ -261,13 +266,12 @@ export function prepareRunPlan(
           continue;
         }
       }
-      const checkpoint = recheckAncestor ? payPathRecheckInputs.get(node.id) : retainedAccounting
+      const stored = recheckAncestor ? payPathRecheckInputs.get(node.id)
+        : retainedAccounting || node.uses === CompareReferenceFields && envelope.continuation === undefined
         ? deps.authority.authority.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, node.id, envelope.attempt)
           .filter(record => record.runId === runId).at(-1)
         : readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true,
           node.when?.of.from === "reference" ? node.when.of.typeId : undefined);
-      const stored = node.uses === CompareReferenceFields && checkpoint?.runId !== runId && envelope.continuation === undefined
-        ? undefined : checkpoint;
 
       if ((envelope.recovery === "restart-from-start" || envelope.sourceBound !== undefined && envelope.continuation === undefined) && stored !== undefined && stored.runId !== runId) {
         if (explicit) {

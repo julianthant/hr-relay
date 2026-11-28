@@ -23,6 +23,7 @@ export const personLookupWorkflow = defineWorkflow({
   id: "person-lookup",
   requiredWorkbookFields: [],
   referenceCheck: defineReferenceCheck({ key: "eid", input: { eid: "emplId", fullName: "name", firstName: "firstName", lastName: "lastName", dob: "dob" }, outputs: {
+    matching: { eid: "confirmed[].emplId", fullName: "confirmed[].name" },
     "search-identity": { eid: "selected.emplId", fullName: "selected.name" },
     "crm-identity": { eid: "crmIdentity.emplId", fullName: "crmIdentity.name" },
     "active-status": { eid: "details.eid", fullName: "details.name" },

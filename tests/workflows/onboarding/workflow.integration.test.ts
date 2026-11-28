@@ -491,7 +491,7 @@ describe("onboarding roster names in a real run", () => {
     projection.ingestFromTimeline();
     const detail = buildRunDetail(createOperatorRunDetail({ database: f.database, stateRoot: f.stateRoot, projection, runReader: reader,
       canonical: { database: f.database, reader, descriptors } }), root.envelope.runId);
-    assert.deepEqual(detail.timeline.steps?.slice(0, 4).map(step => [step.key, step.state, step.members.map(member => [member.nodeId, member.state, member.notRunReason])]), [
+    assert.deepEqual(detail.timeline.steps?.filter(step => step.key !== "reference-check").slice(0, 4).map(step => [step.key, step.state, step.members.map(member => [member.nodeId, member.state, member.notRunReason])]), [
       ["crm-data", "done", [["crm-source", "done", undefined], ["hire-plan", "done", undefined]]],
       ["ucpath-search", "done", [["ucpath-source", "done", undefined], ["hire-subject", "done", undefined]]],
       ["i9-search", "done", [...(lookupRuns ? [["i9-lookup-child", "done", undefined]] : []), ["i9-lookup", "done", undefined]]],

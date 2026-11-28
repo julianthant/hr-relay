@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { compareReferenceFields } from "../../src/workflow-kit/reference-check.js";
+import { compareReferenceFields, referenceFieldsAt } from "../../src/workflow-kit/reference-check.js";
 
 describe("shared reference comparisons", () => {
   const sheets = [
@@ -29,5 +29,13 @@ describe("shared reference comparisons", () => {
     assert.deepEqual(result.mismatches.map(({ source, field }) => ({ source, field })), [
       { source: "first", field: "dob" }, { source: "third", field: "fullName" },
     ]);
+  });
+
+  it("reads an identifier only from a single confirmed match", () => {
+    const fields = { eid: "confirmed[].emplId" };
+    const person = { emplId: "10000001" };
+    assert.deepEqual(referenceFieldsAt(fields, { confirmed: [] }), []);
+    assert.deepEqual(referenceFieldsAt(fields, { confirmed: [person, { emplId: "10000002" }] }), []);
+    assert.deepEqual(referenceFieldsAt(fields, { confirmed: [person] }), [{ field: "eid", value: person.emplId }]);
   });
 });

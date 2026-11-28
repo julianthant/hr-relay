@@ -34,7 +34,7 @@ async function fixture(options: Parameters<typeof world.fixture>[0] = {}) {
     return result.run;
   };
   const people = () => f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "i9-check");
-  const events = (run: RunRecord) => f.database.authority.timelineEvents.page({}).filter(event => event.scope.kind === "run" && event.scope.runId === run.envelope.runId);
+  const events = (run: RunRecord) => f.database.authority.timelineEvents.page({ runId: run.envelope.runId, limit: 1_000 });
   const checkLines = (run: RunRecord) => referenceCheckLines(events(run));
   const nodeSpans = (run: RunRecord, nodeId: string) => events(run).flatMap(event => event.payload.kind === "span" && event.payload.event.t === "span.ended"
     && event.payload.event.spanPath.includes(`/${nodeId}#`) ? [[event.payload.event.outcome, "notRunReason" in event.payload.event ? event.payload.event.notRunReason : undefined]] : []);

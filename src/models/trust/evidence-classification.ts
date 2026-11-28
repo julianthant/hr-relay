@@ -3,7 +3,7 @@ import { z } from "zod";
 import { JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import { AdmittedAnswerSchema } from "../ocr/extraction.js";
 import { OCR_FORMS } from "../ocr/form-registry.js";
-import { referenceComparisonForGate } from "../processing/workbooks/reference-fields.js";
+import { CompareReferenceFields, referenceComparisonForGate } from "../processing/workbooks/reference-fields.js";
 import { GateIdSchema, TaskIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import {
   DataClassificationSchema,
@@ -1228,7 +1228,7 @@ export function redactEvidenceLeaf(
   leaf: EvidenceLeaf,
 ): z.infer<typeof RedactedFieldSchema> {
   const declared = classifyEvidenceLeaf(scope, leaf.path);
-  if (leaf.field === "ssn") {
+  if (leaf.field === "ssn" || scope.kind === "task-output" && scope.taskId === CompareReferenceFields.id && declared.transform === "drop") {
     return RedactedFieldSchema.parse({ key: leaf.path, ...redactValue(declared.classification, declared.transform, leaf.value) });
   }
   const redaction = redactDiagnosticFields([{

@@ -128,12 +128,12 @@ function settledGateWire(
   };
 }
 
-/** D4 for the hire review: both arms are served from `hireReviewChoices` over the run's own UCPath match, exactly as `readOnboardingWritePlan` accepts them. Other operator gates stay unprojected: the identity gate has its own section, and no other arm's result can be built from served facts. */
+/** Builds hire and spreadsheet reviews from the parked run's retained observations. */
 function reviewBeforeWriteDecision(deps: RunDetailQueryDeps, authority: RunRecord, gateId: string): RunDecisionWire | undefined {
   const arms = findGateDecision(authority.envelope.workflow, gateId)?.arms;
   const comparison = referenceComparisonForGate(gateId);
   if (comparison !== undefined && arms !== undefined) {
-    const check = hireReviewCheckpoint(deps, authority, comparison, CompareReferenceFields.output);
+    const check = hireReviewCheckpoint(deps, authority, comparison, CompareReferenceFields.output, true);
     return referenceReviewDecision(deps, authority, arms, gateId, check?.mismatches.map(item =>
       `${item.sheet}, row ${item.row} · ${spreadsheetField(item.field).label}: spreadsheet “${item.expected}”, workflow “${item.actual}”`) ?? []);
   }
@@ -143,7 +143,7 @@ function reviewBeforeWriteDecision(deps: RunDetailQueryDeps, authority: RunRecor
     : hireReviewDecision(review.mode, review.match, review.plan.employee, arms, gateId, authority.version);
 }
 
-/** The reference review: the gate's declared arm plus the run's own cancel; the context names each spreadsheet that did not confirm the person, never a row's values. */
+/** Only the authenticated parked gate serves both values for a difference. */
 function referenceReviewDecision(deps: RunDetailQueryDeps, authority: RunRecord, arms: readonly Readonly<{ value: string; label: string; hint?: string }>[],
   gateId: string, lines: readonly string[]): RunDecisionWire | undefined {
   if (lines.length === 0) return undefined;
@@ -287,11 +287,15 @@ export function resolveGateArmAnswer(deps: RunDetailQueryDeps, answer: GateArmAn
 }
 
 /** The run's own checkpoint for `nodeId`, or undefined when it cannot be read for this run's bound descriptor. */
-function hireReviewCheckpoint<S extends z.ZodType>(deps: RunDetailQueryDeps, authority: RunRecord, nodeId: string, schema: S): z.infer<S> | undefined {
+function hireReviewCheckpoint<S extends z.ZodType>(deps: RunDetailQueryDeps, authority: RunRecord, nodeId: string, schema: S, ownAttempt = false): z.infer<S> | undefined {
   const canonical = deps.canonical;
   if (canonical === undefined) return undefined;
   const { envelope } = authority;
-  const stored = readRunCheckpoint(canonical.database.authority, envelope, nodeId, true);
+  const repositories = canonical.database.authority;
+  const stored = ownAttempt && envelope.continuation === undefined
+    ? repositories.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, nodeId, envelope.attempt)
+      .filter(checkpoint => checkpoint.runId === envelope.runId).at(-1)
+    : readRunCheckpoint(repositories, envelope, nodeId, true);
   if (stored === undefined || stored.workflowId !== envelope.workflow || stored.itemId !== envelope.itemId
     || stored.attempt > envelope.attempt || stored.descriptorVersion !== envelope.descriptorVersion
     || stored.contractFingerprint !== envelope.contractFingerprint
