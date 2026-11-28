@@ -1024,6 +1024,7 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   WORKBOOK_OPERATION_CONFLICT: catalogEntry("This workbook operation was already used with different input.", EmptyParametersSchema),
   WORKBOOK_NAME_EXISTS: catalogEntry("A spreadsheet with this name already exists. Choose a different name.", EmptyParametersSchema),
+  WORKBOOK_VERSION_NAME_EXISTS: catalogEntry("A version with this name exists.", EmptyParametersSchema),
   WORKBOOK_TYPE_IN_USE: catalogEntry("History uses this type. Rename columns, or make a new type.", EmptyParametersSchema),
   WORKBOOK_VERSION_IN_USE: catalogEntry("This version is in use and cannot be deleted.", EmptyParametersSchema),
   WORKBOOK_LIBRARY_IN_USE: catalogEntry("A run or pending change uses this spreadsheet. Finish that first.", EmptyParametersSchema),
