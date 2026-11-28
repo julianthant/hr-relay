@@ -165,3 +165,5 @@ export { SYSTEM_HOST_PRESENTATION } from "./general/settings-hosts-model.js";
 export type { SystemHostPresentation } from "./general/settings-hosts-model.js";
 export { storageNeedsAttention } from "./storage/storage-settings-model.js";
 export type { StorageHealthSummary } from "./storage/storage-settings-model.js";
+
+export const CREDENTIALS_UNAVAILABLE = "Credentials unavailable; reopen Settings to try again.";

@@ -65,6 +65,9 @@ export const RUN_DIALOG_CRM = "crm-doc-download";
 export const RUN_DIALOG_SEVERAL_SHEETS_CATALOG = catalogOf(flow => ({ ...flow, workflowId: RUN_DIALOG_CRM, label: "CRM Document Download", icon: "FileText", code: "cd",
   requiredWorkbookFields: [...CRM_DOCUMENT_ROSTER_FIELDS], workbookReference: { id: ONBOARDING_ROSTER_TYPE_ID, keyFieldId: "email", mode: "keys", writableFields: [] },
   inputRun: flow.inputRun.state === "present" ? { state: "present", surface: { ...flow.inputRun.surface, placeholder: "Enter employee IDs or emails for one batch" } } : flow.inputRun }));
+/** The entry as a workflow that starts one run per saved roster row. */
+export const RUN_DIALOG_SAVED_ROWS_CATALOG = catalogOf(flow => ({ ...flow, requiredWorkbookFields: ["eid"], workbookReference: { id: "roster-type", keyFieldId: "eid", mode: "keys", writableFields: [] },
+  inputRun: flow.inputRun.state === "present" ? { state: "present", surface: { ...flow.inputRun.surface, workbookRows: { typeId: "roster-type", inputField: "eid" } } } : flow.inputRun }));
 /** The entry as a workflow with the optional second check. */
 export const RUN_DIALOG_CHECK_CATALOG = catalogOf(flow => ({ ...flow, workbookCheck: { id: "reference-check", keyFieldId: "eid" } }));
 /** The entry as a PDF workflow: documents in, an OCR switch and a required choice on the Options stage. */
