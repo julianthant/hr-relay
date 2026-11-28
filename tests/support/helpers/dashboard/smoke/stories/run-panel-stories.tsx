@@ -6,7 +6,7 @@ import type { z } from "zod";
 import { WriteStateSchema } from "../../../../../../src/models/trust/failure.js";
 import { projectFailureDisplay } from "../../../../../../src/models/dashboard/failure-display.js";
 import type { RunDecisionType } from "../../../../../../src/models/dashboard/run-decision.js";
-import { QueueMemberTargetSchema, QueueSurfaceWireSchema, type QueueStatusSchema } from "../../../../../../src/models/dashboard/projection.js";
+import { QueueMemberTargetSchema, type QueueStatusSchema } from "../../../../../../src/models/dashboard/projection.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../../src/models/failures/error-catalog.js";
 import { ErrorCodeSchema, IsoInstantSchema, StableRecordIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import { Badge, Banner, FailureNotice } from "../../../../../../src/dashboard/ds/ui.js";
@@ -28,8 +28,6 @@ import { RunReview } from "../../../../../../src/dashboard/surfaces/run-detail/r
 import { ReviewDialog } from "../../../../../../src/dashboard/surfaces/run-detail/review/review-dialog.js";
 import { logTimelineSample, separationLogs } from "../../../../fixtures/dashboard/log-preview/log-fixture.js";
 import { ocrReviewPageFixture } from "../../../../fixtures/dashboard/ocr-review.js";
-import { FIXTURE_DAY_WIRE } from "../../../../fixtures/dashboard/fixture-queue.js";
-import { SOURCE_RUN_ID } from "../../../../fixtures/ocr/source-pages.js";
 import { RunDetailWireSchema } from "../../../../../../src/models/dashboard/run-detail.js";
 import { queueStoryRow } from "../../../../fixtures/dashboard/queue-row-story-surfaces.js";
 import {
@@ -254,18 +252,15 @@ const REVIEW_NOTICE = {
   "record-unavailable": {
     title: "A review that no longer holds the opened record", ready: 'text="Record unavailable: not part of this review."',
     render: () => {
-      const base = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === "single");
-      if (base === undefined) throw new Error("the fixture day has no single queue row");
-      const selection = { row: QueueSurfaceWireSchema.parse({ ...base, runId: SOURCE_RUN_ID, workflowId: "ocr", parent: null, status: "running", title: "Synthetic source", actions: [],
-        panelKind: "review", availableSections: ["logs", "review"], endedAt: { state: "absent", reason: "Running" }, gateOpenedAt: { state: "absent", reason: "No gate" } }), workflowLabel: "OCR" };
+      const selection = { row: queueStoryRow("running", 50, { workflowId: "ocr", parent: null, panelKind: "review", availableSections: ["logs", "review"] }), workflowLabel: "OCR" };
       const detail = RunDetailWireSchema.parse({ runId: selection.row.runId, rowRevision: selection.row.rowRevision, panelKind: "review",
         header: { runId: selection.row.runId, workflowId: "ocr", traceId: selection.row.traceId, title: selection.row.title, status: selection.row.status, attempt: selection.row.attempt },
         timeline: { steps: [], events: [] }, gate: { state: "absent", reason: "No gate" }, outcome: { state: "absent", reason: "Running" },
         context: { dataFacts: 0, evidenceFacts: 0, attempts: 1 }, availableSections: ["logs", "review"] });
       const client = createDashboardClient({ baseUrl: "http://relay.story.test", fetchImpl: async input => Response.json(
-        String(input).endsWith("/review") ? { section: "review", payload: ocrReviewPageFixture(SOURCE_RUN_ID) } : detail) });
+        String(input).endsWith("/review") ? { section: "review", payload: ocrReviewPageFixture(selection.row.runId) } : detail) });
       return <StoryFrame><DashboardClientProvider client={client}>
-        <ReviewDialog open onOpenChange={noop} subject="Emergency Contact scan"><RunReview selection={selection} focus={{ runId: SOURCE_RUN_ID, recordId: StableRecordIdSchema.parse(`${"a".repeat(64)}#emergency-contact#9`) }} /></ReviewDialog>
+        <ReviewDialog open onOpenChange={noop} subject="Emergency Contact scan"><RunReview selection={selection} focus={{ runId: selection.row.runId, recordId: StableRecordIdSchema.parse(`${"a".repeat(64)}#emergency-contact#9`) }} /></ReviewDialog>
       </DashboardClientProvider></StoryFrame>;
     },
   },
