@@ -1,6 +1,7 @@
 import { Field, Input, SecretField } from "../../../ds/ui.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { formatSetting } from "../editor/settings-draft-model.js";
+import { SavingMark } from "../editor/settings-controls.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
@@ -24,7 +25,7 @@ export function ProtectedSettingField({ editor, name, description, controlWidth 
   const disabled = credentials.locked || authority.state !== "available" || editor.readProblem !== undefined;
   const visible = name === "ucpathUserId";
   const label = name === "ucpathUserId" ? "UCPath username" : row.label;
-  return <Field data-settings-path={`protected.${name}`} label={label} {...inDialog ? {} : { description }} error={credentials.errors[name]}
+  const field = <Field {...inDialog ? { "data-settings-path": `protected.${name}` } : {}} label={label} {...inDialog ? {} : { description }} error={credentials.errors[name]}
     orientation={inDialog ? "vertical" : "horizontal"} controlWidth={controlWidth} className={className}
     disabled={disabled}>
     {visible ? <div className="ds-secret-field">
@@ -34,4 +35,5 @@ export function ProtectedSettingField({ editor, name, description, controlWidth 
       name={name} autoComplete={name === "ucpathPassword" ? "section-ucpath new-password" : "off"} spellCheck={false} placeholder="Enter value"
       onChange={event => credentials.update(name, event.target.value)} />}
   </Field>;
+  return inDialog ? field : <div data-settings-path={`protected.${name}`}>{field}<SavingMark editor={{ savingPaths: credentials.savingNames }} path={name} /></div>;
 }

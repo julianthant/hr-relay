@@ -45,6 +45,8 @@ export type LogEntry = Readonly<{
   message: string;
   captureFailure?: "pre-submit-failed" | "post-submit-unknown" | "post-submit-proved";
   tone?: "info" | "danger" | "positive";
+  /** A recorded step's state, drawn as its icon. */
+  state?: "done" | "active" | "failed";
   announce?: boolean;
 }> | Readonly<{
   kind: "decision";

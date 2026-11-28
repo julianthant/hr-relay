@@ -38,3 +38,20 @@ it("verifies a database copy with exact high Windows path and descriptor identit
     } finally { changed = false; copy.release(); }
   } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); admission.release(); fs.rmSync(root, { recursive: true }); }
 });
+
+it("keeps an async copy digest proof only for the exact checked file version", async () => {
+  const root = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), "copy-version-"))), path = join(root, "copy.db");
+  const bytes = Buffer.from("original");
+  fs.writeFileSync(path, bytes, { mode: 0o600 });
+  const admission = RuntimeAdmission.syntheticFixture(join(root, "state.db"));
+  const expected = createHash("sha256").update(bytes).digest("hex");
+  try {
+    const copy = await admission.verifiedReadOnlyCopyAsync(path, expected);
+    try {
+      copy.assertLive();
+      fs.writeFileSync(path, "modified");
+      assert.throws(() => copy.assertLive(), /inspected copy digest changed/u);
+      await assert.rejects(admission.verifiedReadOnlyCopyAsync(path, expected), /inspected copy digest changed/u);
+    } finally { copy.release(); }
+  } finally { admission.release(); fs.rmSync(root, { recursive: true }); }
+});

@@ -4,13 +4,16 @@ import { lstatSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { SpanEventWireSchema, type SpanEventWire } from "../../../models/events/types.js";
-import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
+import { TimelineAppendSchema, TimelineEventRecordSchema, type TimelineEventRecord, type TimelineRepository } from "../../../models/events/timeline.js";
 import { NotificationRecordSchema, type NotificationRecord } from "../../../models/notifications/notifications.js";
 import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
 import { RunSessionRecordSchema, type RunSessionRecord } from "../../../models/run/session.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
-import type { IsoInstant } from "../../../rules/identity/ids.js";
+import type { IsoInstant, NodeId } from "../../../rules/identity/ids.js";
+import { WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteAttemptRecord, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import { capturedInstantClock, localDatePart } from "../../../rules/time/clock.js";
+import { createTimelineEmitter } from "../events/timeline-emitter.js";
 import type { ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { deriveStableUuid } from "../../../rules/identity/stable-uuid.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -121,7 +124,8 @@ export const COPY_HISTORY_SEED_BUILD = sha256Hex("relay-copy-seed");
 export type CopyHistorySeed = Readonly<{
   fromDay: string;
   build(runs: readonly RunRecord[]): Readonly<{
-    runs: readonly Readonly<{ run: RunRecord; failure?: FailureRecord; events: readonly SpanEventWire[] }>[];
+    runs: readonly Readonly<{ run: RunRecord; failure?: FailureRecord; events: readonly SpanEventWire[];
+      write?: Readonly<{ intent: WriteIntentRecord; attempt: WriteAttemptRecord; nodeId: NodeId }> }>[];
     notifications: readonly NotificationRecord[];
     /** Run groups the generated runs belong to; seed-owned, never a real session. */
     batches: readonly RunSessionRecord[];
@@ -143,7 +147,7 @@ const SeedMemberSchema = z.strictObject({ kind: z.enum(["run", "notification"]),
 function assertSeedRun(archive: DatabaseSync, id: string): RunRecord {
   const row = archive.prepare("SELECT * FROM runs WHERE id=?").get(id);
   const run = row === undefined ? undefined : runRecordFromRow(row);
-  if (run?.envelope.buildId !== COPY_HISTORY_SEED_BUILD || run.displayName?.startsWith("Synthetic ") !== true || !run.envelope.dryRun) throw new Error("copy-seed-run-membership-mismatch");
+  if (run?.envelope.buildId !== COPY_HISTORY_SEED_BUILD || run.displayName?.startsWith("Synthetic ") !== true) throw new Error("copy-seed-run-membership-mismatch");
   return run;
 }
 
@@ -160,7 +164,7 @@ function removePreviousSeed(archive: DatabaseSync): void {
       if (!NotificationRecordSchema.parse(JSON.parse(row.payload_json)).title.startsWith("Synthetic ")) throw new Error("copy-seed-notification-membership-mismatch");
     }
   }
-  for (const table of ["run_search", "timeline_events", "run_failures", "runs"] as const) {
+  for (const table of ["write_attempts", "write_intents", "run_search", "timeline_events", "run_failures", "runs"] as const) {
     archive.exec(`DELETE FROM ${table} WHERE ${table === "runs" ? "id" : "run_id"} IN (SELECT id FROM copy_seed_members WHERE kind='run')`);
   }
   // Seed members are gone, so any run still in a seed batch is foreign.
@@ -185,7 +189,7 @@ export function writeCopyHistorySeed(local: DatabaseSync, path: string, binding:
     let { cursor } = z.strictObject({ cursor: z.number().int().nonnegative() }).parse(
       archive.prepare("SELECT coalesce(max(cursor),0) AS cursor FROM timeline_events").get());
     const membership = archive.prepare("INSERT INTO copy_seed_members(kind,id) VALUES(?,?)");
-    const insert = (table: "runs" | "run_search" | "run_failures" | "timeline_events" | "notifications", columns: Record<string, SQLInputValue>) => {
+    const insert = (table: "runs" | "run_search" | "run_failures" | "write_intents" | "write_attempts" | "timeline_events" | "notifications", columns: Record<string, SQLInputValue>) => {
       const key = table === "run_search" ? "run_id" : "id";
       if (archive.prepare(`SELECT 1 FROM ${table} WHERE ${key}=? LIMIT 1`).get(columns[key]) !== undefined) throw new Error(`copy-seed-id-collision: ${table}`);
       const keys = Object.keys(columns);
@@ -201,23 +205,41 @@ export function writeCopyHistorySeed(local: DatabaseSync, path: string, binding:
     const byWorkflow: Record<string, number> = {};
     for (const row of population.runs) {
       const run = RunRecordSchema.parse(row.run), { runId, workflow } = run.envelope;
-      if (run.envelope.buildId !== COPY_HISTORY_SEED_BUILD || !run.envelope.dryRun || run.displayName?.startsWith("Synthetic ") !== true || run.envelope.parent !== undefined
+      if (run.envelope.buildId !== COPY_HISTORY_SEED_BUILD || run.envelope.dryRun === (row.write !== undefined) || run.displayName?.startsWith("Synthetic ") !== true || run.envelope.parent !== undefined
         || run.sessionId !== undefined && batches.get(run.sessionId)?.workflow !== workflow) throw new Error("copy-seed-run-invalid");
       const failure = row.failure === undefined ? undefined : FailureRecordSchema.parse(row.failure);
       if (failure !== undefined && (failure.runId !== runId || run.lifecycle.state !== "terminal" || run.lifecycle.failureId !== failure.failureId)) throw new Error("copy-seed-failure-owner-mismatch");
       insert("runs", runRecordColumns(run));
       if (failure !== undefined) insert("run_failures", initialFailureColumns(failure));
-      let queued: z.infer<typeof TimelineEventRecordSchema> | undefined;
-      for (const [index,event] of SpanEventWireSchema.array().parse(row.events).entries()) {
-        const record = TimelineEventRecordSchema.parse({ schemaVersion: 1, cursor: ++cursor,
-          eventId: deriveStableUuid("relay-copy-seed-event", `${runId}/${String(index)}`), workflow,
-          scope: { kind: "run", runId }, occurredAt: event.ts, recordedAt: event.ts,
-          retentionDate: event.ts.slice(0, 10), payload: { kind: "span", event }, source: { kind: "native" } });
-        if (event.t === "run.queued") {
-          if (queued !== undefined) throw new Error("copy-seed-duplicate-queue-event");
-          queued = record;
-        }
+      let queued: TimelineEventRecord | undefined, index = 0;
+      // The archive's side of the span writer: every ID is derived from the run and event position, so a reseed is identical.
+      const repository: Pick<TimelineRepository, "append"> = { append: input => {
+        const append = TimelineAppendSchema.parse(input);
+        const found = archive.prepare("SELECT 1 FROM timeline_events WHERE id=?").get(append.eventId) !== undefined;
+        const record = TimelineEventRecordSchema.parse({ ...append, cursor: found ? cursor : ++cursor });
+        if (found) return { state: "existing", record };
         insert("timeline_events", timelineEventColumns(record));
+        if (record.payload.kind === "span" && record.payload.event.t === "run.queued") queued = record;
+        return { state: "inserted", record };
+      } };
+      for (const event of SpanEventWireSchema.array().parse(row.events)) {
+        createTimelineEmitter({ repository, clock: capturedInstantClock(event.ts), pid: event.pid,
+          uuid: () => deriveStableUuid("relay-copy-seed-event", `${runId}/${String(index)}`) }).emit(event);
+        index += 1;
+      }
+      if (row.write !== undefined) {
+        const intent = WriteIntentRecordSchema.parse(row.write.intent), attempt = WriteAttemptRecordSchema.parse(row.write.attempt);
+        if (run.lifecycle.state !== "parked-write" || intent.status !== "parked" || run.lifecycle.writeIntentId !== intent.writeIntentId
+          || intent.runId !== runId || attempt.runId !== runId || attempt.writeAttemptId !== intent.currentAttemptId) throw new Error("copy-seed-write-owner-mismatch");
+        insert("write_intents", { id: intent.writeIntentId, system: intent.system, idempotency_key: intent.idempotencyKey,
+          idempotency_key_digest: intent.idempotencyKeyDigest, status: intent.status, generation: intent.generation, run_id: runId,
+          payload_json: canonicalJsonStringify(intent), publication_json: null, created_at: intent.createdAt, updated_at: intent.updatedAt });
+        insert("write_attempts", { id: attempt.writeAttemptId, intent_id: intent.writeIntentId, generation: attempt.generation,
+          run_id: runId, payload_json: canonicalJsonStringify(attempt), created_at: attempt.recordedAt });
+        repository.append({ schemaVersion: 1, eventId: runId, workflow, scope: { kind: "run", runId }, occurredAt: intent.updatedAt,
+          recordedAt: intent.updatedAt, retentionDate: localDatePart(capturedInstantClock(intent.updatedAt).now()), source: { kind: "native" },
+          payload: { kind: "write-parked", runId, workflow, attempt: run.envelope.attempt, traceId: run.envelope.traceId,
+            nodeId: row.write.nodeId, writeIntentId: intent.writeIntentId, generation: intent.generation } });
       }
       if (queued === undefined) throw new Error("copy-seed-queue-event-missing");
       insert("run_search", copySeedSearchColumns(run, queued, failure?.code ?? null));

@@ -65,6 +65,9 @@ export function createAssistantActivityQuery(options: Readonly<{
           const label = activity.outcome === "applied" || activity.outcome === "already-applied" ? applied : `Refused: ${requested}`;
           rows.push({ id: activity.id, label, at: activity.completedAt });
         }
+        for (const edit of options.database.authority.assistantAppliedEdits.list(`${day}T00:00:00.000Z`)) {
+          if (dayOf(edit.committedAt) === day) rows.push({ id: edit.id, label: edit.label.slice(0, 160), at: edit.committedAt });
+        }
         const filtered = rows.filter(row => row.label.toLowerCase().includes(needle))
           .sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || a.id.localeCompare(b.id));
         return AssistantActivityWireSchema.parse({ day, rows: filtered });
