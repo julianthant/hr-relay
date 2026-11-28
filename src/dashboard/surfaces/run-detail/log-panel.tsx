@@ -16,7 +16,7 @@ import type { LogTimelineStage } from "./logs/log-timeline-model.js";
 
 const headerIcon = (label: string) => label === "Review" ? <ClipboardCheck aria-hidden className="size-4" /> : label === "View failure" ? <TriangleAlert aria-hidden className="size-4" /> : <CircleCheck aria-hidden className="size-4" />;
 /** One row: the title truncates, the actions stay on the line. When the row's contents overflow, text buttons collapse to icons first, then the actions take their own line under the title, so nothing is pushed past the edge. */
-function LogHeader({ title, status, searching, layoutKey, children }: { title: string; status?: ReactNode; searching: boolean; layoutKey: readonly unknown[]; children: ReactNode }) {
+function LogHeader({ title, status, subtitle, searching, layoutKey, children }: { title: string; status?: ReactNode; subtitle?: ReactNode; searching: boolean; layoutKey: readonly unknown[]; children: ReactNode }) {
   const row = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const [width, setWidth] = useState(Infinity);
@@ -45,11 +45,13 @@ function LogHeader({ title, status, searching, layoutKey, children }: { title: s
     <div ref={row} className={cn("flex min-h-6 min-w-0 items-center gap-3", stacked && "flex-wrap")}><h2 ref={heading} className={cn("m-0 truncate text-heading", searching ? "min-w-24" : "min-w-0")} title={title}>{title}</h2>{status && <span className="flex shrink-0 items-center gap-2">{status}</span>}
       <LogHeaderCompact.Provider value={level > 0}><span className={cn("ml-auto flex items-center gap-2", searching ? "min-w-0 [&>:not([role=search])]:shrink-0" : "shrink-0", stacked && "w-full flex-wrap justify-end [&>[role=search]]:w-auto [&>[role=search]]:min-w-[300px] [&>[role=search]]:flex-1")}>{children}</span></LogHeaderCompact.Provider>
     </div>
+    {subtitle}
   </header>;
 }
 
 /** The production log layout accepts presentation data and has no transport dependency. */
-export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar, status, linkedRuns, onOpenLinkedRun, onDecision, onCancelRun, onReview, initialStepId, navigation, content, afterStep, trailingContent, headerActions, rerun, records }: {
+export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar, status, linkedRuns, onOpenLinkedRun, onDecision, onCancelRun, onReview, initialStepId, navigation, content, afterStep, trailingContent, headerActions, rerun, records, subtitle }: {
+  subtitle?: ReactNode;
   onDecision?: LogDecisionHandler;
   onCancelRun?: (entryId: string) => void;
   onReview?: () => void;
@@ -59,7 +61,7 @@ export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar
 }) {
   const action = runHeaderAction(steps, timeline);
   const [searching, setSearching] = useState(false);
-  const header = (jump?: (stepId: string, entryId?: string) => void, tools?: LogTools) => <LogHeader title={title} status={status} searching={searching} layoutKey={[title, status, toolbar, headerActions, linkedRuns, action?.label, !!tools]}>
+  const header = (jump?: (stepId: string, entryId?: string) => void, tools?: LogTools) => <LogHeader title={title} status={status} subtitle={subtitle} searching={searching} layoutKey={[title, status, subtitle, toolbar, headerActions, linkedRuns, action?.label, !!tools]}>
     {action && jump && <LogActionButton label={action.label} variant={action.label === 'Review' ? 'primary' : undefined} icon={headerIcon(action.label)} onClick={() => action.label === 'Review' && onReview ? onReview() : jump(action.stepId, action.entryId)} />}{toolbar}{linkedRuns && <LinkedRunsButton entries={linkedRuns} onOpen={onOpenLinkedRun} />}{headerActions}
     {tools && <><span role="status" className="text-caption text-ui-muted">{tools.copyState === "copied" ? "Copied" : tools.copyState === "failed" ? "Copy unavailable" : ""}</span><LogSearch tools={tools} onOpenChange={setSearching} /></>}
     <LogActionsMenu title={title} tools={tools} rerun={rerun} records={records} />

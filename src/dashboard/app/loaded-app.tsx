@@ -38,6 +38,7 @@ import { Button,FailureNotice,Notice,EmptyState,Panel,PanelBody,dsIcon,useDemoTh
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { createServedClock, ServedClockContext, useClockView } from "../state/served-clock.js";
+import { OperatorLabelContext } from "../state/operator-label.js";
 import { keptDayFrame, useDashboardDay } from "../state/use-dashboard-day.js";
 import {
 commandResultDetail,
@@ -917,6 +918,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
   return (
     <ServedClockContext.Provider value={clock}>
+    <OperatorLabelContext.Provider value={boot.actor.label}>
     <DashboardCommandBindingProvider binding={commandBinding}>
     <SessionsProvider harness={workflowComposition.sessionsHarness} catalog={workflowCatalog}
       binding={dayRequested === undefined ? undefined : { client, executor, scope: commandScope, dayState, day, now: clock.now, workflowId: activeWorkflowId }}>
@@ -1131,6 +1133,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     </div>
     </SessionsProvider>
     </DashboardCommandBindingProvider>
+    </OperatorLabelContext.Provider>
     </ServedClockContext.Provider>
   );
 }
