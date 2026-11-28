@@ -95,7 +95,7 @@ export function useRunStartWorkbookRows(
   const rowSource = canonicalJsonStringify([rowReference?.libraryId ?? null, rowReference?.versionId ?? null, rowReference?.sheetIds[0] ?? null]);
   const rowSelectionFresh = selectedWorkbookRows === undefined || selectedWorkbookRows.source === rowSource;
   const rowChoices = rowSelectionFresh ? workbookRows.choices : selectedWorkbookRows?.choices ?? [];
-  return { rowCapability, rowReference, rowIdentity, workbookRows, rowSource, rowSelectionFresh, rowChoices };
+  return { rowCapability, rowReference, rowLibrary, rowVersion, rowIdentity, workbookRows, rowSource, rowSelectionFresh, rowChoices };
 }
 
 export function runStartSpreadsheetReadiness(

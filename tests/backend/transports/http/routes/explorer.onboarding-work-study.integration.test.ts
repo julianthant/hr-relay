@@ -51,8 +51,13 @@ function walk(spec: ExplorerReviewSpec, chosen: Values = {}, decisions: Values =
 
 it("serves Work Study's planned PayPath values, their origins and the live Save and Submit click", async () => {
   const { reviewSpec: spec } = await served("work-study");
-  assert.deepEqual(spec.options, [{ id: "dry-run", label: "Dry run", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }], initial: "false" }]);
-  assert.deepEqual(spec.sessions, [{ system: "ucpath" }]);
+  const skipChoices = [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }];
+  assert.deepEqual(spec.options, [
+    { id: "dry-run", label: "Dry run", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }], initial: "false" },
+    { id: "skip-ucpath-auth", label: "Sign in to UCPath", choices: skipChoices, initial: "run" },
+    { id: "skip-transaction", label: "Submit work-study transaction", choices: skipChoices, initial: "run" },
+  ]);
+  assert.deepEqual(spec.sessions, [{ system: "ucpath", when: [{ "skip-ucpath-auth": ["run"] }, { "skip-transaction": ["run"] }] }]);
   assert.deepEqual(walk(spec).steps.map(entry => entry.id), ["ucpath-auth", "reference-check", "transaction"]);
   const [card] = blocks(spec, "transaction", "card"); assert.ok(card);
   assert.deepEqual([card.title, card.mode], ["PayPath Actions", "fill"]);
@@ -63,6 +68,8 @@ it("serves Work Study's planned PayPath values, their origins and the live Save 
   for (const row of card.rows) assert.ok(spec.sources[row.source]?.detail);
   assert.deepEqual(visible(blocks(spec, "transaction", "click"), walk(spec).values).map(click => click.target), ["Save and Submit"]);
   assert.deepEqual(visible(blocks(spec, "transaction", "click"), walk(spec, { "dry-run": "true" }).values), []);
+  assert.deepEqual(walk(spec, { "skip-ucpath-auth": "skip" }).steps.map(entry => entry.id), ["reference-check", "transaction"]);
+  assert.deepEqual(walk(spec, { "skip-transaction": "skip" }).steps.map(entry => entry.id), ["ucpath-auth", "reference-check"]);
 });
 
 it("stops Work Study before PayPath when the operator cancels an unconfirmed reference check, and never asks during a dry run", async () => {

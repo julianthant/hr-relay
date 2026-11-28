@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { projectRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { projectDecision } from "../../../src/backend/runs/decisions/project-decision.js";
 import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import { mockQueueSurface } from "../../support/fixtures/dashboard/workflow-mocks/workflow-queue-model.js";
 import { initialMockDraft } from "../../support/fixtures/dashboard/workflow-mocks/workflow-mock-model.js";
@@ -41,5 +42,16 @@ describe("a cancelled run's Logs ending", () => {
   });
   it("draws as before without the cancellation field", () => {
     assert.equal(project().steps.some(step => step.title === "Run cancelled"), false);
+  });
+});
+
+describe("a run paused before its first claim", () => {
+  it("leads the Paused card with the recorded queue and pause times", () => {
+    const served = RunDetailWireSchema.parse({ ...detail(), header: { ...detail().header, status: "queued" },
+      outcome: { state: "absent", reason: "not complete" }, decision: projectDecision("paused", []),
+      heldBeforeStart: { queuedAt: "2026-08-03T10:57:54.000Z", pausedAt: AT } });
+    const { steps } = projectRunLogs({ detail: served, logs, sections: [], unavailableEvidence: [] }, { artifactUrl: id => id });
+    assert.deepEqual(steps.map(step => step.title), ["Queued", "Paused", "Run paused"]);
+    assert.ok(steps.every(step => step.time !== "—"));
   });
 });

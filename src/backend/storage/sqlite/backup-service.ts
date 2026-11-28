@@ -123,16 +123,14 @@ export function parseBackupManifestFile(manifestPath: string): AuthorityBackupMa
   return parseCurrentBackupManifest(JSON.parse(readFileSync(manifestPath, "utf8")));
 }
 
-type BackupCopyInspector = (copyAdmission: RuntimeAdmission, backupPath: string, schemaVersion: number) => BackupCopyInspection | Promise<BackupCopyInspection>;
-
 export function verifyBackupManifestAtPath(admissionInput: RuntimeAdmission, manifestPathInput: string): Promise<VerifiedBackup> {
-  return verifyManifest(admissionInput, manifestPathInput, inspectVerifiedBackupCopyReadOnly);
+  return verifyManifest(admissionInput, manifestPathInput);
 }
 
-/** verifyBackupManifestAtPath with the full inspection on a worker thread, for a caller that must keep the event loop running. */
+/** Verifies the bytes asynchronously and runs the SQLite inspection on a worker thread. */
 export function verifyBackupManifestOffThread(admissionInput: RuntimeAdmission, manifestPathInput: string,
   options: Readonly<{ signal?: AbortSignal }>): Promise<VerifiedBackup> {
-  return verifyManifest(admissionInput, manifestPathInput, (copy, backupPath, schemaVersion) => inspectAuthorityBackupOffThread(copy, backupPath, schemaVersion, options));
+  return verifyManifest(admissionInput, manifestPathInput, options);
 }
 
 /**
@@ -186,7 +184,7 @@ function assertSnapshotBytes(path: string, manifest: Readonly<{ byteSize: number
 async function verifyManifest(
   admissionInput: RuntimeAdmission,
   manifestPathInput: string,
-  inspect: BackupCopyInspector,
+  offThread?: Readonly<{ signal?: AbortSignal }>,
 ): Promise<VerifiedBackup> {
   const admission = requireRuntimeAdmission(admissionInput);
   const manifestPath = resolve(z.string().min(1).parse(manifestPathInput));
@@ -200,12 +198,15 @@ async function verifyManifest(
   assertExpectedBackupSource(expected, manifest);
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);
   await verifyBackupBytesAtPath(backupPath, manifest);
-  const copyAdmission = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
+  const copyAdmission = offThread === undefined ? admission.verifiedReadOnlyCopy(backupPath, manifest.sha256)
+    : await admission.verifiedReadOnlyCopyAsync(backupPath, manifest.sha256);
   let inspection: BackupCopyInspection;
   try {
-    // A synchronous inspection and its release run in one turn.
-    const inspected = inspect(copyAdmission, backupPath, manifest.schemaVersion);
-    inspection = inspected instanceof Promise ? await inspected : inspected;
+    if (offThread === undefined) inspection = inspectVerifiedBackupCopyReadOnly(copyAdmission, backupPath, manifest.schemaVersion);
+    else {
+      inspection = await inspectAuthorityBackupOffThread(copyAdmission, backupPath, manifest.schemaVersion, offThread);
+      copyAdmission.assertLive();
+    }
   }
   finally { copyAdmission.release(); }
   removeReadOnlyInspectionCompanions(backupPath);
@@ -510,13 +511,15 @@ export class AuthorityBackupService {
       await this.#source.onlineBackupTo(temporaryBackupPath);
       this.#admission.assertAuthorityBackupWrite(this.#directory);
       const inspectedDigest = await sha256File(temporaryBackupPath);
-      const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, inspectedDigest);
+      const copyAdmission = this.#purpose === "in-session" ? await this.#admission.verifiedReadOnlyCopyAsync(temporaryBackupPath, inspectedDigest)
+        : this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, inspectedDigest);
       let inspection: BackupCopyInspection;
       try {
         const schemaVersion = this.#source.getMeta().schemaVersion;
         inspection = this.#purpose === "in-session"
           ? await inspectAuthorityBackupOffThread(copyAdmission, temporaryBackupPath, schemaVersion, { ...(this.#signal === undefined ? {} : { signal: this.#signal }) })
           : inspectVerifiedBackupCopyReadOnly(copyAdmission, temporaryBackupPath, schemaVersion);
+        if (this.#purpose === "in-session") copyAdmission.assertLive();
       }
       finally { copyAdmission.release(); }
       assertExpectedBackupSource(expected, inspection);

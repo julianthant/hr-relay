@@ -60,6 +60,10 @@ export interface NotificationInboxDependencies {
   readonly actorId: string;
 }
 
+export function notificationSourceId(actorId: string, occurrence: string) {
+  return FingerprintSchema.parse(sha256Hex(`hrauto:notification-source:v1\0${actorId}\0${occurrence}`));
+}
+
 export function createNotificationInbox(
   dependencies: NotificationInboxDependencies,
 ): NotificationInbox {
@@ -94,7 +98,7 @@ export function createNotificationInbox(
     const seenAt = now();
     const occurredAt = source === undefined ? seenAt : IsoInstantSchema.parse(source.occurredAt);
     const occurrence = source === undefined ? canonicalJsonStringify(trigger) : FingerprintSchema.parse(source.identity);
-    const sourceId = sha256Hex(`hrauto:notification-source:v1\0${actorId}\0${occurrence}`);
+    const sourceId = notificationSourceId(actorId, occurrence);
 
 
     const settled = dependencies.authority.withAuthorityTransaction((repositories) => {

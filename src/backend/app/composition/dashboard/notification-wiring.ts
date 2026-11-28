@@ -211,19 +211,43 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
   notificationReads?: ReturnType<typeof composeNotificationReads>;
   readLanes?: Pick<DashboardReadLanes, "read">;
   reportListReadFailure?: () => void;
-}): NotificationRoutes & { streamList: NotificationListSource; pollList: () => void } {
+}): NotificationRoutes & { streamList: NotificationListSource; pollList: () => Promise<void> | void } {
   const { database, clock, assertCurrent, notificationObserver, notificationTarget, readLanes } = input;
   const { list, collection } = input.notificationReads ?? composeNotificationReads(database);
   const { project, position, retained, within } = createNotificationListProjector(input, list);
   const snapshot = (actor: string) => database.withAuthorityReadSnapshot(() => project(actor, clock.nowMs()));
   let streamed: readonly NotificationWire[] | undefined;
   let pollFailure: Error | undefined;
+  let pollPending: Promise<void> | undefined;
+  let decoded: { body: string; rows: NotificationWire[] } | undefined;
   const laneRead = async (request: z.input<typeof NotificationLaneRequestSchema>, signal?: AbortSignal) => {
     if (readLanes === undefined) throw new Error("notification-lane-missing");
     const parsed = NotificationLaneRequestSchema.parse(request);
     return (await readLanes.read(notificationLaneRead, parsed, signal === undefined ? {} : { signal })).body;
   };
   const listListeners = new Set<() => void>();
+  const readLaneList = async () => {
+    const body = await laneRead({ kind: "list", actor: LOCAL_OPERATOR_ACTOR_ID });
+    if (decoded?.body === body) return decoded.rows;
+    const rows = z.array(NotificationWireSchema).parse(JSON.parse(body));
+    decoded = { body, rows };
+    return rows;
+  };
+  const notify = () => { for (const listener of listListeners) listener(); };
+  const settlePoll = (rows: NotificationWire[]) => {
+    const changed = pollFailure !== undefined || !isDeepStrictEqual(rows, streamed);
+    pollFailure = undefined;
+    streamed = rows;
+    if (changed) notify();
+  };
+  const reportPollFailure = (error: unknown) => {
+    if (!(error instanceof Error)) throw error;
+    if (pollFailure === undefined) {
+      pollFailure = error;
+      input.reportListReadFailure?.();
+    }
+    notify();
+  };
   return {
     withSnapshot: (actor, respond) => database.withAuthorityReadSnapshot(() => {
       const rows = project(actor, clock.nowMs());
@@ -249,8 +273,12 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
       target: (id: string, actor: string) => laneRead({ kind: "target", id, actor }),
     } }),
     streamList: {
-      read: () => {
+      read: readLanes === undefined ? () => {
         const rows = snapshot(LOCAL_OPERATOR_ACTOR_ID);
+        streamed ??= rows;
+        return rows;
+      } : async () => {
+        const rows = await readLaneList();
         streamed ??= rows;
         return rows;
       },
@@ -261,22 +289,27 @@ export function composeNotificationRoutes(input: NotificationWiringInput & Pick<
     },
     pollList: () => {
       if (streamed === undefined || listListeners.size === 0) return;
+      if (readLanes !== undefined) {
+        if (pollPending !== undefined) return pollPending;
+        const before = streamed;
+        // A publication delivered during the lane read already moved the stream past that poll's starting point.
+        pollPending = readLaneList().then(rows => {
+          if (streamed === before) settlePoll(rows);
+        }, (error: unknown) => {
+          if (streamed === before) reportPollFailure(error);
+        }).finally(() => { pollPending = undefined; });
+        return pollPending;
+      }
       const prior = retained.get(LOCAL_OPERATOR_ACTOR_ID);
+      let rows: NotificationWire[];
       try {
         if (pollFailure === undefined && prior?.rows === streamed && prior.position === position() && within(prior, clock.nowMs())) return;
-        const rows = snapshot(LOCAL_OPERATOR_ACTOR_ID);
-        const changed = pollFailure !== undefined || !isDeepStrictEqual(rows, streamed);
-        pollFailure = undefined;
-        streamed = rows;
-        if (!changed) return;
+        rows = snapshot(LOCAL_OPERATOR_ACTOR_ID);
       } catch (error) {
-        if (!(error instanceof Error)) throw error;
-        if (pollFailure === undefined) {
-          pollFailure = error;
-          input.reportListReadFailure?.();
-        }
+        reportPollFailure(error);
+        return;
       }
-      for (const listener of listListeners) listener();
+      settlePoll(rows);
     },
   };
 }

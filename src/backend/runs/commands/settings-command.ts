@@ -131,12 +131,12 @@ export function executeSettingsCommand(
     const result = dependencies.authority.withAuthorityTransaction((repositories) => {
       const now = dependencies.clock.now().toISOString();
       const journalRequest = markSettingsCommand(request);
-      repositories.commands.assertIdentity(journalRequest);
       // Validate ordinary authority before this command becomes retained history.
       // Replays use their existing journal and do not need a new read snapshot.
       const ordinarySnapshot = request.type === "apply-settings" && repositories.commands.get(request.commandId) === undefined
         ? readSettings(repositories) : undefined;
       if (request.type === "apply-protected-settings") {
+        repositories.commands.assertIdentity(journalRequest);
         // BEGIN IMMEDIATE holds identity admission, private commit and audit; SQL rollback cannot undo the private commit.
         const protectedRefusal = executor.commitPrivate(request);
         if (protectedRefusal !== undefined) {

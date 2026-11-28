@@ -7,8 +7,8 @@ import { RUN_DIALOG_CRM, RUN_DIALOG_TYPED, RUN_DIALOG_WORKFLOW } from "./run-dia
 /** What the library serves when one saved spreadsheet is bound to the reference workflow's key field: the Spreadsheets field works. */
 export interface ReferenceShape { readonly workflowId: string; readonly label: string; readonly keyFieldId: string; readonly fields: readonly string[]; readonly row: readonly (string | null)[] }
 const PERSON_LOOKUP: ReferenceShape = { workflowId: RUN_DIALOG_WORKFLOW, label: "Person Lookup", keyFieldId: "eid", fields: ["eid"], row: [RUN_DIALOG_TYPED] };
-export function runDialogReferenceReads(names: readonly string[] = ["First"], typeId = "roster-type", shape: ReferenceShape = PERSON_LOOKUP, earlierVersion = false): Partial<DashboardClient> {
-  const entry = WorkbookLibraryEntrySchema.parse({ libraryId: "roster", name: "Roster", version: earlierVersion ? 2 : 1, updatedAt: "2026-11-01T00:00:00Z", rowCount: 2,
+export function runDialogReferenceReads(names: readonly string[] = ["First"], typeId = "roster-type", shape: ReferenceShape = PERSON_LOOKUP, libraryName = "Roster", earlierVersion = false): Partial<DashboardClient> {
+  const entry = WorkbookLibraryEntrySchema.parse({ libraryId: "roster", name: libraryName, version: earlierVersion ? 2 : 1, updatedAt: "2026-11-01T00:00:00Z", rowCount: 2,
     worksheets: names.map((name, index) => ({ id: index === 0 ? "first" : `sheet-${index}`, name })), metadata: { typeId, sharePoint: null },
     type: { id: typeId, name: "Roster", keyFieldId: shape.keyFieldId, fields: [...shape.fields], defaultWorkbookId: "roster" },
     state: { libraryId: "roster", revision: 1, selectedVersionId: "version", removed: false, pinned: false, tags: [], origin: { kind: "local" },
