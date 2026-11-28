@@ -92,7 +92,10 @@ async function sample(sha: string, expectIndex: boolean) {
   try {
     await withHeadlessCopySignin(async session => {
       const hash = createHash("sha256");
-      for await (const bytes of createReadStream(join(session.stateRoot, "files", "imported-history.sqlite"))) hash.update(bytes);
+      for await (const bytes of createReadStream(join(session.stateRoot, "files", "imported-history.sqlite"))) {
+        if (!Buffer.isBuffer(bytes)) throw new Error("log-window-bench-history-read-invalid");
+        hash.update(bytes);
+      }
       const observed = hash.digest("hex");
       historyDigest ??= observed;
       if (observed !== historyDigest) throw new Error("log-window-bench-history-changed");

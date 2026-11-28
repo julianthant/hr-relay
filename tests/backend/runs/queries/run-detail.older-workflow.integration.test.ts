@@ -1,6 +1,7 @@
 import { afterAll, afterEach, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { buildRunDetail, buildRunSection, readRunPanel, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
 import { LogDisplayRefusedError, LogIdentityRefusedError } from "../../../../src/backend/runs/commands/refusals.js";
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
@@ -14,6 +15,7 @@ import { DiagnosticBundleSchema } from "../../../../src/models/trust/diagnostic.
 import { deriveDiagnosticContentDigest } from "../../../../src/models/trust/diagnostic-capture.js";
 import { VerifiedArtifactSourceMissingError } from "../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
+import { openLogDatabases, openTimelineLogReader } from "../../../../src/backend/storage/sqlite/profile-local-databases.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { redactDiagnosticFields } from "../../../../src/rules/redaction/redaction.js";
 import { HASH_B } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -74,7 +76,7 @@ it.each([0, 1])("loads older run detail and Logs with current names after a fing
   assert.match(JSON.stringify(projected.steps[0].entries), /Quillan, Petra A\./u);
 });
 
-it("opens a historical run's timeline across attempts when its earlier screenshot is unavailable", async () => {
+it("opens a historical run's timeline from the log database when an earlier screenshot is unavailable", async () => {
   const { w, run, descriptor, deps } = await fixture(2);
   descriptor.version++;
   const { runId, traceId, workflow, enqueuedAt } = run.envelope;
@@ -106,12 +108,17 @@ it("opens a historical run's timeline across attempts when its earlier screensho
   const bundle = DiagnosticBundleSchema.parse({ ...content, bundleId, createdAt: at,
     contentDigest: deriveDiagnosticContentDigest({ ...content, capturedAt: at }),
     retention: { kind: "ordinary", purgeAfter: at } });
-  const panel = await readRunPanel({ ...deps, captures: {
+  const logs = openLogDatabases(join(w.stateRoot, "state.db"), w.stateRoot);
+  try { logs.reconcile(); } finally { logs.close(); }
+  const { installationId, profileId } = w.database.getMeta();
+  assert.ok(installationId && profileId);
+  const { page, highWaterMark, withReadSnapshot, close } = openTimelineLogReader(w.stateRoot, { installationId, profileId }, 250);
+  const panel = await readRunPanel({ ...deps, timeline: { ...deps.timeline, page, highWaterMark, withReadSnapshot }, captures: {
     authority: { listByRun: () => [bundle], get: () => bundle,
       listAttachments: () => bundle.attachments.map(attachment => ({ bundleId: bundle.bundleId, attachment, createdAt: bundle.createdAt })) },
     artifactReader: { verify: async () => { throw new VerifiedArtifactSourceMissingError(); },
       prepare: async () => assert.fail("availability does not prepare a download") },
-  } }, runId, new AbortController().signal);
+  } }, runId, new AbortController().signal).finally(close);
   assert.equal(panel.detail.header.attempt, 2);
   assert.ok(panel.detail.captures?.state === "error");
   assert.equal(panel.detail.captures.code, "DIAGNOSTIC_BUNDLE_BYTES_MISSING");
