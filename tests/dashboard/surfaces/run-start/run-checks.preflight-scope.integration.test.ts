@@ -216,6 +216,22 @@ it.each([false, true])("Check again executes new exact-scope detectors with OCR 
   assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, requiresOcr);
 });
 
+it.each([false, true])("enables OCR Start only when the connected account's fresh check finds the fixed model (%s)", async ocrModelAvailable => {
+  const h = checksHarness("emergency-contact", false);
+  const status = { ...FIXTURE_CHATGPT_OCR_AVAILABLE, ocrModelAvailable };
+  const checkChatGptAccount = vi.fn<DashboardClient["checkChatGptAccount"]>(async (_signal, options) => {
+    assert.equal(options?.fresh, true);
+    return status;
+  });
+  await mount({ ...h.client, checkChatGptAccount }, "emergency-contact", true);
+
+  assert.equal(checkChatGptAccount.mock.calls.length, 1);
+  const wire = await h.client.readPreflight(PreflightSelectionSchema.parse({ workflowId: "emergency-contact" }));
+  assert.ok(wire.state === "present" && wire.report.results.every(result => result.status === "pass"));
+  assert.equal(document.body.textContent?.includes(ERROR_CATALOG.PROVIDER_UNAVAILABLE.text), !ocrModelAvailable);
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, !ocrModelAvailable);
+});
+
 it("does not execute a late check after the dialog has closed during settings acquisition", async () => {
   const h = checksHarness("emergency-contact", false);
   const settings = Promise.withResolvers<typeof FIXTURE_EDITABLE_SETTINGS>();
