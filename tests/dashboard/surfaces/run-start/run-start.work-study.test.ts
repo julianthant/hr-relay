@@ -39,12 +39,12 @@ describe("served Work Study last stage", () => {
     assert.equal(dialog.disabled("Include Submit work-study transaction"), false);
 
     await dialog.press("Sign in to UCPath");
-    assert.equal(dialog.disabled("Start run"), true);
+    assert.equal(dialog.disabled("Start live run"), true);
     await dialog.fill("Employee ID", "10812345");
     await dialog.fill("Name in UCPath", "Fixture, PayPath");
-    assert.equal(dialog.disabled("Start run"), true);
+    assert.equal(dialog.disabled("Start live run"), true);
     await dialog.fill("Position number", "40012346");
-    assert.equal(dialog.disabled("Start run"), false);
+    assert.equal(dialog.disabled("Start live run"), false);
   });
 
   it("shows the typed effective date as an Effective date fact", async () => {

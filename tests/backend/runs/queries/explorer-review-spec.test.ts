@@ -49,7 +49,7 @@ it("serves every readable definition with its ordered steps and every declared t
 it("derives run options from Start run declarations only", () => {
   assert.deepEqual(workflow("onboarding").reviewSpec.options.map(option => [option.id, option.label, option.initial]),
     [["mode", "Hire mode", "new-hire"], ["dry-run", "Dry run", "false"]]);
-  assert.deepEqual(workflow("work-study").reviewSpec.options.map(option => option.id), ["dry-run"]);
+  assert.deepEqual(workflow("work-study").reviewSpec.options.map(option => option.id), ["dry-run", "skip-ucpath-auth", "skip-transaction"]);
   assert.deepEqual(workflow("ocr-page").reviewSpec.options, []);
   const separations = workflow("separations").reviewSpec;
   assert.deepEqual(separations.options.filter(option => option.id.startsWith("skip-")).map(option => [option.id, option.label, option.initial]),
