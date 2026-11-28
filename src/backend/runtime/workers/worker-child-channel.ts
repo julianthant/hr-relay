@@ -28,7 +28,7 @@ export function createWorkerChildChannel(input: Readonly<{
   handlers: WorkerChildControlHandlers;
   onStop(reason: WorkerStopReason): void;
 }>) {
-  let turn: "free" | "run" | "control" | "awaiting-stop" = "free";
+  let turn: "free" | "run" | "control" | Readonly<{ removalReply: Extract<WorkerReplyOutcome, { state: "done" }> }> = "free";
   let lastRequestSequence = 0;
   let workAvailable = new AbortController();
 
@@ -50,7 +50,7 @@ export function createWorkerChildChannel(input: Readonly<{
       const message = parsed.data;
       if (message.kind === "worker-stop") {
         input.onStop(message.reason);
-        if (turn === "awaiting-stop") workAvailable.abort();
+        if (typeof turn === "object") workAvailable.abort();
         return;
       }
       if (message.kind === "worker-work-available") { workAvailable.abort(); return; }
@@ -66,13 +66,14 @@ export function createWorkerChildChannel(input: Readonly<{
         return;
       }
       if (input.clock.nowMs() >= Date.parse(message.sentAt) + message.deadlineMs) { reply(refused("WORKER_REQUEST_EXPIRED")); return; }
+      if (typeof turn === "object" && message.request.type === "close-for-removal") { reply(turn.removalReply); return; }
       if (turn !== "free") { reply(refused("WORKER_BUSY")); return; }
       turn = "control";
       const settle = (outcome: WorkerReplyOutcome): void => {
         try { reply(outcome); }
         finally {
-          // The parent sends Stop only after a successful removal close.
-          turn = message.request.type === "close-for-removal" && outcome.state === "done" ? "awaiting-stop" : "free";
+          // Keep the claim fence and the close acknowledgment if the parent timed out before receiving it.
+          turn = message.request.type === "close-for-removal" && outcome.state === "done" ? { removalReply: outcome } : "free";
           workAvailable.abort();
         }
       };

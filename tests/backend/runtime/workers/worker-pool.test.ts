@@ -215,7 +215,7 @@ describe("worker pool", () => {
     const closed = Promise.withResolvers<{ closed: boolean }>();
     let closes = 0;
     const unexpected = (): never => { throw new Error("unrequested control"); };
-    const child = createWorkerChildChannel({ clock: w.clock, send: port.message,
+    const child = createWorkerChildChannel({ clock: w.clock, send: message => { port.message(message); },
       onStop: reason => { assert.equal(reason, "remove"); port.exit(0, null); },
       handlers: { refreshBrowser: unexpected, reopenBrowser: unexpected, checkParkedWrite: unexpected,
         closeForRemoval: () => { closes += 1; return closed.promise; }, pause: unexpected, resume: unexpected } });
