@@ -8,12 +8,17 @@ import { onboardingUcpathSearchDefinition } from "./steps/ucpath-search/step.js"
 import { onboardingI9SearchDefinition } from "./steps/i9-search/step.js";
 import { onboardingHireWritesDefinition, buildHireReview } from "./steps/hire-review/step.js";
 import { defineReferenceCheck } from "../../workflow-kit/reference-check.js";
+import type { StepOmissionForm } from "../../models/workflow/step-omission.js";
+
+export const ONBOARDING_REFERENCE_FORM = {
+  fields: [{ key: "referenceResult", label: "Reference spreadsheet result", kind: "enum", values: ["Confirmed", "Unconfirmed", "Not checked"] }],
+} satisfies StepOmissionForm;
 
 export const onboardingWorkflow = defineWorkflow({
   id: "onboarding", version: 3, code: "on", label: "Onboarding", icon: "UserPlus", category: "onboarding",
   requiredWorkbookFields: [...ONBOARDING_ROSTER_FIELDS],
   workbookReference: { id: ONBOARDING_ROSTER_TYPE_ID, keyFieldId: "email", mode: "keys", writableFields: [...ONBOARDING_ROSTER_OUTPUT_FIELDS] },
-  referenceCheck: defineReferenceCheck({ key: "email", input: { email: "email" }, outputs: {
+  referenceCheck: defineReferenceCheck({ key: "email", input: { email: "email" }, manualForm: ONBOARDING_REFERENCE_FORM, outputs: {
     "crm-source": { email: "requestedEmail", fullName: ["recordFirstName", "recordLastName"], firstName: "recordFirstName", lastName: "recordLastName", dob: "fields.dob" },
     "hire-plan": { dob: "employee.dob" },
     "ucpath-source": { eid: "confirmed[].emplId", fullName: "confirmed[].name" },
@@ -44,7 +49,8 @@ export const onboardingWorkflow = defineWorkflow({
   role: defineWorkflowRole({ kind: "composition" }), scenarios: ["onboarding/crm-extraction", "onboarding/write-transactions", "onboarding/reference-check"],
   identity: { matchKey: input => input.email.toLowerCase() },
   presentation: { title: input => input.email, subtitle: () => "Reviewed hire filing · verified master results" },
-  outcomeProjection: { fieldPath: "state", cases: [{ value: "filed", label: "Hire filed", tone: "success" }, { value: "master-review-required", label: "Master needs review", tone: "warning" }] },
+  outcomeProjection: { fieldPath: "state", cases: [{ value: "filed", label: "Hire filed", tone: "success" }, { value: "master-review-required", label: "Master needs review", tone: "warning" },
+    { value: "completed-with-manual-steps", label: "Completed with manual steps", tone: "warning" }] },
   details: [
     { key: "hire-write", label: "Hire submission", source: { kind: "result", fieldPath: "hireWrite.state" }, display: "badge" },
     { key: "subject", label: "UCPath match", source: { kind: "result", fieldPath: "subject.state" }, display: "badge" },
@@ -54,13 +60,14 @@ export const onboardingWorkflow = defineWorkflow({
   nodePurposes: [...onboardingCrmDataDefinition.nodePurposes, ...onboardingUcpathSearchDefinition.nodePurposes,
     ...onboardingI9SearchDefinition.nodePurposes, ...onboardingHireWritesDefinition.nodePurposes],
   rows: [
-    { key: "crm-data", label: "Read entry sheet", members: [{ step: "crm-data" }] },
-    { key: "ucpath-search", label: "Match existing person", members: [{ step: "ucpath-search" }, { step: "reference-check" }] },
-    { key: "i9-search", label: "Search I-9 profiles", members: [{ step: "i9-search" }] },
-    { key: "hire-review", label: "Review hire findings", members: [{ step: "hire-review" }] },
-    { key: "i9-creation", label: "Create I-9 profile", members: [{ step: "i9-creation" }] },
-    { key: "ucpath-hire", label: "Submit hire", members: [{ step: "ucpath-hire" }] },
-    { key: "master-results", label: "Fill master results", members: [{ step: "master-results" }] },
+    { key: "crm-data", label: "Read entry sheet", members: [{ step: "crm-data" }], target: { step: "crm-data" } },
+    { key: "ucpath-search", label: "Match existing person", members: [{ step: "ucpath-search" }], target: { step: "ucpath-search" } },
+    { key: "i9-search", label: "Search I-9 profiles", members: [{ step: "i9-search" }], target: { step: "i9-search" } },
+    { key: "hire-review", label: "Review hire findings", members: [{ step: "hire-review" }], target: { step: "hire-review" } },
+    { key: "reference-check", label: "Check reference spreadsheets", members: [{ step: "reference-check" }], target: { step: "reference-check" } },
+    { key: "i9-creation", label: "Create I-9 profile", members: [{ step: "i9-creation" }], target: { step: "i9-creation" } },
+    { key: "ucpath-hire", label: "Submit hire", members: [{ step: "ucpath-hire" }], target: { step: "ucpath-hire" } },
+    { key: "master-results", label: "Fill master results", members: [{ step: "master-results" }], target: { step: "master-results" } },
   ],
   steps: author => {
     const crm = onboardingCrmDataDefinition.build(author);

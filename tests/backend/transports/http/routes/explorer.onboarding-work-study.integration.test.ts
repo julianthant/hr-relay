@@ -138,6 +138,12 @@ it("follows Onboarding's hire approval, rejection and existing-person path witho
   assert.deepEqual(spec.options, [
     { id: "mode", label: "Hire mode", choices: [{ value: "new-hire", label: "New hire" }, { value: "rehire", label: "Rehire" }], initial: "new-hire" },
     { id: "dry-run", label: "Dry run", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }], initial: "false" },
+    ...[
+      ["reference-check", "Reference spreadsheets"],
+      ["crm-data", "Read and validate hire data"], ["ucpath-search", "Check UCPath duplicates"], ["i9-search", "Search I-9 profiles"],
+      ["hire-review", "Review UCPath hire findings"], ["i9-creation", "Create or reuse the I-9 record"],
+      ["ucpath-hire", "File and verify the UCPath hire"], ["master-results", "Fill verified master results"],
+    ].map(([id, label]) => ({ id: `skip-${id}`, label, choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }], initial: "run" })),
   ]);
   assert.deepEqual(spec.sessions.map(session => session.system).sort(), ["crm", "i9", "ucpath"]);
   const approval = blocks(spec, "hire-review", "decision").find(block => block.id === "hire-approval"); assert.ok(approval);

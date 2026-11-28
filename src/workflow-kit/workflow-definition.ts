@@ -895,7 +895,10 @@ function referenceStages<Input extends z.ZodType>(
     earlier.push({ source: suffix, check, gate });
     referenceEntries.push(check, gate);
   }
-  return [group, referenceEntries] as const;
+  const manual = definition.manualForm;
+  return [manual === undefined ? group : author.group(group, { manual: {
+    off: "values", form: manual, produces: {}, skips: referenceEntries.map(entry => entry.id), skipsGatesAndTransactions: true,
+  } }), referenceEntries] as const;
 }
 
 /** The authored presentation half of a definition: every descriptor field an author writes, minus the compiler-derived products (`flow`, `timeline`, `contractFingerprint`). */
@@ -1327,7 +1330,8 @@ export function compileWorkflow<
   const referenceComparisons = referenceCheck === undefined ? [] : flattenEntries(steps)
     .filter(entry => entry.kind === "task" && entry.contracts.includes(CompareReferenceFields));
   const timeline = steps.map(([group, entries]) => {
-    const comparisonReaders = referenceComparisons.filter(entry => entry.references.some(dependency => group.manual?.skips?.includes(dependency.id)))
+    const comparisonReaders = referenceComparisons.filter(entry => !entries.includes(entry)
+      && entry.references.some(dependency => group.manual?.skips?.includes(dependency.id)))
       .map(entry => entry.id);
     const manual = group.manual === undefined || comparisonReaders.length === 0 ? group.manual : {
       ...group.manual, orderOnlyReaders: [...new Set([...(group.manual.orderOnlyReaders ?? []), ...comparisonReaders])],

@@ -5,12 +5,14 @@ import { z } from "zod";
 import { NodeIdSchema } from "../rules/identity/ids.js";
 import { deepFreeze } from "../rules/validation/immutability.js";
 import { REFERENCE_CHECK_ID } from "../models/processing/workbooks/reference-fields.js";
+import { StepOmissionFormSchema } from "../models/workflow/step-omission.js";
 
 const SourceFields = z.record(z.string(), z.union([z.string().min(1), z.array(z.string().min(1)).min(2)]));
 const ReferenceCheckDefinitionSchema = z.strictObject({
   key: z.enum(["eid", "email"]),
   input: SourceFields.optional(),
   lookupName: z.string().min(1).optional(),
+  manualForm: StepOmissionFormSchema.optional(),
   writeReview: NodeIdSchema.optional(),
   outputs: z.record(z.string().refine(id => NodeIdSchema.safeParse(id).success), SourceFields),
 });
