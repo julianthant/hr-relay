@@ -30,7 +30,8 @@ const MAX_CHOICES = 20;
 const List = z.strictObject({}).meta({ required: [] });
 const Selection = z.strictObject({ edit: referenceSchema("U") });
 const Labels = { spreadsheets: "Spreadsheet edit", settings: "Setting edit", notifications: "Notification edit" } as const;
-const Listed = z.strictObject({ items: z.array(Selection.extend({ label: z.enum(Object.values(Labels)) })).max(MAX_CHOICES) });
+const Listed = z.strictObject({ items: z.array(Selection.extend({ label: z.enum(Object.values(Labels)) })).max(MAX_CHOICES),
+  notice: z.enum(["latest-unsupported", "more-matches"]).optional() });
 const same = (a: JsonValue, b: JsonValue) => canonicalJsonStringify(a) === canonicalJsonStringify(b);
 const stale = (): never => { throw new AssistantToolRefusal("ASSISTANT_UNDO_STALE"); };
 const refused = (): never => { throw new AssistantToolRefusal("ASSISTANT_EDIT_REFUSED"); };
@@ -46,10 +47,13 @@ function undoable(edit: AssistantAppliedEdit): boolean {
 const normalize = (value: string) => value.trim().replace(/\s+/gu, " ").toLowerCase();
 const editName = (edit: AssistantAppliedEdit) => edit.label.replace(/ back$/u, "");
 
-function targetNames(edit: AssistantAppliedEdit): readonly string[] {
+function targetNames(edit: AssistantAppliedEdit, notificationTitle: (edit: AssistantAppliedEdit) => string | undefined): readonly string[] {
   const { details } = edit, label = editName(edit);
   if (details.kind === "settings") return ["setting", label.replace(/^Changed /u, "")];
-  if (details.kind === "notifications") return ["notification"];
+  if (details.kind === "notifications") {
+    const title = notificationTitle(edit);
+    return title === undefined ? ["notification"] : ["notification", title, `notification ${title}`];
+  }
   const names = details.command === "rename" ? [z.string().parse(details.prior), z.string().parse(details.next)]
     : [label.replace(/^Changed (?:the (?:type of|link for|version of) )?|^Renamed a version of /u, "")
       .replace(/, worksheet \d+, row \d+, column \d+$/u, "")];
@@ -58,20 +62,27 @@ function targetNames(edit: AssistantAppliedEdit): readonly string[] {
 
 const choiceNumber = (token: string) => token.slice(3, token.indexOf("."));
 
-function requestedEdits(rows: readonly AssistantAppliedEdit[], context: AssistantToolContext) {
+function requestedEdits(rows: readonly AssistantAppliedEdit[], context: AssistantToolContext,
+  notificationTitle: (edit: AssistantAppliedEdit) => string | undefined) {
   const text = normalize(context.operatorText).replace(/^please /u, "").replace(/[.!]$/u, "");
   if (operatorValueSpans(context.operatorText).length !== 1) return undefined;
   const request = /^(?:undo|revert)(?: the)?(?: (.+))?$/u.exec(text);
-  const target = request?.[1];
+  if (request === null) return undefined;
+  const target = request[1];
+  if (target !== undefined && /^(?:last|latest)(?: (?:change|edit))?$/u.test(target)) {
+    const latestAt = Date.parse(rows[0]?.committedAt ?? "");
+    const latest = rows.filter(row => Date.parse(row.committedAt) === latestAt);
+    return latest.every(undoable) ? latest : "latest-unsupported" as const;
+  }
+  const eligible = rows.filter(undoable);
   const number = /^(?:undo|revert) (?:the )?edit ([1-9][0-9]{0,3})$/u.exec(text)?.[1];
   if (number !== undefined) {
     const prior = context.references.issued().find(([token, entry]) => entry.kind === "U" && choiceNumber(token) === number)?.[1];
-    return rows.filter(row => row.id === prior?.target);
+    return eligible.filter(row => row.id === prior?.target);
   }
-  if (request === null) return undefined;
-  if (target === undefined || /^(?:(?:last|latest) )?(?:change|edit)$/u.test(target)) return rows;
-  return rows.filter(row => {
-    const targets = targetNames(row).map(normalize);
+  if (target === undefined || /^(?:change|edit)$/u.test(target)) return eligible;
+  return eligible.filter(row => {
+    const targets = targetNames(row, notificationTitle).map(normalize);
     return target === normalize(editName(row)) || targets.some(name => [
       name, `${name} change`, `${name} edit`, `change to ${name}`, `edit to ${name}`,
     ].includes(target));
@@ -195,21 +206,30 @@ export function undoPlugin(deps: UndoDeps): AssistantPlugin {
   const entries = (actorId: string) => {
     const now = appliedEdits.clock.now(), day = searchPartitionDay(now);
     return appliedEdits.list(`${day}T00:00:00.000Z`).filter(row => row.actorId === actorId && Date.parse(row.committedAt) <= now.getTime()
-      && searchPartitionDay(new Date(row.committedAt)) === day && undoable(row));
+      && searchPartitionDay(new Date(row.committedAt)) === day)
+      .sort((left, right) => Date.parse(right.committedAt) - Date.parse(left.committedAt));
+  };
+  const notificationTitle = (row: AssistantAppliedEdit) => {
+    const notice = row.details.kind === "notifications" ? edits.notification(row.details.notificationId) : undefined;
+    return notice?.actorId === row.actorId ? notice.title : undefined;
   };
   return { domain: "undo", tools: [{
     kind: "read", tier: "read", name: "list_today_edits", parameters: List, output: Listed, privacy: [],
-    description: "Find your assistant edits today. If several match an undo request, reply with one '- [[U…]]' line per edit, then 'Which edit should I undo?'",
+    description: "Find your assistant edits today. For latest-unsupported, say the latest edit cannot be undone. For more-matches, ask them to say undo with a kind or target name. Otherwise for multiple matches, reply with one '- [[U…]]' line per edit, then 'Which edit should I undo?'",
     async invoke(input, context) {
       List.parse(input);
-      const rows = entries(context.actorId), matches = requestedEdits(rows, context);
+      const rows = entries(context.actorId), matches = requestedEdits(rows, context, notificationTitle);
       context.assertCurrent();
+      if (matches === "latest-unsupported") {
+        observeEdit(context, "undo:selected", "");
+        return { items: [], notice: matches };
+      }
       observeEdit(context, "undo:selected", matches?.length === 1 ? matches[0]?.id ?? "" : "");
-      const visible = matches ?? rows;
-      if (visible.length > MAX_CHOICES) throw new AssistantToolRefusal("ASSISTANT_LIMIT");
-      return { items: visible.map(row => {
+      const visible = matches ?? rows.filter(undoable);
+      return { ...(visible.length > MAX_CHOICES ? { notice: "more-matches" } : {}), items: visible.slice(0, MAX_CHOICES).map(row => {
         const issued = context.references.issued().filter(([, entry]) => entry.kind === "U");
-        const token = context.references.issue("U", row.id, `Edit ${String(issued.length + 1)} — ${row.label}`);
+        const title = notificationTitle(row);
+        const token = context.references.issue("U", row.id, `Edit ${String(issued.length + 1)} — ${row.label}${title === undefined ? "" : ` — ${title}`}`);
         return { edit: token, label: Labels[row.details.kind] };
       }) };
     },
@@ -222,7 +242,8 @@ export function undoPlugin(deps: UndoDeps): AssistantPlugin {
       return () => {
         try {
           const reply = edits.apply(context, owner => {
-            const matches = requestedEdits(entries(context.actorId), context);
+            const matches = requestedEdits(entries(context.actorId), context, notificationTitle);
+            if (matches === "latest-unsupported") return stale();
             const row = matches?.[0];
             if (row?.id !== selected || matches?.length !== 1) return stale();
             const { details } = row;
