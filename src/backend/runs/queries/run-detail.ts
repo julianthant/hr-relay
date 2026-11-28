@@ -452,6 +452,9 @@ export function buildRunDetail(
     ...(review === undefined || review.invalidatedCorrections.length === 0 ? {} : { ocrReviewChanges: review.invalidatedCorrections }),
     ...(childRetry === undefined ? {} : { childRetry }),
     ...(decision === undefined ? {} : { decision }),
+    ...(authority.pause?.state === "paused" ? { pausedAt: authority.pause.pausedAt } : {}),
+    ...((authority.claimGeneration !== 0 && timelineEvents.length > 0) || authority.pause?.state !== "paused" ? {}
+      : { heldBeforeStart: { queuedAt: authority.envelope.enqueuedAt, pausedAt: authority.pause.pausedAt } }),
     panelKind: panelKindOf(authority.envelope.shape, reviewAvailable),
     header: {
       runId,
