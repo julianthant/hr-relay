@@ -74,8 +74,12 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
 
 /** Removes the empty edit table to construct a populated schema-46 copy. */
 export function restoreSchema46AssistantEdits(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 49) {
+    database.exec("DROP INDEX write_intents_activity_confirmed_idx; UPDATE database_states SET schema_version=48; PRAGMA user_version=48");
+  }
+  // Version 48 normalized workbook version names without changing the schema layout.
   if (database.prepare("PRAGMA user_version").get()?.user_version === 48) {
-    database.exec("DROP INDEX write_intents_activity_confirmed_idx; UPDATE database_states SET schema_version=47; PRAGMA user_version=47");
+    database.exec("UPDATE database_states SET schema_version=47; PRAGMA user_version=47");
   }
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 47);
   assert.equal(database.prepare("SELECT count(*) AS count FROM assistant_applied_edits").get()?.count, 0);
