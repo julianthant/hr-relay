@@ -13,6 +13,7 @@ import { createActivityDatePartReader } from "../../../models/dashboard/activity
 import type { NodeId } from "../../../rules/identity/ids.js";
 
 type ActivityRun = ReturnType<AuthorityDatabase["readActivityRuns"]>[number];
+type ActivitySummaryRun = Omit<ActivityPopulationRun, "shape"> & Pick<RunRecord["envelope"], "shape">;
 
 /** A zone change can shift a local date by at most two days; inspect that bounded edge so it cannot hide a run as zero. */
 function shiftActivityDay(value:string,days:number):string {
@@ -51,7 +52,7 @@ function failureStep(nodeId: NodeId | undefined, descriptor: AnyWorkflowDescript
 export function queryActivitySummaries(database: AuthorityDatabase, input: { from: string; to: string; generatedAt: string }, deps: {
   descriptors: { resolve(workflow: string): AnyWorkflowDescriptor | undefined };
   ledger: { foldActivityRange(from: string, to: string): ActivityReportWire["ledger"] };
-}, visitTopLevel?: (row: ActivityPopulationRun) => void): ActivityReportWire {
+}, visitTopLevel?: (row: ActivitySummaryRun) => void): ActivityReportWire {
   const bounds = z.strictObject({ from: z.iso.date(), to: z.iso.date(), generatedAt: z.iso.datetime({ offset: true }) }).parse(input);
   if (bounds.from > bounds.to) throw new Error("run-summary-range-invalid");
 
@@ -93,7 +94,6 @@ export function queryActivitySummaries(database: AuthorityDatabase, input: { fro
           }
         }
         if (visitTopLevel !== undefined) {
-          if (shape === "operation-member") throw new Error("activity-population-member-in-top-level");
           visitTopLevel({ runId, workflowId: workflow, title: run.displayName ?? evidence.titles.get(runId) ?? workflow, attempt, day: localDay, parentRunId, shape, status,
             terminal: terminal !== undefined, durationMs, receiptResult: receipt?.result ?? null, warningCount,
             readback: receipt === undefined ? null : receipt.result === "verified-done" });

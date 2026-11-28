@@ -110,7 +110,23 @@ describe("selected Analytics population", () => {
     const emitter = createTimelineEmitter({ repository: f.database.authority.timelineEvents, clock: f.clock });
     emitter.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Synthetic admitted title" }));
     f.publish();
-    expect(f.service.read(range).population.map(row => row.title)).toEqual(["Synthetic admitted title"]);
+    // Admit the fixture's writes before tracing the population's source queries.
+    f.database.summaryWorkflows();
+    const { value, statements } = traceSqliteStatements(() => f.service.read(range));
+    expect(value.population.map(row => row.title)).toEqual(["Synthetic admitted title"]);
+    const sql = statements.map(statement => statement.sql).join("\n");
+    expect(sql).toMatch(/\brun_search\b/iu);
+    expect(sql).not.toMatch(/\btimeline_events\b/iu);
+  });
+
+  it.each(["invalid", "building"] as const)("refuses untitled runs when search is %s", async state => {
+    const f = await fixture();
+    f.database.authority.runs.enqueue(runRecordOf({ seed: 15, enqueuedAt: at, dryRun: true }));
+    expect(f.service.read(range).population).toHaveLength(1);
+    f.raw.prepare("UPDATE database_states SET search_state='invalid', search_generation=? WHERE id=1")
+      .run(state === "building" ? f.database.getMeta().authorityGeneration : null);
+    expect(() => f.service.read(range)).toThrow("run-search-index-rebuild-required");
+    expect(() => createActivityPopulationService(f.input).read(range)).toThrow("run-search-index-rebuild-required");
   });
 
   it("keeps zero, missing, successful-root timing and terminal duration separate with explicit evidence", async () => {

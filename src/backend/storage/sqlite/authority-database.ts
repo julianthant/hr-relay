@@ -2388,6 +2388,7 @@ export class AuthorityDatabase implements Disposable {
         "SELECT * FROM run_failures WHERE id IN (SELECT value FROM json_each(?))").all(JSON.stringify(input.failures));
       const titles = new Map<string, string>();
       if (input.untitled.length > 0) {
+        if (readSingletonImage(this.#database).search_state !== "ready") throw new Error("run-search-index-rebuild-required");
         // The search index retains the original queue publication, including its display title.
         const rows = this.#database.prepare(`SELECT source.run_id AS runId,
           json_extract(entry.value,'$.event.payload.event.runId') AS owner,
@@ -2416,7 +2417,7 @@ export class AuthorityDatabase implements Disposable {
   runSummaryReadPosition() {
     if (this.#transactionMode !== "read") return undefined;
     this.#validateExternalQuerySources();
-    return { authorityGeneration: this.getMeta().authorityGeneration, ...this.capturedChangeKey() };
+    return { authorityGeneration: this.getMeta().authorityGeneration, searchState: readSingletonImage(this.#database).search_state, ...this.capturedChangeKey() };
   }
 
   queryRunCalendar(query: Parameters<ReturnType<typeof createRunSummaries>["calendar"]>[1]) {

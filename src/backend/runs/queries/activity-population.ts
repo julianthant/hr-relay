@@ -74,6 +74,7 @@ export function createActivityPopulationService(input: {
     return database.withAuthorityReadSnapshot(() => {
       const position = database.runSummaryReadPosition();
       if (retainedPosition?.authorityGeneration !== position?.authorityGeneration
+        || retainedPosition?.searchState !== position?.searchState
         || retainedPosition?.schemaCookie !== position?.schemaCookie
         || retainedPosition?.changeLogSeq !== position?.changeLogSeq) {
         retainedPosition = position;
@@ -87,7 +88,10 @@ export function createActivityPopulationService(input: {
         && cached.snapshot.sourceIdentity === (input.sourceIdentity ?? database.getSourceDatabaseIdentity())) return cached;
 
       const population: ActivityPopulationRun[] = [];
-      const addToPopulation: VisitSummary = row => { population.push(row); };
+      const addToPopulation: VisitSummary = row => {
+        if (row.shape === "operation-member") throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");
+        population.push({ ...row, shape: row.shape });
+      };
       const report = selected === undefined ? reports.read(from, to, addToPopulation)
         : reports.readSelected(from, to, selected.reportToken, addToPopulation);
       if (population.length !== report.totalRuns || new Set(population.map(row => row.runId)).size !== population.length) throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");
