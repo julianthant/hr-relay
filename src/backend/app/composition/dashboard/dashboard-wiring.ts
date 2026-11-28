@@ -108,7 +108,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle, workflowId => wakeForWork(workflowId));
   const { settingsProcesses } = resources;
   const { logWriter, stopLogWriter } = resources;
-  await logWriter.ready;
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority, readLanes } = resources;
   const history = database.dashboardHistory();
   // A copy profile serves its sample runs and Sessions cards from the history archive; production never attaches one.
@@ -469,6 +468,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   // Unfinished sends become delivery-unknown before any history route serves; expired chats are reclaimed now and hourly.
   database.authority.assistantHistory.settleInterrupted(clock.now().toISOString());
   database.authority.assistantHistory.reclaimExpired(clock.now().toISOString());
+  await logWriter.ready;
   const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;
   const observation = { clock, debugEvents };
   const server: DashboardHttpServer = input.applicationTransport === undefined ? await startHttpServer({
