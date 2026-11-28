@@ -103,7 +103,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     : undefined;
 
 
-  const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle);
+  let wakeForWork: (workflowId: string) => void = () => undefined;
+  const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle, workflowId => wakeForWork(workflowId));
   const { settingsProcesses } = resources;
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority, readLanes } = resources;
   const history = database.dashboardHistory();
@@ -176,6 +177,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     assertAssistantEffect,
   });
   snapshotWorkers = () => workers.pool.snapshot();
+  wakeForWork = workers.pool.wakeForWork;
   profile.runtime.bindSupervisor(profile.token, workers.pool);
   const stopWorkerControl = requiredClosure(async () => {
     requireStoppedPool(await workers.pool.stopAll("shutdown"));

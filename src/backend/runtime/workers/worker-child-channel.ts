@@ -28,8 +28,9 @@ export function createWorkerChildChannel(input: Readonly<{
   handlers: WorkerChildControlHandlers;
   onStop(reason: WorkerStopReason): void;
 }>) {
-  let turn: "free" | "run" | "control" = "free";
+  let turn: "free" | "run" | "control" | Readonly<{ removalReply: Extract<WorkerReplyOutcome, { state: "done" }> }> = "free";
   let lastRequestSequence = 0;
+  let workAvailable = new AbortController();
 
   const run = async (request: WorkerControlRequest): Promise<JsonValue> => {
     switch (request.type) {
@@ -47,7 +48,12 @@ export function createWorkerChildChannel(input: Readonly<{
       const parsed = WorkerParentMessageSchema.safeParse(raw);
       if (!parsed.success) throw new WorkerIpcProtocolError(typeof raw === "object" && raw !== null && "kind" in raw ? String(raw.kind) : "invalid");
       const message = parsed.data;
-      if (message.kind === "worker-stop") { input.onStop(message.reason); return; }
+      if (message.kind === "worker-stop") {
+        input.onStop(message.reason);
+        if (typeof turn === "object") workAvailable.abort();
+        return;
+      }
+      if (message.kind === "worker-work-available") { workAvailable.abort(); return; }
       const reply = (outcome: WorkerReplyOutcome): void => { input.send({ kind: "worker-reply", requestId: message.requestId, outcome }); };
       if (message.sequence <= lastRequestSequence) { reply(refused("WORKER_IPC_PROTOCOL_INVALID")); return; }
       lastRequestSequence = message.sequence;
@@ -56,15 +62,29 @@ export function createWorkerChildChannel(input: Readonly<{
         try { outcome = { state: "done", result: message.kind === "worker-pause" ? input.handlers.pause() : input.handlers.resume() }; }
         catch (error) { outcome = outcomeOf(error); }
         reply(outcome);
+        if (message.kind === "worker-resume" && outcome.state === "done") workAvailable.abort();
         return;
       }
       if (input.clock.nowMs() >= Date.parse(message.sentAt) + message.deadlineMs) { reply(refused("WORKER_REQUEST_EXPIRED")); return; }
+      if (typeof turn === "object" && message.request.type === "close-for-removal") { reply(turn.removalReply); return; }
       if (turn !== "free") { reply(refused("WORKER_BUSY")); return; }
       turn = "control";
-      void run(message.request).then(result => { reply({ state: "done", result }); }, error => { reply(outcomeOf(error)); })
-        .finally(() => { turn = "free"; });
+      const settle = (outcome: WorkerReplyOutcome): void => {
+        try { reply(outcome); }
+        finally {
+          // Keep the claim fence and the close acknowledgment if the parent timed out before receiving it.
+          turn = message.request.type === "close-for-removal" && outcome.state === "done" ? { removalReply: outcome } : "free";
+          workAvailable.abort();
+        }
+      };
+      void run(message.request).then(result => settle({ state: "done", result }), error => settle(outcomeOf(error)));
     },
-    /** The claim loop asks before each claim; false while a control runs. */
+    /** Capture before claiming so a wake during an empty claim also interrupts the next idle wait. */
+    watchForWork(): AbortSignal {
+      if (workAvailable.signal.aborted) workAvailable = new AbortController();
+      return workAvailable.signal;
+    },
+    /** The claim loop asks before each claim. A control or removal can hold the turn. */
     beginRun(): boolean {
       if (turn !== "free") return false;
       turn = "run";
