@@ -8,7 +8,7 @@ import { defineLaneRead, ReadLaneRestartedError, type DashboardReadLanes } from 
 
 const WorkerCursorSchema = z.strictObject({ offset: PositiveIntSchema, digest: FingerprintSchema });
 const RequestSchema = TimelinePageRequestSchema.pick({ after: true, through: true, limit: true, spanTypes: true })
-  .extend({ nowMs: z.number().int(), workerCursor: WorkerCursorSchema.optional() });
+  .extend({ nowMs: z.number().int(), workerCursor: WorkerCursorSchema.optional(), readLogFiles: z.literal(true).optional() });
 export type DashboardBackgroundReadRequest = z.output<typeof RequestSchema>;
 
 const ResultSchema = z.strictObject({
@@ -37,6 +37,17 @@ const dashboardTimelinePage = defineLaneRead(import.meta.url, "dashboard-timelin
     }
     // The reply's position is the native snapshot's, the one the native rows and worker facts were read in.
     const snapshotAt = (position: DashboardSnapshotPosition) => { context.snapshotAt(position); };
+    if (request.readLogFiles === true) {
+      const timeline = context.logs.timeline();
+      return query(request, snapshotAt, () => timeline.withReadSnapshot(() => {
+        const head = timeline.highWaterMark();
+        // The startup projection may have folded state before the first mirror batch.
+        const through = request.through ?? Math.max(head, request.after);
+        if (request.after > through) throw new Error("timeline-cursor-reset-required");
+        const records = timeline.page({ through, after: request.after, limit: request.limit, spanTypes: request.spanTypes });
+        return { records, through, cursor: records.length === request.limit ? records[records.length - 1].cursor : through };
+      }));
+    }
     const offset = context.start.cursorOffset;
     if (offset === 0) return query(request, snapshotAt);
     const nativeCursor = (cursor: number) => Math.max(0, cursor - offset);

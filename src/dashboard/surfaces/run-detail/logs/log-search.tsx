@@ -20,7 +20,7 @@ export function LogSearch({ tools, onOpenChange }: { tools: LogTools; onOpenChan
   }}>
     <SearchInput ref={input} aria-label="Search logs" placeholder="Search logs" className="w-full" value={tools.query} onChange={event => tools.setQuery(event.target.value)}
       trailing={<>
-        {tools.query.trim() !== "" && <span role="status" className={none ? "shrink-0 whitespace-nowrap text-caption text-ui-danger" : "shrink-0 whitespace-nowrap text-caption tabular-nums text-ui-secondary"}>{none ? "No matches" : `${tools.position} of ${tools.total}`}</span>}
+        {tools.query.trim() !== "" && <span role="status" className={none || tools.searchFailed ? "shrink-0 whitespace-nowrap text-caption text-ui-danger" : "shrink-0 whitespace-nowrap text-caption tabular-nums text-ui-secondary"}>{tools.searchFailed ? "Search unavailable" : none ? "No matches" : `${tools.position} of ${tools.total}`}</span>}
         <IconButton size="xs" label="Previous match" icon={<ChevronUp aria-hidden className="size-4" />} disabled={tools.total === 0} onClick={() => tools.step(-1)} />
         <IconButton size="xs" label="Next match" icon={<ChevronDown aria-hidden className="size-4" />} disabled={tools.total === 0} onClick={() => tools.step(1)} />
         <IconButton size="xs" label="Close search" icon={<X aria-hidden className="size-4" />} onClick={close} />

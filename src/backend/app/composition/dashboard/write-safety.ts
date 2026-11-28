@@ -33,7 +33,7 @@ export function prepareWriteSafety(input: Pick<ReturnType<typeof prepareDashboar
 
 export function composeWriteSafety(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "lifecycle" | "stateRoot"> & { history: AuthorityDatabase; reader: RunRecordService; projection: ReturnType<typeof createOperatorProjection>; workerMembers: () => readonly WorkerMemberView[]; operatorName: () => string; artifacts: ReturnType<typeof createContentAddressedArtifactWriter>; artifactReader: ReturnType<typeof createServerVerifiedArtifactReader>;
   /** Seam for the run detail, logs and run panel lane reads. */
-  readLanes?: DashboardReadLanes }) {
+  readLanes?: DashboardReadLanes; waitForLogBatch?: () => Promise<void> }) {
   const { database, lifecycle, stateRoot, projection, workerMembers, operatorName, artifacts, artifactReader } = input;
   const intakeParser = createIntakeParser({ artifacts });
   const intakeProjections = {
@@ -54,7 +54,7 @@ export function composeWriteSafety(input: Pick<ReturnType<typeof prepareDashboar
     },
   };
   const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database: history, workerMembers, operatorName, runReader: reader, canonical: { reader, database: history, descriptors: detailDescriptors }, trust: detailTrust, captures: historicalReads.captures });
-  if (input.readLanes !== undefined) bindRunDetailReadLane(runDetailDeps, input.readLanes, runDetailLane);
+  if (input.readLanes !== undefined) bindRunDetailReadLane(runDetailDeps, input.readLanes, runDetailLane, input.waitForLogBatch);
 
   return { intakeParser, intakeProjections, trustReads, runDetailDeps };
 }

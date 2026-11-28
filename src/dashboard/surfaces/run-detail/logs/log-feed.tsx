@@ -13,6 +13,7 @@ import { FieldRow, FieldRows } from "../../shared/steps/field-row.js";
 import { PageCard, ResultLine } from "../../shared/steps/page-card.js";
 import { NoteLine } from "../../shared/steps/note-line.js";
 import { StepFrame } from "../../shared/steps/step-frame.js";
+import type { RunLogSearchResponse } from "../../../../models/dashboard/run-detail.js";
 
 function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: LogEntry; timeInStep?: boolean; onDecision?: LogDecisionHandler; onCancelRun?: (entryId: string) => void }) {
   const block = entry.kind === "decision" ? <LogDecisionBlock decision={entry.decision} onAnswer={onDecision ? (option, answer) => onDecision(entry.id, option, answer) : undefined} onCancel={onCancelRun ? () => onCancelRun(entry.id) : undefined} /> : undefined;
@@ -32,8 +33,8 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
 const STEP_STATE_ICON = { done: CircleCheck, active: LoaderCircle, failed: CircleX } as const;
 function LogNote({ entry }: { entry: Extract<LogEntry, { kind: "note" }> }) {
   const Icon = entry.state === undefined ? undefined : STEP_STATE_ICON[entry.state];
-  return <NoteLine message={entry.message} tone={entry.tone} announce={entry.announce} announceKey={entry.id}
-    icon={Icon === undefined ? undefined : <Icon aria-hidden className="size-3.5 self-start translate-y-0.5" />} />;
+  return <div data-log-note-message={entry.id}><NoteLine message={entry.message} tone={entry.tone} announce={entry.announce} announceKey={entry.id}
+    icon={Icon === undefined ? undefined : <Icon aria-hidden className="size-3.5 self-start translate-y-0.5" />} /></div>;
 }
 
 /** Shorter logs mount every step; longer ones mount only the steps near the viewport. */
@@ -42,6 +43,7 @@ const LOG_WINDOW_FROM = 200;
 const JUMP_FRAMES = 10;
 
 export type LogDecisionHandler = (id: string, option: Parameters<DecisionAnswerHandler>[0], answer: Parameters<DecisionAnswerHandler>[1]) => void;
+export type SearchLogNotes = (query: string, signal: AbortSignal) => Promise<RunLogSearchResponse>;
 
 /** What the run header needs to search, copy and download the log it sits above. */
 export type LogTools = Readonly<{
@@ -50,6 +52,7 @@ export type LogTools = Readonly<{
   /** 1-based position of the current match, 0 when there is none. */
   position: number;
   total: number;
+  searchFailed?: boolean;
   step: (delta: 1 | -1) => void;
   copyState: "idle" | "copied" | "failed";
   canCopy: boolean;
@@ -65,13 +68,14 @@ const NOTHING_FOUND: Found = { ranges: [], stepIds: new Set() };
 const AT_END_SLACK = 48;
 
 /** Shared presentation for the operator stream and the isolated design preview. */
-export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = false, beforeContent, afterStep, trailingContent, navigation, onDecision, initialStepId, loading = false }: {
+export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = false, beforeContent, afterStep, trailingContent, navigation, onDecision, initialStepId, loading = false, searchNotes }: {
   steps: readonly LogStep[];
   onDecision?: LogDecisionHandler;
   onCancelRun?: (entryId: string) => void;
   label?: string;
   embedded?: boolean;
   loading?: boolean;
+  searchNotes?: SearchLogNotes;
   initialStepId?: string;
   beforeContent?: ReactNode;
   afterStep?: (id: string) => ReactNode;
@@ -133,6 +137,18 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
   const visual = useMemo(() => visualLogSteps(steps), [steps]);
   const needle = query.trim();
   const [found, setFound] = useState<Found>(NOTHING_FOUND);
+  const [servedSearch, setServedSearch] = useState<{ query: string; result?: RunLogSearchResponse }>();
+  useEffect(() => {
+    if (!needle || needle.length > 256 || searchNotes === undefined) return;
+    const controller = new AbortController();
+    void searchNotes(needle, controller.signal).then(result => {
+      if (!controller.signal.aborted) setServedSearch({ query: needle, result });
+    }, () => {
+      if (!controller.signal.aborted) setServedSearch({ query: needle });
+    });
+    return () => controller.abort();
+  }, [needle, searchNotes, steps]);
+  const served = servedSearch?.query === needle ? servedSearch : undefined;
   // A search mounts every step, so what is counted, painted and scrolled to is the same drawn text.
   // shortcut: typing slows on very long logs, and closing the search remounts the window; keep a match index if that bites.
   const windowed = !embedded && visual.length > LOG_WINDOW_FROM && !needle;
@@ -149,12 +165,18 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
     const root = scroller.current;
     const search = () => {
       const ranges = root && needle ? matchRanges(root, needle) : [];
+      const indexed = new Set(served?.result?.indexedNoteIds);
+      const matched = new Set(served?.result?.matchedNoteIds);
+      const visible = ranges.filter(range => {
+        const id = range.startContainer.parentElement?.closest<HTMLElement>("[data-log-note-message]")?.dataset.logNoteMessage;
+        return id === undefined || !indexed.has(id) || matched.has(id);
+      });
       const stepIds = new Set([...headings.current].filter(([, heading]) => {
         const section = heading.closest("section");
-        return ranges.some(range => section?.contains(range.startContainer));
+        return visible.some(range => section?.contains(range.startContainer));
       }).map(([stepId]) => stepId));
-      setFound(ranges.length ? { ranges, stepIds } : NOTHING_FOUND);
-      return ranges;
+      setFound(visible.length ? { ranges: visible, stepIds } : NOTHING_FOUND);
+      return visible;
     };
     const ranges = search();
     // A new search moves to its first match; a log that grows while it is searched leaves the view where it is.
@@ -164,7 +186,7 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
     const observer = new MutationObserver(() => { if (frame !== undefined) cancelAnimationFrame(frame); frame = requestAnimationFrame(search); });
     observer.observe(root, { childList: true, subtree: true, characterData: true });
     return () => { observer.disconnect(); if (frame !== undefined) cancelAnimationFrame(frame); };
-  }, [needle, viewport]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [needle, viewport, served]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (typeof CSS === "undefined" || !("highlights" in CSS) || !found.ranges.length) return;
     const current = found.ranges[position - 1];
@@ -196,7 +218,8 @@ export function LogFeed({ onCancelRun, steps, label = "Run logs", embedded = fal
   const measureEnd = () => { const node = scroller.current; if (node) setAtEnd(node.scrollHeight - node.scrollTop - node.clientHeight <= AT_END_SLACK); };
   useEffect(measureEnd, [steps]);
   const goLatest = () => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); jumpFrame.current = undefined; if (embedded) end.current?.scrollIntoView({ block: "end", behavior: "instant" }); else { list.current?.scrollToIndex({ index: "LAST", align: "end" }); scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "instant" }); } };
-  const tools: LogTools = { query, setQuery: next => { setQuery(next); setActive(0); setCopyState("idle"); }, position, total: found.ranges.length,
+  const tools: LogTools = { query, setQuery: next => { setQuery(next); setServedSearch(undefined); setActive(0); setCopyState("idle"); }, position, total: found.ranges.length,
+    searchFailed: served !== undefined && served.result === undefined,
     step: delta => {
       const total = found.ranges.length;
       if (!total) return;

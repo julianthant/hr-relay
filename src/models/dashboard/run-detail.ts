@@ -473,6 +473,14 @@ export const DryRunPreviewWireSchema = z.discriminatedUnion("state", [
   })) }),
 ]);
 
+export const RunLogSearchQuerySchema = z.string().trim().min(1).max(256);
+export const RunLogSearchResponseSchema = z.strictObject({
+  runId: RunIdSchema,
+  indexedNoteIds: z.array(z.uuid()),
+  matchedNoteIds: z.array(z.uuid()),
+});
+export type RunLogSearchResponse = z.output<typeof RunLogSearchResponseSchema>;
+
 export const NotePageSchema = z.strictObject({
   runId: RunIdSchema,
   dryRunPreview: DryRunPreviewWireSchema.optional(),

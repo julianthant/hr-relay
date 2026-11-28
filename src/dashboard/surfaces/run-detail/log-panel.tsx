@@ -1,7 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ClipboardCheck, CircleCheck, TriangleAlert } from "lucide-react";
 import { DASHBOARD_LOGS_REGION_ID } from "../settings/settings-model.js";
-import { LogFeed, type LogDecisionHandler, type LogTools } from "./logs/log-feed.js";
+import { LogFeed, type LogDecisionHandler, type LogTools, type SearchLogNotes } from "./logs/log-feed.js";
 import type { LogStep } from "./logs/log-feed-model.js";
 import { LogActionButton } from "./logs/log-action-button.js";
 import { LogActionsMenu, type LogMenuRecords, type LogMenuRerun } from "./logs/log-actions-menu.js";
@@ -50,8 +50,9 @@ function LogHeader({ title, status, subtitle, searching, layoutKey, children }: 
 }
 
 /** The production log layout accepts presentation data and has no transport dependency. */
-export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar, status, linkedRuns, onOpenLinkedRun, onDecision, onCancelRun, onReview, initialStepId, navigation, content, afterStep, trailingContent, headerActions, rerun, records, subtitle }: {
+export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar, status, linkedRuns, onOpenLinkedRun, onDecision, onCancelRun, onReview, initialStepId, navigation, content, afterStep, trailingContent, headerActions, rerun, records, subtitle, searchNotes }: {
   subtitle?: ReactNode;
+  searchNotes?: SearchLogNotes;
   onDecision?: LogDecisionHandler;
   onCancelRun?: (entryId: string) => void;
   onReview?: () => void;
@@ -67,7 +68,7 @@ export const LogPanel = memo(function LogPanel({ title, steps, timeline, toolbar
     <LogActionsMenu title={title} tools={tools} rerun={rerun} records={records} />
   </LogHeader>;
   return <section id={DASHBOARD_LOGS_REGION_ID} tabIndex={-1} aria-label="Selected run logs" className="ui-theme-scope flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-fg:var(--ui-primary)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
-    {content ? <>{header()}{navigation}{content}</> : <LogFeed steps={steps} afterStep={afterStep} trailingContent={trailingContent} initialStepId={initialStepId} onDecision={onDecision} onCancelRun={onCancelRun}
+    {content ? <>{header()}{navigation}{content}</> : <LogFeed steps={steps} afterStep={afterStep} trailingContent={trailingContent} initialStepId={initialStepId} onDecision={onDecision} onCancelRun={onCancelRun} searchNotes={searchNotes}
       navigation={(jump, tools) => <>{header(jump, tools)}{navigation}</>} />}
   </section>;
 });

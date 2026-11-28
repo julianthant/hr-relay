@@ -14,7 +14,7 @@ import { createTransactionHistory } from "../../../storage/sqlite/transaction-hi
 import { createOperatorProjection } from "./queue.js";
 import { PackageVersionSchema } from "./runtime-contracts.js";
 
-export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRoot" | "projection" | "trust" | "captures" | "canonical" | "runReader" | "workerMembers" | "operatorName"> & { database: AuthorityDatabase }): RunDetailQueryDeps {
+export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRoot" | "projection" | "trust" | "captures" | "canonical" | "runReader" | "workerMembers" | "operatorName"> & { database: AuthorityDatabase; timeline?: RunDetailQueryDeps["timeline"] }): RunDetailQueryDeps {
   const { stateRoot, projection, database, trust, captures, canonical, runReader } = input;
   const identity = database.getMeta();
   return {
@@ -24,7 +24,7 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
     ...(canonical === undefined ? {} : { canonical }),
     ...(runReader === undefined ? {} : { runReader }),
     ...(runReader === undefined ? {} : { itemAttemptHistory: createItemAttemptHistoryQuery({ database, reader: runReader }) }),
-    timeline: database.authority.timelineEvents,
+    timeline: input.timeline ?? database.authority.timelineEvents,
     stateRoot,
     projection,
     authority: {
@@ -65,20 +65,22 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
 const resolveWorkflow = (id: string) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor;
 export const detailDescriptors = { resolve: (id: string) => resolveWorkflow(id) ?? stepProofDescriptorOf(id) };
 
-export const runDetailLane = defineRunDetailLaneRead(import.meta.url, ({ native, history, start }, initialFacts) => {
+export const runDetailLane = defineRunDetailLaneRead(import.meta.url, ({ native, history, start, logs }, initialFacts) => {
   let facts = initialFacts;
   const { stateRoot } = start;
   const reader = createRunReadLaneReader(history);
   const { authority } = history;
+  const log = logs.timeline();
+  const timeline = { ...authority.timelineEvents, page: log.page, highWaterMark: log.highWaterMark, withReadSnapshot: log.withReadSnapshot };
   const projection = createOperatorProjection({
-    stateRoot, clock: systemClock,
+    stateRoot, clock: systemClock, timeline,
     appVersion: PackageVersionSchema.parse(JSON.parse(readFileSync(new URL("../../../../../package.json", import.meta.url), "utf8"))).version,
     descriptorSetHash: descriptorSetHash(DESCRIPTORS.map(descriptor => descriptor.contractFingerprint)),
     ledger: createTransactionHistory(authority), database: history, descriptors: { resolve: resolveWorkflow }, reader,
   });
   const failureResolution = createFailureResolutionQuery(authority);
   const deps = createOperatorRunDetail({
-    stateRoot, projection, database: history, runReader: reader, workerMembers: () => facts.workers, operatorName: () => facts.operatorName,
+    stateRoot, projection, database: history, timeline, runReader: reader, workerMembers: () => facts.workers, operatorName: () => facts.operatorName,
     canonical: { reader, database: history, descriptors: detailDescriptors },
     trust: {
       failureResolution, getFailure: failureResolution.getFailure,
@@ -98,12 +100,16 @@ export const runDetailLane = defineRunDetailLaneRead(import.meta.url, ({ native,
     } },
   });
   projection.rebuildFromTimeline();
+  let revision = log.revision();
   return {
     deps,
     update(next, through) {
       facts = next;
-      if (projection.position() > through || projection.health().state === "degraded") projection.rebuildFromTimeline();
+      const current = log.revision();
+      if (projection.position() > through || projection.health().state === "degraded"
+        || (projection.position() === through && revision !== current)) projection.rebuildFromTimeline();
       else if (projection.position() < through) projection.ingestFromTimeline();
+      revision = current;
       const health = projection.health();
       if (health.state === "degraded") throw new ProjectionDegradedError(health.lastError ?? "run read lane projection is degraded");
     },

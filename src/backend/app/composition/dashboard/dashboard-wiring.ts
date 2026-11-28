@@ -108,6 +108,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle, workflowId => wakeForWork(workflowId));
   const { settingsProcesses } = resources;
   const { logWriter, stopLogWriter } = resources;
+  await logWriter.ready;
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority, readLanes } = resources;
   const history = database.dashboardHistory();
   // A copy profile serves its sample runs and Sessions cards from the history archive; production never attaches one.
@@ -128,7 +129,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     return { commandId: request.commandId };
   };
 
-  const { activity, activityPopulation, reports, readActivityDocument } = composeActivity({ database: history, clock, descriptors, ledger, readLanes });
+  const { activity, activityPopulation, reports, readActivityDocument } = composeActivity({ database: history, clock, descriptors, ledger, readLanes, readLogTiming: true });
   const summaries: ServedSummaryQueries = { ...composeQueueSummaries(history), activity: (from, to) => reports.read(from, to) };
   const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader), withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries };
   let snapshotWorkers: () => readonly WorkerMemberView[] = () => [];
@@ -136,7 +137,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   let startupPending: (workflowId: string) => boolean = () => false;
   const projection = createOperatorProjection({ workerMembers, workerStartupPending: workflowId => startupPending(workflowId), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database: history, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader, readLanes, samples });
 
-  const { noteWriter, stopTimeline, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups, admission, readLanes, lifecycle, debugEvents });
+  const { noteWriter, stopTimeline, diagnosticRetentionTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection,
+    startupCleanups, admission, readLanes, logRevision: logWriter.committedRevision, lifecycle, debugEvents });
 
   const reportSupervisorFault = (error: Error, origin?: Readonly<{ workerId: string; pid?: number }>): void => {
     if (error instanceof RunWorkerStartupError && error.cause instanceof WorkerSetupRefusedError) return;
@@ -196,6 +198,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   await artifactReader.ready;
   const { intakeParser, intakeProjections, trustReads, runDetailDeps } = composeWriteSafety({ database, lifecycle, history, reader, stateRoot, projection, workerMembers, artifacts, artifactReader, readLanes,
+    waitForLogBatch: logWriter.waitForPending,
     operatorName: () => { assertCurrent(); return readAdmittedProfileIdentity(machineAdmission, admission).displayName; } });
 
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
@@ -399,7 +402,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
   input.onInitialPreflight?.(initialPreflight);
   // Boot spawns the standing members; each one that fails shows on its card with its cause.
-  await logWriter.ready;
   void workers.startActive();
 
   const chatGptOcrTest = createChatGptOcrTestService({ assertCurrent, dispatch: async (input, signal, source) => {

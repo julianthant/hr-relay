@@ -100,6 +100,8 @@ import { createRunSummaries, listRunWorkflows } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings } from "./settings-storage.js";
 import { TimelineRecordError, createTimelineRepository, timelineEventFromRow } from "./timeline-repository.js";
+import { openDashboardLogReader } from "./profile-local-databases.js";
+import { readDashboardLogPage } from "../events/timeline-reader.js";
 import { countActivityConfirmations, selectTransactions } from "./transaction-selection.js";
 import { createWorkbookLibraryRepository, hasOnlyInitialWorkbookType } from "./workbook-library-repository.js";
 import { DryRunScenarioResultSchema } from "../../../models/trust/dry-run-scenario-result.js";
@@ -1187,7 +1189,11 @@ export class AuthorityDatabase implements Disposable {
   static inspectTimelinePageReadOnly(admission: RuntimeAdmission, path: string, input: unknown, pageCount = 1) {
     const request = TimelinePageRequestSchema.parse(input);
     const pages = parseDiagnosticPageCount(pageCount, request.limit);
-    return withAuthorityDatabaseReadOnly(admission, path, database => {
+    const owner = requireRuntimeAdmission(admission);
+    owner.assertProfileRuntime();
+    owner.assertReadOnlyAuthorityDatabase(path);
+    const runId = request.runId;
+    const failureCauses = runId === undefined ? [] : withAuthorityDatabaseReadOnly(owner, path, database => {
       if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID
         || !isCurrentAuthoritySchemaVersion(readIntPragma(database, "user_version"))) throw new Error("timeline-diagnostic-authority-unsupported");
       const check = database.prepare("PRAGMA quick_check").all();
@@ -1195,27 +1201,13 @@ export class AuthorityDatabase implements Disposable {
       const names = inspectionTableNames(database);
       const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
       if (names.length !== expected.length || names.some((name, index) => name !== expected[index])) throw new Error("timeline-diagnostic-authority-registry-mismatch");
-      if (request.runId !== undefined && readTimelineRun(database, request.runId) === undefined) throw new Error("timeline-event-owner-missing");
-      const repository = createTimelineRepository({ database, read: work => work(),
-        mutate: () => { throw new Error("timeline-diagnostic-read-only"); }, assertOwner: record => assertTimelineOwner(database, record) });
-      const highWaterMark = repository.debugHighWaterMark();
-      const through = Math.min(request.through ?? highWaterMark, highWaterMark);
-      if (request.after > through) throw new Error("timeline-diagnostic-cursor-out-of-range");
-      const records: TimelineEventRecord[] = [];
-      let nextCursor = request.after;
-      for (let page = 0; page < pages; page += 1) {
-        const scanned = repository.debugPage({ ...request, after: nextCursor, through });
-        for (const record of scanned) {
-          assertTimelineOwner(database, record);
-          records.push(record);
-        }
-        nextCursor = scanned.at(-1)?.cursor ?? through;
-        if (nextCursor === through) break;
-      }
-      const failureCauses = request.runId === undefined ? [] : database.prepare("SELECT * FROM run_failures WHERE run_id = ? ORDER BY created_at, id").all(request.runId)
+      if (readTimelineRun(database, runId) === undefined) throw new Error("timeline-event-owner-missing");
+      return database.prepare("SELECT * FROM run_failures WHERE run_id = ? ORDER BY created_at, id").all(runId)
         .map(raw => { const failure = FailureRecordSchema.parse(nativeOrdinaryRecordFromRow("run_failures", raw)); return { failureId: failure.failureId, ...failureCauseNames(failure) }; });
-      return { records, failureCauses, after: request.after, nextCursor, through, highWaterMark, hasMore: nextCursor < through };
     });
+    const reader = openDashboardLogReader(owner.stateRoot, owner.profileBinding, 250);
+    try { return { ...readDashboardLogPage(reader, request, pages), failureCauses }; }
+    finally { reader.close(); }
   }
 
   /**

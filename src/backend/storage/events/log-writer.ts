@@ -12,6 +12,7 @@ export function startLogWriter(input: { statePath: string; root: string; onFault
   void ready.promise.catch(() => {});
   const exited = Promise.withResolvers<number>();
   const acknowledgments = new Map<number, { committed(): void; failed(error: Error): void }>();
+  const waiters = new Set<{ through: number; committed(): void; failed(error: Error): void }>();
   let sent = 0, through = 0, readySeen = false, failure: Error | undefined, closure: Promise<void> | undefined;
   const fail = (error: unknown) => {
     if (failure !== undefined) return;
@@ -19,6 +20,8 @@ export function startLogWriter(input: { statePath: string; root: string; onFault
     ready.reject(failure);
     for (const pending of acknowledgments.values()) pending.failed(failure);
     acknowledgments.clear();
+    for (const waiter of waiters) waiter.failed(failure);
+    waiters.clear();
     input.onFault(failure);
   };
   worker.on("error", fail);
@@ -43,6 +46,11 @@ export function startLogWriter(input: { statePath: string; root: string; onFault
         acknowledgments.delete(sequence);
         pending.committed();
       }
+      for (const waiter of waiters) {
+        if (waiter.through > through) continue;
+        waiters.delete(waiter);
+        waiter.committed();
+      }
     } catch (error) {
       fail(error);
       void worker.terminate();
@@ -62,6 +70,18 @@ export function startLogWriter(input: { statePath: string; root: string; onFault
   };
   return {
     ready: ready.promise,
+    committedRevision: () => {
+      if (failure !== undefined) throw failure;
+      return through;
+    },
+    async waitForPending() {
+      await ready.promise;
+      if (failure !== undefined) throw failure;
+      if (through === sent) return;
+      const deferred = Promise.withResolvers<void>();
+      waiters.add({ through: sent, committed: deferred.resolve, failed: deferred.reject });
+      await deferred.promise;
+    },
     publish: (mutation: LogMutation, acknowledged?: (error?: Error) => void): void => {
       if (failure !== undefined || closure !== undefined) {
         acknowledged?.(failure ?? new Error("log-writer-closing"));

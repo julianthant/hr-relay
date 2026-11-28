@@ -39,6 +39,7 @@ const ActivityLaneReplySchema = z.discriminatedUnion("state", [
 
 const lanePopulations = new WeakMap<AuthorityDatabase, {
   signingKey: string;
+  logRevision: number | undefined;
   sourceIdentity: string;
   clock: { nowMs: number };
   service: LocalPopulation;
@@ -46,34 +47,39 @@ const lanePopulations = new WeakMap<AuthorityDatabase, {
 
 /** The report, population and Activity XLSX selection run in one lane snapshot, signed and validated with the runtime's key. */
 const activityLaneRead = defineLaneRead(import.meta.url, "activity", {
-  lane: "navigation", priority: "interactive", sourceProof: "per-read",
-  args: z.strictObject({ signingKey: FingerprintSchema, request: ActivityLaneRequestSchema }),
-  run({ history, nowMs, start }, { signingKey, request }): z.infer<typeof ActivityLaneReplySchema> {
-    let held = lanePopulations.get(history);
-    if (held?.signingKey !== signingKey) {
-      const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity({ kind: "profile", binding: start.binding });
-      const clock = { nowMs };
-      const service = createActivityPopulationService({ database: history,
-        clock: { now: () => new Date(clock.nowMs), nowMs: () => clock.nowMs }, sourceIdentity,
-        signingKey: Buffer.from(signingKey, "hex"), ledger: createTransactionHistory(history.authority),
-        descriptors: { resolve: workflowId => SERVER_REGISTRY[workflowId]?.descriptor } });
-      held = { signingKey, sourceIdentity, clock, service };
-      lanePopulations.set(history, held);
-    }
-    held.clock.nowMs = nowMs;
-    const { service, sourceIdentity } = held;
-    try {
-      const served = request.kind === "report" ? service.reports.read(request.from, request.to)
-        : request.kind === "population" ? service.read(request.range)
-          : request.kind === "population-selected" ? service.readSelected(request.range, request.token, request.browse)
-            : request.kind === "population-export" ? service.exportSelected(request.range, request.token)
-              : xlsxDocument(sourceIdentity, service, OperatorXlsxActivityExportRequestSelectionSchema.parse(request.selection));
-      return { state: "served", body: JSON.stringify(served) };
-    } catch (error) {
-      if (error instanceof ActivitySnapshotError) return { state: "snapshot-refused", code: error.code };
-      if (error instanceof ActivityPopulationError) return { state: "population-refused", code: error.code };
-      throw error;
-    }
+  lane: "search", priority: "background", sourceProof: "per-read",
+  args: z.strictObject({ signingKey: FingerprintSchema, request: ActivityLaneRequestSchema, readLogTiming: z.boolean() }),
+  run({ history, nowMs, start, logs }, { signingKey, request, readLogTiming }): z.infer<typeof ActivityLaneReplySchema> {
+    const timing = readLogTiming ? logs.timeline() : undefined;
+    const read = () => {
+      const logRevision = timing?.revision();
+      let held = lanePopulations.get(history);
+      if (held?.signingKey !== signingKey || held.logRevision !== logRevision) {
+        const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity({ kind: "profile", binding: start.binding });
+        const clock = { nowMs };
+        const service = createActivityPopulationService({ database: history, ...{ timing },
+          clock: { now: () => new Date(clock.nowMs), nowMs: () => clock.nowMs }, sourceIdentity,
+          signingKey: Buffer.from(signingKey, "hex"), ledger: createTransactionHistory(history.authority),
+          descriptors: { resolve: workflowId => SERVER_REGISTRY[workflowId]?.descriptor } });
+        held = { signingKey, logRevision, sourceIdentity, clock, service };
+        lanePopulations.set(history, held);
+      }
+      held.clock.nowMs = nowMs;
+      const { service, sourceIdentity } = held;
+      try {
+        const served = request.kind === "report" ? service.reports.read(request.from, request.to)
+          : request.kind === "population" ? service.read(request.range)
+            : request.kind === "population-selected" ? service.readSelected(request.range, request.token, request.browse)
+              : request.kind === "population-export" ? service.exportSelected(request.range, request.token)
+                : xlsxDocument(sourceIdentity, service, OperatorXlsxActivityExportRequestSelectionSchema.parse(request.selection));
+        return { state: "served", body: JSON.stringify(served) };
+      } catch (error) {
+        if (error instanceof ActivitySnapshotError) return { state: "snapshot-refused", code: error.code };
+        if (error instanceof ActivityPopulationError) return { state: "population-refused", code: error.code };
+        throw error;
+      }
+    };
+    return timing === undefined ? read() : timing.withReadSnapshot(read);
   },
 });
 
@@ -81,10 +87,10 @@ function xlsxDocument(sourceIdentity: string, service: LocalPopulation, selectio
   return activityDocumentOf(sourceIdentity, service.reports.readSelected(selection.from, selection.to, selection.snapshotToken), selection);
 }
 
-function laneActivity(lanes: Pick<DashboardReadLanes, "read">, key: Uint8Array): ActivityRouteDeps & LaneXlsx {
+function laneActivity(lanes: Pick<DashboardReadLanes, "read">, key: Uint8Array, readLogTiming: boolean): ActivityRouteDeps & LaneXlsx {
   const signingKey = FingerprintSchema.parse(Buffer.from(key).toString("hex"));
   const read = async (request: z.input<typeof ActivityLaneRequestSchema>): Promise<string> => {
-    const reply = ActivityLaneReplySchema.parse(JSON.parse((await lanes.read(activityLaneRead, { signingKey, request })).body));
+    const reply = ActivityLaneReplySchema.parse(JSON.parse((await lanes.read(activityLaneRead, { signingKey, request, readLogTiming })).body));
     if (reply.state === "snapshot-refused") throw new ActivitySnapshotError(reply.code);
     if (reply.state === "population-refused") throw new ActivityPopulationError(reply.code);
     return reply.body;
@@ -104,13 +110,13 @@ function laneActivity(lanes: Pick<DashboardReadLanes, "read">, key: Uint8Array):
 
 /** `reports` is the request-thread report the queue projection's summaries read; the routes use `activity`, on a lane when one is given. */
 export function composeActivity(input: ActivityInput): LocalActivity;
-export function composeActivity(input: ActivityInput & { readLanes: Pick<DashboardReadLanes, "read"> }): ActivityRouteDeps & Pick<LocalActivity, "reports"> & LaneXlsx;
-export function composeActivity(input: ActivityInput & { readLanes?: Pick<DashboardReadLanes, "read"> }): ActivityRouteDeps & Pick<LocalActivity, "reports"> & Partial<LaneXlsx>;
-export function composeActivity(input: ActivityInput & { readLanes?: Pick<DashboardReadLanes, "read"> }): ActivityRouteDeps & Pick<LocalActivity, "reports"> & Partial<LaneXlsx> {
+export function composeActivity(input: ActivityInput & { readLanes: Pick<DashboardReadLanes, "read">; readLogTiming?: boolean }): ActivityRouteDeps & Pick<LocalActivity, "reports"> & LaneXlsx;
+export function composeActivity(input: ActivityInput & { readLanes?: Pick<DashboardReadLanes, "read">; readLogTiming?: boolean }): ActivityRouteDeps & Pick<LocalActivity, "reports"> & Partial<LaneXlsx>;
+export function composeActivity(input: ActivityInput & { readLanes?: Pick<DashboardReadLanes, "read">; readLogTiming?: boolean }): ActivityRouteDeps & Pick<LocalActivity, "reports"> & Partial<LaneXlsx> {
   // One key for this runtime: the lane issues and validates the same tokens as the request-thread service.
   const signingKey = randomBytes(32);
   const activityPopulation = createActivityPopulationService({ ...input, signingKey });
   const { reports } = activityPopulation;
-  if (input.readLanes !== undefined) return { ...laneActivity(input.readLanes, signingKey), reports };
+  if (input.readLanes !== undefined) return { ...laneActivity(input.readLanes, signingKey, input.readLogTiming ?? false), reports };
   return { activity: reports, activityPopulation, reports };
 }

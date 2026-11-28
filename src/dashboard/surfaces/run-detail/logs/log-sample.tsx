@@ -52,6 +52,8 @@ export function LogSample({ selection, initialStepId, confirm, ...navigation }: 
 
 function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, reviewFocus, onReview, onLogs, onAction, onOpenLinked, onRetryLogs }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
   const client = useDashboardClient();
+  const runId = selection.row.runId;
+  const searchNotes = useMemo(() => client.searchRunLogs?.bind(client, runId), [client, runId]);
   const binding = useDashboardCommandBinding();
   const resource = useRunWiring(client, selection, binding, confirm);
   const logsReadFailedTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_READ_FAILED_TITLE", {})).text;
@@ -121,7 +123,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     status={status} subtitle={<StartedByLine surface={selection.row} wrap className="mt-0.5" />} navigation={setupProblem !== undefined ? <div className="px-3 py-2"><Banner tone="warning" title={setupProblem} /></div> : undefined}
     onReview={reviewAvailable ? onReview : undefined}
     toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} headerActions={headerActions} rerun={rerun} records={records}
-    content={content}
+    content={content} searchNotes={searchNotes}
     afterStep={afterStep} trailingContent={duoCard === undefined ? emptyPreview : <>{emptyPreview}{duoCard}</>} />
     {reviewAvailable && <ReviewDialog open={Boolean(reviewOpen)} onOpenChange={open => { if (!open) onLogs?.(); }} subject={selection.workflowLabel}><RunReview selection={selection} focus={reviewFocus} /></ReviewDialog>}</>;
 }

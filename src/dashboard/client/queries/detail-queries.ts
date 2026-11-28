@@ -1,5 +1,6 @@
 import { ItemAttemptHistoryResponseSchema, type ItemAttemptHistoryResponse } from "../../../models/dashboard/item-attempt-history.js";
-import { RunDetailSectionResponseSchema, RunDetailWireSchema, type RunDetailSectionResponse, type RunDetailWire } from "../../../models/dashboard/run-detail.js";
+import { RunDetailSectionResponseSchema, RunDetailWireSchema, RunLogSearchQuerySchema, RunLogSearchResponseSchema,
+  type RunDetailSectionResponse, type RunDetailWire, type RunLogSearchResponse } from "../../../models/dashboard/run-detail.js";
 import { ArtifactIdSchema, DiagnosticBundleIdSchema } from "../../../rules/identity/ids.js";
 import { DashboardClientError } from "../errors.js";
 import { parseOrThrow } from "./query-parse.js";
@@ -19,6 +20,7 @@ export interface DetailQueries {
   runDetail(runId: string, signal?: AbortSignal): Promise<RunDetailWire>;
 
   runSection(runId: string, section: string, cursor?: string, signal?: AbortSignal, hostedRunIds?: readonly string[]): Promise<RunDetailSectionResponse>;
+  searchRunLogs?(runId: string, query: string, signal: AbortSignal): Promise<RunLogSearchResponse>;
 
   /** Bounded same-item attempt history, pinned to this exact selected run. */
   itemAttemptHistory(
@@ -68,6 +70,16 @@ export function createDetailQueries(transport: DashboardTransport): DetailQuerie
       const owner = "runId" in payload ? payload.runId
         : "state" in payload && payload.state === "available" && "runId" in payload.value ? payload.value.runId : undefined;
       if (owner !== undefined && owner !== runId && !(section === "review" && hostedRunIds.includes(owner))) throw runIdentityError(context, "RUN_SECTION_IDENTITY_MISMATCH", runId);
+      return response;
+    },
+
+    async searchRunLogs(runId: string, query: string, signal: AbortSignal): Promise<RunLogSearchResponse> {
+      const path = `/api/v1/runs/${encodeURIComponent(runId)}/log-search`;
+      const params = new URLSearchParams({ q: RunLogSearchQuerySchema.parse(query) });
+      const context = `GET ${path}`;
+      const response = parseOrThrow(RunLogSearchResponseSchema, context,
+        await transport.requestJson(`/api/v1/runs/${encodeURIComponent(runId)}/log-search?${params.toString()}`, { signal }));
+      if (response.runId !== runId) throw runIdentityError(context, "RUN_LOG_SEARCH_IDENTITY_MISMATCH", runId);
       return response;
     },
 

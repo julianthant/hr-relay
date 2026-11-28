@@ -76,7 +76,7 @@ async function measure(workspace: string, lockPort: number, requestedDay: string
   const { AuthorityDatabase } = await import("../../src/backend/storage/sqlite/authority-database.js");
   const { createDashboardReadHost } = await import("../../src/backend/storage/sqlite/dashboard-read-host.js");
   const { createOperatorProjection, queueDayRead } = await import("../../src/backend/app/composition/dashboard/queue.js");
-  const { admitReadLane, openReadLane, prepareReadLaneStart } = await import("../../src/backend/storage/sqlite/read-lane-admission.js");
+  const { admitReadLane, openReadLane, prepareReadLaneStart, readLaneLogSources } = await import("../../src/backend/storage/sqlite/read-lane-admission.js");
   const { composeQueueSummaries } = await import("../../src/backend/app/composition/dashboard/queue-summaries.js");
   const { composeNotificationReads } = await import("../../src/backend/app/composition/dashboard/notification-wiring.js");
   const { RunRecordService } = await import("../../src/backend/runs/lifecycle/run-record-service.js");
@@ -118,8 +118,9 @@ async function measure(workspace: string, lockPort: number, requestedDay: string
             try {
               const opened = openReadLane(lane, 5000);
               try {
+                const retain = () => { throw new Error("queue-day-bench-retain-unserved"); };
                 const context = { start: lane.start, native: opened.native, history: opened.history, nowMs: systemClock.nowMs(),
-                  processFacts: { workers: [], startupPending: [] }, snapshotAt: () => {}, retain: () => { throw new Error("queue-day-bench-retain-unserved"); } };
+                  processFacts: { workers: [], startupPending: [] }, snapshotAt: () => {}, retain, logs: readLaneLogSources(lane.start, 5000, retain) };
                 const inSnapshot = <T>(read: () => T): T => opened.history.withAuthorityReadSnapshot(() => lane.withProvedSource(read));
                 const folding = performance.now();
                 inSnapshot(() => queueDayRead.warm?.(context));

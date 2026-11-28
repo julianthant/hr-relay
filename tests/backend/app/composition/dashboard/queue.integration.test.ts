@@ -5,7 +5,7 @@ import { createCopySamples, sampleWorkerId, type CopySampleSession } from "../..
 import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createComposedDashboardReadHost } from "../../../../../src/backend/app/composition/dashboard/runtime-resources.js";
 import { DESCRIPTORS, descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
-import { admitReadLane, openReadLane, prepareReadLaneStart } from "../../../../../src/backend/storage/sqlite/read-lane-admission.js";
+import { admitReadLane, openReadLane, prepareReadLaneStart, readLaneLogSources } from "../../../../../src/backend/storage/sqlite/read-lane-admission.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import { DashboardDayWireSchema } from "../../../../../src/models/dashboard/projection.js";
 import { searchPartitionDay } from "../../../../../src/models/dashboard/search-calendar.js";
@@ -51,6 +51,7 @@ it("refuses a Queue day when the cold replica cannot fold its timeline", async (
   const opened = openReadLane(lane, 250);
   cleanups.push(() => opened.native.close());
   const context = { start: lane.start, native: opened.native, history: opened.history, nowMs: f.clock.nowMs(),
+    logs: readLaneLogSources(lane.start, 250, resource => { cleanups.push(() => resource.close()); }),
     processFacts: { workers: [], startupPending: [] }, retain() {}, snapshotAt() {} };
   const authority = opened.history.authority;
   const timelineEvents = Object.create(authority.timelineEvents, { withReadSnapshot: { value: () => { throw new Error("timeline-unreadable"); } } }) as typeof authority.timelineEvents;

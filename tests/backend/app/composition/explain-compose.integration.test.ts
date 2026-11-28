@@ -37,7 +37,7 @@ import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-
 import { buildExplainRunView, renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { timelineCheckpointReference, type TimelineAppend } from "../../../../src/models/events/timeline.js";
+import { TimelinePageRequestSchema, timelineCheckpointReference, type TimelineAppend } from "../../../../src/models/events/timeline.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { RunIdSchema,WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -49,16 +49,20 @@ seedPersonLookupExitRun,
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase as ProductionAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
+import { openDashboardLogReader, openLogDatabases } from "../../../../src/backend/storage/sqlite/profile-local-databases.js";
+import { readDashboardLogPage } from "../../../../src/backend/storage/events/timeline-reader.js";
 
 const profiles = createProfileFixtureSet();
 const heldProfiles: BoundProfileStorageFixture[] = [];
 afterAll(() => profiles.close());
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
+const closeLogs: (() => void)[] = [];
 
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const database of databases.splice(0)) database.close();
+  for (const close of closeLogs.splice(0)) close();
   for (const profile of heldProfiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -97,7 +101,17 @@ async function seeded(seedRun = true): Promise<AuthorityDatabase> {
   testWorkerPorts(database, manualClock(new Date("2026-08-04T00:11:13.500Z")), { path: join(root, "state.db"), descriptor: personLookupDescriptor, poolIndex: 1 });
   databases.push(database);
   if (seedRun) seedPersonLookupExitRun(database);
+  const logs = openLogDatabases(profile.path, root);
+  closeLogs.push(logs.close);
+  logs.reconcile();
+  database.bindLogPublisher(mutation => logs.apply([mutation]));
   return database;
+}
+
+function readExplainDebug(profile: BoundProfileStorageFixture, runId: string) {
+  const reader = openDashboardLogReader(profile.stateRoot, profile.admission.profileBinding, 250);
+  try { return readDashboardLogPage(reader, TimelinePageRequestSchema.parse({ runId, limit: 500 }), 1); }
+  finally { reader.close(); }
 }
 
 function failedFollowup(database: AuthorityDatabase, attempt: number, retryOf?: string) {
@@ -364,7 +378,7 @@ describe("explain run", () => {
     assert.throws(() => writer.emit(linked, runScope), /debug-run-workflow-required/u);
     assert.throws(() => writer.emit(linked, runScope, WorkflowIdSchema.parse("separations")), /timeline-event-owner-mismatch/u);
     writer.emit(linked, runScope, WorkflowIdSchema.parse("person-lookup"));
-    const runView = explainRunFrom(database, EXIT_RUN_ID);
+    const runView = explainRunFrom(database, EXIT_RUN_ID, runId => readExplainDebug(profile, runId));
     assert.equal(runView.debugEvents?.records.length, 1);
     assert.equal(runView.debugEvents?.records[0]?.scope.kind, "run");
     const path = join(root, "state.db");
@@ -402,7 +416,8 @@ describe("explain run", () => {
       const last = pages[2]; assert.ok(last);
       assert.deepEqual(view, { records: pages.slice(0, 3).flatMap(page => page.records.map(({ eventId }) => ({ eventId }))),
         after: 0, nextCursor: last.nextCursor, through: last.through, highWaterMark: last.highWaterMark, hasMore: last.hasMore });
-      assert.equal(prepare.mock.calls.filter(([sql]) => sql === "PRAGMA quick_check").length, 1);
+      assert.equal(prepare.mock.calls.filter(([sql]) => sql === "SELECT cursor FROM log_position WHERE id=1").length, 1);
+      assert.equal(prepare.mock.calls.filter(([sql]) => sql === "PRAGMA quick_check").length, 0);
     } finally { prepare.mockRestore(); }
     assert.deepEqual(readFileSync(path), before, "state.db"); assert.deepEqual(readdirSync(root, { recursive: true, encoding: "utf8" }).sort(), inventory);
     for (const [name, bytes] of sourceBytes) assert.deepEqual(readFileSync(join(root, name)), bytes, name);
@@ -421,7 +436,7 @@ describe("explain run", () => {
     writer.emit({ category: "worker", phase: "failed", correlationId: "cause", area: "worker-loop", reason: "step-failed", code: "ECONNRESET",
       message: "TypeError", stack: "TypeError: boom\n    at run (/Users/someone/Projects/hr-relay/src/x.ts:1:1)" }, runScope, WorkflowIdSchema.parse("person-lookup"));
     writer.emit({ category: "worker", phase: "failed", correlationId: "free", message: "open https://example.test/p?eid=123" }, runScope, WorkflowIdSchema.parse("person-lookup"));
-    const explained = JSON.stringify(explainRunFrom(database, EXIT_RUN_ID).debugEvents);
+    const explained = JSON.stringify(explainRunFrom(database, EXIT_RUN_ID, runId => readExplainDebug(profile, runId)).debugEvents);
     const diagnostics = composeExplainRuntime({ admission: profile.machine, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--run", EXIT_RUN_ID, "--json"] });
     for (const text of [explained, diagnostics]) {
       assert.match(text, /ECONNRESET/u); assert.match(text, /TypeError/u);

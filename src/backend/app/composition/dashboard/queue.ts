@@ -232,6 +232,7 @@ function createDayLane(lanes: DashboardReadLanes, workerMembers: () => readonly 
 }
 
 export function createOperatorProjection(input: Omit<ProjectionInput, "authority" | "timeline" | "assistantUsage" | "dayLane" | "replica"> & { database: AuthorityDatabase; workerMembers?: () => readonly WorkerMemberView[];
+  timeline?: ProjectionInput["timeline"];
   workerStartupPending?: (workflowId: string) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;
   /** With lanes, the day is built on the navigation lane from its replica; the pool's members are then required. */
   readLanes?: DashboardReadLanes;
@@ -245,7 +246,7 @@ export function createOperatorProjection(input: Omit<ProjectionInput, "authority
   }
   return createRunQueueProjection({
     assistantUsage: (from, to, generatedAt) => queryAssistantUsage(database, { from, to, generatedAt }),
-    timeline: database.authority.timelineEvents,
+    timeline: input.timeline ?? database.authority.timelineEvents,
     stateRoot,
     clock,
     appVersion,

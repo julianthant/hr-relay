@@ -136,6 +136,22 @@ function publicSqliteLeaks(file: string): readonly string[] {
 }
 
 describe("SQLite authority boundary", () => {
+  it("binds dashboard log reads to the profile log files", () => {
+    const source = (path: string) => readFileSync(join(REPO_ROOT, "src/backend", path), "utf8");
+    const detail = source("runs/queries/run-detail.ts");
+    assert.match(detail, /const timeline = context\.logs\.timeline\(\)/u);
+    assert.match(detail, /resources\.update\(facts, timeline\.highWaterMark\(\)\)/u);
+    assert.doesNotMatch(detail, /context\.(history|native)\.authority\.timelineEvents/u);
+    const compose = source("app/composition/dashboard/run-detail.ts");
+    assert.match(compose, /page: log\.page, highWaterMark: log\.highWaterMark, withReadSnapshot: log\.withReadSnapshot/u);
+    assert.match(source("storage/sqlite/dashboard-background-read-worker.ts"), /if \(request\.readLogFiles === true\) \{\s*const timeline = context\.logs\.timeline\(\)/u);
+    assert.match(source("app/composition/dashboard/activity.ts"), /priority: "background"[\s\S]+timing = readLogTiming \? logs\.timeline\(\)/u);
+    assert.match(source("app/composition/dashboard/dashboard-wiring.ts"), /composeActivity\(\{[^}]+readLogTiming: true/u);
+    assert.doesNotMatch(source("runs/queries/activity-timing.ts"), /\.authority\.|state\.db/u);
+    assert.match(source("app/composition/explain-compose.ts"), /readDashboardLogPage\(reader,/u);
+    assert.doesNotMatch(source("app/composition/explain-compose.ts"), /\.debug(?:Page|HighWaterMark)\(/u);
+  });
+
   it("keeps node:sqlite and DatabaseSync private to the adapter implementation", () => {
     const sourceFiles = gitVisibleFiles(["src"]).filter((path) => path.endsWith(".ts") || path.endsWith(".tsx"));
     const nodeSqliteImports: string[] = [];

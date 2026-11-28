@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { MirrorLogRecordSchema } from "../../../../src/backend/storage/events/log-mutations.js";
-import { openLogDatabases } from "../../../../src/backend/storage/sqlite/profile-local-databases.js";
+import { openLogDatabases, openTimelineLogReader } from "../../../../src/backend/storage/sqlite/profile-local-databases.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { openAuthorityHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
@@ -30,8 +30,8 @@ it("opens independently versioned log files and copies the retained log rows wit
       logs.reconcile();
       logs.reconcile();
       assert.deepEqual(logs.pragmas(), [
-        { journalMode: "wal", synchronous: 1, secureDelete: 1, userVersion: 1 },
-        { journalMode: "wal", synchronous: 1, secureDelete: 1, userVersion: 1 },
+        { journalMode: "wal", synchronous: 1, secureDelete: 1, userVersion: 2 },
+        { journalMode: "wal", synchronous: 1, secureDelete: 1, userVersion: 2 },
       ]);
       assert.equal(database.inspectSchema().pragmas.synchronous, 2);
       using state = new DatabaseSync(path, { readOnly: true });
@@ -43,6 +43,16 @@ it("opens independently versioned log files and copies the retained log rows wit
       }
       assert.equal(timeline.prepare("SELECT rowid FROM timeline_notes_fts WHERE timeline_notes_fts MATCH 'verified'").all().length, 1);
       assert.equal(timeline.prepare("SELECT rowid FROM timeline_notes_fts WHERE timeline_notes_fts MATCH 'excluded'").all().length, 0);
+      const binding = database.getMeta();
+      assert.ok(binding.installationId && binding.profileId);
+      const reader = openTimelineLogReader(stateRoot, { installationId: binding.installationId, profileId: binding.profileId }, 250);
+      try {
+        note.emitNote({ workflow: "person-lookup", address: { workerId: "person-lookup-worker-1", spanPath: "worker" },
+          level: "step", message: "State-only benchmark note" });
+        const matches = reader.searchStepNotes("chma");
+        assert.deepEqual(matches.map(record => record.payload.kind === "note" ? record.payload.note.message : undefined), ["Verified benchmark note"]);
+        assert.deepEqual(reader.page({}), repository.page({}).slice(0, -1));
+      } finally { reader.close(); }
       repository.pruneBefore("2026-12-01");
       repository.pruneDebugBefore("2026-12-01");
       logs.reconcile();

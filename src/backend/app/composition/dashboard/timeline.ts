@@ -21,7 +21,7 @@ const RETENTION_SWEEP_MS = 24 * 60 * 60 * 1000;
 
 export const GATE_PARK_WATCH_MS = 1_000;
 
-export function composeDashboardTimeline(input: { database: AuthorityDatabase; clock: Clock; loggingRepository: Parameters<typeof createNoteTimelineWriter>[0]["repository"]; projection: ReturnType<typeof createOperatorProjection>; startupCleanups: StartupCleanup[]; admission: RuntimeAdmission; readLanes?: DashboardReadLanes; lifecycle: DiagnosticRetentionSweepDependencies["lifecycle"]; debugEvents: Pick<ReturnType<typeof createDebugEventWriter>, "emit"> }) {
+export function composeDashboardTimeline(input: { database: AuthorityDatabase; clock: Clock; loggingRepository: Parameters<typeof createNoteTimelineWriter>[0]["repository"]; projection: ReturnType<typeof createOperatorProjection>; startupCleanups: StartupCleanup[]; admission: RuntimeAdmission; readLanes?: DashboardReadLanes; logRevision?: () => number; lifecycle: DiagnosticRetentionSweepDependencies["lifecycle"]; debugEvents: Pick<ReturnType<typeof createDebugEventWriter>, "emit"> }) {
   const { database, clock, loggingRepository, projection, startupCleanups, admission, readLanes, lifecycle, debugEvents } = input;
   const noteWriter = createNoteTimelineWriter({ repository: loggingRepository, clock });
 
@@ -84,6 +84,7 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
   const startupWorkers = workerRevision();
   let startupTimeline = startupTimelineRevision();
   let observed = revision();
+  let observedLog = input.logRevision?.();
   let lastWall = clock.nowMs(), leaseExpiry = Infinity;
   let safetyAt = clock.monotonicMs() + 60_000;
 
@@ -107,7 +108,8 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       return { readUnchanged: current !== undefined && current === workersAtStart,
         startupUnchanged: current !== undefined && current === startupWorkers };
     };
-    pending = projection.pollBackground(request => reader.read(request, stopping.signal), now, workerRevisionState).then(expiry => {
+    pending = projection.pollBackground(request => reader.read(input.logRevision === undefined ? request : { ...request, readLogFiles: true },
+      stopping.signal), now, workerRevisionState).then(expiry => {
       observation?.(expiry === undefined ? "superseded" : "completed");
       if (expiry === undefined) {
         key = { state: "retry" };
@@ -143,14 +145,16 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       const degraded = projection.health().state === "degraded";
       const current = safety || leaseDue || degraded ? database.capturedChangeKey() : database.pollCapturedChangeKey();
       const unchanged = !("state" in key) && key.changeLogSeq === current.changeLogSeq && key.schemaCookie === current.schemaCookie;
-      if (unchanged && !safety && !leaseDue && !degraded) {
+      const currentLog = input.logRevision?.();
+      const logChanged = currentLog !== observedLog;
+      if (unchanged && !logChanged && !safety && !leaseDue && !degraded) {
         lastWall = now;
         return;
       }
       if (pending !== undefined) {
         checkAfterRead = true;
         // Initial worker validation can take longer than the timeline's publication deadline.
-        if (initialRead && !degraded && !unchanged) {
+        if (input.logRevision === undefined && initialRead && !degraded && !unchanged) {
           const nextTimeline = startupTimelineRevision();
           if (nextTimeline === undefined || nextTimeline !== startupTimeline) projection.ingestFromTimeline();
           startupTimeline = nextTimeline;
@@ -159,9 +163,10 @@ export function composeDashboardTimeline(input: { database: AuthorityDatabase; c
       }
       lastWall = now;
       const next = revision();
-      if (safety || leaseDue || degraded || "state" in key || next === undefined || next !== observed) void startRead(now, workerRevision());
+      if (safety || leaseDue || degraded || logChanged || "state" in key || next === undefined || next !== observed) void startRead(now, workerRevision());
       key = current;
       observed = next;
+      observedLog = currentLog;
       if (safety) safetyAt = elapsed + 60_000;
     } catch (error) {
       projection.backgroundReadFailed(error);

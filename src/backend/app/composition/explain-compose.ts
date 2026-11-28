@@ -12,6 +12,8 @@ import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import { descriptorRuntimeNodes } from "../../../workflow-kit/workflow.js";
 import { RunIdSchema, TraceIdSchema } from "../../../rules/identity/ids.js";
 import { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import { openDashboardLogReader } from "../../storage/sqlite/profile-local-databases.js";
+import { readDashboardLogPage } from "../../storage/events/timeline-reader.js";
 import { parseDiagnosticPageCount } from "../../storage/sqlite/authority-connection.js";
 import { type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
@@ -146,7 +148,11 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
       { path: selected.authorityPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-explain" }, clock,
       undefined, undefined, undefined, credentials);
     selected.assertCurrent();
-    const view = explainRunFrom(database, identity);
+    const view = explainRunFrom(database, identity, runId => {
+      const reader = openDashboardLogReader(person.stateRoot, person.profileBinding, 250);
+      try { return readDashboardLogPage(reader, TimelinePageRequestSchema.parse({ runId, limit: 500 }), 1); }
+      finally { reader.close(); }
+    });
     selected.assertCurrent();
     output = json ? JSON.stringify(view, null, 2) : renderExplainRun(view);
   } catch (error) {
@@ -162,11 +168,13 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
 }
 
 /** Resolve either identity form, then assemble the view from authority. */
-export function explainRunFrom(database: AuthorityDatabase, identity: string): ReturnType<typeof buildExplainRunView> {
-  return database.withAuthorityTransaction(() => explainRunSnapshot(database, identity));
+type ReadExplainDebug = (runId: string) => ReturnType<typeof readDashboardLogPage>;
+
+export function explainRunFrom(database: AuthorityDatabase, identity: string, debug?: ReadExplainDebug): ReturnType<typeof buildExplainRunView> {
+  return database.withAuthorityTransaction(() => explainRunSnapshot(database, identity, debug));
 }
 
-function explainRunSnapshot(database: AuthorityDatabase, identity: string): ReturnType<typeof buildExplainRunView> {
+function explainRunSnapshot(database: AuthorityDatabase, identity: string, debug: ReadExplainDebug | undefined): ReturnType<typeof buildExplainRunView> {
   const { authority } = database;
   const asRun = RunIdSchema.safeParse(identity);
   const asTrace = TraceIdSchema.safeParse(identity);
@@ -231,13 +239,7 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
       nodeId: String(dependency.nodeId),
       state: dependency.state === "not-run" ? dependency.reason : "resolved",
     })),
-    debugEvents: authority.timelineEvents.withReadSnapshot(() => {
-      const through = authority.timelineEvents.debugHighWaterMark();
-      const records = authority.timelineEvents.debugPage({ runId, after: 0, through, limit: 500 });
-      const nextCursor = records.at(-1)?.cursor ?? through;
-      return { records: [...records], nextCursor, through,
-        highWaterMark: through, hasMore: nextCursor < through, after: 0 };
-    }),
+    ...(debug === undefined ? {} : { debugEvents: debug(runId) }),
   };
   return buildExplainRunView(evidence);
 }

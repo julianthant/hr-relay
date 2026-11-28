@@ -13,7 +13,7 @@ import { existingDatabaseLocation } from "./authority-connection.js";
 import { AuthoritySnapshotChangedError } from "./authority-errors.js";
 import type { AuthorityDatabase } from "./authority-database.js";
 import { workerExecArgv } from "./backup-inspection-worker.js";
-import { admitReadLane, openReadLane, prepareReadLaneStart, ReadLaneNameSchema, readLaneSourceIdentity, type ReadLaneName, type ReadLaneStart } from "./read-lane-admission.js";
+import { admitReadLane, openReadLane, prepareReadLaneStart, readLaneLogSources, ReadLaneNameSchema, readLaneSourceIdentity, type ReadLaneName, type ReadLaneStart } from "./read-lane-admission.js";
 
 
 const LANE_BUSY_TIMEOUT_MS = 250;
@@ -41,6 +41,7 @@ export interface LaneReadContext {
   readonly native: AuthorityDatabase;
   /** Both histories when the host admitted an archive, otherwise native itself. The read runs inside its snapshot. */
   readonly history: AuthorityDatabase;
+  readonly logs: ReturnType<typeof readLaneLogSources>;
   readonly nowMs: number;
   readonly processFacts: unknown;
   /** A read that builds its body in its own snapshot reports that snapshot's position, which the reply then carries. */
@@ -607,6 +608,7 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
   const self = laneIndex(start.lane);
   const { native, history } = openReadLane(lane, LANE_BUSY_TIMEOUT_MS);
   const resources: Readonly<{ close(): void; inTransaction(): boolean }>[] = [];
+  const logs = readLaneLogSources(start, LANE_BUSY_TIMEOUT_MS, resource => { resources.push(resource); });
   let checkpoint: DatabaseSync | undefined;
   try {
     if (start.checkpoint) {
@@ -665,7 +667,7 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
         }
       }
       let own: Parameters<LaneReadContext["snapshotAt"]>[0] | undefined;
-      const context: LaneReadContext = { start, native, history, nowMs, processFacts: message.processFacts,
+      const context: LaneReadContext = { start, native, history, logs, nowMs, processFacts: message.processFacts,
         snapshotAt: position => { own = { schemaVersion: position.schemaVersion, schemaCookie: position.schemaCookie,
           authorityGeneration: position.authorityGeneration, changeLogSeq: position.changeLogSeq }; },
         retain: resource => { resources.push(resource); } };

@@ -9,6 +9,7 @@ import { privatePathRejects } from "../private-path.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { historyArchivePath } from "./isolated-history-store.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
+import { openDashboardLogReader, openTimelineLogReader } from "./profile-local-databases.js";
 
 export const READ_LANE_PROTOCOL = "relay.dashboard-read-lane.v1";
 export const READ_LANE_OPEN_MODE = "dashboard-read-worker-read-only-no-migrate";
@@ -102,4 +103,26 @@ export function openReadLane(lane: ReturnType<typeof admitReadLane>, busyTimeout
     assertSource();
     return Object.freeze({ native, history });
   } catch (error) { native.close(); throw error; }
+}
+
+export function readLaneLogSources(start: ReadLaneStart, timeout: number,
+  retain: (resource: Readonly<{ close(): void; inTransaction(): boolean }>) => void) {
+  let timeline: ReturnType<typeof openTimelineLogReader> | undefined;
+  let dashboard: ReturnType<typeof openDashboardLogReader> | undefined;
+  return {
+    timeline() {
+      if (timeline === undefined) {
+        timeline = openTimelineLogReader(start.stateRoot, start.binding, timeout);
+        retain(timeline);
+      }
+      return timeline;
+    },
+    dashboard() {
+      if (dashboard === undefined) {
+        dashboard = openDashboardLogReader(start.stateRoot, start.binding, timeout);
+        retain(dashboard);
+      }
+      return dashboard;
+    },
+  };
 }

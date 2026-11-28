@@ -1,4 +1,4 @@
-import type { DashboardBackgroundReadRequest } from "./dashboard-background-read-worker.js";
+import type { DashboardBackgroundReadRequest, DashboardBackgroundReadResult } from "./dashboard-background-read-worker.js";
 import { workerSlotFromRow } from "./worker-slots.js";
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
@@ -60,7 +60,8 @@ export function createDashboardSnapshotQuery(database: DatabaseSync, binding: z.
   };
   const snapshot = withValidatedSnapshot ?? ownSnapshot;
   /** onSnapshot receives the store position of the transaction the page and its worker facts were read in. */
-  return (request: DashboardBackgroundReadRequest, onSnapshot?: (position: DashboardSnapshotPosition) => void) =>
+  return (request: DashboardBackgroundReadRequest, onSnapshot?: (position: DashboardSnapshotPosition) => void,
+    logPage?: () => Pick<DashboardBackgroundReadResult, "records" | "cursor" | "through">) =>
     snapshot(() => {
       const meta = readMetaRow(database);
       if (meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) throw new Error("profile-database-binding-mismatch");
@@ -87,14 +88,18 @@ export function createDashboardSnapshotQuery(database: DatabaseSync, binding: z.
       }
       validatedVersion = version;
 
-      const head = timeline.highWaterMark(), through = request.through ?? head;
-      if (through > head || request.after > through) throw new Error("timeline-cursor-reset-required");
-      const records = timeline.page({ after: request.after, through, limit: request.limit, spanTypes: request.spanTypes });
-      const cursor = records.length === request.limit ? records[records.length - 1].cursor : through;
+      const readStatePage = () => {
+        const head = timeline.highWaterMark(), through = request.through ?? head;
+        if (through > head || request.after > through) throw new Error("timeline-cursor-reset-required");
+        const records = timeline.page({ after: request.after, through, limit: request.limit, spanTypes: request.spanTypes });
+        const cursor = records.length === request.limit ? records[records.length - 1].cursor : through;
+        return { records: [...records], cursor, through };
+      };
+      const page = logPage === undefined ? readStatePage() : logPage();
       const workers = facts.page(request);
       onSnapshot?.({ schemaVersion: meta.schema_version, schemaCookie: readIntPragma(database, "schema_version"),
         authorityGeneration: meta.authority_generation, changeLogSeq: changeLogHighWater(database) });
-      return { records, cursor, through, workers };
+      return { ...page, workers };
     });
 }
 

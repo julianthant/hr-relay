@@ -24,6 +24,8 @@ import {
   RunDetailWireSchema,
   RunCaptureAvailabilityWireSchema,
   RunDetailSectionResponseSchema,
+  RunLogSearchQuerySchema,
+  RunLogSearchResponseSchema,
   NotePageSchema,
   TimelineStepWireSchema,
   NativeRunEventWireSchema,
@@ -56,7 +58,7 @@ import { readDelegationCancellation } from "../../storage/sqlite/delegation-auth
 import type { RunPanel } from "../../../models/dashboard/subscription.js";
 import { SectionUnavailableError } from "../commands/refusals.js";
 import { requireTrustRun } from "../trust/run-reader.js";
-import { buildRunLogsWhole, createRunNoteScanCache, type RunNoteScanCache } from "./run-logs.js";
+import { buildRunLogsWhole, createRunNoteScanCache, searchRunStepNotes, type RunNoteScanCache } from "./run-logs.js";
 import { buildRunSection, readRunSection } from "./run-sections.js";
 import { readItemAttemptHistoryBody } from "./item-attempt-history.js";
 import type { ItemAttemptHistoryRequest } from "../../../models/dashboard/item-attempt-history.js";
@@ -552,6 +554,7 @@ const RunReadRequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("detail"), runId: RunIdSchema, captures: RunCaptureAvailabilityWireSchema }),
   z.strictObject({ kind: z.literal("section"), runId: RunIdSchema, section: SectionNameSchema, cursor: z.string().optional() }),
   z.strictObject({ kind: z.literal("panel"), runId: RunIdSchema, captures: RunCaptureAvailabilityWireSchema }),
+  z.strictObject({ kind: z.literal("log-search"), runId: RunIdSchema, query: RunLogSearchQuerySchema }),
 ]);
 const messageRefusals = [TargetNotFoundError, SectionUnavailableError, LogIdentityRefusedError,
   ProjectionDegradedError, DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError] as const;
@@ -603,9 +606,10 @@ interface RunDetailLaneResources {
 export function defineRunDetailLaneRead(module: string, compose: (context: LaneReadContext, facts: ProcessFacts) => RunDetailLaneResources) {
   const laneResources = new WeakMap<AuthorityDatabase, RunDetailLaneResources & { noteScanCache: RunNoteScanCache }>();
   return defineLaneRead(module, "run-detail", {
-    lane: "navigation", priority: "interactive", timeline: true, processFacts: true, args: RunReadRequestSchema,
+    lane: "navigation", priority: "interactive", processFacts: true, args: RunReadRequestSchema,
     run(context, request) {
-      return laneReply(() => {
+      const timeline = context.logs.timeline();
+      return timeline.withReadSnapshot(() => laneReply(() => {
         const facts = ProcessFactsSchema.parse(context.processFacts);
         let resources = laneResources.get(context.history);
         if (resources === undefined) {
@@ -613,7 +617,10 @@ export function defineRunDetailLaneRead(module: string, compose: (context: LaneR
           laneResources.set(context.history, resources);
         }
         const { deps, noteScanCache } = resources;
-        resources.update(facts, context.history.authority.timelineEvents.highWaterMark());
+        if (request.kind === "log-search") {
+          return RunLogSearchResponseSchema.parse(searchRunStepNotes(requireTrustRun(deps.runReader, request.runId), request.query, timeline));
+        }
+        resources.update(facts, timeline.highWaterMark());
         if (request.kind === "section") {
           return buildRunSection(deps, request.runId, request.section, request.cursor, noteScanCache);
         }
@@ -623,16 +630,18 @@ export function defineRunDetailLaneRead(module: string, compose: (context: LaneR
         const sections = PANEL_SECTIONS.filter(name => name !== "captures" && detail.availableSections.includes(name))
           .map(name => buildRunSection(deps, request.runId, name));
         return { detail, logs, sections };
-      });
+      }));
     },
   });
 }
 
 type RunLaneDefinition = LaneReadDefinition<z.output<typeof RunReadRequestSchema>, LaneReply>;
-const runReadBindings = new WeakMap<RunDetailQueryDeps, { lanes: DashboardReadLanes; definition: RunLaneDefinition; revision: number; facts?: string }>();
+const runReadBindings = new WeakMap<RunDetailQueryDeps, {
+  lanes: DashboardReadLanes; definition: RunLaneDefinition; revision: number; facts?: string; waitForLogBatch?: () => Promise<void>;
+}>();
 
-export function bindRunDetailReadLane(deps: RunDetailQueryDeps, lanes: DashboardReadLanes, definition: RunLaneDefinition): void {
-  runReadBindings.set(deps, { lanes, definition, revision: 0 });
+export function bindRunDetailReadLane(deps: RunDetailQueryDeps, lanes: DashboardReadLanes, definition: RunLaneDefinition, waitForLogBatch?: () => Promise<void>): void {
+  runReadBindings.set(deps, { lanes, definition, revision: 0, waitForLogBatch });
 }
 
 const readOptions = (slot: string, signal?: AbortSignal, tab?: string) => ({
@@ -646,6 +655,8 @@ async function requestRunRead(
   const binding = runReadBindings.get(deps);
   if (binding === undefined) return undefined;
   signal?.throwIfAborted();
+  await binding.waitForLogBatch?.();
+  signal?.throwIfAborted();
   const withWorkers = request.kind === "panel" || (request.kind === "section" && request.section === "parked-write");
   if (deps.operatorName === undefined) throw new Error("run-read-lane-operator-name-missing");
   const facts = { operatorName: deps.operatorName(), workers: withWorkers ? deps.workerMembers?.() ?? [] : [] };
@@ -654,7 +665,7 @@ async function requestRunRead(
     binding.facts = key;
     binding.revision++;
   }
-  const slot = request.kind === "section" ? `run-section:${request.section}` : "run-detail";
+  const slot = request.kind === "section" ? `run-section:${request.section}` : request.kind === "log-search" ? "run-log-search" : "run-detail";
   const response = await binding.lanes.read(binding.definition, RunReadRequestSchema.parse(request), {
     ...readOptions(slot, signal, tab), processFacts: { revision: binding.revision, facts },
   });
@@ -675,6 +686,12 @@ export async function readRunDetailBody(deps: RunDetailQueryDeps, runId: string,
   const captures = await readRunCaptureAvailability(deps, runId, signal);
   return await requestRunRead(deps, { kind: "detail", runId, captures }, signal, tab)
     ?? JSON.stringify(buildRunDetail(deps, runId, captures));
+}
+
+export async function readRunLogSearchBody(deps: RunDetailQueryDeps, runId: string, query: string, signal?: AbortSignal, tab?: string): Promise<string> {
+  const body = await requestRunRead(deps, { kind: "log-search", runId, query }, signal, tab);
+  if (body === undefined) throw new SectionUnavailableError("step-note search requires a log reader");
+  return body;
 }
 
 export async function readRunSectionBody(deps: RunDetailQueryDeps, runId: string, sectionInput: string,

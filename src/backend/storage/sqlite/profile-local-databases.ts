@@ -1,8 +1,8 @@
-import type { TimelineEventRecord } from "../../../models/events/timeline.js";
+import { TimelinePageRequestSchema, type TimelineEventRecord } from "../../../models/events/timeline.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { LogMutation } from "../events/log-mutations.js";
 import { debugEventFromRow, timelineEventColumns, timelineEventFromRow } from "./timeline-repository.js";
-import { fileModified, fileChanged, fileStatus } from "../file-identity.js";
+import { fileModified, fileChanged, fileStatus, sameDirectory } from "../file-identity.js";
 import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
 import { posixPrivatePathRejects, privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
@@ -16,6 +16,7 @@ import { z } from "zod";
 import { ProfileDatabaseBindingSchema, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { outermostOperationProof } from "../configuration/credential-safe-file.js";
+import { attachHistoryArchive, historyArchivePath } from "./isolated-history-store.js";
 import { AUTHORITY_APPLICATION_ID, BOUND_AUTHORITY_SCHEMA_VERSIONS, CURRENT_AUTHORITY_SCHEMA_VERSION, UNBOUND_PREDECESSOR_AUTHORITY_SCHEMA_VERSIONS, isSupportedStoppedAuthoritySchemaVersion, type BoundAuthoritySchemaVersion, type UnboundPredecessorAuthoritySchemaVersion } from "../../../models/config/authority-schema-versions.js";
 export function countUcsdLoginRows(path: string): number | "unreadable" | "absent" {
   const info = fileStatus(path, true);
@@ -291,6 +292,27 @@ const commonColumns = `
   occurred_at TEXT NOT NULL, recorded_at TEXT NOT NULL, retention_date TEXT NOT NULL,
   payload_json TEXT NOT NULL CHECK(json_valid(payload_json))
 `;
+const logPosition = `
+  CREATE TABLE log_position (
+    id INTEGER PRIMARY KEY CHECK(id=1), cursor INTEGER NOT NULL CHECK(cursor>=0), history TEXT NOT NULL
+  ) STRICT;
+`;
+const timelineNoteIndex = `
+  CREATE VIRTUAL TABLE timeline_notes_fts USING fts5(message, tokenize='trigram');
+  INSERT INTO timeline_notes_fts(timeline_notes_fts,rank) VALUES('secure-delete',1);
+  INSERT INTO timeline_notes_fts(rowid,message)
+    SELECT cursor,json_extract(payload_json,'$.payload.note.message') FROM timeline_events
+    WHERE kind='note' AND json_extract(payload_json,'$.payload.note.level')='step';
+  CREATE TRIGGER timeline_notes_fts_insert AFTER INSERT ON timeline_events
+  WHEN NEW.kind='note' AND json_extract(NEW.payload_json,'$.payload.note.level')='step'
+  BEGIN
+    INSERT INTO timeline_notes_fts(rowid,message)
+    VALUES(NEW.cursor,json_extract(NEW.payload_json,'$.payload.note.message'));
+  END;
+  CREATE TRIGGER timeline_notes_fts_delete AFTER DELETE ON timeline_events
+  WHEN OLD.kind='note' AND json_extract(OLD.payload_json,'$.payload.note.level')='step'
+  BEGIN DELETE FROM timeline_notes_fts WHERE rowid=OLD.cursor; END;
+`;
 
 const timeline = {
   file: "timeline.db", table: "timeline_events", applicationId: 0x524c544c, read: timelineEventFromRow,
@@ -313,6 +335,13 @@ const timeline = {
     CREATE TRIGGER timeline_notes_fts_delete AFTER DELETE ON timeline_events
     WHEN OLD.kind='note' AND json_extract(OLD.payload_json,'$.payload.note.level')='step'
     BEGIN DELETE FROM timeline_notes_fts WHERE rowid=OLD.cursor; END;
+  `, `
+    DROP TRIGGER timeline_notes_fts_insert;
+    DROP TRIGGER timeline_notes_fts_delete;
+    DROP TABLE timeline_notes_fts;
+    ${timelineNoteIndex}
+    ${logPosition}
+    INSERT INTO log_position SELECT 1,coalesce(max(cursor),0),'' FROM timeline_events;
   `],
   bind: (record: TimelineEventRecord) => timelineEventColumns(record),
 };
@@ -322,6 +351,9 @@ const dashboard = {
     CREATE TABLE debug_events (${commonColumns}, pinned INTEGER NOT NULL CHECK(pinned IN (0,1))) STRICT;
     CREATE INDEX debug_events_retention_idx ON debug_events(retention_date) WHERE pinned=0;
     CREATE INDEX debug_events_run_idx ON debug_events(run_id, cursor);
+  `, `
+    ${logPosition}
+    INSERT INTO log_position SELECT 1,coalesce(max(cursor),0),'' FROM debug_events;
   `],
   bind: (record: TimelineEventRecord) => {
     if (record.payload.kind !== "debug") throw new Error("log-dashboard-kind-mismatch");
@@ -354,6 +386,103 @@ function inTransaction<T>(db: DatabaseSync, begin: "BEGIN" | "BEGIN IMMEDIATE", 
   }
 }
 
+function assertLogOwner(db: DatabaseSync, binding: z.infer<typeof bindingSchema>): void {
+  const [owner, ...duplicates] = db.prepare("SELECT installation_id, profile_id FROM log_owner").all();
+  const actual = bindingSchema.parse(owner);
+  if (duplicates.length || actual.installation_id !== binding.installation_id || actual.profile_id !== binding.profile_id) {
+    throw new Error("log-database-owner-mismatch");
+  }
+}
+
+function openLogReader(root: string, binding: ProfileDatabaseBinding, spec: typeof timeline | typeof dashboard, timeout: number) {
+  const path = join(root, spec.file);
+  const assertPrivateFiles = () => {
+    validateFile(path, true);
+    for (const suffix of ["-wal", "-shm", "-journal"]) validateFile(path + suffix, false);
+    const { dev, ino } = fileStatus(path);
+    return { device: dev, inode: ino };
+  };
+  const admitted = assertPrivateFiles();
+  const assertSource = () => {
+    if (!sameDirectory(admitted, assertPrivateFiles())) throw new Error("log-database-source-changed");
+  };
+  const db = openReadOnlyDatabase(path, timeout);
+  try {
+    if (pragmaInteger(db, "application_id") !== spec.applicationId || pragmaInteger(db, "user_version") !== spec.migrations.length) {
+      throw new Error("log-database-version-mismatch");
+    }
+    if (journalMode(db) !== "wal") throw new Error("log-database-wal-unavailable");
+    assertLogOwner(db, { installation_id: binding.installationId, profile_id: binding.profileId });
+    assertSource();
+    const position = db.prepare("SELECT cursor FROM log_position WHERE id=1");
+    const withReadSnapshot = <T>(read: () => T): T => {
+      if (db.isTransaction) return read();
+      assertSource();
+      const result = inTransaction(db, "BEGIN", read);
+      assertSource();
+      return result;
+    };
+    return {
+      db, withReadSnapshot,
+      highWaterMark: () => withReadSnapshot(() => LogPositionSchema.parse(position.get()).cursor),
+      page: (input: z.input<typeof TimelinePageRequestSchema>) => {
+        const request = TimelinePageRequestSchema.parse(input);
+        if (spec === dashboard && request.spanTypes !== undefined) throw new Error("debug-page-span-types-unsupported");
+        const predicates = ["cursor > ?"];
+        const args: (string | number)[] = [request.after];
+        if (request.through !== undefined) { predicates.push("cursor <= ?"); args.push(request.through); }
+        if (request.runId !== undefined) { predicates.push("run_id = ?"); args.push(request.runId); }
+        if (request.workflow !== undefined) { predicates.push("workflow = ?"); args.push(request.workflow); }
+        if (request.spanTypes !== undefined) {
+          predicates.push(`kind IN (${request.spanTypes.map(() => "?").join(",")})`);
+          args.push(...request.spanTypes);
+        }
+        return withReadSnapshot(() => db.prepare(`SELECT * FROM ${spec.table} WHERE ${predicates.join(" AND ")} ORDER BY cursor LIMIT ?`)
+          .all(...args, request.limit).map(spec.read));
+      },
+      close: () => db.close(), inTransaction: () => db.isTransaction,
+    };
+  } catch (error) { db.close(); throw error; }
+}
+
+const LogPositionSchema = z.strictObject({ cursor: z.number().int().nonnegative() });
+
+export function openTimelineLogReader(root: string, binding: ProfileDatabaseBinding, timeout: number) {
+  const { db, ...reader } = openLogReader(root, binding, timeline, timeout);
+  return { ...reader,
+    revision: () => reader.withReadSnapshot(() => z.strictObject({ data_version: z.number().int() }).parse(db.prepare("PRAGMA data_version").get()).data_version),
+    runTimingRows: (runIds: readonly string[]) => reader.withReadSnapshot(() => db.prepare(`
+      SELECT event.* FROM json_each(?) selection JOIN timeline_events event ON event.run_id=selection.value
+      WHERE event.kind='run.queued' OR (event.kind='span.ended' AND json_extract(event.payload_json,'$.payload.event.kind')='run')
+      ORDER BY event.cursor`).all(JSON.stringify(runIds)).map(timelineEventFromRow)),
+    stepNoteKeys: (runId: string) => reader.withReadSnapshot(() => db.prepare(`
+      SELECT cursor,id FROM timeline_events WHERE run_id=? AND kind='note'
+      AND json_extract(payload_json,'$.payload.note.level')='step' ORDER BY cursor`).all(runId)
+      .map(row => rowKeySchema.pick({ cursor: true, id: true }).parse(row))),
+    searchStepNotes(query: string, runId?: string): readonly TimelineEventRecord[] {
+      const text = z.string().trim().max(256).parse(query);
+      if (text === "") return [];
+      const scope = runId === undefined ? "" : " AND event.run_id=?";
+      const args = runId === undefined ? [] : [runId];
+      return reader.withReadSnapshot(() => {
+        const rows = [...text].length >= 3
+          ? db.prepare(`SELECT event.* FROM timeline_notes_fts JOIN timeline_events event ON event.cursor=timeline_notes_fts.rowid
+            WHERE timeline_notes_fts MATCH ?${scope} ORDER BY event.cursor`).all(`"${text.replaceAll('"', '""')}"`, ...args)
+          : db.prepare(`SELECT event.* FROM timeline_events event WHERE event.kind='note'
+            AND json_extract(event.payload_json,'$.payload.note.level')='step'${scope} ORDER BY event.cursor`).all(...args);
+        const needle = text.toLocaleLowerCase("en");
+        return rows.map(timelineEventFromRow).filter(record => record.payload.kind === "note"
+          && record.payload.note.message.toLocaleLowerCase("en").includes(needle));
+      });
+    },
+  };
+}
+
+export function openDashboardLogReader(root: string, binding: ProfileDatabaseBinding, timeout: number) {
+  const { db: _db, ...reader } = openLogReader(root, binding, dashboard, timeout);
+  return reader;
+}
+
 function openSidecar(root: string, spec: typeof timeline | typeof dashboard, binding: z.infer<typeof bindingSchema>) {
   const path = join(root, spec.file);
   const present = validateFile(path, false);
@@ -384,11 +513,7 @@ function openSidecar(root: string, spec: typeof timeline | typeof dashboard, bin
         }
       });
     }
-    const [owner, ...duplicates] = db.prepare("SELECT installation_id, profile_id FROM log_owner").all();
-    const actual = bindingSchema.parse(owner);
-    if (duplicates.length || actual.installation_id !== binding.installation_id || actual.profile_id !== binding.profile_id) {
-      throw new Error("log-database-owner-mismatch");
-    }
+    assertLogOwner(db, binding);
     const selectKey = db.prepare(`SELECT cursor,id,payload_json FROM ${spec.table} WHERE cursor=?`);
     const remove = db.prepare(`DELETE FROM ${spec.table} WHERE cursor=?`);
     const removeRun = db.prepare(`DELETE FROM ${spec.table} WHERE run_id=?`);
@@ -409,7 +534,12 @@ function openSidecar(root: string, spec: typeof timeline | typeof dashboard, bin
       insert.run(...Object.values(values));
     };
     return { db, table, append, remove, removeRun, read: spec.read,
-      keys: db.prepare(`SELECT cursor,id,payload_json FROM ${table} ORDER BY cursor`) };
+      keys: db.prepare(`SELECT cursor,id,payload_json FROM ${table} ORDER BY cursor`),
+      clear: db.prepare(`DELETE FROM ${table}`),
+      position: db.prepare("SELECT cursor,history FROM log_position WHERE id=1"),
+      reset: db.prepare("UPDATE log_position SET cursor=0,history=? WHERE id=1"),
+      advance: db.prepare("UPDATE log_position SET cursor=max(cursor,?) WHERE id=1"),
+    };
   } catch (error) {
     db.close();
     throw error;
@@ -431,49 +561,67 @@ export function openLogDatabases(statePath: string, root: string) {
   };
   try {
     const binding = bindingSchema.parse(state.prepare("SELECT installation_id,profile_id FROM database_states WHERE id=1").get());
+    const archivePath = historyArchivePath(root);
+    const archive = fileStatus(archivePath, true);
+    const archiveIdentity = archive === undefined ? "" : `${archive.dev}:${archive.ino}:${fileModified(archive)}:${archive.size}`;
+    const offset = archive === undefined ? 0 : attachHistoryArchive(state, archivePath,
+      { installationId: binding.installation_id, profileId: binding.profile_id }, "validate");
     opened.push(openSidecar(root, timeline, binding));
     opened.push(openSidecar(root, dashboard, binding));
-    const tables = opened.map(sidecar => ({
-      ...sidecar,
-      sourceRow: state.prepare(`SELECT * FROM ${sidecar.table} WHERE cursor=?`),
-      sourceRows: state.prepare(`SELECT * FROM ${sidecar.table}${sidecar.table === "timeline_events" ? " WHERE kind<>'operation-confirmed'" : ""} ORDER BY cursor`),
-    }));
+    const tables = opened.map(sidecar => {
+      const isTimeline = sidecar.table === "timeline_events";
+      const source = isTimeline && archive !== undefined ? "temp.timeline_events" : `main.${sidecar.table}`;
+      const predicate = isTimeline ? "kind<>'operation-confirmed'" : "1";
+      return { ...sidecar, cursorOffset: isTimeline ? offset : 0, history: isTimeline ? archiveIdentity : "",
+        sourceRow: state.prepare(`SELECT * FROM ${source} WHERE cursor=? AND ${predicate}`),
+        sourceRows: state.prepare(`SELECT * FROM ${source} WHERE ${predicate} ORDER BY cursor`),
+        sourcePosition: state.prepare("SELECT coalesce((SELECT seq FROM main.sqlite_sequence WHERE name=?),0) AS cursor"),
+      };
+    });
     return {
       pragmas: () => tables.map(({ db }) => ({ journalMode: journalMode(db), synchronous: pragmaInteger(db, "synchronous"),
         secureDelete: pragmaInteger(db, "secure_delete"), userVersion: pragmaInteger(db, "user_version") })),
       reconcile: (restoring = false) => inTransaction(state, "BEGIN", () => {
-        for (const { db, keys, sourceRow, sourceRows, append, read, remove } of tables) {
+        for (const entry of tables) {
+          const { db, keys, sourceRow, sourceRows, append, read, remove } = entry;
           inTransaction(db, "BEGIN IMMEDIATE", () => {
+            const previous = LogPositionSchema.extend({ history: z.string() }).parse(entry.position.get());
+            if (previous.history !== entry.history || restoring) {
+              entry.clear.run();
+              entry.reset.run(entry.history);
+            }
             const stale: number[] = [];
             for (const raw of keys.iterate()) {
               const { cursor, id, payload_json: payload } = rowKeySchema.parse(raw);
               const source = sourceRow.get(cursor);
               if (source === undefined) stale.push(cursor);
               else if (source.id !== id || source.payload_json !== payload) {
-                if (!restoring) throw new Error("log-database-source-mismatch");
-                stale.push(cursor);
+                throw new Error("log-database-source-mismatch");
               }
             }
             for (const cursor of stale) remove.run(cursor);
             for (const row of sourceRows.iterate()) append(read(row), row.payload_json);
+            entry.advance.run(LogPositionSchema.parse(entry.sourcePosition.get(entry.table)).cursor + entry.cursorOffset);
           });
         }
       }),
       apply: (mutations: readonly LogMutation[]) => inTransaction(state, "BEGIN", () => {
-        for (const { db, table, sourceRow, append, read, remove, removeRun } of tables) {
+        for (const { db, table, sourceRow, append, read, remove, removeRun, advance, cursorOffset } of tables) {
           const relevant = mutations.filter(mutation => mutation.kind === "purge-runs"
             || (mutation.kind === "remove" ? mutation.table === table : (mutation.row.payload.kind === "debug") === (table === "debug_events")));
           if (!relevant.length) continue;
           inTransaction(db, "BEGIN IMMEDIATE", () => {
             for (const mutation of relevant) {
-              if (mutation.kind === "remove") for (const cursor of mutation.cursors) remove.run(cursor);
+              if (mutation.kind === "remove") for (const cursor of mutation.cursors) remove.run(cursor + cursorOffset);
               else if (mutation.kind === "purge-runs") for (const runId of mutation.runIds) removeRun.run(runId);
               else {
-                const source = sourceRow.get(mutation.row.cursor);
+                const cursor = mutation.row.cursor + cursorOffset;
+                const source = sourceRow.get(cursor);
                 if (source === undefined) continue;
                 const committed = read(source);
-                if (canonicalJsonStringify(mutation.row) !== canonicalJsonStringify(committed)) throw new Error("log-database-source-mismatch");
+                if (canonicalJsonStringify({ ...mutation.row, cursor }) !== canonicalJsonStringify(committed)) throw new Error("log-database-source-mismatch");
                 append(committed, source.payload_json);
+                advance.run(cursor);
               }
             }
           });

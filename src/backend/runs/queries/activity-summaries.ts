@@ -11,6 +11,7 @@ import type { RunRecord } from "../../../models/run/record.js";
 import { buildActivityReport, type ActivityReportRow } from "./activity-analytics.js";
 import { createActivityDatePartReader } from "../../../models/dashboard/activity-volume.js";
 import type { NodeId } from "../../../rules/identity/ids.js";
+import { readActivityDurations, type ActivityTimingSource } from "./activity-timing.js";
 
 type ActivityRun = ReturnType<AuthorityDatabase["readActivityRuns"]>[number];
 type ActivitySummaryRun = Omit<ActivityPopulationRun, "shape"> & Pick<RunRecord["envelope"], "shape">;
@@ -52,6 +53,7 @@ function failureStep(nodeId: NodeId | undefined, descriptor: AnyWorkflowDescript
 export function queryActivitySummaries(database: AuthorityDatabase, input: { from: string; to: string; generatedAt: string }, deps: {
   descriptors: { resolve(workflow: string): AnyWorkflowDescriptor | undefined };
   ledger: { foldActivityRange(from: string, to: string): ActivityReportWire["ledger"] };
+  timing?: ActivityTimingSource;
 }, visitTopLevel?: (row: ActivitySummaryRun) => void): ActivityReportWire {
   const bounds = z.strictObject({ from: z.iso.date(), to: z.iso.date(), generatedAt: z.iso.datetime({ offset: true }) }).parse(input);
   if (bounds.from > bounds.to) throw new Error("run-summary-range-invalid");
@@ -71,13 +73,16 @@ export function queryActivitySummaries(database: AuthorityDatabase, input: { fro
       untitled: visitTopLevel === undefined ? [] : inRange.flatMap(({ run }) => run.displayName === undefined ? [run.envelope.runId] : []),
     });
     const people = peopleRuns.map(run => deriveCanonicalPerson(run, evidence.people.get(run.envelope.runId) ?? null));
+    const durations = deps.timing === undefined ? undefined : readActivityDurations(deps.timing, inRange.map(({ run }) => run));
 
     function* rows(): Generator<ActivityReportRow> {
       for (const { run, localDay, delegationWait } of inRange) {
         const { lifecycle } = run;
         const { workflow, runId, enqueuedAt, attempt, shape } = run.envelope;
         const status = deriveRunStatus({ ...run, delegationWait });
-        const elapsed = lifecycle.state === "terminal" ? Date.parse(lifecycle.endedAt) - Date.parse(enqueuedAt) : -1;
+        const elapsed = durations === undefined
+          ? (lifecycle.state === "terminal" ? Date.parse(lifecycle.endedAt) - Date.parse(enqueuedAt) : -1)
+          : (durations.get(runId) ?? -1);
         const durationMs = elapsed >= 0 ? elapsed : null;
         const parentRunId = run.envelope.parent?.runId ?? null;
         const receipt = evidence.receipts.get(runId);

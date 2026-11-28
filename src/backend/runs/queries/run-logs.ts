@@ -18,6 +18,7 @@ import {
 import type { RunRecord } from "../../../models/run/record.js";
 import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
 import type { TimelineLine } from "../../storage/events/timeline-reader.js";
+import type { TimelineEventRecord } from "../../../models/events/timeline.js";
 import {
   NoteWireSchema as NoteAtRestSchema,
   projectNoteForOperator,
@@ -319,9 +320,28 @@ function logInstantOf(entry: RunLogScanEntry): string {
 }
 
 function logIdOf(entry: RunLogScanEntry): string {
-  return deterministicUuid(`log:${entry.line.file.path}:${String(entry.line.lineNumber)}`);
+  return logIdAt(entry.line);
 }
 
+const logIdAt = (line: { file: { path: string }; lineNumber: number }) =>
+  deterministicUuid(`log:${line.file.path}:${String(line.lineNumber)}`);
+
+export function searchRunStepNotes(authority: RunRecord, query: string, source: Readonly<{
+  stepNoteKeys(runId: string): readonly { id: string; cursor: number }[];
+  searchStepNotes(query: string, runId: string): readonly TimelineEventRecord[];
+}>) {
+  const runId = authority.envelope.runId;
+  const matchedNoteIds = source.searchStepNotes(query, runId).map(record => {
+    if (record.payload.kind !== "note" || !("runId" in record.payload.note) || record.payload.note.level !== "step") {
+      throw new LogIdentityRefusedError("log-search-step-note-invalid");
+    }
+    const line = timelineNoteLocation(record);
+    assertRunLogIdentity("note", record.payload.note, line, runId, undefined, authority);
+    return logIdAt(line);
+  });
+  const indexedNoteIds = source.stepNoteKeys(runId).map(({ id, cursor }) => logIdAt({ file: { path: `timeline:${id}` }, lineNumber: cursor }));
+  return { runId, matchedNoteIds, indexedNoteIds };
+}
 type ObservedOperatorField = Extract<NonNullable<z.infer<typeof ObservedLogRowWireSchema>["displayFields"]>[number],
   { value: string }> & { point: ObservedDataPointWire };
 

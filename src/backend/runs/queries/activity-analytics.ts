@@ -1,5 +1,4 @@
 import { nodeIdOfTaskSpanPath } from "../../runs/lifecycle/support.js";
-import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import {
   activityMedian,
   activityOutcomeClass,
@@ -37,76 +36,6 @@ export type ActivityTaskSpan = {
   endedAt?: string;
   outcome?: "done" | "failed" | "cancelled" | "discarded" | "skipped" | "interrupted" | "superseded";
 };
-
-type TaskSpanEvent = {
-  t: "span.started" | "span.ended";
-  kind: string;
-  attempt: number;
-  spanPath: string;
-  name?: string;
-  ts: string;
-  outcome?: ActivityTaskSpan["outcome"];
-};
-
-function taskSpanEvent(value: unknown): TaskSpanEvent | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  const event = value as { t?: unknown; kind?: unknown; attempt?: unknown; spanPath?: unknown; name?: unknown; ts?: unknown; outcome?: unknown };
-  if ((event.t !== "span.started" && event.t !== "span.ended") || event.kind !== "task") return undefined;
-  if (typeof event.attempt !== "number" || typeof event.spanPath !== "string" || typeof event.ts !== "string") {
-    throw new Error("activity-task-span-invalid");
-  }
-  if (event.t === "span.started" && typeof event.name !== "string") throw new Error("activity-task-span-invalid");
-  return {
-    t: event.t,
-    kind: event.kind,
-    attempt: event.attempt,
-    spanPath: event.spanPath,
-    ...(typeof event.name === "string" ? { name: event.name } : {}),
-    ts: event.ts,
-    ...(typeof event.outcome === "string" ? { outcome: event.outcome as ActivityTaskSpan["outcome"] } : {}),
-  };
-}
-
-/** The same task-span fold the queue projection keeps: a start records the name, and a close binds the last open span at that path. */
-export function foldActivityTaskSpans(events: readonly { payload: { kind: string; event?: unknown } }[]): ActivityTaskSpan[] {
-  const spans: ActivityTaskSpan[] = [];
-  for (const record of events) {
-    if (record.payload.kind !== "span") continue;
-    const event = taskSpanEvent(record.payload.event);
-    if (event === undefined) continue;
-    if (event.t === "span.started") {
-      spans.push({ attempt: event.attempt, spanPath: event.spanPath, name: event.name ?? event.spanPath, startedAt: event.ts });
-      continue;
-    }
-    let span: ActivityTaskSpan | undefined;
-    for (let index = spans.length - 1; index >= 0; index -= 1) {
-      const candidate = spans[index];
-      if (candidate === undefined || candidate.attempt !== event.attempt || candidate.spanPath !== event.spanPath || candidate.endedAt !== undefined) continue;
-      span = candidate;
-      break;
-    }
-    if (span === undefined) {
-      span = { attempt: event.attempt, spanPath: event.spanPath, name: nodeIdOfTaskSpanPath(event.spanPath) ?? event.spanPath };
-      spans.push(span);
-    }
-    span.endedAt = event.ts;
-    span.outcome = event.outcome;
-  }
-  return spans;
-}
-
-export function taskSpansForRun(database: AuthorityDatabase, runId: string): ActivityTaskSpan[] {
-  const events: { payload: { kind: string; event?: unknown } }[] = [];
-  let after = 0;
-  for (;;) {
-    const page = database.authority.timelineEvents.page({ runId, after, limit: 1000 });
-    events.push(...page);
-    const last = page.at(-1);
-    if (page.length < 1000 || last === undefined) break;
-    after = last.cursor;
-  }
-  return foldActivityTaskSpans(events);
-}
 
 type StepTimeline = readonly { label: string; nodes: readonly { id: string; label: string }[] }[];
 
