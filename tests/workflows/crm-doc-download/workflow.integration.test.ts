@@ -120,7 +120,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       for (const [records, reason] of [
         ["one | 10000001 | one@example.test | ; one | | two@example.test |", /omission facts are invalid at: records/],
         ["one | 10000001 | one@example.test |", /one CRM record per requested person/],
-        ["one | 10000001 | one@example.test | ; two | | other@example.test |", /match the requested people in input order/],
+        ["one | 10000001 | one@example.test | ; two | | other@example.test |", /Match the requested people in input order/],
       ] as const) {
         assert.throws(() => planner.plan({ ...startRequest, selectedStepKeys,
           stepOmissions: [{ step: "search-records", facts: { records } }],
@@ -206,7 +206,13 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
     if (mode === "manual-package" || mode === "manual-reference") {
       const failures = f.db.authority.failures.listByRun(runId);
       assert.equal(result.state, "done", JSON.stringify(failures.map(failure => failure.summary)));
-      assert.deepEqual(f.db.authority.runResults.get(runId)?.result.value, { state: "omitted", step: "package-worksheets" });
+      const run = f.db.authority.runs.get(runId), terminal = f.db.authority.runResults.get(runId);
+      assert.ok(run && terminal);
+      assert.deepEqual(terminal.result.value, { state: "omitted", step: "package-worksheets" });
+      const { receipt } = deriveRunEvidenceReceipt({ descriptor, run, result: terminal,
+        checkpoints: f.db.authority.runCheckpoints.listByItem(descriptor.id, entry.itemId),
+        gateResults: f.db.authority.gateResults.listByRun(runId) });
+      assert.deepEqual(receipt.output.map(({ field, state }) => [field, state]), [["state", "satisfied"], ["step", "satisfied"]]);
       assert.deepEqual(f.db.authority.writeIntents.listByRun(runId), []);
       assert.equal(f.db.authority.runCheckpoints.latest(descriptor.id, entry.itemId, "worksheet-archives"), undefined);
       assert.equal(f.db.authority.generatedArtifacts.get(`sink:documents-file-${runId}`), undefined);
@@ -400,6 +406,13 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       }
       assert.equal(f.db.authority.generatedArtifacts.get(`sink:documents-file-${runId}`)?.state, "ready");
       assert.equal(f.db.authority.artifactOutbox.listPending().length, 0); assert.equal(downloads, 2);
+      if (mode === "manual-search") {
+        const run = f.db.authority.runs.get(runId); assert.ok(run);
+        const { receipt } = deriveRunEvidenceReceipt({ descriptor, run, result: terminal,
+          checkpoints: f.db.authority.runCheckpoints.listByItem(descriptor.id, entry.itemId),
+          gateResults: f.db.authority.gateResults.listByRun(runId) });
+        assert.ok(receipt.observations.some(({ source }) => source.kind === "operator-assertion" && source.step === "search-records"));
+      }
       inspect?.({ f, runId, itemId: entry.itemId });
     } else {
       assert.notEqual(result.state, "done");

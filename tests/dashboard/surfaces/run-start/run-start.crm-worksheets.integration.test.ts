@@ -82,6 +82,21 @@ it.each([false, true])("captures each chosen worksheet when starting CRM Documen
     for (const label of ["Find latest CRM records", "Resolve worksheet rows", "Download CRM documents", "Package worksheet archives"]) {
       assert.equal(dialog.disabled(`Include ${label}`), false, label);
     }
+    assert.ok(dialog.text().includes("Also omits: Download CRM documents"), dialog.text());
+    await dialog.press("Resolve worksheet rows");
+    assert.equal(dialog.disabled("Include Download CRM documents"), true);
+    assert.ok(dialog.text().includes("Omitted with Resolve worksheet rows."), dialog.text());
+    assert.equal(dialog.disabled("Include Package worksheet archives"), false);
+    assert.ok(dialog.text().includes("Turn off Package worksheet archives if done by hand."), dialog.text());
+    await dialog.press("Package worksheet archives");
+    assert.ok(dialog.text().includes("Done outside Relay."), dialog.text());
+    await dialog.press("Resolve worksheet rows");
+    assert.equal(dialog.disabled("Include Download CRM documents"), false);
+    await dialog.press("Package worksheet archives");
+    await dialog.press("Download CRM documents");
+    assert.ok(dialog.text().includes("Needs Download CRM documents. Turn off if done by hand."), dialog.text());
+    assert.equal(dialog.disabled("Start run"), true);
+    await dialog.press("Download CRM documents");
     await dialog.press("Find latest CRM records");
     assert.equal(dialog.disabled("Start run"), true);
     for (const [description, records] of [
@@ -95,6 +110,7 @@ it.each([false, true])("captures each chosen worksheet when starting CRM Documen
       assert.equal(planned, undefined, description);
       assert.deepEqual(f.database.authority.runs.listByWorkflow(crm.id), [], description);
     }
+    assert.ok(dialog.text().includes("CRM records: match the requested people in input order."), dialog.text());
     await dialog.fill("CRM records", typedRecords);
     assert.equal(dialog.disabled("Start run"), false);
   }

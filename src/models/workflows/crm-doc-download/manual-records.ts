@@ -32,7 +32,7 @@ export function crmManualDocumentRecordsSchema(people: readonly CrmDocumentSubje
       return identity !== undefined && matchesCrmDocumentSubject(subject, identity) ? [{ subject, identity }] : [];
     });
     if (records.length !== people.length) {
-      context.addIssue({ code: "custom", message: "CRM records must match the requested people in input order." });
+      context.addIssue({ code: "custom", message: "Match the requested people in input order." });
       return z.NEVER;
     }
     return { records };
