@@ -152,7 +152,7 @@ describe("Onboarding reference spreadsheet check", () => {
     assert.equal(f.commits(), 1);
   });
 
-  it("reviews the Employee ID first observed in the hire receipt and resumes without resubmitting", async () => {
+  it("reviews the assigned Employee ID from the hire receipt and resumes without resubmitting", async () => {
     const f = await fixture({ mode: "new-hire", newHireReceiptEid: PERSON.emplId });
     const root = f.start([f.checkSheet("Reference roster", "Hires", ["email", "eid"], [[f.key, "10000009"]])]);
     const parked = await f.reviewThenRun(root);

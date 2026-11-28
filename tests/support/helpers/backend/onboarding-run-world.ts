@@ -177,11 +177,14 @@ export function createOnboardingRunWorld() {
       ucpath: () => {
         const base = healthyUcpathDriver();
         return { ...base, ...hire, read: async (id: Parameters<typeof base.read>[0]) => id === UCPATH_HIRE_SUBJECT ? hire.readHireSubject() : base.read(id),
-          scanHireTransactions: async (query: Parameters<typeof hire.scanHireTransactions>[0]) => {
-            const scan = await hire.scanHireTransactions(query);
+          submitHire: async (capability: Parameters<typeof hire.submitHire>[0]) => {
+            const receipt = await hire.submitHire(capability);
             const eid = options.newHireReceiptEid;
-            return options.mode !== "new-hire" || eid === undefined ? scan
-              : { ...scan, rows: scan.rows.map(row => ({ ...row, emplId: eid })) };
+            if (options.mode !== "new-hire" || eid === undefined) return receipt;
+            const row = hire.rows.find(candidate => candidate.transactionId === receipt.transactionId);
+            assert.ok(row);
+            row.emplId = eid;
+            return { ...receipt, emplId: eid };
           },
           searchPersonMatch: async (input: unknown) => {
             calls.push({ system: "ucpath", input }); return options.personMatch ?? { hits: [], confirmed: [], dropped: [] };
