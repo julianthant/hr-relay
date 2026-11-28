@@ -75,7 +75,7 @@ function omittedOr<T, R>(
 export const separationsWorkflow = defineWorkflow({
   id: "separations",
   requiredWorkbookFields: [],
-  referenceCheck: defineReferenceCheck({ key: "eid", writeReview: APPROVAL_NODE, outputs: {
+  referenceCheck: defineReferenceCheck({ key: "eid", writeReview: { source: APPROVAL_NODE, before: ["pending-set", "filing-presence"] }, outputs: {
     document: { eid: "employee.eid.value", fullName: "employee.name.value" },
     subject: { eid: "emplId" },
     "job-summary": { eid: "emplId", fullName: "displayedName" },

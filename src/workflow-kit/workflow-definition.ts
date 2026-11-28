@@ -1359,17 +1359,16 @@ export function compileWorkflow<
   const referenceDependencies = new Map<string, string>();
   if (writeReview !== undefined) {
     const order = topologicalEntries(steps, parallelMembership(steps));
-    const authority = order.findIndex(entry => entry.id === writeReview);
-    const gate = referenceReviewId(writeReview);
+    const authority = order.findIndex(entry => entry.id === writeReview.source);
+    const gate = referenceReviewId(writeReview.source);
     const gateIndex = order.findIndex(entry => entry.kind === "gate" && entry.id === gate);
-    if (authority < 0 || gateIndex <= authority) throw new Error(`invalid reference write review at ${writeReview}`);
+    if (authority < 0 || gateIndex <= authority) throw new Error(`invalid reference write review at ${writeReview.source}`);
     // The verified identity task consumes the earlier reviews before its own reference review can authorize proceeding.
     const earlier = order.slice(0, authority).findLast(entry => entry.kind === "gate" && referenceComparisonForGate(entry.id) !== undefined);
-    if (earlier !== undefined) referenceDependencies.set(writeReview, earlier.id);
-    for (const [index, entry] of order.entries()) {
-      if (entry.kind !== "transaction") continue;
-      if (index <= gateIndex) throw new Error(`reference write review ${gate} must precede ${entry.id}`);
-      referenceDependencies.set(entry.id, gate);
+    if (earlier !== undefined) referenceDependencies.set(writeReview.source, earlier.id);
+    for (const reader of writeReview.before) {
+      if (order.findIndex(entry => entry.id === reader) <= gateIndex) throw new Error(`reference write review ${gate} must precede ${reader}`);
+      referenceDependencies.set(reader, gate);
     }
   }
   const dependencies = (entry: RuntimeEntry) => {

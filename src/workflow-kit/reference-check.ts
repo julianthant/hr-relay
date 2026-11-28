@@ -13,7 +13,7 @@ const ReferenceCheckDefinitionSchema = z.strictObject({
   input: SourceFields.optional(),
   lookupName: z.string().min(1).optional(),
   manualForm: StepOmissionFormSchema.optional(),
-  writeReview: NodeIdSchema.optional(),
+  writeReview: z.strictObject({ source: NodeIdSchema, before: z.array(NodeIdSchema).min(1) }).optional(),
   outputs: z.record(z.string().refine(id => NodeIdSchema.safeParse(id).success), SourceFields),
 });
 export type ReferenceCheckDefinition = z.input<typeof ReferenceCheckDefinitionSchema>;
