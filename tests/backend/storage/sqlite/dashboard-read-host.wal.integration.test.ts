@@ -183,7 +183,7 @@ it("takes the writer's automatic checkpoints while the host runs and hands them 
   assert.equal(fixture.database.autoCheckpointPages(), 1_000);
 });
 
-it("serves navigation while a checkpoint waits to retry behind Search", async () => {
+it("serves navigation while a checkpoint waits for the active Search read", async () => {
   const { lanes, walBytes, writer } = await walHost(POLICY, true);
   const directory = mkdtempSync(join(tmpdir(), "relay-search-checkpoint-"));
   cleanups.push(() => rmSync(directory, { recursive: true, force: true }));
@@ -194,8 +194,8 @@ it("serves navigation while a checkpoint waits to retry behind Search", async ()
     assert.ok(existsSync(join(directory, "started")));
     const writes = writer();
     try {
-      while (!lanes.status().retryPending && performance.now() < deadline) await delay(10);
-      assert.ok(lanes.status().retryPending, "the checkpoint deferred before Search released its reader");
+      while (lanes.status().walPeakBytes <= POLICY.thresholdBytes && performance.now() < deadline) await delay(10);
+      assert.ok(lanes.status().walPeakBytes > POLICY.thresholdBytes, "the host requested a checkpoint before Search released its reader");
       assert.ok(walBytes() > POLICY.thresholdBytes);
       assert.ok(await lanes.read(laneTimedSleep, { tag: "Queue during Search", ms: 0 }));
     } finally { writes.stop(); }

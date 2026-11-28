@@ -150,7 +150,6 @@ const ReplySchema = z.discriminatedUnion("kind", [
     code: z.literal("STORAGE_SNAPSHOT_CHANGED").optional() }),
   z.strictObject({ kind: z.literal("cancelled"), id: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("checkpoint"), id: z.number().int().positive(), ...CheckpointRowSchema.shape, ...CheckpointSpanSchema.shape }),
-  z.strictObject({ kind: z.literal("checkpoint-deferred"), id: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("checkpoint-failed"), id: z.number().int().positive(), message: z.string().min(1) }),
 ]);
 type LaneReply = z.infer<typeof ReplySchema>;
@@ -177,7 +176,7 @@ export interface WalCheckpointAttempt {
   readonly log: number;
   readonly checkpointed: number;
   readonly walBytesAfter: number;
-  /** The lane's checkpoint run, waiting for the other lanes included, in wall-clock milliseconds: interactive reads wait behind it. */
+  /** When the navigation lane ran the checkpoint, in wall-clock milliseconds. */
   readonly startedAtMs: number;
   readonly finishedAtMs: number;
 }
@@ -372,7 +371,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       return;
     }
     // A mismatched reply changes nothing here, so the restart its exit triggers settles the lane's in-flight waiters.
-    if (reply.kind === "checkpoint" || reply.kind === "checkpoint-deferred" || reply.kind === "checkpoint-failed") {
+    if (reply.kind === "checkpoint" || reply.kind === "checkpoint-failed") {
       if (lane.checkpoint !== reply.id) throw new Error("read-lane-reply-unexpected");
       lane.checkpoint = undefined;
       finishCheckpoint(reply.kind === "checkpoint" ? { busy: reply.busy, log: reply.log, checkpointed: reply.checkpointed,
@@ -636,7 +635,7 @@ function runReadLane(port: MessagePort, data: unknown) {
   const cache = new Map<string, CacheEntry>();
   const checkpoints: number[] = [];
   const interactive: QueuedRead[] = [], background: QueuedRead[] = [];
-  let scheduled = false, closed = false, gateWait = false;
+  let scheduled = false, closed = false, gateWait = false, waitingForReaders = false;
   const leftInTransaction = () => native.hasOpenTransaction() || history.hasOpenTransaction() || resources.some(resource => resource.inTransaction());
   const close = () => {
     closed = true;
@@ -688,10 +687,10 @@ function runReadLane(port: MessagePort, data: unknown) {
     }));
   };
 
-  /** A lane marks itself reading before it picks a read, and backs off while a checkpoint holds the gate. */
+  /** A lane marks itself reading before it picks a read, then respects any other lane's checkpoint reservation. */
   const tryEnterRead = () => {
     Atomics.store(gate, readingAt(self), 1);
-    if (Atomics.load(gate, GATE_FLAG) === 0) return true;
+    if (Atomics.load(gate, GATE_FLAG) === 0 || checkpoints.length > 0) return true;
     Atomics.store(gate, readingAt(self), 0);
     Atomics.notify(gate, readingAt(self));
     return false;
@@ -709,16 +708,25 @@ function runReadLane(port: MessagePort, data: unknown) {
     Atomics.notify(gate, readingAt(self));
   };
 
-  /** Admit a checkpoint while the lanes are idle. An active read leaves the checkpoint for the host's bounded retry. */
+  /** Reserve the other lanes' next read boundary while navigation keeps serving its own reads. */
+  const reserveCheckpoint = () => {
+    if (waitingForReaders) return false;
+    Atomics.store(gate, GATE_FLAG, 1);
+    for (let other = 0; other < LANE_COUNT; other++) {
+      if (other === self) continue;
+      const wait = Atomics.waitAsync(gate, readingAt(other), 1);
+      if (!wait.async) continue;
+      waitingForReaders = true;
+      void wait.value.then(() => { waitingForReaders = false; schedule(); });
+      return false;
+    }
+    return true;
+  };
+
   const runCheckpoint = (id: number): LaneReply => {
     const startedAtMs = systemClock.nowMs();
-    Atomics.store(gate, GATE_FLAG, 1);
     try {
       if (checkpoint === undefined) throw new Error("read-lane-checkpoint-unowned");
-      for (let other = 0; other < LANE_COUNT; other++) {
-        if (other === self) continue;
-        if (Atomics.load(gate, readingAt(other)) !== 0) return { kind: "checkpoint-deferred", id };
-      }
       lane.assertSource();
       const row = CheckpointRowSchema.parse(checkpoint.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get());
       return { kind: "checkpoint", id, ...row, startedAtMs, finishedAtMs: systemClock.nowMs() };
@@ -761,7 +769,11 @@ function runReadLane(port: MessagePort, data: unknown) {
   const accept = (input: unknown) => {
     const message = RequestSchema.parse(input);
     if (message.kind === "close") { close(); return; }
-    if (message.kind === "checkpoint") { checkpoints.push(message.id); return; }
+    if (message.kind === "checkpoint") {
+      if (checkpoint === undefined) throw new Error("read-lane-checkpoint-unowned");
+      checkpoints.push(message.id);
+      return;
+    }
     if (message.kind === "cancel") {
       // A message that already started is not in a queue: its reply answers the host instead.
       for (const queue of [interactive, background]) {
@@ -785,11 +797,13 @@ function runReadLane(port: MessagePort, data: unknown) {
   const step = () => {
     scheduled = false;
     if (closed) return;
-    const id = checkpoints.shift();
-    if (id !== undefined) send(runCheckpoint(id));
-    else if (interactive.length + background.length > 0) {
+    const id = checkpoints[0];
+    if (id !== undefined && reserveCheckpoint()) {
+      checkpoints.shift();
+      send(runCheckpoint(id));
+    } else if (interactive.length + background.length > 0) {
       if (!tryEnterRead()) { waitForGate(); return; }
-      // Picked only once the lane holds its reading mark: nothing leaves a queue while the gate is held.
+      // Pick only after admitting the read, so a gated read stays queued and cancelable.
       const picked = interactive.shift() ?? background.shift();
       if (picked !== undefined) runRead(picked);
     }
@@ -797,7 +811,8 @@ function runReadLane(port: MessagePort, data: unknown) {
   };
   // One event-loop turn between messages lets every message that arrived during a read join the queues before the next pick.
   function schedule() {
-    if (scheduled || closed || gateWait || checkpoints.length + interactive.length + background.length === 0) return;
+    const checkpointReady = checkpoints.length > 0 && !waitingForReaders;
+    if (scheduled || closed || gateWait || (!checkpointReady && interactive.length + background.length === 0)) return;
     scheduled = true;
     setImmediate(() => {
       // A failed send or close leaves the lane in an unknown state; the host restarts it from its exit.
