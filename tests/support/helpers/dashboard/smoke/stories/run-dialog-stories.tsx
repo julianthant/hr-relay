@@ -9,6 +9,7 @@ import type { RunStartStage } from "../../../../../../src/dashboard/surfaces/run
 import type { LaunchActivity, LaunchRecovery, RerunLoad } from "../../../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import { PreflightCheckIdSchema } from "../../../../../../src/models/preflight/preflight-contract.js";
 import { ERROR_CATALOG } from "../../../../../../src/models/failures/error-catalog.js";
+import { RerunValuesResponseSchema } from "../../../../../../src/models/dashboard/rerun-values.js";
 import type { StartRefusalCode } from "../../../../../../src/models/run/start-refusal.js";
 import type { RunChecksState } from "../../../../../../src/dashboard/surfaces/run-start/run-checks-model.js";
 import {
@@ -255,7 +256,7 @@ const REFERENCE = {
     await page.getByRole("menuitemcheckbox", { name: "People" }).click();
     await waitForTwoWorksheets(page);
   } }),
-  "two-rerun": stage("Onboarding Rerun with both retained worksheets shown", () => runDialogClient({ ...onboardingReads, rerunValues: async () => ({
+  "two-rerun": stage("Onboarding Rerun with both retained worksheets shown", () => runDialogClient({ ...onboardingReads, rerunValues: async () => RerunValuesResponseSchema.parse({
     state: "available", snapshot: {
       source: { runId: RUN_DIALOG_RERUN_SOURCE.runId, version: RUN_DIALOG_RERUN_SOURCE.expectedVersion, workflow: onboarding.id,
         descriptorVersion: onboarding.version, contractFingerprint: onboarding.contractFingerprint, outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headless" },

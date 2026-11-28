@@ -190,7 +190,7 @@ it("reruns the original person and mode with both saved worksheets and the picke
   assert.deepEqual([...document.body.querySelectorAll('[role="menuitemcheckbox"]')].map(item =>
     [item.textContent, item.getAttribute("aria-checked"), item.getAttribute("aria-disabled")]), [["Second", "true", "true"], ["First", "true", "true"]]);
   await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-  await dialog.press("Next"); await dialog.press("Start live run"); assert.ok(planned);
+  await dialog.press("2 Start"); await dialog.press("Start live run"); assert.ok(planned);
   assert.deepEqual(planned.submissions, [{ email: "source@example.test", mode: "rehire" }]);
   assert.deepEqual(planned.workbookReferences, [
     { entry: 1, libraryId: entry.libraryId, versionId: "version", sheetId: "first", expectedVersion: 1 },

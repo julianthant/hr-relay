@@ -600,7 +600,7 @@ export function RunStartDialog({
             )}
 
             <div className="launch-sections">
-              {(!isRerun && currentStage === "Input" || isRerun && currentStage === "Steps" && Object.keys(referenceSelections).length > 0) && (
+              {(!isRerun && currentStage === "Input" || isRerun && stepsShown && Object.keys(referenceSelections).length > 0) && (
                 <RunStartInput workflow={workflow} workflowId={workflowId} inputRun={inputRun} pdfSurface={pdfSurface} pdfInput={pdfInput}
                   draft={draft} typedValues={typedValues} typedInputRef={typedInputRef} preview={preview} busy={busy} sending={sending}
                   recovery={recovery} update={update} spreadsheets={spreadsheets} savedRows={savedRows} referencesOnly={isRerun} />
