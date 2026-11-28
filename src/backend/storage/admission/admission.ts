@@ -38,6 +38,7 @@ import { acquireInstallation,acquireStoppedProfileControlUpgrade,assertInstallat
 import { RuntimeLifetimeLock,WorkerRuntimeLifetimeLock,type OfflineMaintenanceOperation } from "./lifetime-lock.js";
 import { assertOfflineMaintenanceForProcessRoot } from "./process-root.js";
 
+const AuthorityBackupWriteName = /^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite(?:\.manifest\.json|\.(?:timeline|dashboard)\.db)?)$/u;
 
 
 
@@ -464,7 +465,7 @@ export class RuntimeAdmission {
     if (this.#scope !== "stopped-control-inventory" || this.#stoppedControlInventory === undefined) return false;
     const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory.claim), directory = source.backupDirectory;
     return isAbsolute(path) && resolve(path) === path && (path === directory || dirname(path) === directory
-      && /^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite(?:\.manifest\.json|\.(?:timeline|dashboard)\.db)?)$/u.test(basename(path)));
+      && AuthorityBackupWriteName.test(basename(path)));
   }
   assertAuthorityBackupWrite(path: string): void {
     if (this.#scope === "stopped-control-inventory") {
@@ -476,7 +477,7 @@ export class RuntimeAdmission {
       this.assertLive();
       const directory = join(this.#stateRoot, "backups", "authority");
       if (!isAbsolute(path) || resolve(path) !== path || path !== directory && (dirname(path) !== directory
-        || !/^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite(?:\.manifest\.json)?)$/u.test(path.slice(directory.length + 1)))) throw new Error("profile-maintenance-backup-path-refused");
+        || !AuthorityBackupWriteName.test(basename(path)))) throw new Error("profile-maintenance-backup-path-refused");
       this.assertStateRoot(path);
       return;
     }
@@ -487,7 +488,7 @@ export class RuntimeAdmission {
       const directory = join(this.#stateRoot, "backups", "authority");
       if (backup.copyPath !== undefined || backup.qualification.current.kind !== "qualified"
         || !isAbsolute(path) || resolve(path) !== path || path !== directory && (dirname(path) !== directory
-          || !/^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite(?:\.manifest\.json)?)$/u.test(path.slice(directory.length + 1)))) throw new Error("profile-stopped-upgrade-backup-refused");
+          || !AuthorityBackupWriteName.test(basename(path)))) throw new Error("profile-stopped-upgrade-backup-refused");
       this.assertStateRoot(path);
       return;
     }

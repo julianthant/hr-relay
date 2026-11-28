@@ -1,11 +1,11 @@
-import { existsSync, readdirSync, statSync, statfsSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, statSync, statfsSync } from "node:fs";
 import { join } from "node:path";
 import type { z } from "zod";
 import type { Clock } from "../../../../rules/time/clock.js";
 import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { inspectAuthorityOffThread } from "../../../storage/sqlite/authority-inspection-off-thread.js";
 import { hasInspectionIntegrityFailureCode } from "../../../storage/sqlite/backup-inspection-worker.js";
-import { parseBackupManifestFile, verifyBackupManifestOffThread } from "../../../storage/sqlite/backup-service.js";
+import { backupLogPaths, parseBackupManifestFile, verifyBackupManifestOffThread } from "../../../storage/sqlite/backup-service.js";
 import type { NotificationHealthSchema } from "../../../storage/sqlite/notification-publications.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import type { NotificationInbox } from "../../../runs/notifications/inbox.js";
@@ -53,12 +53,13 @@ export function ownedDiagnostics(database: AuthorityDatabase, debugEvents: { emi
 }
 type VerifiedBackup = Readonly<{ manifest: string; backupPath: string; backup: string }>;
 const verifiedBackups = new WeakMap<AuthorityDatabase, ReadonlyMap<string, VerifiedBackup>>();
-function fileIdentity(path: string): string {
-  const stats = statSync(path, { bigint: true, throwIfNoEntry: false });
+function fileIdentity(path: string, followLinks = true): string {
+  const fileStat = followLinks ? statSync : lstatSync;
+  const stats = fileStat(path, { bigint: true, throwIfNoEntry: false });
   return stats === undefined ? "missing" : `${String(stats.dev)}:${String(stats.ino)}:${String(stats.size)}:${String(stats.mtimeNs)}:${String(stats.ctimeNs)}`;
 }
-/** A backup's verdict depends on its manifest, its database file and that file's SQLite companions. */
-const backupFiles = (backupPath: string) => ["", "-wal", "-shm", "-journal"].map(suffix => fileIdentity(`${backupPath}${suffix}`)).join("|");
+const backupFiles = (backupPath: string) => [backupPath, ...backupLogPaths(backupPath)]
+  .flatMap(path => ["", "-wal", "-shm", "-journal"].map(suffix => fileIdentity(path + suffix, path === backupPath))).join("|");
 /** No backup writer, credential reader, or unrelated outbox is called by this observation. An aborted read rejects: a stopped inspection is no reading. */
 export async function readNotificationHealth(input: { admission: RuntimeAdmission; database: AuthorityDatabase; reader: Pick<RunRecordService, "list">; stateRoot: string; clock: Clock; signal?: AbortSignal }): Promise<NotificationHealthReading> {
   const { stateRoot, clock } = input;

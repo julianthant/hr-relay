@@ -143,7 +143,7 @@ describe("canonical notification producers", () => {
       const files = readdirSync(directory);
       f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: false, occurrence: 0, observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), samples: [] }));
       expect((await read()).backupFailed).toBe(false); expect(readdirSync(directory)).toEqual(files);
-      const backupFile = join(directory, files.find(name => !name.endsWith(".manifest.json"))!), bytes = readFileSync(backupFile);
+      const backupFile = join(directory, files.find(name => name.endsWith(".sqlite"))!), bytes = readFileSync(backupFile);
       bytes[bytes.length - 1] ^= 0xff; writeFileSync(backupFile, bytes);
       expect((await read()).backupFailed).toBe(true);
       bytes[bytes.length - 1] ^= 0xff; writeFileSync(backupFile, bytes);
@@ -151,6 +151,11 @@ describe("canonical notification producers", () => {
       writeFileSync(`${backupFile}-wal`, Buffer.alloc(4096, 1));
       expect((await read()).backupFailed).toBe(true);
       rmSync(`${backupFile}-wal`);
+      expect((await read()).backupFailed).toBe(false);
+      const timelineBackup = `${backupFile}.timeline.db`, timelineBytes = readFileSync(timelineBackup);
+      rmSync(timelineBackup);
+      expect((await read()).backupFailed).toBe(true);
+      writeFileSync(timelineBackup, timelineBytes, { mode: 0o600 });
       expect((await read()).backupFailed).toBe(false);
       const manifestFile = join(directory, files.find(name => name.endsWith(".manifest.json"))!), manifestText = readFileSync(manifestFile, "utf8");
       const seeded = parseBackupManifestFile(manifestFile);
