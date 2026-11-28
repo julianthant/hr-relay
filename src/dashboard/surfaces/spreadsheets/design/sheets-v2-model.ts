@@ -8,7 +8,7 @@ import { setSpreadsheetColumnField, spreadsheetHeaderRow } from '../spreadsheet-
 import { formatDayTime } from '../../../lib/date-format.js';
 
 export interface Field { readonly key: string; readonly label: string }
-export interface VersionEntry { readonly id: string; readonly n: number; readonly at: string; readonly name: string }
+export interface VersionEntry { readonly id: string; readonly n: number; readonly at: string; readonly name: string; /** The name, with the version number added when another version has the same name. */ readonly label: string }
 /** One library entry as the list and detail pages show it. */
 export interface Sheet {
   readonly id: string; readonly name: string; readonly sharePoint: string | null;
@@ -27,14 +27,19 @@ export interface Dataset { readonly headers: readonly string[]; readonly rows: r
 /** "2026-11-08T14:32:00Z" → "Nov 8, 2:32 PM" in the operator's time zone. */
 export const stamp = (iso: string): string => formatDayTime(iso);
 
-export const sheetOf = (entry: WorkbookLibraryEntry): Sheet => ({
+const labelled = (versions: readonly Omit<VersionEntry, 'label'>[]): readonly VersionEntry[] =>
+  versions.map(version => ({ ...version, label: versions.filter(other => other.name === version.name).length > 1 ? `${version.name} (v${version.n})` : version.name }));
+
+export const sheetOf = (entry: WorkbookLibraryEntry): Sheet => {
+  const versions = labelled(entry.state.versions.map(version => ({ id: version.id, n: version.version, at: version.savedAt, name: version.name }))).toSorted((a, b) => b.n - a.n);
+  return {
   id: entry.libraryId, name: entry.name, sharePoint: entry.metadata.sharePoint?.url ?? null, pinned: entry.state.pinned, tags: entry.state.tags,
   workflow: entry.state.origin.kind === 'workflow' ? entry.state.origin.workflowLabel : undefined,
   run: entry.state.origin.kind === 'workflow' ? { id: entry.state.origin.runId, day: entry.state.origin.partitionDay } : undefined,
   sync: entry.sync, updatedAt: entry.updatedAt, version: entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.version ?? entry.version, currentVersionId: entry.state.selectedVersionId,
-  versionName: entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.name ?? '',
-  versions: entry.state.versions.map(version => ({ id: version.id, n: version.version, at: version.savedAt, name: version.name })).toSorted((a, b) => b.n - a.n),
-});
+    versions, versionName: versions.find(version => version.id === entry.state.selectedVersionId)?.label ?? '',
+  };
+};
 
 const SYNC_WHY = ['WORKBOOK_SYNC_FAILED', 'WORKBOOK_SYNC_NOT_APPLIED', 'WORKBOOK_VERSION_CONFLICT', 'WORKBOOK_METADATA_UNSUPPORTED'] as const;
 /** The plain sentence for why the last sync failed, or undefined when it did not fail; a code outside the sync set gets the generic sync sentence. */

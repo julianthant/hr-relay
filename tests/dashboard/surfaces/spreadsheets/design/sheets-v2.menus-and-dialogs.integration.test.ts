@@ -173,6 +173,39 @@ it('shows a pending change and its Check result on the opened spreadsheet', asyn
   assert.deepEqual(wiring.adapter.settleLibrary?.mock.calls.at(-1), ['keys']);
 });
 
+const twin = (id: string, n: number) => ({ ...version(id, n), name: 'Reviewed', savedAt: '2026-11-02T00:00:00Z' });
+const twins = () => { wiring.catalog = [WorkbookLibraryEntrySchema.parse({ ...make('keys', 'Keys.xlsx'), state: { ...make('keys', 'Keys.xlsx').state, selectedVersionId: 'v2', versions: [twin('v1', 1), twin('v2', 2)] } })]; };
+
+it('tells same-named versions apart in the list, the sources and the confirms', async () => {
+  twins();
+  await render();
+  await click(host.querySelector('button[aria-label="Versions of Keys.xlsx, now Reviewed (v2)"]'));
+  const radios = [...document.body.querySelectorAll('[role="radio"]')].map(node => node.textContent ?? '');
+  assert.ok(radios[0].includes('Reviewed (v2)') && radios[1].includes('Reviewed (v1)'));
+  await click(byText('button', 'New version'));
+  await click(document.body.querySelector('button[aria-label="Start from"]'));
+  assert.deepEqual([...document.body.querySelectorAll('[role="option"]')].map(node => node.textContent?.trim()), ['Reviewed (v2)', 'Reviewed (v1)']);
+  await click(byText('button', 'Back'));
+  await click(document.body.querySelector('button[aria-label="Delete Reviewed (v1)"]'));
+  assert.match(document.body.textContent ?? '', /Delete Reviewed \(v1\)\?/u);
+});
+
+it('reports a recorded change from Check result as recorded and clears its sync marker', async () => {
+  wiring.pending = ['roster'];
+  wiring.adapter.settleLibrary = vi.fn(async () => ({ state: 'recorded', message: 'The library has changed again.' }));
+  wiring.adapter.snapshot = vi.fn(() => ({ pendingLibraries: ['roster'] }));
+  wiring.adapter.changeLibrary = vi.fn(async () => ({ state: 'uncertain', message: 'Check the result.' }));
+  await render();
+  await openMenu('Roster.xlsx'); await click(byText('[role="menuitem"]', 'Sync now'));
+  await render();
+  assert.match(host.textContent ?? '', /Syncing Roster\.xlsx isn't confirmed yet\./u);
+  await click(byText('button', 'Check result'));
+  const text = document.body.textContent ?? '';
+  assert.match(text, /The sync was recorded/u); assert.doesNotMatch(text, /The sync is not confirmed yet/u);
+  await render();
+  assert.match(host.textContent ?? '', /The change to Roster\.xlsx isn't confirmed yet\./u);
+});
+
 it('creates a version from SharePoint when the spreadsheet is linked', async () => {
   await render();
   await click(host.querySelector('button[aria-label="Versions of Roster.xlsx, now v2"]'));

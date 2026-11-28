@@ -141,8 +141,10 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const checkPending = async (id: string) => {
     const result = await adapter.settleLibrary(id);
     const what = syncing.current.has(id) ? 'The sync' : 'The change';
-    if (result.state === 'confirmed') syncing.current.delete(id);
-    toast(result.state === 'confirmed' ? { tone: 'success', title: `${what} went through` } : { tone: 'danger', key: 'sheets-pending', title: `${what} is not confirmed yet`, description: result.message });
+    if (result.state === 'confirmed' || result.state === 'recorded') syncing.current.delete(id);
+    if (result.state === 'confirmed') toast({ tone: 'success', title: `${what} went through` });
+    else if (result.state === 'recorded') toast({ tone: 'success', key: 'sheets-pending', title: `${what} was recorded`, description: result.message });
+    else toast({ tone: 'danger', key: 'sheets-pending', title: `${what} is not confirmed yet`, description: result.message });
   };
 
   const groups = { workflows: workflowTags(sheets), tags: operatorTags(sheets) };
