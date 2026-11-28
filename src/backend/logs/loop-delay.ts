@@ -33,9 +33,11 @@ export function startLoopDelayMonitor(deps: {
     if (durationMs <= EVENT_LOOP_STALL_THRESHOLD_MS) return;
     const now = deps.clock.monotonicMs();
     if (now - lastEventAt < STALL_EVENT_INTERVAL_MS) return;
+    const pendingOmissions = omitted;
     const result = emitOptionalDiagnostic(() => deps.debugEvents.emit({ category: "boot", phase: "settled", area: "event-loop",
-      reason: "event-loop-stall", correlationId: randomUUID(), durationMs, ...(omitted > 0 ? { omitted } : {}) }));
-    omitted = result === "budget-full" ? omitted + 1 : 0;
+      reason: "event-loop-stall", correlationId: randomUUID(), durationMs, ...(pendingOmissions > 0 ? { omitted: pendingOmissions } : {}) }),
+    () => { omitted += pendingOmissions + 1; });
+    omitted = result === "budget-full" ? pendingOmissions + 1 : 0;
     lastEventAt = now;
   }, SAMPLE_INTERVAL_MS);
   timer.unref();

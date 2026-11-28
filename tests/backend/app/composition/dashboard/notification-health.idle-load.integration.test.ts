@@ -8,7 +8,6 @@ import * as authorityInspection from "../../../../../src/backend/storage/sqlite/
 import { inspectOpenDatabase } from "../../../../../src/backend/storage/sqlite/backup-inspection.js";
 import * as backupInspectionWorker from "../../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
 import { withReadonlyAuthoritySnapshot } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
-import * as canonicalRuns from "../../../../../src/backend/runs/queries/canonical-runs.js";
 import { createDebugEventWriter } from "../../../../../src/backend/logs/debug-events.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
@@ -37,7 +36,7 @@ async function idleReads(backups: number, stalls = false): Promise<ReturnType<ty
     const stores = vi.spyOn(authorityInspection, "inspectAuthorityOffThread").mockImplementation(async (_admission, path) =>
       withReadonlyAuthoritySnapshot(path, database => inspectOpenDatabase(database)));
     const backupCopies = vi.spyOn(backupInspectionWorker, "inspectAuthorityBackupOffThread");
-    const liveRunLists = vi.spyOn(canonicalRuns, "listCanonicalRuns");
+    const liveRunLists = vi.spyOn(f.reader, "list");
     try {
       const { observer } = createTrustNotifications({ admission: syntheticStateRoot(f.root), database: f.db, clock: f.clock,
         ids: sequentialIdFactory("idle"), reader: f.reader, stateRoot: f.root });

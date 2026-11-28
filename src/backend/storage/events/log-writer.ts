@@ -90,7 +90,7 @@ export function startLogWriter(input: { statePath: string; root: string; onFault
       if (acknowledged !== undefined) acknowledgments.set(sequence, { committed: () => acknowledged(), failed: acknowledged });
       send({ kind: "append", sequence, mutation });
     },
-    appendDebug(record: DebugTimelineAppend): Promise<"inserted" | "existing"> {
+    appendDebug: (record: DebugTimelineAppend): Promise<"inserted" | "existing"> => {
       if (failure !== undefined || closure !== undefined) return Promise.reject(failure ?? new Error("log-writer-closing"));
       const receipt = Promise.withResolvers<"inserted" | "existing">(), sequence = sent + 1;
       debug.set(sequence, { record, receipt });

@@ -4,7 +4,7 @@ import { faultAuthoritySnapshot, assertHttpFaultOnly, assertOnlyLoopStallWrites,
 import { AssistantM1RespondEnvelopeSchema, assistantSessionAttribution, type AssistantM1Request, type AssistantM1RespondEnvelope } from "../../../../../src/models/dashboard/assistant.js";
 import { replyText } from "../../../../../src/dashboard/surfaces/assistant/assistant-reply-parts-model.js";
 import { AssistantHistoryResultSchema, AssistantModelPreferenceViewSchema, type AssistantHistoryOperation } from '../../../../../src/models/dashboard/assistant.js';
-import { withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { openReadOnlyDatabase } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import configuredSources from "../../../../../config/dashboard-workflow-sources.json";
 import { z } from "zod";
 import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
@@ -103,6 +103,14 @@ type ServedAssistantFixture = {
   origin: string;
   post: (path: string, value: unknown) => Promise<unknown>;
 };
+function readFixtureAuthority<T>(context: ServedAssistantFixture["context"], read: (database: ReturnType<typeof openReadOnlyDatabase>) => T): T {
+  const path = join(context.admission.stateRoot, "state.db");
+  context.admission.assertReadOnlyAuthorityDatabase(path);
+  using database = openReadOnlyDatabase(path, 250);
+  database.exec("BEGIN");
+  return read(database);
+}
+
 type ServedAssistantOwner = {
   profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>;
   transport?: Awaited<ReturnType<typeof chatGptFixture>>;
@@ -243,7 +251,7 @@ it('serves the read tools through authenticated composition without private prov
         : [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: `${token} is ${detail.header.status}.` }] }];
       return new Response(completedResponseStream(output, request.model, `resp_${String(turns)}`), { headers: { 'Content-Type': 'text/event-stream' } });
     });
-    const durable = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), database => ({
+    const durable = () => readFixtureAuthority(context, database => ({
       chats: database.prepare('SELECT * FROM assistant_chats ORDER BY id').all(), actions: database.prepare('SELECT * FROM assistant_actions ORDER BY id').all(),
       commands: database.prepare('SELECT * FROM commands ORDER BY id').all(), audits: database.prepare('SELECT * FROM command_audits ORDER BY id').all(),
     }));
@@ -423,7 +431,7 @@ it('recovers a served read-only session after a lost reply, serves it in Queue a
 
     // The start is the assistant's own command under its session claim.
     const starts = context.database.authority.assistantProposals.sessions;
-    const commandId = z.object({ id: z.string() }).array().parse(withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), database =>
+    const commandId = z.object({ id: z.string() }).array().parse(readFixtureAuthority(context, database =>
       database.prepare("SELECT id FROM commands WHERE family='start' AND json_extract(request_json,'$.source')='assistant'").all()));
     const [startId] = commandId; assert.equal(commandId.length, 1); assert.ok(startId);
     const claimed = starts.byCommand(startId.id), start = context.database.authority.commands.get(startId.id); assert.ok(claimed); assert.ok(start);
@@ -510,7 +518,7 @@ it('runs a typed-yes proposal row only under the attribution of the yes that ans
     const record = store.read(open.snapshot.id); assert.ok(record);
     assert.deepEqual(record.lifecycle, { state: 'answered', answerMessageId: yesId });
     const [row] = record.rows; assert.ok(row?.result.state === 'applied', JSON.stringify(record.rows));
-    const starts = z.object({ id: z.string() }).array().parse(withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), database =>
+    const starts = z.object({ id: z.string() }).array().parse(readFixtureAuthority(context, database =>
       database.prepare("SELECT id FROM commands WHERE family='start' AND json_extract(request_json,'$.source')='assistant'").all()));
     assert.deepEqual(starts.map(start => start.id), [row.result.commandId]);
     assert.ok(answered.result.reply.parts.some(part => part.kind === 'session'));
@@ -726,7 +734,7 @@ it("requires an operator notification change request and journals the accepted c
       dedupeFingerprint: "d".repeat(64), trigger: "failed", channel: "ping", status: "unread", snooze: { state: "not-snoozed" },
       title, summary, links: [{ kind: "run", runId: run.envelope.runId }], count: 1, lastSeenAt: at, version: 1, createdAt: at, updatedAt: at }).record;
     const door = clientDoor(createDashboardClient({ baseUrl: origin }));
-    const commandIds = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, "state.db"), database =>
+    const commandIds = () => readFixtureAuthority(context, database =>
       database.prepare("SELECT id FROM commands WHERE family='notification' ORDER BY id").all().map(row => z.string().parse(row.id)));
     async function request(message: string, source: string | null, rowIndex = 0) {
       let calls = 0;

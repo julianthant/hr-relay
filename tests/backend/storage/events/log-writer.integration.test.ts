@@ -39,8 +39,9 @@ it("accepts BFF debug events while state is locked and drains exact rows in emis
     const rows = database.authority.timelineEvents.debugPage({});
     assert.deepEqual(rows.map(({ cursor: _cursor, ...event }) => event), events);
     using dashboard = new DatabaseSync(join(stateRoot, "dashboard.db"), { readOnly: true });
-    const stored = dashboard.prepare("SELECT payload_json FROM debug_events ORDER BY cursor").all();
-    assert.deepEqual(stored.map(row => JSON.parse(String(row.payload_json))), rows);
+    using state = new DatabaseSync(path, { readOnly: true });
+    const payloads = "SELECT payload_json FROM debug_events ORDER BY cursor";
+    assert.deepEqual(dashboard.prepare(payloads).all(), state.prepare(payloads).all());
     assert.deepEqual(faults, []);
   } finally {
     try { await writer.close(); } finally { await dispose(); }

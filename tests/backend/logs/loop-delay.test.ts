@@ -3,6 +3,7 @@ import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.j
 import { composeLoopDelayMonitor, startLoopDelayMonitor } from "../../../src/backend/logs/loop-delay.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { debugTimelineFixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
+import { TimelineDiagnosticBudgetError } from "../../../src/models/events/timeline.js";
 
 const histogram = vi.hoisted(() => ({
   max: 0,
@@ -72,6 +73,18 @@ describe("dashboard event-loop stalls", () => {
     vi.advanceTimersByTime(1000);
     expect(records.map(record => record.payload.kind === "debug" ? record.payload.event.durationMs : undefined))
       .toEqual([250, 400]);
+  });
+
+  it("includes a stall omitted by the queued writer's byte budget in the next event", async () => {
+    const emit = vi.fn<(input: unknown) => Promise<void>>().mockRejectedValueOnce(new TimelineDiagnosticBudgetError()).mockResolvedValue(undefined);
+    monitor = startLoopDelayMonitor({ clock: systemClock, debugEvents: { emit } });
+    histogram.max = 250_000_000;
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(9000);
+    histogram.max = 300_000_000;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(emit).toHaveBeenCalledTimes(2);
+    expect(emit.mock.calls[1]?.[0]).toMatchObject({ durationMs: 300, omitted: 1 });
   });
 
   it("keeps empty samples and delays up to 200 ms quiet", () => {

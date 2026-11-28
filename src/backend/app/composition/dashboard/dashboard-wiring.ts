@@ -105,7 +105,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
 
   let wakeForWork: (workflowId: string) => void = () => undefined;
-  const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle, workflowId => wakeForWork(workflowId));
+  const resources = await prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle, workflowId => wakeForWork(workflowId));
   const { settingsProcesses } = resources;
   const { logWriter, stopLogWriter } = resources;
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority, readLanes } = resources;
@@ -143,7 +143,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     if (error instanceof WorkerSetupRefusedError) {
       const event = { category: "worker", area: "supervisor", phase: "failed", correlationId: randomUUID(),
         code: error.code, message: error.message, reason: "setup-refused" };
-      debugEvents.emit(event, origin === undefined ? undefined : { kind: "worker", workerId: WorkerIdSchema.parse(origin.workerId) });
+      void debugEvents.emit(event, origin === undefined ? undefined : { kind: "worker", workerId: WorkerIdSchema.parse(origin.workerId) });
       input.workerProcess?.faultSink?.(JSON.stringify(event));
       return;
     }
@@ -174,7 +174,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     settleExit: member => { profile.runtime.workerExited(admission, WorkerPoolMemberSchema.parse(member)); },
     onChange: () => { projection.reconcileWorkerAuthority(); },
     onFault: reportSupervisorFault,
-    onStopChannelClosed: error => { debugEvents.emit({ category: "worker", phase: "settled", correlationId: randomUUID(), area: "supervisor",
+    onStopChannelClosed: error => { void debugEvents.emit({ category: "worker", phase: "settled", correlationId: randomUUID(), area: "supervisor",
       reason: "stop-channel-closed", code: (error as NodeJS.ErrnoException).code }); },
     preflight: runtimePreflight,
     assertAssistantEffect,
@@ -346,7 +346,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const workbookCommands = createCommandBrowserManager({ admission, leases: database.authority.duoCeremonyLeases,
     clock, scheduler: createTimeoutDeadlineScheduler(clock), recordEvidence: () => {
       assertCurrent();
-      debugEvents.emit({ category: "session", phase: "acquired", correlationId: randomUUID(), area: "workbook-sync",
+      void debugEvents.emit({ category: "session", phase: "acquired", correlationId: randomUUID(), area: "workbook-sync",
         code: "sharepoint-authenticated", reason: "account-verified" });
     } });
   profile.runtime.registerCommandActivity(profile.token, workbookCommands);
@@ -399,7 +399,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
   input.onInitialPreflight?.(initialPreflight);
   // Boot spawns the standing members; each one that fails shows on its card with its cause.
-  await resources.bootImport;
   void workers.startActive();
 
   const chatGptOcrTest = createChatGptOcrTestService({ assertCurrent, dispatch: async (input, signal, source) => {
@@ -492,7 +491,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const historyTimer = startAssistantHistoryCleanup(() => { database.authority.assistantHistory.reclaimExpired(clock.now().toISOString()); }, error => {
     const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "assistant-history-cleanup", code: "ASSISTANT_HISTORY_CLEANUP_FAILED",
       reason: error instanceof RuntimeCustodyUncertainError || error instanceof AuthoritySourceClosureUnprovedError ? "custody-unproved" : "cleanup-failed" };
-    debugEvents.emit(event);
+    void debugEvents.emit(event);
     input.workerProcess?.faultSink?.(JSON.stringify(event));
   });
   startupCleanups.push(() => clearInterval(historyTimer));

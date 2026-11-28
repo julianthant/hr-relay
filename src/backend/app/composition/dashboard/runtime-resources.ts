@@ -73,7 +73,7 @@ export function prepareDashboardEnvironment(input: DashboardComposeInput, custod
   return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend };
 }
 
-export function prepareDashboardRuntime(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody, environment: ReturnType<typeof prepareDashboardEnvironment>, staticBundle: Awaited<ReturnType<typeof openStaticBundle>> | undefined, wakeForWork: (workflowId: string) => void) {
+export async function prepareDashboardRuntime(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody, environment: ReturnType<typeof prepareDashboardEnvironment>, staticBundle: Awaited<ReturnType<typeof openStaticBundle>> | undefined, wakeForWork: (workflowId: string) => void) {
   const { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, runtimeStoragePair, appVersion, frontend } = environment;
   const hostFacts = hostConfigFacts(env);
   let databaseClosed = true;
@@ -129,16 +129,6 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     await profile.runtime.close();
     databaseClosed = true;
   });
-  // Read lanes boot on their own threads while the rest of startup runs; they close before the store they read.
-  const readLanes = (() => {
-    try { return createComposedDashboardReadHost({ admission, database, clock }); }
-    catch (error) {
-      // Lanes that did start still hold the store: the unwind joins them before it closes the database.
-      if (error instanceof ReadLaneStartError) startupCleanups.push(requiredClosure(() => error.exited));
-      throw error;
-    }
-  })();
-  startupCleanups.push(requiredClosure(() => readLanes.close()));
   const statePath = join(stateRoot, "state.db");
   admission.assertAuthorityDatabase(statePath);
   const logWriter = startLogWriter({ statePath, root: stateRoot, onFault: error => {
@@ -152,12 +142,21 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     return logWriter.close();
   };
   startupCleanups.push(stopLogWriter);
-  const bootImport = Promise.all([
+  await Promise.all([
     importLocalDebugLogViaWriter(stateRoot, logWriter.appendDebug),
     importLocalDebugLogViaWriter(machineAdmission.stateRoot, logWriter.appendDebug),
     logWriter.flush(),
   ]);
-  void bootImport.catch(() => {});
+  assertCurrent();
+  // The boot import changes the WAL. Finish it before opening the read lanes' startup image.
+  const readLanes = (() => {
+    try { return createComposedDashboardReadHost({ admission, database, clock }); }
+    catch (error) {
+      if (error instanceof ReadLaneStartError) startupCleanups.push(requiredClosure(() => error.exited));
+      throw error;
+    }
+  })();
+  startupCleanups.push(requiredClosure(() => readLanes.close()));
   database.sweepOrdinaryDiagnostics(clock.now().toISOString());
   const bootConfig = (() => {
     const persistedSettings = database.withAuthorityTransaction((repositories) => readBootSettings(repositories));
@@ -274,5 +273,5 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, readLanes, logWriter, stopLogWriter, bootImport, settingsProcesses, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, readLanes, logWriter, stopLogWriter, settingsProcesses, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }

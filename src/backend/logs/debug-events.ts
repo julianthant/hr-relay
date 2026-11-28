@@ -1,5 +1,6 @@
 import { sanitizeDebugText } from "../../rules/redaction/redaction.js";
 import { deriveStableUuid } from "../../rules/identity/identifiers.js";
+import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
 import { DebugEventSchema, TimelineDiagnosticBudgetError, type TimelineRepository, type TimelineAppend } from "../../models/events/timeline.js";
 import type { Clock } from "../../rules/time/clock.js";
@@ -9,8 +10,14 @@ import { assertSameClientDebugReport, type DebugTimelineAppend } from "../storag
 import { serializeErrorCauses } from "../../models/failures/error-origins.js";
 
 /** Optional producers can skip a full diagnostic budget. Required writers keep their durable receipt contract. */
-export function emitOptionalDiagnostic(emit: () => void): "emitted" | "budget-full" {
-  try { emit(); return "emitted"; }
+export function emitOptionalDiagnostic(emit: () => unknown, onQueuedBudgetFull?: () => void): "emitted" | "budget-full" {
+  try {
+    const result = emit();
+    if (onQueuedBudgetFull !== undefined && result instanceof Promise) {
+      void result.catch((error: unknown) => { if (error instanceof TimelineDiagnosticBudgetError) onQueuedBudgetFull(); });
+    }
+    return "emitted";
+  }
   catch (error) {
     if (error instanceof TimelineDiagnosticBudgetError) return "budget-full";
     throw error;
@@ -44,7 +51,7 @@ export function createDebugEventWriter(deps: DebugEventWriterOptions & (QueuedDe
       if (Buffer.byteLength(JSON.stringify(safe)) > limits[safe.category] * 1024) throw new Error("debug-event-size-exceeded");
       const now = deps.clock.now();
       const eventId = safe.category === "client" ? deriveStableUuid("dashboard-report", safe.correlationId) : randomUUID();
-      const at = now.toISOString();
+      const at = IsoInstantSchema.parse(now.toISOString());
       const record: DebugTimelineAppend = { schemaVersion: 1, eventId, scope,
         ...(workflow === undefined ? {} : { workflow }),
         occurredAt: at, recordedAt: at, retentionDate: localDatePart(now),
