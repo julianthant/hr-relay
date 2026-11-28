@@ -26,6 +26,9 @@ import { TimelineAppendSchema } from "../../../../src/models/events/timeline.js"
 import { deriveRunStatus } from "../../../../src/rules/runs/run-status.js";
 import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
 import { traceSqliteStatements } from "../../../perf/sqlite-statement-counter.js";
+import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 
 const range = { from: "2026-10-01", to: "2026-10-01" };
 const at = "2026-10-01T12:00:00.000Z";
@@ -100,6 +103,16 @@ const done = (ms: number) => ({ state: "terminal" as const, outcome: "done" as c
 const cancelled = (ms: number) => ({ state: "terminal" as const, outcome: "cancelled" as const, endedAt: new Date(Date.parse(at) + ms).toISOString() });
 
 describe("selected Analytics population", () => {
+  it("keeps the admitted queue title when the run has no renamed title", async () => {
+    const f = await fixture();
+    const run = runRecordOf({ seed: 15, enqueuedAt: at, dryRun: true });
+    f.database.authority.runs.enqueue(run);
+    const emitter = createTimelineEmitter({ repository: f.database.authority.timelineEvents, clock: f.clock });
+    emitter.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Synthetic admitted title" }));
+    f.publish();
+    expect(f.service.read(range).population.map(row => row.title)).toEqual(["Synthetic admitted title"]);
+  });
+
   it("keeps zero, missing, successful-root timing and terminal duration separate with explicit evidence", async () => {
     const f = await fixture();
     f.add(1, { lifecycle: done(0) });

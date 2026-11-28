@@ -2342,17 +2342,35 @@ export class AuthorityDatabase implements Disposable {
       const runs = this.#database.prepare(`SELECT * FROM runs ${runIndex(this.#database, "runs_day_idx")}
         WHERE local_day BETWEEN ? AND ? ORDER BY workflow,local_day,id`).all(from, to)
         .map(row => ({ run: runRecordFromRow(row), localDay: z.iso.date().parse(row.local_day) }));
-      const parents = this.authority.dependencies.parents(runs.map(({ run }) => run.envelope));
+      const bindings = new Map<string, { traceId: string; manifests: readonly DelegationManifest[] }>();
+      const unresolved = runs.flatMap(({ run: { envelope } }) => {
+        const parent = envelope.parent;
+        if (parent === undefined) return [];
+        let binding = bindings.get(parent.runId);
+        if (binding === undefined) {
+          const owner = this.authority.runs.get(parent.runId);
+          if (owner === undefined) throw new Error("activity-run-parent-unavailable");
+          binding = { traceId: owner.envelope.traceId, manifests: retainedDelegationManifests(this.authority, parent.runId) };
+          bindings.set(parent.runId, binding);
+        }
+        if (binding.traceId !== parent.tracePrefix) throw new Error("activity-run-parent-trace-mismatch");
+        const edge = binding.manifests.filter(manifest => manifest.edgeId === parent.edgeId);
+        const admitted = edge.some(manifest => manifest.children.some(child => child.childRunId === envelope.runId && child.childItemId === envelope.itemId));
+        // Every retained policy for this directly admitted member agrees it belongs under its parent.
+        return admitted && edge.every(manifest => manifest.policy.visibility !== "linked") ? [] : [envelope];
+      });
+      const parents = this.authority.dependencies.parents(unresolved);
+      for (const { runId } of unresolved) if (!parents.has(runId)) throw new Error("activity-run-parent-unavailable");
       return runs.map(({ run, localDay }) => {
         const parent = parents.get(run.envelope.runId);
-        if (parent === undefined) throw new Error("activity-run-parent-unavailable");
-        const delegationWait = run.lifecycle.state === "queued" && isQueueTopLevel({ parent }) ? this.#readDelegationWaitState(run) : null;
-        return { run, localDay, parent, delegationWait };
+        const topLevel = run.envelope.parent === undefined || (parent !== undefined && isQueueTopLevel({ parent }));
+        const delegationWait = run.lifecycle.state === "queued" && topLevel ? this.#readDelegationWaitState(run) : null;
+        return { run, localDay, topLevel, delegationWait };
       });
     });
   }
 
-  readActivityEvidence(input: { terminal: readonly string[]; people: readonly string[]; failures: readonly string[] }) {
+  readActivityEvidence(input: { terminal: readonly string[]; people: readonly string[]; failures: readonly string[]; untitled: readonly string[] }) {
     return this.withAuthorityReadSnapshot(() => {
       this.#validateExternalQuerySources();
       const selectCurrent = (ids: readonly string[], receipts: boolean) => ids.length === 0 ? [] : this.#database.prepare(`
@@ -2368,10 +2386,28 @@ export class AuthorityDatabase implements Disposable {
       };
       const failures = input.failures.length === 0 ? [] : this.#database.prepare(
         "SELECT * FROM run_failures WHERE id IN (SELECT value FROM json_each(?))").all(JSON.stringify(input.failures));
+      const titles = new Map<string, string>();
+      if (input.untitled.length > 0) {
+        // The search index retains the original queue publication, including its display title.
+        const rows = this.#database.prepare(`SELECT source.run_id AS runId,
+          json_extract(entry.value,'$.event.payload.event.runId') AS owner,
+          json_extract(entry.value,'$.event.payload.event.title') AS title
+          FROM json_each(?) selected CROSS JOIN run_search source ON source.run_id=selected.value
+          CROSS JOIN json_each(source.actor_source_json) entry
+          WHERE json_extract(entry.value,'$.kind')='queued' AND json_type(entry.value,'$.event.payload.event.title') IS NOT NULL
+          ORDER BY source.run_id,entry.key`).all(JSON.stringify(input.untitled));
+        const titleRow = z.strictObject({ runId: RunIdSchema, owner: RunIdSchema, title: z.string().min(1) });
+        for (const row of rows) {
+          const { runId, owner, title } = titleRow.parse(row);
+          if (owner !== runId) throw new Error("activity-run-title-owner-mismatch");
+          if (!titles.has(runId)) titles.set(runId, title);
+        }
+      }
       return {
         receipts: unique(selectCurrent(input.terminal, true).map(row => this.#parseNativeRow("run_receipts", row, RunEvidenceReceiptSchema)), row => row.runId),
         people: unique(selectCurrent(input.people, false).map(row => this.#parseNativeRow("run_results", row, RunResultRecordSchema)), row => row.runId),
         failures: unique(failures.map(row => this.#parseNativeRow("run_failures", row, FailureRecordSchema)), row => row.failureId),
+        titles,
       };
     });
   }

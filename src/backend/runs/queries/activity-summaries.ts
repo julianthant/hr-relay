@@ -1,6 +1,5 @@
 import { queryAssistantUsage } from "../../assistant/usage-counts.js";
 import { z } from "zod";
-import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { PACIFIC_TIME_ZONE } from "../../../models/dashboard/search-calendar.js";
 import { deriveRunStatus } from "../../../rules/runs/run-status.js";
@@ -29,7 +28,7 @@ export function visitActivitySummaryRange(database: AuthorityDatabase, from: str
   for (const row of database.readActivityRuns(shiftActivityDay(from, -2), shiftActivityDay(to, 2))) {
     const { workflow, enqueuedAt } = row.run.envelope;
     // Separations uses canonical person evidence from inline runs as well.
-    if (timeZone === PACIFIC_TIME_ZONE && workflow !== "separations" && !isQueueTopLevel(row)) continue;
+    if (timeZone === PACIFIC_TIME_ZONE && workflow !== "separations" && !row.topLevel) continue;
     const enqueuedDay = reportDayOf(enqueuedAt);
     const storedDayIsInRange = row.localDay >= from && row.localDay <= to;
     if (row.localDay !== enqueuedDay) {
@@ -62,23 +61,24 @@ export function queryActivitySummaries(database: AuthorityDatabase, input: { fro
     visitActivitySummaryRange(database, bounds.from, bounds.to, PACIFIC_TIME_ZONE, row => {
       const { run } = row;
       if (run.envelope.workflow === "separations" && run.envelope.shape !== "operation") peopleRuns.push(run);
-      if (isQueueTopLevel(row)) inRange.push(row);
+      if (row.topLevel) inRange.push(row);
     });
     const evidence = database.readActivityEvidence({
       terminal: inRange.flatMap(({ run }) => run.lifecycle.state === "terminal" ? [run.envelope.runId] : []),
       people: peopleRuns.flatMap(run => run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done" ? [run.envelope.runId] : []),
       failures: inRange.flatMap(({ run }) => run.lifecycle.state === "terminal" && run.lifecycle.failureId !== undefined ? [run.lifecycle.failureId] : []),
+      untitled: visitTopLevel === undefined ? [] : inRange.flatMap(({ run }) => run.displayName === undefined ? [run.envelope.runId] : []),
     });
     const people = peopleRuns.map(run => deriveCanonicalPerson(run, evidence.people.get(run.envelope.runId) ?? null));
 
     function* rows(): Generator<ActivityReportRow> {
-      for (const { run, localDay, parent, delegationWait } of inRange) {
+      for (const { run, localDay, delegationWait } of inRange) {
         const { lifecycle } = run;
         const { workflow, runId, enqueuedAt, attempt, shape } = run.envelope;
         const status = deriveRunStatus({ ...run, delegationWait });
         const elapsed = lifecycle.state === "terminal" ? Date.parse(lifecycle.endedAt) - Date.parse(enqueuedAt) : -1;
         const durationMs = elapsed >= 0 ? elapsed : null;
-        const parentRunId = parent?.runId ?? null;
+        const parentRunId = run.envelope.parent?.runId ?? null;
         const receipt = evidence.receipts.get(runId);
         const warningCount = receipt?.warnings.length ?? null;
         let terminal: ActivityReportRow["terminal"];
@@ -94,7 +94,7 @@ export function queryActivitySummaries(database: AuthorityDatabase, input: { fro
         }
         if (visitTopLevel !== undefined) {
           if (shape === "operation-member") throw new Error("activity-population-member-in-top-level");
-          visitTopLevel({ runId, workflowId: workflow, title: run.displayName ?? workflow, attempt, day: localDay, parentRunId, shape, status,
+          visitTopLevel({ runId, workflowId: workflow, title: run.displayName ?? evidence.titles.get(runId) ?? workflow, attempt, day: localDay, parentRunId, shape, status,
             terminal: terminal !== undefined, durationMs, receiptResult: receipt?.result ?? null, warningCount,
             readback: receipt === undefined ? null : receipt.result === "verified-done" });
         }
