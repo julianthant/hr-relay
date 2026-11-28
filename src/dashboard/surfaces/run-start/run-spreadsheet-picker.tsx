@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown, Plus, Table2, X } from "lucide-react";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, SearchInput, Select, Tooltip, dsIcon } from "../../ds/ui.js";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, SearchInput, Select, Tooltip, TooltipProvider, dsIcon } from "../../ds/ui.js";
 import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../ds/primitives/dropdown-menu.js";
 import { RunHeading, RunList, RunListRow } from "../../ds/primitives/run-list.js";
 import { formatMonthDay } from "../../lib/date-format.js";
@@ -29,11 +29,11 @@ export function SpreadsheetPicker({ label, options, busy, onPick }: {
       </div>
       {needle === "" && found.length > 0 && <DropdownMenuGroup><DropdownMenuLabel>Pinned</DropdownMenuLabel></DropdownMenuGroup>}
       {found.length === 0 && <p className="m-0 p-2 text-body text-ui-muted">{needle === "" ? GUIDANCE : "No spreadsheets match."}</p>}
-      {found.map(option => <Tooltip key={option.libraryId} content={option.name} side="left"><div>
+      {found.length > 0 && <TooltipProvider>{found.map(option => <Tooltip key={option.libraryId} content={option.name} side="left"><div>
         <DropdownMenuItem disabled={option.disabled} onClick={() => onPick(option.libraryId)}>
           <DropdownMenuItemCopy title={option.name} description={option.description} />
         </DropdownMenuItem>
-      </div></Tooltip>)}
+      </div></Tooltip>)}</TooltipProvider>}
     </DropdownMenuContent>
   </DropdownMenu>;
 }

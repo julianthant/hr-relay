@@ -3,7 +3,7 @@ import { expect, test } from "../support/helpers/dashboard/smoke/gallery-fixture
 import { storyOf } from "../support/helpers/dashboard/smoke/story-catalogue.js";
 import { CATALOGUE } from "../support/helpers/dashboard/smoke/stories/catalogue.js";
 
-async function open(mount: (id: string) => Promise<void>, page: import("@playwright/test").Page, name: string): Promise<void> {
+async function open(mount: (id: string) => Promise<unknown>, page: import("@playwright/test").Page, name: string): Promise<void> {
   const id = `run-dialog/reference/${name}`;
   await page.setViewportSize({ width: 1280, height: 900 });
   await mount(id);
