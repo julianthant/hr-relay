@@ -1,3 +1,4 @@
+import { assertCredentialCopyResourcesClosed, assertLogoutResourcesClosed, assertShutdownResourcesClosed } from "../../../../src/backend/storage/maintenance/profile-custody.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import assert from "node:assert/strict";
@@ -130,6 +131,24 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     assert.ok(retained.status === "parked" && retained.recheck === undefined);
     assert.equal(retained.currentAttemptId, intent.currentAttemptId);
     assert.equal(harness.database.authority.writeAttempts.listByIntent(intent.writeIntentId).length, 1);
+
+    const custody = harness.database.readProfileResourceCustody();
+    assert.doesNotThrow(() => assertShutdownResourcesClosed(custody));
+    assert.throws(() => assertShutdownResourcesClosed({ ...custody, failedReadBackWriteAttempts: [] }), /profile-shutdown-custody-unproved/u);
+    assert.throws(() => assertShutdownResourcesClosed({ ...custody, runs: [] }), /profile-shutdown-custody-unproved/u);
+    assert.throws(() => assertCredentialCopyResourcesClosed(custody), /credential-maintenance-custody-unproved/u);
+    assert.throws(() => assertLogoutResourcesClosed(custody), /credential-maintenance-custody-unproved/u);
+    const deletion = harness.kernel.execute({ commandId: randomUUID(), requestedAt: WRITE_FIXTURE_NOW, requestedBy: "local-operator",
+      source: "run-detail", family: "run", type: "delete", target: { runId: WRITE_FIXTURE_RUN_ID, expectedVersion: ended.version } });
+    assert.ok(deletion.state === "rejected" && deletion.code === "policy-refused");
+    assert.ok(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID));
+
+    const next = randomUUID();
+    harness.enqueue(next, 2);
+    const outcome = (await harness.resume()).outcomes[0];
+    assert.ok(outcome?.state === "failed" && outcome.runId === next);
+    assert.deepEqual(harness.world.events, []);
+    assert.deepEqual(parkedIntent(harness.database), retained);
   });
 
   it("refuses Mark as failed on a parked write: the run stays parked and the intent UNKNOWN", async () => {

@@ -30,6 +30,7 @@ interface RoundTrip {
   readonly clock: TestClock;
   readonly world: WriteFixtureWorld;
   readonly kernel: CommandKernel;
+  readonly enqueue: (runId?: string, attempt?: number) => void;
   readonly park: (failCommit?: boolean) => Promise<WorkerLoopReport>;
   readonly resume: () => Promise<WorkerLoopReport>;
   readonly spans: RecordingEmitter["events"];
@@ -95,13 +96,17 @@ export function createParkedWriteRoundTripTestWorld() {
       workerRuntime: { pool: unusedWorkerPool() },
     });
 
-    const park = async (failCommit = true) => {
-      const queued = RunRecordSchema.parse(writeFixtureQueuedRun());
-      const run = RunRecordSchema.parse({ ...queued, envelope: { ...queued.envelope, contractFingerprint: executionDescriptor.contractFingerprint,
+    const enqueue = (runId?: string, attempt = 1) => {
+      const queued = RunRecordSchema.parse(writeFixtureQueuedRun({ runId }));
+      const run = RunRecordSchema.parse({ ...queued, envelope: { ...queued.envelope, attempt,
+        ...(attempt === 1 ? {} : { traceId: "wf-090000-3333" }), contractFingerprint: executionDescriptor.contractFingerprint,
         configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } });
       assert.equal(database.authority.runs.enqueue(run).state, "inserted");
       createTimelineEmitter({ repository: database.authority.timelineEvents, clock }).emit(
         runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Synthetic write-resolution rehearsal" }));
+    };
+    const park = async (failCommit = true) => {
+      enqueue();
       // The write lands nowhere provable: probe says absent, then the click
       // throws AFTER the fence — the canonical post-fence unknown.
       world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -143,7 +148,7 @@ export function createParkedWriteRoundTripTestWorld() {
         }),
       });
 
-    return { profile, database, clock, world, kernel, park, resume, spans: recorded.events };
+    return { profile, database, clock, world, kernel, enqueue, park, resume, spans: recorded.events };
   }
 
   function parkedIntent(database: AuthorityDatabase) {

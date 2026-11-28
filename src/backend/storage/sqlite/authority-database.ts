@@ -2130,11 +2130,43 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  #failedReadBackWriteAttempts(activity: Readonly<{ runs: readonly PredecessorRunRecord[]; writeIntents: readonly WriteIntentRecord[] }>) {
+    const runs = new Map(activity.runs.map(run => [run.envelope.runId, run]));
+    return activity.writeIntents.flatMap(intent => {
+      if (intent.status !== "parked" || intent.recheck !== undefined) return [];
+      const run = runs.get(intent.runId);
+      if (run?.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed" || run.lifecycle.failureId === undefined
+        || run.envelope.workflow !== intent.workflowId || run.envelope.itemId !== intent.itemId || run.envelope.attempt !== intent.runAttempt) return [];
+      const failure = this.authority.failures.get(run.lifecycle.failureId);
+      if (failure?.code !== "RUN_READ_BACK_FAILED" || failure.taskId !== intent.taskId || failure.nodeId !== run.envelope.startAt
+        || intent.bindingProof.afterPrepareSpanPath !== `${run.envelope.traceId}/${failure.nodeId}/prepare`) return [];
+      const attempt = this.authority.writeAttempts.get(intent.currentAttemptId);
+      if (attempt?.outcome.state !== "parked" || !isFailedReadBack(attempt.outcome.authorityReason.code)
+        || canonicalJsonStringify(failure.writeAuthorityReason) !== canonicalJsonStringify(attempt.outcome.authorityReason)) return [];
+      const row = this.#database.prepare(`SELECT * FROM command_audits
+        WHERE json_extract(payload_json,'$.request.type')='fail-read-back'
+          AND json_extract(payload_json,'$.request.target.writeIntentId')=?
+          AND json_extract(payload_json,'$.result.state')='applied'`).all(intent.writeIntentId)
+        .map(candidate => this.#parseNativeRow("command_audits", candidate, CommandAuditRecordSchema))
+        .find(audit => String(lifecycleCommandId("read-back-failure", audit.request.commandId)) === failure.failureId);
+      if (row === undefined) return [];
+      const { intent: authorized } = authenticateParkedWriteRecheck(row.writeResolution, attempt, this.authority.commands.get(row.request.commandId), row);
+      const { recheck: _recheck, ...before } = authorized;
+      if (canonicalJsonStringify({ ...before, version: before.version + 1, updatedAt: run.lifecycle.endedAt }) !== canonicalJsonStringify(intent)) return [];
+      const result = this.authority.runResults.get(run.envelope.runId);
+      if (result === undefined || terminalEvidenceResult(result)?.kind !== "failed-evidence") return [];
+      return [intent.currentAttemptId];
+    });
+  }
+
   readProfileResourceCustody() {
     this.#assertOpen();
     return this.#withReadSnapshot(() => {
+      const activity = this.readApplicationActivity();
+      const failedReadBackWriteAttempts = this.#failedReadBackWriteAttempts(activity);
       return Object.freeze({
-        ...this.readApplicationActivity(),
+        ...activity,
+        ...(failedReadBackWriteAttempts.length === 0 ? {} : { failedReadBackWriteAttempts }),
         authorityGeneration: this.getMeta().authorityGeneration,
         upgrades: readAuthorityUpgradeRecords(this.#database),
         slots: this.authority.workerSlots.list(),
@@ -2773,6 +2805,7 @@ export class AuthorityDatabase implements Disposable {
         const { command, attempt } = authenticateParkedWriteRecheck(intent, repositories.writeAttempts.get(intent.currentAttemptId),
           repositories.commands.get(intent.recheck.commandId), repositories.commandAudits.get(intent.recheck.auditId));
         if (command.type !== "fail-read-back" || attempt.outcome.state !== "parked"
+          || String(lifecycleCommandId("read-back-failure", command.commandId)) !== request.failure.failureId
           || !isFailedReadBack(attempt.outcome.authorityReason.code)
           || canonicalJsonStringify(request.failure.writeAuthorityReason) !== canonicalJsonStringify(attempt.outcome.authorityReason)) {
           throw new Error("read-back-failure-reason-unproved");

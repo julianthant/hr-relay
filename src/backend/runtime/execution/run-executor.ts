@@ -267,7 +267,7 @@ export async function executeClaimedRun(
       const code = "RUN_READ_BACK_FAILED";
       const summary = ERROR_CATALOG[code].text;
       return terminalizeAsFailure(FailureRecordSchema.parse({
-        diagnosticSafetyVersion: 1, failureId: deps.ids.uuid(),
+        diagnosticSafetyVersion: 1, failureId: lifecycleCommandId("read-back-failure", requested.command.commandId),
         fingerprint: deriveFailureFingerprint({ workflowId: envelope.workflow, nodeId: startNode.id, taskId: startNode.commit.uses.id, code }), runId,
         nodeId: startNode.id, taskId: startNode.commit.uses.id,
         traceId: envelope.traceId, attempt: envelope.attempt, workflowId: envelope.workflow,

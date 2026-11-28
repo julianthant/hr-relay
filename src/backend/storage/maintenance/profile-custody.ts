@@ -84,8 +84,10 @@ export function assertShutdownResourcesClosed(facts: ReturnType<AuthorityDatabas
   const owns = (run: typeof facts.runs[number], intent: typeof unresolved[number]) => "runId" in intent
     && run.envelope.runId === intent.runId && run.envelope.workflow === intent.workflowId
     && run.envelope.itemId === intent.itemId && run.envelope.attempt === intent.runAttempt
-    && run.lifecycle.state === "parked-write" && run.lifecycle.writeIntentId === intent.writeIntentId
-    && run.lifecycle.intentGeneration === intent.generation;
+    && ((run.lifecycle.state === "parked-write" && run.lifecycle.writeIntentId === intent.writeIntentId
+      && run.lifecycle.intentGeneration === intent.generation)
+      || (run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed" && intent.status === "parked"
+        && intent.recheck === undefined && facts.failedReadBackWriteAttempts?.includes(intent.currentAttemptId)));
   if (facts.pendingArtifacts.length > 0 || facts.runs.some(run => runClaim(run) !== undefined
     || run.lifecycle.state !== "terminal" && run.pause?.state !== "paused" && run.lifecycle.state !== "parked-write"
     || run.lifecycle.state === "parked-write" && !unresolved.some(intent => owns(run, intent)))
