@@ -1717,9 +1717,10 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].help", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].values[]", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].requiredWhen.equals", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].replaces.nodeId", origin: "repository-authored" },
   ...["label", "members[].workflow", "members[].nodes[]", "target.workflow", "selection.inputField",
-    "manual.form.fields[].label", "manual.form.fields[].help", "manual.form.fields[].values[]", "manual.form.fields[].replaces.nodeId",
+    "manual.form.fields[].label", "manual.form.fields[].help", "manual.form.fields[].values[]", "manual.form.fields[].requiredWhen.equals", "manual.form.fields[].replaces.nodeId",
   ].map(path => ({ surface: "wire/bootstrap", path: `workflows[].start.rows[].${path}`, origin: "repository-authored" as const })),
 
   { surface: "wire/activity-report", path: "categories[].category.reason", origin: "repository-authored" },
