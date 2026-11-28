@@ -6,9 +6,18 @@ import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import type { z } from "zod";
 import { ReadWorkbookReference } from "../../../../models/processing/workbooks/read-reference.js";
 import { CrmDocumentRecordsSchema } from "../../../../models/systems/crm/documents.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { ONBOARDING_ROSTER_TYPE_ID } from "../../../../models/workflows/onboarding/roster.js";
 import { crmDocumentReferenceKeys } from "../../../../rules/crm-doc-download/reference.js";
 import { buildSearchRecords } from "../search-records/step.js";
+
+export const CRM_DOCUMENT_REFERENCE_MANUAL: StepManualDeclaration = {
+  form: { fields: [{ key: "worksheetRows", label: "Selected worksheet rows", kind: "text",
+    help: "Enter the worksheet names and row numbers you chose outside Relay." }] },
+  produces: {},
+  skips: ["workbook-reference", "document-rows", CRM_DOCUMENT_ROW_CHOICE_GATE_ID],
+  skipsGatesAndTransactions: true,
+};
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "reference", label: "Resolve worksheet rows" }), system: "local",

@@ -157,6 +157,7 @@ function applyTypedDates(descriptor: AnyWorkflowDescriptor, submissions: readonl
 export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): StartPlanRecord {
   const { descriptor, interruptedRun } = request;
   const selections = WorkbookActiveSelectionSchema.array().parse(request.workbookReferences ?? []);
+  const omittedSteps = request.stepOmissions?.filter(omission => omission.workflow === undefined).map(omission => omission.step);
   if (selections.some(selection => selection.entry > request.submissions.length)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
 
   const rawSubmissions: JsonValue[] = [];
@@ -331,7 +332,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(canonicalInput), subtitle: planning.subtitle(canonicalInput) }));
     // A dry run publishes nothing, so it plans no outputs.
     const outputs = request.dryRun ? [] : planning.plannedOutputs(canonicalInput, workbookReferences.map(parseRunWorkbookReference)
-      .filter(reference => reference.request.typeId === planning.workbookReference?.id));
+      .filter(reference => reference.request.typeId === planning.workbookReference?.id), omittedSteps);
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
       ...(outputs.length === 0 ? {} : { outputs }),
