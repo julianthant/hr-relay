@@ -8,6 +8,9 @@ export class WorkerIpcProtocolError extends Error {
   constructor(readonly kind: string) { super(ERROR_CATALOG.WORKER_IPC_PROTOCOL_INVALID.text); this.name = "WorkerIpcProtocolError"; }
 }
 
+export const isWorkerIpcChannelClosed = (error: unknown): boolean =>
+  error instanceof Error && "code" in error && (error.code === "EPIPE" || error.code === "ERR_IPC_CHANNEL_CLOSED");
+
 /** Either end of the parent/child pipe: a ChildProcess in the parent, `process` in the child. */
 export interface IpcEndpoint {
   on(event: "message", listener: (message: unknown, handle: unknown) => void): unknown;

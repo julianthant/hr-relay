@@ -16,7 +16,7 @@ import type { WorkerMemberState, WorkerPoolRuntimeSeam } from "../../../runs/com
 import { currentBuildId, PARENT_BUILD_ID_ENV } from "../../../runtime/build-id.js";
 import { createNativeBrowserProbe } from "../../../runtime/browser/native-browser.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
-import { createIpcRouter, createWorkerLogReceiver } from "../../../runtime/workers/worker-ipc-router.js";
+import { createIpcRouter, createWorkerLogReceiver, isWorkerIpcChannelClosed } from "../../../runtime/workers/worker-ipc-router.js";
 import { WORKER_LOG_PREFIX, WORKER_MESSAGE_PREFIX, type WorkerLogAck } from "../../../runtime/workers/worker-messages.js";
 import type { LogWriter } from "../../../storage/events/log-writer.js";
 import { createWorkerPool, WorkerPoolError, WorkerSetupRefusedError, type WorkerMemberView, type WorkerPool, type WorkerPoolMember,
@@ -290,7 +290,10 @@ export function realWorkerProcessSpawner(lock: RuntimeLifetimeLock, nominatim: R
         if (child.connected) child.disconnect();
       };
       const sendLog = (message: WorkerLogAck | { kind: "worker-log-enabled" }) => {
-        if (child.connected) child.send(message, error => { if (error !== null) failLog(error); });
+        if (child.connected) child.send(message, error => {
+          // Let Node read IPC EOF and observe close. The exit reconciliation covers a lost reply.
+          if (error !== null && !isWorkerIpcChannelClosed(error)) failLog(error);
+        });
       };
       const logReceiver = logWriter === undefined ? undefined : createWorkerLogReceiver(logWriter, sendLog, failLog);
       const router = createIpcRouter({ on: (event, listener) => child.on(event, listener), off: (event, listener) => child.off(event, listener),

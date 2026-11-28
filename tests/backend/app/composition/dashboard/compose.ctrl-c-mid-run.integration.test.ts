@@ -245,6 +245,7 @@ it.skipIf(process.platform === "win32")("one terminal SIGINT drains two idle wor
   assert.deepEqual([...output().matchAll(/"message":"dashboard shutdown","phase":"([^"]+)"/gu)].map(match => match[1]),
     ["closing transport", "stopping workers", "closing store", "backing up", "done"], diagnostics());
   assert.doesNotMatch(output(), /unhandled-rejection|UnhandledPromiseRejection/iu);
+  assert.doesNotMatch(output(), CUSTODY_FAULTS);
   using state = new DatabaseSync(f.path, { readOnly: true });
   using timeline = new DatabaseSync(join(f.stateRoot, "timeline.db"), { readOnly: true });
   const workerEnds = "SELECT id, payload_json FROM timeline_events WHERE kind='span.ended' AND json_extract(payload_json,'$.payload.event.kind')='worker' ORDER BY cursor";
