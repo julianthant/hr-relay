@@ -98,6 +98,9 @@ const NO_WORKFLOW_SELECTED = Object.freeze({
 /** The original input cannot be sent again: a spreadsheet, worksheet, row or PDF of the source run is gone or unreadable, or its value was protected. */
 const RERUN_INPUT_GONE = formatErrorCatalogFailure(createErrorCatalogFailure("RERUN_SOURCE_INPUT_PROTECTED", {})).text;
 
+const offersOcrReadings = ({ form }: Pick<StepRow, "form">): boolean => form?.fields.some(field =>
+  field.kind === "text-list" && field.format === "ocr-document-readings") === true;
+
 /** Restore intake focus to its launcher; it is the control that opened the workspace. */
 
 /** Never auto-pick a harness; select one only when the operator already chose its panel. */
@@ -417,8 +420,9 @@ export function RunStartDialog({
     }
   }, [catalog, selectWorkflow, send, sending]);
 
-  const typedOcr = openRowDrafts.some(({ form }) => form.fields.some(field => field.kind === "text-list" && field.format === "ocr-document-readings"));
-  const requiresOcr = !typedOcr && pdfSurface !== undefined && pdfRunReadingMode(pdfSurface, pdfInput.draft, pdfInput.picks) === "subscription";
+  const typedOcr = openRowDrafts.some(offersOcrReadings);
+  const ocrChoicePending = !isRerun && customizeSteps && currentStage === "Start" && rows.some(offersOcrReadings);
+  const requiresOcr = !typedOcr && !ocrChoicePending && pdfSurface !== undefined && pdfRunReadingMode(pdfSurface, pdfInput.draft, pdfInput.picks) === "subscription";
   const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Start" || (!isRerun && currentStage === "Steps"), open, requiresOcr);
   /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
   const fixedCheck = useRef<{ check: string; reread: boolean } | null>(null);

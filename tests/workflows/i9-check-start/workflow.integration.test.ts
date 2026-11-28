@@ -41,7 +41,7 @@ describe("I-9 Start with typed OCR values", () => {
     expect(child?.envelope.workflow).toBe("ocr");
     assert.ok(child?.lifecycle.state === "terminal" && child.lifecycle.outcome === "done");
     const pages = authority.runs.listChildren(child.envelope.runId);
-    expect(pages.map(page => page.lifecycle)).toEqual(pages.map(page => expect.objectContaining({ state: "terminal", outcome: "done" })));
+    assert.ok(pages.every(page => page.lifecycle.state === "terminal" && page.lifecycle.outcome === "done"));
     expect(pages.map(page => OcrPageWorkflowInputSchema.parse(page.input.parsed.value)).map(({ page, reading: value }) =>
       [page.sourcePage, value.kind === "manual" ? value.extraction.source : null]).toSorted()).toEqual([
       [1, { kind: "operator", actorId: "local-operator" }], [2, { kind: "operator", actorId: "local-operator" }],

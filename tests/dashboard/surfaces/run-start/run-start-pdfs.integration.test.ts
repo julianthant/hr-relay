@@ -87,9 +87,11 @@ it.each([
   }
   await dialog.press("Customize steps");
   await dialog.press("Next");
+  expect(dialog.stage()).toBe("Steps");
+  expect(dialog.disabled(start)).toBe(true);
   await dialog.press(`Include ${row}`);
   await dialog.fill("Original page readings", "x");
-  expect(dialog.disabled("Next")).toBe(true);
+  expect(dialog.disabled(start)).toBe(true);
   expect(dialog.text()).toContain("enter one valid JSON reading per original page");
   expect(plans).toEqual([]);
   const reading = JSON.stringify({ sourcePage: 1, pageKind: "blank", readAt: "2026-11-01T00:00:00Z", record: null });

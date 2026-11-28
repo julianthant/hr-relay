@@ -21,7 +21,7 @@ it("admits a manual original page through Emergency Contact Start without the OC
   const descriptor = f.root.descriptor, authority = f.database.authority;
   available = false;
   const input = EmergencyContactInputSchema.parse({ ...EmergencyContactInputSchema.parse(f.parentRun.input.parsed.value),
-    readingId: randomUUID(), onbaseFiling: "skip" });
+    readingId: randomUUID(), roster: null, onbaseFiling: "skip" });
   assert.equal(input.reading.kind, "subscription");
   const options = { dryRun: false, ...(f.workbookReferences === undefined ? {} : { workbookReferences: f.workbookReferences }) };
   const entry = (pageKind: string) => ({ workflow: "ocr", step: "page-readings", facts: {

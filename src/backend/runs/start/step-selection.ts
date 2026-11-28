@@ -232,7 +232,7 @@ export function resolveStartStepOmissions(
     }
     submitted.set(entry.step, entry.facts);
   }
-  const resolved: { workflow?: string; step: string; facts: Record<string, unknown>; labels: Record<string, string> }[] = [];
+  const resolved: (ReturnType<typeof checkedEntry> & { workflow?: string })[] = [];
   for (const step of steps) {
     const spec = specByStep.get(step.key);
     if (spec === undefined) continue;
@@ -428,10 +428,10 @@ export function projectStartRows(descriptor: AnyWorkflowDescriptor): readonly St
         : spec !== undefined && manualKind(view.descriptor, spec) === "locked-manual" ? "locked-manual" : "locked";
     const reason = kind === "switch" ? undefined : lockReason(row.members);
     const forces = step?.control.state === "omittable" ? step.control.forces : Object.freeze([]);
-    const workflow = row.target?.workflow;
-    if (workflow !== undefined && (step?.control.state === "selectable" || kind === "locked" || forces.some(forced =>
-      !descriptor.startRows.some(other => other.target?.workflow === workflow && other.target.step === forced)))) {
-      throw new Error(`${descriptor.id} start row ${row.key} targets child step ${row.target.workflow}/${row.target.step}, which only its own typed values can switch`);
+    const target = row.target;
+    if (target?.workflow !== undefined && (step?.control.state === "selectable" || kind === "locked" || forces.some(forced =>
+      !descriptor.startRows.some(other => other.target?.workflow === target.workflow && other.target?.step === forced)))) {
+      throw new Error(`${descriptor.id} start row ${row.key} targets child step ${target.workflow}/${target.step}, which only its own typed values can switch`);
     }
     return Object.freeze({
       key: row.key,

@@ -30,8 +30,8 @@ describe("Emergency Contact Start run rows", () => {
     ]);
   });
 
-  it("declares the member's contact read as a bound read", () => {
-    assert.deepEqual(emergencyContactMemberModule.descriptor.stepLocks, [{ step: "contact-plan", reason: "bound-read" }]);
+  it("offers the member's contact plan values only in the member's own Start", () => {
+    assert.equal(emergencyContactMemberModule.descriptor.stepOmissions.find(({ step }) => step === "contact-plan")?.ownStartOnly, true);
   });
 
   it("offers typed fields only for OCR child steps", () => {
