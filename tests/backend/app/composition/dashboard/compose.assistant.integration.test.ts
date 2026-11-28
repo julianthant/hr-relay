@@ -591,8 +591,8 @@ it("requires an operator notification change request and journals the accepted c
       dedupeFingerprint: "d".repeat(64), trigger: "failed", channel: "ping", status: "unread", snooze: { state: "not-snoozed" },
       title, summary, links: [{ kind: "run", runId: run.envelope.runId }], count: 1, lastSeenAt: at, version: 1, createdAt: at, updatedAt: at }).record;
     const door = clientDoor(createDashboardClient({ baseUrl: origin }));
-    const commandRows = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, "state.db"), database =>
-      database.prepare("SELECT id FROM commands WHERE family='notification' ORDER BY id").all());
+    const commandIds = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, "state.db"), database =>
+      database.prepare("SELECT id FROM commands WHERE family='notification' ORDER BY id").all().map(row => z.string().parse(row.id)));
     async function request(message: string, source: string | null) {
       let calls = 0;
       transport.setResponse(init => {
@@ -617,7 +617,7 @@ it("requires an operator notification change request and journals the accepted c
       assert.equal(calls, 2);
       return result;
     }
-    const before = commandRows();
+    const before = commandIds();
     for (const [message, source] of [["List my read and unread notifications.", "read"],
       ["Mark the notification as read.", null], ["Mark the read notification as unread.", "read"],
       ["Mark the notification as not read.", "read"]] as const) {
@@ -625,7 +625,7 @@ it("requires an operator notification change request and journals the accepted c
         message: ASSISTANT_FAILURES.ASSISTANT_VALUE_NEEDS_SOURCE });
       assert.deepEqual(authority.notifications.get(notificationId), notice);
       assert.deepEqual(authority.assistantAppliedEdits.list(at), []);
-      assert.deepEqual(commandRows(), before);
+      assert.deepEqual(commandIds(), before);
     }
     assert.deepEqual(await request("Please mark the notification as read.", "read"), { state: "answered", text: "Changed the notification to read." });
     const [edit, extra] = authority.assistantAppliedEdits.list(at);
@@ -636,6 +636,6 @@ it("requires an operator notification change request and journals the accepted c
     assert.deepEqual(authority.notifications.get(notificationId), { ...notice, status: "read", version: 2 });
     const audit = authority.commandAudits.findByCommand(edit.id);
     assert.deepEqual([audit?.request.source, audit?.request.requestedBy], ["assistant", LOCAL_OPERATOR_ACTOR_ID]);
-    assert.deepEqual(commandRows(), [...before, { id: edit.id }].sort((a, b) => String(a.id).localeCompare(String(b.id))));
+    assert.deepEqual(commandIds(), [...before, edit.id].sort());
   });
 });
