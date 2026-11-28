@@ -73,7 +73,9 @@ it("derives run options from Start run declarations only", () => {
 it("serves session chips for delegated runs from the delegating step", () => {
   assert.deepEqual(workflow("ocr").reviewSpec.sessions.map(session => session.system), ["ucpath", "crm", "i9"]);
   assert.deepEqual(workflow("ocr-page").reviewSpec.sessions, []);
-  assert.deepEqual(workflow("onbase").reviewSpec.sessions, [{ system: "onbase" }]);
+  assert.deepEqual(workflow("onbase").reviewSpec.sessions, [{
+    system: "onbase", when: [{ "skip-source-page": ["run"] }, { "skip-import-document": ["run"] }],
+  }]);
   const deps = explorerQueryDeps(clock, hash);
   assert.throws(() => readFixtureExplorer({ ...deps, modules: deps.modules.filter(module => module.descriptor.id === "ocr") }), /absent from the catalog/u);
 });
