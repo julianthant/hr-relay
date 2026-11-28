@@ -215,14 +215,14 @@ it('checks for a hold acquired after Versions opened before allowing Delete conf
 
   assert.equal(wiring.adapter.refreshCatalog?.mock.calls.length, 2);
   assert.equal(remove?.disabled, true);
-  assert.equal(byText('button', 'Delete version'), undefined);
+  assert.ok(!byText('button', 'Delete version'));
   wiring.catalog = [held];
   refresh.resolve({ state: 'ready', catalog: [held] });
   await render();
 
   assert.match(remove?.closest('li')?.textContent ?? '', /In use/u);
   assert.equal(remove?.disabled, true);
-  assert.equal(byText('button', 'Delete version'), undefined);
+  assert.ok(!byText('button', 'Delete version'));
   assert.equal(lastChange(), undefined);
 });
 
