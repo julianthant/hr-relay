@@ -156,7 +156,9 @@ describe("Onboarding reference spreadsheet check", () => {
     const f = await fixture({ mode: "new-hire", newHireReceiptEid: PERSON.emplId });
     const root = f.start([f.checkSheet("Reference roster", "Hires", ["email", "eid"], [[f.key, "10000009"]])]);
     const parked = await f.reviewThenRun(root);
-    assert.ok(parked.lifecycle.state === "parked-gate");
+    assert.ok(parked.lifecycle.state === "parked-gate", JSON.stringify({
+      lifecycle: parked.lifecycle, failures: f.database.authority.failures.listByRun(root.envelope.runId), checks: f.checkLines(root),
+    }));
     assert.equal(parked.lifecycle.gateId, "reference-field-review-hire-receipt");
     assert.equal(f.card(root).context, `Hires, row 2 · Employee ID: spreadsheet “10000009”, workflow “${PERSON.emplId}”`);
     assert.deepEqual(f.repository.runOperations(root.envelope.runId), []);

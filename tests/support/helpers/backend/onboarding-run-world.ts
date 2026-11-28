@@ -180,7 +180,7 @@ export function createOnboardingRunWorld() {
           scanHireTransactions: async (query: Parameters<typeof hire.scanHireTransactions>[0]) => {
             const scan = await hire.scanHireTransactions(query);
             const eid = options.newHireReceiptEid;
-            return query.mode !== "new-hire" || eid === undefined ? scan
+            return options.mode !== "new-hire" || eid === undefined ? scan
               : { ...scan, rows: scan.rows.map(row => ({ ...row, emplId: eid })) };
           },
           searchPersonMatch: async (input: unknown) => {
