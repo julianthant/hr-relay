@@ -9,7 +9,7 @@ import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { fsyncPath } from "../private-path.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { AuthorityBackupService, parseBackupManifestFile, type AuthorityBackupSource } from "../sqlite/backup-service.js";
+import { AuthorityBackupService, backupLogPaths, parseBackupManifestFile, verifyBackupLogFiles, type AuthorityBackupSource } from "../sqlite/backup-service.js";
 import { backupThreadIdle, copyAuthorityOffThread } from "../sqlite/backup-inspection-worker.js";
 import type { AuthorityBackupManifest } from "../sqlite/recovery-contracts.js";
 import { hasUnprovedSourceClosure } from "../source-closure.js";
@@ -68,11 +68,13 @@ async function backupBytesMatch(path: string, manifest: AuthorityBackupManifest)
   if (stats === undefined || !stats.isFile() || stats.size !== manifest.byteSize) return false;
   const hash = createHash("sha256");
   await pipeline(createReadStream(path), hash);
-  return hash.digest("hex") === manifest.sha256;
+  if (hash.digest("hex") !== manifest.sha256) return false;
+  await verifyBackupLogFiles(path, manifest);
+  return true;
 }
 
 /** A backup file and the sidecars SQLite may leave beside it. */
-function backupFiles(path: string): string[] { return [path, `${path}-wal`, `${path}-shm`, `${path}-journal`]; }
+function backupFiles(path: string): string[] { return [path, `${path}-wal`, `${path}-shm`, `${path}-journal`, ...backupLogPaths(path)]; }
 
 function removeBackupFiles(path: string): void {
   for (const candidate of backupFiles(path)) rmSync(candidate, { force: true });

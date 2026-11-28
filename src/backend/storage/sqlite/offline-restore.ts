@@ -12,7 +12,7 @@ import { probeAutomaticRestoreBrowsersClosed,probeRestoreProfileBrowsersClosed,p
 import { file, hash } from "../maintenance/existing-data-backup-files.js";
 import { restoreRetainedFilesDigest, assertRestoreRootMembership } from "../maintenance/automatic-restore-files.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
-import { assertProfileRestoreDatabaseBinding } from "./profile-local-databases.js";
+import { assertProfileRestoreDatabaseBinding, restoreLogDatabases } from "./profile-local-databases.js";
 
 import { chmodSync,closeSync,copyFileSync,existsSync,fsyncSync,mkdirSync,openSync,renameSync,rmSync,readdirSync,statSync } from "node:fs";
 import { basename,dirname,join,resolve } from "node:path";
@@ -575,6 +575,8 @@ export class OfflineAuthorityRestoreService {
         stagedAdmission?.release();
         if (restoreJournalHeld && restoreBinding !== undefined && authorityState === "replaced" && stagedPrimaryError === undefined) {
           try {
+            admission.assertAuthorityRestoreCurrent(restoreBinding, restoreAdmission);
+            if (isCurrentAuthoritySchemaVersion(verified.manifest.schemaVersion)) restoreLogDatabases(this.#authorityPath, admission.stateRoot);
             admission.settleAuthorityRestore(restoreBinding, () => {
               const actual = inspectAuthorityBackupReadOnly(admission, this.#authorityPath,
                 verified.manifest.schemaVersion, this.#busyTimeoutMs);
@@ -691,6 +693,8 @@ async function resumeAutomaticAuthorityRestoreHeld(input: RestoreRecoveryInput, 
     if (existsSync(path)) { same(path, row.binding); rmSync(path); }
   }
   fsyncPath(dirname(binding.authorityPath));
+  admission.assertAuthorityRestoreCurrent(binding, operation);
+  if (isCurrentAuthoritySchemaVersion(verified.manifest.schemaVersion)) restoreLogDatabases(binding.authorityPath, admission.stateRoot);
   admission.settleAuthorityRestore(binding, () => {
     const actual = inspectAuthorityBackupReadOnly(admission, binding.authorityPath, verified.manifest.schemaVersion);
     return { authorityGeneration: actual.authorityGeneration, authorityContentFingerprint: actual.authorityContentFingerprint };

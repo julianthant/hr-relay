@@ -15,7 +15,8 @@ export function restoreRetainedFilesDigest(root: string): string {
 export function assertRestoreRootMembership(root: string, operationId: string): void {
   const directories = new Set(["browsers", "credentials", "backups", "artifacts", "logs", "scratch", "files"]);
   const stage = `.restore-${operationId}.sqlite.tmp`;
-  const files = new Set(["state.db", "state.db-wal", "state.db-shm", stage, `${stage}-wal.live-companion`, `${stage}-shm.live-companion`]);
+  const files = new Set(["state.db", "state.db-wal", "state.db-shm", stage, `${stage}-wal.live-companion`, `${stage}-shm.live-companion`,
+    ...["timeline.db", "dashboard.db"].flatMap(name => [name, `${name}-wal`, `${name}-shm`, `${name}-journal`])]);
   for (const name of readdirSync(root)) {
     const path = join(root, name), metadata = fileStatus(path);
     if (metadata.isSymbolicLink() || privatePathRejects(path, metadata, "group-write")

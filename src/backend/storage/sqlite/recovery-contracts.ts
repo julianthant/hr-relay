@@ -115,11 +115,13 @@ function requireObservedBackupIdentity(
 }
 
 /** DB-only current writer shape. Credentials have no backup representation. */
+const BackupLogFileSchema = z.strictObject({ byteSize: PositiveIntSchema, sha256: FingerprintSchema });
 export const AuthorityBackupManifestV4Schema = AuthorityBackupManifestBaseSchema.extend({
   manifestVersion: z.literal(4),
   schemaVersion: z.literal(BOUND_AUTHORITY_SCHEMA_VERSIONS),
   installationId: z.uuid(),
   profileId: z.uuid(),
+  logFiles: z.strictObject({ timeline: BackupLogFileSchema, dashboard: BackupLogFileSchema }).optional(),
   verification: BackupVerificationSchema.extend({ installationId: z.uuid(), profileId: z.uuid() }),
 }).superRefine(requireObservedBackupIdentity);
 

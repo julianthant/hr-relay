@@ -107,6 +107,9 @@ describe("hourly in-session backup", () => {
     expect(second).toHaveLength(1);
     expect(second).not.toEqual(first);
     expect(f.names(".session.sqlite")).toEqual(second.map(name => name.slice(0, -".manifest.json".length)));
+    for (const log of ["timeline", "dashboard"]) {
+      expect(f.names(`.session.sqlite.${log}.db`)).toEqual(second.map(name => name.replace(/\.manifest\.json$/u, `.${log}.db`)));
+    }
     expect([...f.names(".shutdown.sqlite"), ...f.names(".shutdown.sqlite.manifest.json")]).toEqual(others);
     expect(readdirSync(f.directory).filter(name => !name.includes(".shutdown") && !name.includes(".session")).sort()).toEqual(plain);
   });

@@ -6,9 +6,11 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { AuthorityBackupService, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { AuthorityBackupService, backupLogPaths, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
@@ -31,6 +33,13 @@ describe("corruption → degraded → automatic restore → rebuild", () => {
       const event = { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: "a".repeat(64) };
       const report = await inbox.publish(event); inbox.markRead(report.notification.notificationId, 1);
       db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: true, occurrence: 1, samples: [], observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString() }));
+      createNoteTimelineWriter({ repository: db.authority.timelineEvents, clock }).emitNote({
+        workflow: "person-lookup", address: { workerId: "person-lookup-worker-1", spanPath: "worker" },
+        level: "step", message: "Present in the backup",
+      });
+      createDebugEventWriter({ repository: db.authority.timelineEvents, clock, build: "test" }).emit({
+        category: "worker", phase: "settled", area: "restore-test", correlationId: randomUUID(),
+      });
       const expected = { row: inbox.get(report.notification.notificationId), sources: db.authority.notificationPublications.list(), health: db.authority.notificationHealth.get("disk-space") };
       db.close();
       const backupDb = open();
@@ -44,6 +53,15 @@ describe("corruption → degraded → automatic restore → rebuild", () => {
       const manifest = backup.manifests[0]; expect(manifest).toBeDefined();
       const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot}, async (stagedPath, restoreAdmission) => { const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission); try { const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission, { path: stagedPath, busyTimeoutMs: 250, migrationOwner: "notification-projection-proof" }, f.clock); staged.close(); } finally { stagedAdmission.release(); } }, f.clock, undefined, boundProfileCredentials(admission));
       await restore.restore({ manifestPath: join(f.root, "backups", "authority", `${manifest.backupFileName}.manifest.json`) }, operation);
+      assert.ok(manifest.manifestVersion === 4 && manifest.logFiles !== undefined);
+      const backupLogs = backupLogPaths(join(f.root, "backups", "authority", manifest.backupFileName));
+      for (const [name, table, index] of [["timeline", "timeline_events", 0], ["dashboard", "debug_events", 1]] as const) {
+        using restoredLog = new DatabaseSync(join(root, `${name}.db`), { readOnly: true });
+        using backedUpLog = new DatabaseSync(backupLogs[index], { readOnly: true });
+        const query = `SELECT id, payload_json FROM ${table} ORDER BY cursor`;
+        assert.ok(backedUpLog.prepare(query).all().length > 0);
+        assert.deepEqual(restoredLog.prepare(query).all(), backedUpLog.prepare(query).all());
+      }
       assert.throws(() => admission.assertProfileRuntime(), /profile-restore-context-expired/u);
       profile.renewAfterRestore();
       db = open();
