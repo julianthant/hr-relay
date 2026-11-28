@@ -416,6 +416,7 @@ export class AuthorityDatabase implements Disposable {
       } else {
         if (!existed && purpose !== "stopped-restore-projection") this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#configureConnection();
+        if (options.checkpointOwner === "dashboard-navigation") this.holdCheckpointCustody();
         if (existed && purpose === "ordinary") this.#initializeSchema(existingVersion, options.migrationOwner);
       }
       this.#database.exec("BEGIN");

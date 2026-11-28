@@ -186,7 +186,7 @@ async function serve() {
   const credentials = createCredentialStore({ admission: admitted, stateRoot: admitted.stateRoot });
   const protectedSettings = role === "editor" ? createProtectedSettingsRuntimeReader(credentials) : undefined;
   const database = role === "ordinary-command" ? AuthorityDatabase.open(admitted, {
-    path: selected.authorityPath, busyTimeoutMs: 5000, migrationOwner: "settings-command-worker",
+    path: selected.authorityPath, busyTimeoutMs: 5000, migrationOwner: "settings-command-worker", checkpointOwner: "dashboard-navigation",
   }, systemClock, undefined, undefined, undefined, credentials) : undefined;
   if (database !== undefined) release.unshift(() => database.close());
   process.on("message", (input: unknown) => {
