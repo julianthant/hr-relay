@@ -223,9 +223,9 @@ it.skipIf(process.platform === "win32")("one terminal SIGINT drains two idle wor
   const stream = await fetch(`${origin}/events/v1?topics=dashboard-day:2026-11-05`, { headers: { "x-relay-session": credential } });
   assert.equal(stream.status, 200);
   {
-    using log = new DatabaseSync(join(f.stateRoot, "dashboard.db"), { readOnly: true });
-    const idle = log.prepare("SELECT count(DISTINCT worker_id) AS count FROM debug_events WHERE json_extract(payload_json,'$.payload.event.reason')='worker-idle'");
-    await until(() => idle.get()?.count === 2 || undefined, "both workers to become idle and commit their idle events", diagnostics);
+    using state = new DatabaseSync(f.path, { readOnly: true });
+    const idle = state.prepare("SELECT count(DISTINCT worker_id) AS count FROM debug_events WHERE json_extract(payload_json,'$.payload.event.reason')='worker-idle'");
+    await until(() => idle.get()?.count === 2 || undefined, "both workers to finish their empty claims", diagnostics, 20_000);
   }
   // Model a busy dashboard whose workers finish handling the terminal interrupt first.
   process.kill(child.pid, "SIGSTOP");
@@ -234,10 +234,13 @@ it.skipIf(process.platform === "win32")("one terminal SIGINT drains two idle wor
     const exits = await until(() => {
       const observed = markers().filter(name => name.startsWith("exit-"));
       return observed.some(name => !name.startsWith("exit-0-")) || observed.length === 2 ? observed : undefined;
-    }, "both workers to finish the terminal interrupt", diagnostics);
+    }, "both workers to finish the terminal interrupt", diagnostics, 10_000);
     assert.equal(exits.filter(name => name.startsWith("exit-0-")).length, 2, diagnostics());
   } finally { process.kill(child.pid, "SIGCONT"); }
-  assert.deepEqual(await exited, { code: 0, signal: null }, diagnostics());
+  let dashboardExit: Awaited<typeof exited> | undefined;
+  void exited.then(result => { dashboardExit = result; });
+  assert.deepEqual(await until(() => dashboardExit, "dashboard exit after the terminal interrupt", diagnostics, 30_000),
+    { code: 0, signal: null }, diagnostics());
   assert.equal(markers().filter(name => name.startsWith("exit-0-")).length, 2, diagnostics());
   assert.deepEqual([...output().matchAll(/"message":"dashboard shutdown","phase":"([^"]+)"/gu)].map(match => match[1]),
     ["closing transport", "stopping workers", "closing store", "backing up", "done"], diagnostics());
