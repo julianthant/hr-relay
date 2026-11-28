@@ -10,7 +10,7 @@ import { afterEach,describe,it } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { authoritySourceDatabaseIdentity } from "../../../../src/backend/storage/sqlite/database-identity.js";
-import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { backupLogPaths, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { upgradeProfileAtStartup, upgradeReadyProfileStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
@@ -111,7 +111,10 @@ describe("DB-only authority backups", () => {
       verification: { ...own.manifest.verification, ...otherBinding } }));
     await assert.rejects(verifyBackupManifestAtPath(world.admission, own.manifestPath), /backup-profile-binding-mismatch/u);
 
-    copyFileSync(join(other.backupDirectory, foreign.manifest.backupFileName), join(world.backupDirectory, own.manifest.backupFileName));
+    const foreignPath = join(other.backupDirectory, foreign.manifest.backupFileName);
+    const ownPath = join(world.backupDirectory, own.manifest.backupFileName);
+    const ownFiles = [ownPath, ...backupLogPaths(ownPath)];
+    [foreignPath, ...backupLogPaths(foreignPath)].forEach((path, index) => copyFileSync(path, ownFiles[index]));
     writeFileSync(own.manifestPath, JSON.stringify({ ...foreign.manifest, ...binding,
       backupFileName: own.manifest.backupFileName,
       sourceDatabaseIdentity: authoritySourceDatabaseIdentity({ kind: "profile", binding }),

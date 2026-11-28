@@ -143,7 +143,7 @@ describe("canonical notification producers", () => {
       const files = readdirSync(directory);
       f.db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: false, occurrence: 0, observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString(), samples: [] }));
       expect((await read()).backupFailed).toBe(false); expect(readdirSync(directory)).toEqual(files);
-      const backupFile = join(directory, files.find(name => !name.endsWith(".manifest.json"))!), bytes = readFileSync(backupFile);
+      const backupFile = join(directory, files.find(name => name.endsWith(".sqlite"))!), bytes = readFileSync(backupFile);
       bytes[bytes.length - 1] ^= 0xff; writeFileSync(backupFile, bytes);
       expect((await read()).backupFailed).toBe(true);
       bytes[bytes.length - 1] ^= 0xff; writeFileSync(backupFile, bytes);
@@ -151,6 +151,11 @@ describe("canonical notification producers", () => {
       writeFileSync(`${backupFile}-wal`, Buffer.alloc(4096, 1));
       expect((await read()).backupFailed).toBe(true);
       rmSync(`${backupFile}-wal`);
+      expect((await read()).backupFailed).toBe(false);
+      const timelineBackup = `${backupFile}.timeline.db`, timelineBytes = readFileSync(timelineBackup);
+      rmSync(timelineBackup);
+      expect((await read()).backupFailed).toBe(true);
+      writeFileSync(timelineBackup, timelineBytes, { mode: 0o600 });
       expect((await read()).backupFailed).toBe(false);
       const manifestFile = join(directory, files.find(name => name.endsWith(".manifest.json"))!), manifestText = readFileSync(manifestFile, "utf8");
       const seeded = parseBackupManifestFile(manifestFile);
@@ -378,7 +383,7 @@ describe("backup inspection off the main thread", () => {
     } finally { inspections.restore(); await f.close(); }
   });
 
-  it("fails a backup that changes after its inspection and before the verdict arrives, and never reuses that verdict", async () => {
+  it.each(["authority database", "timeline companion"])("fails a backup when its %s changes before the verdict arrives", async changedFile => {
     const f = await fixture();
     const inspections = holdBackupInspections();
     try {
@@ -387,8 +392,11 @@ describe("backup inspection off the main thread", () => {
       const first = read();
       await vi.waitFor(() => expect(inspections.held).toHaveLength(1));
       const { path } = inspections.held[0];
+      if (changedFile === "timeline companion") rmSync(`${path}.timeline.db`);
       inspections.held[0].settle("inspect");
-      const bytes = readFileSync(path); bytes[bytes.length - 1] ^= 1; writeFileSync(path, bytes);
+      if (changedFile === "authority database") {
+        const bytes = readFileSync(path); bytes[bytes.length - 1] ^= 1; writeFileSync(path, bytes);
+      }
       expect((await first).backupFailed).toBe(true);
       expect((await read()).backupFailed).toBe(true);
       expect(inspections.held).toHaveLength(1);

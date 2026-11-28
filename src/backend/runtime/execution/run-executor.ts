@@ -118,7 +118,8 @@ export async function executeClaimedRun(
     ...(lifecycle.state === "parked-gate" ? { expectedVersion: current.version } : {}),
   });
 
-  const transitionTo = (lifecycle: RunLifecycle): RunRecord => {
+  const transitionTo = async (lifecycle: RunLifecycle): Promise<RunRecord> => {
+    if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
     const current = getRun();
     checkCancellation(current);
     return requireLifecycleApplied(workerTransition(current, lifecycle));
@@ -223,6 +224,7 @@ export async function executeClaimedRun(
         `run ${runId} has a diagnostic capture port but no authority transaction to settle its bundle with the failure`,
       );
     }
+    if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
     const settled = deps.authority.withAuthorityTransaction === undefined ? settle() : deps.authority.withAuthorityTransaction(settle);
     if (settled instanceof RunTerminalAdmissionLostError) throw settled;
     if (settled === "held") {
@@ -245,7 +247,7 @@ export async function executeClaimedRun(
 
   const interpret = async (): Promise<RunExecutionOutcome> => {
     /* ── validating: ref workflow-model entry validation, before any browser ────── */
-    transitionTo({ state: "validating", workerId: claim.workerId, claimedAt, heartbeatAt: instant() });
+    await transitionTo({ state: "validating", workerId: claim.workerId, claimedAt, heartbeatAt: instant() });
 
     pauseAtBoundary();
     const accounting = deps.authority.withAuthorityTransaction?.(repositories => {
@@ -315,7 +317,7 @@ export async function executeClaimedRun(
     }
 
     /* ── running: walk the plan in declaration order ─────────────────────── */
-    transitionTo(runningLifecycle());
+    await transitionTo(runningLifecycle());
 
 
     for (const record of preparedPlan.patchedInserts) {
@@ -324,8 +326,8 @@ export async function executeClaimedRun(
     return walkRunPlan(context, state, preparedPlan);
   };
 
-  const handleInterruption = (error: unknown):
-    { state: "handled"; outcome: RunExecutionOutcome } | { state: "unhandled"; failure: unknown } => {
+  const handleInterruption = async (error: unknown):
+    Promise<{ state: "handled"; outcome: RunExecutionOutcome } | { state: "unhandled"; failure: unknown }> => {
     let failure = error;
     // An aborted run settles a requested pause or cancellation from durable state; any other abort abandons.
     if (input.signal.aborted && failure instanceof RunAbandonedError && !(failure instanceof RunPauseRequestedError)) {
@@ -342,6 +344,7 @@ export async function executeClaimedRun(
         checkCancellation(current);
         // Resume can withdraw Pause between a lost terminal admission and this read.
         if (!(failure instanceof RunTerminalAdmissionLostError) || current.version > failure.admissionVersion) {
+          if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
           const released = requireLifecycleApplied(deps.lifecycle.acknowledgePause({
             commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, ...(current.pause === undefined ? {} : { commandId: current.pause.commandId }) }),
             runId, claim,
@@ -358,6 +361,7 @@ export async function executeClaimedRun(
     }
     if (failure instanceof RunCancellationRequestedError) {
       try {
+        if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
         const settle = () => requireLifecycleApplied(deps.lifecycle.terminalize({
           kind: "cancelled", commandId: lifecycleCommandId("cancel", { runId, generation: claim.claimGeneration }),
           runId, expectedVersion: getRun().version, claim, endedAt: instant(),
@@ -376,7 +380,7 @@ export async function executeClaimedRun(
   try {
     return await interpret();
   } catch (error) {
-    const interrupted = handleInterruption(error);
+    const interrupted = await handleInterruption(error);
     if (interrupted.state === "handled") return interrupted.outcome;
     const failure = interrupted.failure;
     if (failure instanceof RunContinuationRefusedError) {
@@ -385,7 +389,7 @@ export async function executeClaimedRun(
           run: getRun(), failureId: deps.ids.uuid(), code: failure.code, problems: [failure.message], occurredAt: instant(),
         }));
       } catch (terminalFailure) {
-        const terminal = handleInterruption(terminalFailure);
+        const terminal = await handleInterruption(terminalFailure);
         if (terminal.state === "handled") return terminal.outcome;
         throw terminal.failure;
       }

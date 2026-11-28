@@ -16,7 +16,7 @@ import { profileInitials } from "../../../models/profiles/profile-identity.js";
 import { DuoReenrolOperationSchema,LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOperationSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpDuoAttemptSchema,SignUpOnboardingSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason } from "../../../models/profiles/profile.js";
 import { CanonicalCredentialConversionPlanSchema,CanonicalCredentialHeadSchema,canonicalCredentialHeadReading,CanonicalCredentialOperationSchema,CanonicalCredentialPublicationSourceSchema,CanonicalCredentialRestoreSnapshotSchema,CredentialMaintenanceHold,captureCanonicalCredentialStartupLocks,publishStoppedCanonicalCredentials,type CanonicalCredentialConversionPlan } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
-import { sameDirectory, fileIdentityObservation, capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,removeExactPath,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { sameDirectory, fileIdentityObservation, capturePriorPrivateFileLock,digestPrivateAuthorityFile,noSymlinkAncestry,outermostOperationProof,readPrivateFile,removeExactPath,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js";
 import { createProfileVerifiers,preparedProfileVerifierPepperWitness,verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { SourceRecordSchema,file as backupFile,hash as backupHash,profileAuthorityFileWitnesses,retainedStorageBackup } from "../maintenance/existing-data-backup-files.js";
@@ -29,7 +29,8 @@ import type { StartupLogoutConversion } from "../sqlite/authority-upgrades.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
 import { AuthorityBackupService,verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { assertCanonicalProfileBinding,assertProfileRestoreDatabaseBinding,readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
-import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
+import { AuthorityBackupManifestSchema, type AuthorityBackupManifest } from "../sqlite/recovery-contracts.js";
+import { LOG_DATABASE_NAMES } from "../events/log-mutations.js";
 import { OPENABLE_AUTHORITY_SCHEMA_VERSIONS, isOpenableAuthoritySchemaVersion, type OpenableAuthoritySchemaVersion } from "../../../models/config/authority-schema-versions.js";
 import { requireRuntimeAdmission } from "./admission-identity.js";
 import type { RuntimeAdmission, StartupRegistrationProof } from "./admission.js";
@@ -196,7 +197,8 @@ const RetainedControlUpgradeEntrySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("file"), name: z.string().regex(/^[0-9a-f-]{36}\.(?:registry|control|marker)\.before\.json$|^[0-9a-f-]{36}\.receipt\.json$/u), file: ControlUpgradeFileSchema }),
   z.strictObject({ kind: z.literal("authority-directory"), name: z.string().regex(/^[0-9a-f-]{36}\.[0-9a-f-]{36}\.authority$/u),
     ...FileIdentitySchema.shape,
-    files: z.array(z.strictObject({ name: z.string().regex(/^authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite(?:\.manifest\.json)?$/u), file: ControlUpgradeFileSchema })).length(2) }),
+    files: z.array(z.strictObject({ name: z.string().regex(/^authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite(?:\.manifest\.json|\.(?:timeline|dashboard)\.db)?$/u),
+      file: ControlUpgradeFileSchema })).refine(files => files.length === 2 || files.length === 4) }),
 ]);
 const ControlUpgradeCommonSchema = z.strictObject({ schemaVersion: z.literal(3), operationId: z.uuid(), installationId: z.uuid(),
   browsers: z.lazy(() => BrowserRootsSchema),
@@ -2563,6 +2565,25 @@ function controlUpgradeFile(path: string, maxBytes = 1_048_576) {
   return { ...fileIdentityObservation(file.identity, { preserveSafeNumbers: true }), digest: createHash("sha256").update(file.bytes).digest("hex") };
 }
 
+function controlUpgradeBackupFiles(directory: string, manifest: AuthorityBackupManifest, reason: string) {
+  const name = manifest.backupFileName, manifestName = `${name}.manifest.json`;
+  const logs = manifest.logFiles;
+  const databases = new Map<string, Pick<AuthorityBackupManifest, "byteSize" | "sha256">>([[name, manifest],
+    ...(logs === undefined ? [] : LOG_DATABASE_NAMES.map(kind => [`${name}.${kind}.db`, logs[kind]] as const))]);
+  const names = readdirSync(directory).sort();
+  if (names.length !== databases.size + 1 || !names.includes(manifestName) || names.some(member => member !== manifestName && !databases.has(member))
+    || manifest.byteSize > 512 * 1024 * 1024) fail(reason);
+  return names.map(member => {
+    const path = join(directory, member);
+    if (member === manifestName) return { name: member, file: controlUpgradeFile(path, 64_000) };
+    const expected = databases.get(member);
+    const file = digestPrivateAuthorityFile(path);
+    if (expected === undefined || file === undefined || privatePathRejects(path, file.stat, "file-0600")
+      || privateFileNumber(file.stat.size) !== expected.byteSize || file.digest !== expected.sha256) fail(reason);
+    return { name: member, file: { ...fileIdentityObservation(file.identity, { preserveSafeNumbers: true }), digest: file.digest } };
+  });
+}
+
 function retainedControlUpgradeEntry(directory: string, name: string, installationId: string): z.infer<typeof RetainedControlUpgradeEntrySchema> {
   const path = join(directory, name);
   assertNoSymlinkComponents(path);
@@ -2577,14 +2598,11 @@ function retainedControlUpgradeEntry(directory: string, name: string, installati
   privateDirectory(path);
   const names = readdirSync(path).sort();
   const manifestName = names.find(value => /^authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite\.manifest\.json$/u.test(value));
-  if (names.length !== 2 || manifestName === undefined) fail("profile-control-upgrade-retained-backup-membership");
-  const fileName = manifestName.slice(0, -14);
-  if (!names.includes(fileName)) fail("profile-control-upgrade-retained-backup-membership");
+  if (manifestName === undefined) fail("profile-control-upgrade-retained-backup-membership");
   const manifest = readProfileEvidence(join(path, manifestName), AuthorityBackupManifestSchema);
-  const backup = controlUpgradeFile(join(path, fileName), 512 * 1024 * 1024);
   if (manifest.installationId !== installationId || manifest.profileId !== profileId
-    || manifest.backupFileName !== fileName || manifest.sha256 !== backup.digest
-    || manifest.byteSize !== privateFileNumber(fileStatus(join(path, fileName)).size)) fail("profile-control-upgrade-retained-backup-changed");
+    || `${manifest.backupFileName}.manifest.json` !== manifestName) fail("profile-control-upgrade-retained-backup-changed");
+  const files = controlUpgradeBackupFiles(path, manifest, "profile-control-upgrade-retained-backup-changed");
   const receiptPath = join(directory, `${operationId}.receipt.json`);
   assertNoSymlinkComponents(receiptPath);
   const file = readPrivateFile(receiptPath, { label: "lock", maxBytes: CONTROL_UPGRADE_RECEIPT_MAX_BYTES });
@@ -2594,10 +2612,10 @@ function retainedControlUpgradeEntry(directory: string, name: string, installati
   const matching = receipt.backups.filter(row => row.profileId === profileId && row.directory === name);
   const verified = matching.length === 1 ? matching[0]?.verifiedBackup : undefined;
   if (receipt.operationId !== operationId || receipt.installationId !== installationId || verified === undefined
-    || verified.manifestSha256 !== controlUpgradeFile(join(path, manifestName), 64_000).digest
+    || verified.manifestSha256 !== files.find(member => member.name === manifestName)?.file.digest
     || canonicalJsonStringify(verified.manifest) !== canonicalJsonStringify(manifest)) fail("profile-control-upgrade-retained-backup-membership");
   return RetainedControlUpgradeEntrySchema.parse({ kind: "authority-directory", name, ...fileIdentityObservation({ device: metadata.dev, inode: metadata.ino }, { preserveSafeNumbers: true }),
-    files: names.map(member => ({ name: member, file: member === fileName ? backup : controlUpgradeFile(join(path, member), 64_000) })) });
+    files });
 }
 
 function sameControlUpgradeFile(path: string, expected: z.infer<typeof ControlUpgradeFileSchema>, maxBytes = 1_048_576): boolean {
@@ -2799,11 +2817,9 @@ function validateStoppedControlUpgrade(control: string, locator: RuntimeLocator,
     if (lstatMaybe(directory) !== undefined) {
       assertNoSymlinkComponents(directory); privateDirectory(directory);
       if (row.verifiedBackup !== undefined) {
-        const name = row.verifiedBackup.manifest.backupFileName;
-        if (canonicalJsonStringify(readdirSync(directory).sort()) !== canonicalJsonStringify([name, `${name}.manifest.json`].sort())
-          || controlUpgradeFile(join(directory, `${name}.manifest.json`), 64_000).digest !== row.verifiedBackup.manifestSha256
-          || row.verifiedBackup.manifest.byteSize > 512 * 1024 * 1024
-          || controlUpgradeFile(join(directory, name), 512 * 1024 * 1024).digest !== row.verifiedBackup.manifest.sha256) fail("profile-control-upgrade-backup-changed");
+        const { manifest, manifestSha256 } = row.verifiedBackup;
+        const files = controlUpgradeBackupFiles(directory, manifest, "profile-control-upgrade-backup-changed");
+        if (files.find(file => file.name === `${manifest.backupFileName}.manifest.json`)?.file.digest !== manifestSha256) fail("profile-control-upgrade-backup-changed");
       }
     }
   }
@@ -3188,8 +3204,10 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
             const names = readdirSync(directory);
             const manifests = names.filter(name => /^authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite\.manifest\.json$/u.test(name));
             const name = manifests[0];
-            if (names.length !== 2 || manifests.length !== 1 || name === undefined || !names.includes(name.slice(0, -14))) fail("profile-control-upgrade-backup-recovery-required");
-            manifest = AuthorityBackupManifestSchema.parse((await verifyBackupManifestAtPath(admission, join(directory, name))).manifest);
+            if (manifests.length !== 1 || name === undefined) fail("profile-control-upgrade-backup-recovery-required");
+            manifest = readProfileEvidence(join(directory, name), AuthorityBackupManifestSchema);
+            if (name !== `${manifest.backupFileName}.manifest.json`) fail("profile-control-upgrade-backup-recovery-required");
+            controlUpgradeBackupFiles(directory, manifest, "profile-control-upgrade-backup-recovery-required");
           } else {
             const source = openAuthorityBackupSourceReadOnly(admission, databasePath, 250, sourceInfo.schemaVersion);
             let primary: { error: unknown } | undefined;

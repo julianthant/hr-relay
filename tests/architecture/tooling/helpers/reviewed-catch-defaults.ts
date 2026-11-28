@@ -144,7 +144,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "statements": [
       {
         "kind": "try",
-        "sha256": "ba28eb28fce3d9dd3921f53b2b6de53c44e456e7bca5cf225e1fe861a3338003",
+        "sha256": "c9111bbdd4594c623251181e62a53f8dda291bed03fb7f42d76f472cc8575c15",
         "occurrences": 1
       }
     ]

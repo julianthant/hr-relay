@@ -99,6 +99,7 @@ function assertChildBinding(parent: RunRecord, child: RunRecord, context: ChildR
 export function createDurableChildRunExecutor(dependencies: Readonly<{
   authority: DelegationAuthority;
   admission: DelegationAdmission;
+  beforeConfirmedWrite?(): Promise<void>;
   resolveTarget(workflowId: string): AnyWorkflowDescriptor;
 }>): ChildRunExecutor {
   const { authority, admission } = dependencies;
@@ -118,6 +119,8 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
         const plan = planCanonicalDelegation(context, target, authority.evidenceSchemaHash?.bind(authority));
         return { context, target, plan };
       });
+      if (dependencies.beforeConfirmedWrite !== undefined) await dependencies.beforeConfirmedWrite();
+      batch.signal.throwIfAborted();
       const admitted = admission.admitAndRelease(batch, planned.map(({ plan }) => plan));
       return authority.withAuthorityReadSnapshot(() => {
         const parent = requireRun(authority, batch.run.envelope.runId);

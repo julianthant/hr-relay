@@ -244,6 +244,7 @@ export interface WriteSequencerHooks {
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type RunContinuationPort, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
 
 export interface WriteSequencerDependencies {
+  readonly beforeConfirmedWrite?: () => Promise<void>;
   readonly lifecycle: Pick<WorkerRunLifecyclePort, "workerTransition">;
   readonly stores: TaskStoreRegistry;
   readonly authority: WriteSequencerAuthority;
@@ -1249,14 +1250,15 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   }
 
   /** Persist an already-present settlement (checkpoint + run advance, one txn). */
-  function settleAlreadyPresent(input: Readonly<{
+  async function settleAlreadyPresent(input: Readonly<{
     context: WriteSequencerContext;
     commitContract: AnyCommitTaskContract;
     proofSource: "durable-intent" | "live-probe";
     proofValue: JsonValue;
     outputValue: JsonValue;
     recordObservedPresent?: unknown;
-  }>): unknown {
+  }>): Promise<unknown> {
+    if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
     const { context, commitContract } = input;
     const envelope = context.run.envelope;
     const now = instant();
@@ -1466,6 +1468,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     } catch (error) {
       closeFailure = error instanceof Error ? error.message : "non-Error";
     }
+    if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
     const now = instant();
     const envelope = context.run.envelope;
     deps.authority.withAuthorityTransaction((repositories) => {
@@ -1521,13 +1524,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     });
   }
 
-  function settleVerified(
+  async function settleVerified(
     context: WriteSequencerContext,
     intent: CommitSettlementIdentity["intent"],
     proofSource: "normal-output" | "recovery-probe",
     proofValue: JsonValue,
     outputValue: JsonValue,
   ) {
+    if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
     try {
       const commitContract = context.node.commit.uses;
       const built = buildCommittedSettlement({
@@ -1770,7 +1774,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         return parkAfterFence(context, failure);
       }
       try {
-        const settled = settleVerified(context, intent, "recovery-probe", proofValue, outputValue);
+        const settled = await settleVerified(context, intent, "recovery-probe", proofValue, outputValue);
         return { disposition: "committed" as const, proofSource: "recovery-probe", output: settled.output.value, proof: settled.proof.value };
       } catch (error) {
         if (error instanceof PostFenceWriteFailure) return parkAfterFence(context, error);
@@ -1778,6 +1782,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
     }
     if (verdict.state === "absent" && intent.status === "parked" && recheck !== undefined && absenceOperator !== undefined) {
+      if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
       context.signal.throwIfAborted();
       const resolvedAt = instant();
       if (context.run.envelope.buildId === currentBuildId() && isFreshParkedWriteAbsence(intent, verdict.evidence, resolvedAt)) {
@@ -2184,6 +2189,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           outcome: { state: "attempting" },
           recordedAt: fencedAt,
         });
+        if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
         let fencedRecord: WriteIntentRecord;
         if (ownership.signal.aborted) {
           throw ownership.signal.reason instanceof Error
@@ -2364,8 +2370,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       };
       return completeProtectedWrite({
         performCommitAndVerify,
-        settleVerified: proof => {
-          const settled = settleVerified(context, proof.intent, "normal-output", proof.proofValue, proof.outputValue);
+        settleVerified: async proof => {
+          const settled = await settleVerified(context, proof.intent, "normal-output", proof.proofValue, proof.outputValue);
           // A later lease cleanup failure cannot park a durably committed Save.
           retainedIntent = undefined;
           return settled;

@@ -1,3 +1,7 @@
+import { fileStatus } from "../file-identity.js";
+import { privatePathRejects } from "../private-path.js";
+import { statDirectory } from "../configuration/credential-safe-file.js";
+import { LOG_DATABASE_NAMES, PROFILE_LOG_FILES } from "../events/log-mutations.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { resolveConfigWithProvenance } from "../../app/config/resolve.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
@@ -12,9 +16,9 @@ import { probeAutomaticRestoreBrowsersClosed,probeRestoreProfileBrowsersClosed,p
 import { file, hash } from "../maintenance/existing-data-backup-files.js";
 import { restoreRetainedFilesDigest, assertRestoreRootMembership } from "../maintenance/automatic-restore-files.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
-import { assertProfileRestoreDatabaseBinding } from "./profile-local-databases.js";
+import { assertProfileRestoreDatabaseBinding, restoreLogDatabases } from "./profile-local-databases.js";
 
-import { chmodSync,closeSync,copyFileSync,existsSync,fsyncSync,mkdirSync,openSync,renameSync,rmSync,readdirSync,statSync } from "node:fs";
+import { chmodSync,closeSync,copyFileSync,existsSync,fsyncSync,mkdirSync,openSync,renameSync,rmSync,rmdirSync,readdirSync,statSync } from "node:fs";
 import { basename,dirname,join,resolve } from "node:path";
 import { z } from "zod";
 
@@ -24,13 +28,76 @@ import { type RuntimeAdmission } from "../admission/admission.js";
 
 import { AuthorityDatabase } from "./authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "./backup-inspection.js";
-import { parseBackupManifestFile,verifyBackupBytesAtPath,verifyBackupManifestAtPath } from "./backup-service.js";
+import { parseBackupManifestFile, verifiedBackupLogs, verifyBackupBytesAtPath, verifyBackupLogFile, verifyBackupManifestAtPath, type VerifiedBackup } from "./backup-service.js";
 import { withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { captureRestoreWriteFenceProof } from "./restore-write-fences.js";
 import { isCurrentAuthoritySchemaVersion, OPENABLE_AUTHORITY_SCHEMA_VERSIONS } from "./migrations.js";
 
 import { OfflineRestoreReportSchema,OfflineRestoreRequestSchema,type OfflineRestoreReport } from "./recovery-contracts.js";
 import { assertRestoreRuntimePaths,validateSamePersonRestoreCandidate } from "./same-person-restore-candidate.js";
+
+function assertRestoreLogFile(path: string): boolean {
+  const metadata = fileStatus(path, true);
+  if (metadata === undefined) return false;
+  if (!metadata.isFile() || BigInt(metadata.nlink) !== 1n || privatePathRejects(path, metadata, "owner")) {
+    throw new Error("restore-log-file-unsafe");
+  }
+  return true;
+}
+
+async function stageRestoreLogs(verified: VerifiedBackup, root: string, operationId: string) {
+  const scratch = join(root, "scratch"), stage = join(scratch, `.restore-${operationId}.logs`);
+  const current = isCurrentAuthoritySchemaVersion(verified.manifest.schemaVersion);
+  const dispose = () => {
+    if (fileStatus(stage, true) === undefined) return;
+    statDirectory(stage, "restore log staging", 0o700);
+    for (const name of readdirSync(stage)) {
+      if (!PROFILE_LOG_FILES.includes(name) || !assertRestoreLogFile(join(stage, name))) throw new Error("restore-log-stage-unowned");
+      rmSync(join(stage, name));
+    }
+    rmdirSync(stage);
+  };
+  try {
+    mkdirSync(scratch, { recursive: true, mode: 0o700 });
+    statDirectory(scratch, "restore scratch", 0o700);
+    dispose();
+    for (const name of PROFILE_LOG_FILES) assertRestoreLogFile(join(root, name));
+    if (current) {
+      mkdirSync(stage, { mode: 0o700 });
+      const paired = verifiedBackupLogs(verified);
+      if (paired.length === 0) restoreLogDatabases(verified.backupPath, stage);
+      else {
+        for (const [index, companion] of paired.entries()) {
+          const target = join(stage, `${LOG_DATABASE_NAMES[index]}.db`);
+          copyFileSync(companion.path, target);
+          await verifyBackupLogFile(target, companion.digest);
+        }
+      }
+      for (const name of LOG_DATABASE_NAMES) {
+        const database = join(stage, `${name}.db`);
+        for (const suffix of ["-wal", "-shm", "-journal"]) {
+          const path = database + suffix;
+          if (!assertRestoreLogFile(path)) continue;
+          if (statSync(path).size !== 0) throw new Error("restore-log-stage-not-self-contained");
+          rmSync(path);
+        }
+        fsyncPath(database);
+      }
+      fsyncPath(stage);
+    }
+  } catch (error) { dispose(); throw error; }
+  return {
+    install() {
+      const present = PROFILE_LOG_FILES.filter(name => assertRestoreLogFile(join(root, name)));
+      for (const name of present) if (!current || !name.endsWith(".db")) rmSync(join(root, name));
+      if (current) for (const name of LOG_DATABASE_NAMES) renameSync(join(stage, `${name}.db`), join(root, `${name}.db`));
+      fsyncPath(root);
+      dispose();
+      fsyncPath(scratch);
+    },
+    [Symbol.dispose]: dispose,
+  };
+}
 
 export const OfflineRestoreOptionsSchema = z.strictObject({
   authorityPath: z.string().min(1),
@@ -381,6 +448,7 @@ export class OfflineAuthorityRestoreService {
         let stagedPrimaryError: Error | undefined;
         let stagedAdmission: RuntimeAdmission | undefined;
         let restoreBinding: AuthorityRestoreInput | undefined;
+        let restoreLogs: Awaited<ReturnType<typeof stageRestoreLogs>> | undefined;
         let restoreJournalHeld = false;
         let restoreJournalSettled = false;
         try {
@@ -390,6 +458,7 @@ export class OfflineAuthorityRestoreService {
             verified.manifest,
             `staged restore ${basename(stagedPath)}`,
           );
+          restoreLogs = await stageRestoreLogs(verified, admission.stateRoot, token);
           stagedAdmission = admission.stoppedStagedAuthority(stagedPath);
           const beforeProjection = inspectAuthorityBackupReadOnly(
             stagedAdmission,
@@ -575,6 +644,9 @@ export class OfflineAuthorityRestoreService {
         stagedAdmission?.release();
         if (restoreJournalHeld && restoreBinding !== undefined && authorityState === "replaced" && stagedPrimaryError === undefined) {
           try {
+            admission.assertAuthorityRestoreCurrent(restoreBinding, restoreAdmission);
+            if (restoreLogs === undefined) throw new Error("restore-log-stage-missing");
+            restoreLogs.install();
             admission.settleAuthorityRestore(restoreBinding, () => {
               const actual = inspectAuthorityBackupReadOnly(admission, this.#authorityPath,
                 verified.manifest.schemaVersion, this.#busyTimeoutMs);
@@ -586,6 +658,9 @@ export class OfflineAuthorityRestoreService {
             stagedPrimaryError = new AggregateError(stagedPrimaryError === undefined ? [settlementError]
               : [stagedPrimaryError, settlementError], "restore settlement is unproved; durable operation and staging evidence retained");
           }
+        }
+        try { restoreLogs?.[Symbol.dispose](); } catch (error) {
+          stagedPrimaryError = new AggregateError(stagedPrimaryError === undefined ? [error] : [stagedPrimaryError, error], "restore-log-stage-cleanup-failed");
         }
         const preserveEvidence = restoreJournalHeld && !restoreJournalSettled
           || authorityState === "authority-state-uncertain" || authorityState === "companion-state-uncertain";
@@ -663,6 +738,7 @@ async function resumeAutomaticAuthorityRestoreHeld(input: RestoreRecoveryInput, 
   const sourceFences = proofs.use(captureSnapshotWriteFences(binding.suspectPath));
   if (sourceFences.digest !== binding.unresolvedWriteDigest) throw new Error("restore-recovery-write-fences-changed");
   const stagePresent = authorityRestoreStageOf(journal, existsSync(binding.stagedPath)) === "staged";
+  using restoreLogs = await stageRestoreLogs(verified, admission.stateRoot, binding.operationId);
   if (stagePresent) {
     same(binding.authorityPath, binding.live); same(binding.stagedPath, binding.staged);
     withReadonlyAuthoritySnapshot(binding.stagedPath, sourceFences.assertPreservedBy);
@@ -691,6 +767,8 @@ async function resumeAutomaticAuthorityRestoreHeld(input: RestoreRecoveryInput, 
     if (existsSync(path)) { same(path, row.binding); rmSync(path); }
   }
   fsyncPath(dirname(binding.authorityPath));
+  admission.assertAuthorityRestoreCurrent(binding, operation);
+  restoreLogs.install();
   admission.settleAuthorityRestore(binding, () => {
     const actual = inspectAuthorityBackupReadOnly(admission, binding.authorityPath, verified.manifest.schemaVersion);
     return { authorityGeneration: actual.authorityGeneration, authorityContentFingerprint: actual.authorityContentFingerprint };
