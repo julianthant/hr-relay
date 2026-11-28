@@ -67,13 +67,15 @@ and name fields; the I-9 PDF parent requires Action History fields.
 the one key field a picked worksheet must map. A run may pick none. A start selection names the
 declaration it answers with `typeId`; an absent `typeId` means the required reference. Check picks
 are captured by their key field only and retained with the run's other references.
-A delegated child whose target declares `workbookCheck` receives the parent's check picks, never
-its required reference, so each person child checks its own Employee ID.
-`workbooks/verify-person` looks the found Employee ID up in each picked check worksheet at its
-retained version and returns, per spreadsheet, `found`, `not-found` or `name-differs` with the row
-number. The name is compared when the worksheet maps a name column and the run found a name; a
-blank or non-text name in that column reports `name-differs`. No value from a row leaves the read. The shared declaration is `REFERENCE_CHECK` in
-`src/models/processing/workbooks/verify-person.ts`.
+Batch members receive the parent's optional picks for their own comparison. Person Lookup can
+return the Employee ID to a parent without consuming the picks.
+`defineReferenceCheck` declares the key and spreadsheet field bindings in the workflow kit.
+As soon as the key resolves, `workbooks/read-reference-fields` captures the matching rows from
+each selected worksheet version. Comparisons use that capture for earlier and later fields.
+Onboarding keys by email and the other checks key by Employee ID. A missing row or key adds a
+Logs note and continues. A mismatch opens a review in both live and dry runs. The review shows
+both values and the sheet and row. Continue applies to the field and sheet for the rest of the run.
+The captured cell values stay in the run's retained checkpoint and the active review.
 
 Start planning takes an explicit entry-scoped Library, named version and worksheet selection.
 For keyed reads it derives keys from admitted ingress; the frozen declaration supplies fields,
@@ -797,7 +799,9 @@ Every start surface publishes the committed run through `runQueuedSpanEvent` bef
 
 ## 8. Person Lookup
 
-`src/workflows/person-lookup/workflow.ts` composes five visible steps and eleven graph nodes from its step modules. Step order controls presentation. The table lists each step's nodes in declaration order.
+`src/workflows/person-lookup/workflow.ts` composes its search and status reads from step modules.
+The shared reference check adds comparisons when a reference is picked and the Employee ID
+resolves. The table lists the authored search and status nodes in declaration order.
 
 | Visible step | Node | Contract | Dependencies | Replay and condition |
 | --- | --- | --- | --- | --- |
@@ -811,7 +815,6 @@ Every start surface publishes the committed run through `runQueuedSpanEvent` bef
 | Read employment status | `crm-only-recovery` | `ucpath/search-person-org` | `crm-identity`, `crm-selected-record`, `crm-results` | `checkpoint`; `crm-identity.recoveryEid` is present |
 | Read employment status | `active-status` | `workflow:person-lookup/read-active-status` | `search-identity`, `crm-identity`, `crm-only-recovery`, `crm-selected-record`, `crm-results` | `always-rerun`; `mode = "search"` |
 | Read CRM dates (`includeCrmDates=true`) | `crm-dates` | `crm/read-onboarding-dates` | `active-status` | `checkpoint`; `active-status.datesEid` is present |
-| Check reference spreadsheets | `reference-check` | `workbooks/verify-person` | `search-identity`, `crm-identity`, `matching`, `crm-selected-record`, `crm-results`, `active-status` | `checkpoint`; a spreadsheet is picked for `reference-check` |
 
 Search mode accepts an EID or name. Match mode accepts a name plus a date of birth, an SSN, or both. The input schema owns the defaults for `crmCheck`, `keepNonHdh`, and `includeCrmDates`.
 
