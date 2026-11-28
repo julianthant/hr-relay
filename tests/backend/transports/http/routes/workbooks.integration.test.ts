@@ -395,7 +395,10 @@ it('protects a version held by a start plan or queued run and keeps the finished
     ...START_PLAN, planned, plannedAt, expiresAt, createdAt: plannedAt, updatedAt: plannedAt,
     inputFingerprint: derivePlannedInputFingerprint(planned, START_PLAN.ingressSchemaHash, START_PLAN.canonicalInputSchemaHash),
   }).state, 'inserted');
+  assert.deepEqual((await client.workbookCatalog())[0].heldVersionIds, [versionId]);
   await assertInUse('delete-with-plan');
+  h.clock.setWall(new Date(expiresAt));
+  assert.equal((await client.workbookCatalog())[0].heldVersionIds, undefined);
 
   const { people: [person] } = ReadCrmDocumentRows.example;
   const raw = { people: person.subject.value };
@@ -406,7 +409,7 @@ it('protects a version held by a start plan or queued run and keeps the finished
       protectedBindings: [], value: CrmDocDownloadInput.parse(raw) }, workbookReferences: [bound] },
   });
   authority.runs.enqueue(queued);
-  h.clock.setWall(new Date(expiresAt));
+  assert.deepEqual((await client.workbookCatalog())[0].heldVersionIds, [versionId]);
   await assertInUse('delete-with-queued-run');
   const { runId, workflow, itemId, attempt, descriptorVersion, contractFingerprint } = queued.envelope;
   const finished = testRunService(h.database, h.clock).transition({
@@ -414,6 +417,7 @@ it('protects a version held by a start plan or queued run and keeps the finished
     lifecycle: { state: 'terminal', outcome: 'discarded', endedAt: expiresAt },
   });
   assert.equal(finished.state, 'applied');
+  assert.equal((await client.workbookCatalog())[0].heldVersionIds, undefined);
   const referenceDigest = sha256Hex(canonicalJsonStringify(bound));
   authority.runCheckpoints.insert({
     workflowId: workflow, itemId, nodeId: 'document-rows', attempt, claimGeneration: queued.claimGeneration,

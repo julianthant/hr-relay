@@ -37,13 +37,13 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
     if (deps.workbooks === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_FAILED");
     return deps.workbooks;
   };
-  const workbookRead = <Wire extends object>(read: () => Wire, volatile?: () => boolean) => {
+  const workbookRead = <Wire extends object>(read: () => Wire, volatile = false) => {
     const cacheControl = "private, no-cache";
     const respond = createPositionedReadResponse<Wire>(cacheControl);
     return (c: Pick<Context, "res" | "json">) => {
       c.res.headers.append("Vary", "X-Relay-Session");
       const serve = (position: number | undefined) => {
-        if (position !== undefined && volatile?.() !== true) return respond(position, read);
+        if (position !== undefined && !volatile) return respond(position, read);
         return c.json(read(), 200, { "Cache-Control": cacheControl });
       };
       const { withReadPosition } = service();
@@ -60,7 +60,7 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
         ...(sheet.columnBindings === undefined ? {} : { columnBindings: sheet.columnBindings }),
       })),
     }))));
-  app.get("/api/v1/workbooks/catalog", etag(), workbookRead(() => service().library.catalog(), () => service().library.hasRunningSync()));
+  app.get("/api/v1/workbooks/catalog", etag(), workbookRead(() => service().library.catalog(), true));
   app.get("/api/v1/workbooks/compatibility", etag(), workbookRead(() => service().library.compatibility(service().workflows)));
   app.post("/api/v1/workbooks/import", async c => {
     const request = workbookRequest(WorkbookLibraryImportRequestSchema, await c.req.json());
