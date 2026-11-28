@@ -4,7 +4,7 @@ import { z } from "zod";
 import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
-import type { StartRowDeclaration } from "../../../../src/models/workflow/step-omission.js";
+import type { StartRowDeclaration, StepOmissionEntry } from "../../../../src/models/workflow/step-omission.js";
 import { EidSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
@@ -71,7 +71,9 @@ const stagedChild = compileWorkflow(defineWorkflow({ ...common, id: "child-phase
     const read = (id: string) => task({ id, contract: plan1Contract, replay: "checkpoint" }, [], ({ input }) => ({ emplId: input.eid, text: id, mode: "ok" as const }));
     const first = read("first"), second = read("second"), third = read("third");
     const typed = ({ scope }: { scope: { input: unknown } }) => Plan1Output.parse({ eid: (scope.input as { eid: string }).eid, disposition: "typed", providerState: "typed" });
-    return { steps: [[group({ key: "pair", label: "Pair" }, { manual: { form: { fields: [] }, produces: { first: typed, second: typed } } }), [first, second]],
+    return { steps: [[group({ key: "pair", label: "Pair" }, { manual: {
+      form: { fields: [{ key: "note", label: "Note", kind: "text", optional: true, withheld: true }] }, produces: { first: typed, second: typed },
+    } }), [first, second]],
       [{ key: "later", label: "Later" }, [third]]], result: result(Pair, [first, second, third], ({ input }) => ({ eid: input.eid })) };
   } })).descriptor;
 
@@ -191,9 +193,11 @@ describe("child step facts over a transaction's phases and several child runs", 
 
   const pairMembers: StartRowDeclaration = { key: "pair", label: "Pair", members: [{ workflow: pairChild.id, step: "pair" }] };
   /** A parent waiting on its members, cancelled with the dashboard's own Cancel request, which carries no reason. */
-  async function cancelledParent(binds: readonly string[], child = pairChild, rows: readonly StartRowDeclaration[] = [members, pairMembers]) {
+  async function cancelledParent(binds: readonly string[], child = pairChild, rows: readonly StartRowDeclaration[] = [members, pairMembers],
+    stepOmissions?: readonly StepOmissionEntry[]) {
     const h = await harness(child, Pair, binds, rows);
-    const root = h.start(h.proposal(undefined, undefined, false));
+    const root = h.start(h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: WRITE_FIXTURE_EID }], dryRun: false,
+      selectedStepKeys: ["members"], ...(stepOmissions === undefined ? {} : { stepOmissions }) }));
     await h.execute(root);
     const waiting = h.fresh(root);
     const cancel = composeCommandRequest({ kind: "command", command: "cancel", expectedVersion: waiting.version } as unknown as CommandAction,
@@ -224,6 +228,17 @@ describe("child step facts over a transaction's phases and several child runs", 
 
   const stagedPair: StartRowDeclaration = { key: "pair", label: "Pair", members: [{ workflow: stagedChild.id, step: "pair" }], target: { workflow: stagedChild.id, step: "pair" } };
   const stagedLater: StartRowDeclaration = { key: "later", label: "Later", members: [{ workflow: stagedChild.id, step: "later" }] };
+
+  it.each([null, "fictional withheld manual note"])("refills delegated manual values only when the withheld note is empty (%s)", async note => {
+    const entry = { workflow: stagedChild.id, step: "pair", facts: { note } };
+    const { h, run } = await cancelledParent([EID_A], stagedChild, [members, stagedPair, stagedLater], [entry]);
+    assert.deepEqual(run.envelope.stepOmissions, [{ ...entry, labels: { note: "Note" } }]);
+    const response = readRerunValues(rerunValuesDeps(h), { runId: run.envelope.runId, expectedVersion: run.version });
+    assert.ok(response.state === "available", JSON.stringify(response));
+    assert.deepEqual(response.snapshot.typed, note === null ? [{ ...entry, labels: { note: "Note" } }] : undefined);
+    if (note !== null) assert.equal(JSON.stringify(response).includes(note), false);
+  });
+
   const skipped = (nodeId: string) => [{ nodeId, attempt: 1, startedAt: "2026-11-25T12:00:00.000Z", endedAt: "2026-11-25T12:00:01.000Z", outcome: "skipped" as const }];
   /** The cancelled parent's Rerun values with these member checkpoints, failures and executions, its members listed in `order`. */
   function readStaged(h: Harness, run: RunRecord, change: Readonly<{ checkpoints: (member: RunRecord) => readonly string[]; failed?: Readonly<{ member: RunRecord; nodeId: string }>;
