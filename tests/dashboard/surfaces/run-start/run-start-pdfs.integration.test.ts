@@ -71,8 +71,10 @@ it.each([
       artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } }),
     submitStartPlan: async request => {
       plans.push(request);
-      return { ...h.planResponse("5a000000-0000-4000-8000-000000000001"), workflowId: parent.id,
-        omittedSteps: StartPlanRequestSchema.parse(request).stepOmissions?.map(({ step }) => step) };
+      const requested = StartPlanRequestSchema.parse(request), plan = h.planResponse("5a000000-0000-4000-8000-000000000001");
+      return { ...plan, workflowId: parent.id, omittedSteps: requested.stepOmissions?.map(({ step }) => step),
+        planned: plan.planned.map(entry => ({ ...entry, workbookReferences: [{ libraryId: reference.libraryId, version: reference.version,
+          versionId: "earlier", versionName: "Fall review", worksheets: [{ sheetId: "history", name: "Action History" }], type: reference.type }] })) };
     },
     executeCommand: async request => { commands.push(request); return h.APPLIED; },
   }, parent.requiredWorkbookFields, parent), { workflows: [h.WORKFLOWS[0], flow], panelWorkflowId: h.WORKFLOW_ID });
@@ -106,6 +108,7 @@ it.each([
   expect(StartPlanRequestSchema.parse(plans.at(-1)).stepOmissions).toEqual([
     { workflow: "ocr", step: "page-readings", facts: { readings: [reading] } },
   ]);
+  assert.equal(commands.length, 1, dialog.text());
   expect(StartCommandRequestSchema.parse(commands.at(-1))).toMatchObject({ requestedBy: h.ACTOR_ID, target: { workflowId: parent.id } });
 });
 

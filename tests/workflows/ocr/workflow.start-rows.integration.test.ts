@@ -29,12 +29,15 @@ it("admits a manual original page through Emergency Contact Start without the OC
     readingId: randomUUID(), roster: null, onbaseFiling: "skip" });
   assert.equal(input.reading.kind, "subscription");
   const options = { dryRun: false, ...(f.workbookReferences === undefined ? {} : { workbookReferences: f.workbookReferences }) };
-  const entry = (pageKind: string) => ({ workflow: "ocr", step: "page-readings", facts: {
-    readings: [JSON.stringify({ sourcePage: 1, pageKind, readAt: READ_AT, record: null })],
+  const original = submittedPage(sourceFixture(1).inputs[0]);
+  assert.ok(original.record);
+  const record = { answers: Object.entries(original.record.answers).map(([path, answer]) => ({ path, answer })) };
+  const entry = (readingRecord: typeof record | null) => ({ workflow: "ocr", step: "page-readings", facts: {
+    readings: [JSON.stringify({ sourcePage: 1, pageKind: "emergency-contact", readAt: READ_AT, record: readingRecord })],
   } });
-  assert.throws(() => f.canonical.start(descriptor, input, { ...options, stepOmissions: [entry("emergency-contact")] }),
+  assert.throws(() => f.canonical.start(descriptor, input, { ...options, stepOmissions: [entry(null)] }),
     /omission facts are invalid at: readings/u);
-  const run = f.canonical.start(descriptor, input, { ...options, stepOmissions: [entry("blank"),
+  const run = f.canonical.start(descriptor, input, { ...options, stepOmissions: [entry(record),
     { workflow: "ocr", step: "review-records", facts: { outcome: "leave unverified" } },
     { workflow: "ocr", step: "identity-lookups", facts: { outcome: "leave unverified" } },
     { workflow: "ocr", step: "signer-lookups", facts: { outcome: "leave unverified" } },
