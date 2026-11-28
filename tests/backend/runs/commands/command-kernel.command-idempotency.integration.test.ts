@@ -51,6 +51,29 @@ describe("command idempotency", () => {
     assert.throws(() => harness.kernel.execute(conflicting), /reused with different content/);
   });
 
+  it("fails closed when an applied start loses its plan binding", async () => {
+    let planBindingChanged = false;
+    const harness = await createHarness(repositories => ({
+      ...repositories,
+      startPlans: {
+        ...repositories.startPlans,
+        consume: input => planBindingChanged
+          ? { state: "refused", code: "fingerprint-mismatch", message: "The original plan fingerprint changed." }
+          : repositories.startPlans.consume(input),
+      },
+    }));
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    const command = startCommand(plan);
+    assert.equal((await harness.kernel.executeStart(command)).state, "applied");
+    const runsBefore = harness.database.authority.runs.listByWorkflow(plan.workflowId);
+    const auditBefore = harness.database.authority.commandAudits.findByCommand(command.commandId);
+
+    planBindingChanged = true;
+    await assert.rejects(harness.kernel.executeStart(command), /could not revalidate plan .*\(refused\)/);
+    assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), runsBefore);
+    assert.deepEqual(harness.database.authority.commandAudits.findByCommand(command.commandId), auditBefore);
+  });
+
   it("refuses a spent plan presented by a different command", async () => {
     const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
