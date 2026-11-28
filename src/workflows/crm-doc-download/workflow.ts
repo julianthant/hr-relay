@@ -10,13 +10,15 @@ import { crmDocumentReferenceDefinition } from "./steps/reference/step.js";
 import { crmDocumentReadIdocsDefinition } from "./steps/read-idocs/step.js";
 import { crmDocumentPackageWorksheetsDefinition } from "./steps/package-worksheets/step.js";
 
+const packageStep = crmDocumentPackageWorksheetsDefinition.group.key;
+
 export const crmDocDownloadWorkflow = defineWorkflow({
   id: "crm-doc-download", version: 1, code: "cd", label: "CRM Document Download", icon: "FileText", category: "documents",
   summary: "Download verified CRM PDFs and package one archive in each person's worksheet folder using the selected spreadsheet version's legal and lived names.",
   requiredWorkbookFields: [...CRM_DOCUMENT_ROSTER_FIELDS],
   workbookReference: { id: ONBOARDING_ROSTER_TYPE_ID, keyFieldId: "email", mode: "keys", writableFields: [] },
   referenceKeys: input => input.people.flatMap(person => person.kind === "email" ? [person.value] : []),
-  plannedOutputs: () => [{ kind: "worksheet-archives", state: "after-row-choice" }],
+  plannedOutputs: (_input, _references, omittedSteps = []) => omittedSteps.includes(packageStep) ? [] : [{ kind: "worksheet-archives", state: "after-row-choice" }],
   input: CrmDocDownloadInput, canonicalInput: CrmDocDownloadCanonicalInput, inputSubject: "none",
   surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
   role: defineWorkflowRole({ kind: "composition" }), scenarios: ["crm-doc-download/worksheet-archives"],
@@ -25,9 +27,9 @@ export const crmDocDownloadWorkflow = defineWorkflow({
   surfaces: { inputRun: { placeholder: "Enter employee IDs or emails for one batch", parser: CRM_DOCUMENT_INPUT_PARSER,
     examples: [{ key: "email-batch", label: "Two people", text: "fixture@example.test; second@example.test", note: "Starts one batch for both people" }] } },
   details: [
-    { key: "worksheets", label: "Worksheet archives", source: { kind: "result", fieldPath: "worksheetCount" }, display: "text" },
-    { key: "people", label: "People", source: { kind: "result", fieldPath: "personCount" }, display: "text" },
-    { key: "documents", label: "PDF documents", source: { kind: "result", fieldPath: "documentCount" }, display: "text" },
+    { key: "worksheets", label: "Worksheet archives", source: { nodeId: "worksheet-archives", fieldPath: "worksheetCount" }, display: "text" },
+    { key: "people", label: "People", source: { nodeId: "worksheet-archives", fieldPath: "personCount" }, display: "text" },
+    { key: "documents", label: "PDF documents", source: { nodeId: "worksheet-archives", fieldPath: "documentCount" }, display: "text" },
   ], verdicts: [],
   artifactProjections: [{ id: "worksheet-archives", source: { nodeId: "worksheet-archives", fieldPath: "collection" },
     keyFields: ["collection.artifact.sha256"], sink: "documents-file", blocking: true }],

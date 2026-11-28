@@ -673,6 +673,8 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...open(scope, "worksheetCount", "personCount", "documentCount", "collection.artifact.bytes", "collection.artifact.mediaType"),
     ...["collection.artifact.id", "collection.artifact.sha256"].map(path => ({ scope, path, classification: "sensitive-hr", transform: "drop" })),
   ]),
+  ...open(workflowResult("crm-doc-download"), "state", "step"),
+  ...open(workflowResult("crm-doc-download-package-worksheets"), "state", "step"),
   { scope: workflowResult("crm-doc-download-search-records"), path: "records", classification: "direct-identifier", transform: "digest" },
   { scope: workflowResult("crm-doc-download-read-idocs"), path: "people", classification: "direct-identifier", transform: "digest" },
   ...["crm-doc-download", "crm-doc-download-search-records", "crm-doc-download-reference", "crm-doc-download-read-idocs", "crm-doc-download-package-worksheets"].map(id =>

@@ -35,6 +35,10 @@ import { ACTIVE_STATUS_MANUAL } from "../../../src/workflows/person-lookup/steps
 import { CRM_DATES_MANUAL } from "../../../src/workflows/person-lookup/steps/crm-dates/step.js";
 import { CROSS_VERIFY_MANUAL } from "../../../src/workflows/person-lookup/steps/cross-verify/step.js";
 import { SEARCHING_MANUAL } from "../../../src/workflows/person-lookup/steps/searching/step.js";
+import { CRM_DOCUMENT_SEARCH_MANUAL } from "../../../src/workflows/crm-doc-download/steps/search-records/step.js";
+import { CRM_DOCUMENT_REFERENCE_MANUAL } from "../../../src/workflows/crm-doc-download/steps/reference/step.js";
+import { CRM_DOCUMENT_READ_IDOCS_MANUAL } from "../../../src/workflows/crm-doc-download/steps/read-idocs/step.js";
+import { CRM_DOCUMENT_PACKAGE_MANUAL } from "../../../src/workflows/crm-doc-download/steps/package-worksheets/step.js";
 import { TRANSACTION_STEP } from "../../../src/workflows/work-study/steps/transaction/step.js";
 import { UCPATH_AUTH_STEP } from "../../../src/workflows/work-study/steps/ucpath-auth/step.js";
 import { FixtureCommit, FixtureStage } from "../../support/fixtures/descriptor-fixtures.js";
@@ -189,6 +193,22 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
   produces: readonly string[];
 }>[] = [
   {
+    descriptor: "crm-doc-download", step: "search-records", declaration: CRM_DOCUMENT_SEARCH_MANUAL,
+    fieldKeys: ["records"], produces: ["document-records"],
+  },
+  {
+    descriptor: "crm-doc-download", step: "reference", declaration: CRM_DOCUMENT_REFERENCE_MANUAL,
+    fieldKeys: ["worksheetRows"], produces: [],
+  },
+  {
+    descriptor: "crm-doc-download", step: "read-idocs", declaration: CRM_DOCUMENT_READ_IDOCS_MANUAL,
+    fieldKeys: ["pdfFileNames"], produces: [],
+  },
+  {
+    descriptor: "crm-doc-download", step: "package-worksheets", declaration: CRM_DOCUMENT_PACKAGE_MANUAL,
+    fieldKeys: [], produces: [],
+  },
+  {
     descriptor: SEPARATIONS_ID, step: "kuali-extraction", declaration: KUALI_EXTRACTION_OMISSION,
     fieldKeys: ["employeeName", "lastDayWorked", "separationDate", "terminationType"], produces: ["plan", "termination-type"],
   },
@@ -266,6 +286,10 @@ const REQUIRED_SWEEP_ROWS: readonly string[] = [
 
 /** The exact cascade row each production step yields today (check b). */
 const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> = {
+  "crm-doc-download::search-records": { state: "omittable", forces: [] },
+  "crm-doc-download::reference": { state: "omittable", forces: ["read-idocs", "package-worksheets"] },
+  "crm-doc-download::read-idocs": { state: "omittable", forces: ["package-worksheets"] },
+  "crm-doc-download::package-worksheets": { state: "omittable", forces: [] },
   "separations::kuali-extraction": { state: "omittable", forces: ["identity-check", "identity-review", "kuali-finalization"] },
   "separations::identity-check": { state: "omittable", forces: ["identity-review"] },
   "separations::kronos-timecard": { state: "omittable", forces: [] },
@@ -295,6 +319,10 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
 
 
 const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[]; manual?: readonly string[] }>>> = {
+  "crm-doc-download::search-records": { asserted: ["document-records"], omitted: [] },
+  "crm-doc-download::reference": { asserted: [], omitted: ["document-row-choice", "document-rows", "workbook-reference"] },
+  "crm-doc-download::read-idocs": { asserted: [], omitted: ["document-pdfs"] },
+  "crm-doc-download::package-worksheets": { asserted: [], omitted: ["worksheet-archives"] },
   "separations::kuali-extraction": { asserted: ["plan", "termination-type"], omitted: ["document", "resolve-action"] },
   "separations::identity-check": { asserted: ["department-option", "employment", "subject"], omitted: ["job-summary", "name-search"] },
   "separations::kronos-timecard": { asserted: ["dates"], omitted: ["timecard", "timecard-search"] },
@@ -324,6 +352,10 @@ const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly st
 
 /** The same pinning for the whole-descriptor plan: every omittable step of a descriptor omitted at once. */
 const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[]; manual?: readonly string[] }>>> = {
+  "crm-doc-download": {
+    asserted: ["document-records"],
+    omitted: ["document-pdfs", "document-row-choice", "document-rows", "workbook-reference", "worksheet-archives"],
+  },
   [SEPARATIONS_ID]: {
     asserted: ["approval", "dates", "department-option", "employment", "plan", "receipt", "subject", "termination-type"],
     omitted: ["clear-pending", "comparison", "document", "file-termination", "filing-presence", "finalize-kuali", "identity-approval",
@@ -556,8 +588,8 @@ describe("step-omission invariants", () => {
       assert.deepEqual(sorted(whole.manual.keys()), expectedWhole.manual ?? [], `${id}: whole-descriptor nodes done by hand changed`);
     }
     assertSweptEveryDeclaration(audited, "planner sweep");
-    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, ONBOARDING_ID, WORK_STUDY_ID, EC_MEMBER_ID, FIXTURE_ID]), "the whole-descriptor sweep visited the wrong descriptors");
+    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, ONBOARDING_ID, WORK_STUDY_ID, EC_MEMBER_ID, FIXTURE_ID, "crm-doc-download"]), "the whole-descriptor sweep visited the wrong descriptors");
     // Person Lookup has no gate; the ALWAYS-GATE sweep stays non-vacuous through these gated descriptors.
-    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, ONBOARDING_ID, WORK_STUDY_ID, EC_MEMBER_ID, FIXTURE_ID]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
+    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, ONBOARDING_ID, WORK_STUDY_ID, EC_MEMBER_ID, FIXTURE_ID, "crm-doc-download"]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
   });
 });
