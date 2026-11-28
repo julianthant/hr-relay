@@ -1,11 +1,18 @@
-import type { z } from "zod";
+import { z } from "zod";
 import { CrmDocDownloadInput } from "../../../../models/workflows/crm-doc-download/input.js";
 import { ReadCrmWorksheetArchives } from "../../../../models/workflows/crm-doc-download/read-worksheet-archives.js";
 import { CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema } from "../../../../models/workflows/crm-doc-download/read-document-rows.js";
+import { OmittedStepResultArmSchema, type StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { bindCrmWorksheetPeople } from "../../../../rules/crm-doc-download/reference.js";
 import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition, type WorkflowEntry } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import type { buildReadIdocs } from "../read-idocs/step.js";
+
+export const CRM_DOCUMENT_PACKAGE_MANUAL: StepManualDeclaration = {
+  form: { fields: [] },
+  produces: {},
+  skips: ["worksheet-archives"],
+};
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "package-worksheets", label: "Package worksheet archives" }), system: "local",
@@ -74,6 +81,7 @@ const group = Object.freeze({
   } as const,
 } as const);
 const entries = defineStepEntries(group);
+const resultSchema = z.union([ReadCrmWorksheetArchives.output, OmittedStepResultArmSchema.extend({ step: z.literal(group.key) })]);
 
 export function buildPackageWorksheets(author: WorkflowAuthor<typeof CrmDocDownloadInput>, downloaded: ReturnType<typeof buildReadIdocs>, reference: Readonly<{
   rows: WorkflowEntry<"document-rows", z.output<typeof CrmDocumentRowsSchema>, false>;
@@ -83,8 +91,8 @@ export function buildPackageWorksheets(author: WorkflowAuthor<typeof CrmDocDownl
     [downloaded.documents, reference.rows, reference.choice], ({ outputs }) => ({ people: bindCrmWorksheetPeople(
       outputs["document-pdfs"], outputs["document-rows"], outputs["document-row-choice"]),
     }));
-  return { archives, steps: [[group, [archives]]] as const,
-    result: author.result(ReadCrmWorksheetArchives.output, [archives], ({ outputs }) => outputs["worksheet-archives"]) };
+  return { archives, steps: [[author.group(group, { manual: CRM_DOCUMENT_PACKAGE_MANUAL }), [archives]]] as const,
+    result: author.result(resultSchema, [archives], ({ outputs }) => outputs["worksheet-archives"] ?? { state: "omitted", step: group.key }) };
 }
 
 export const crmDocumentPackageWorksheetsDefinition = defineStep({
