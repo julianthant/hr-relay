@@ -1,9 +1,10 @@
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { createWorkerLogChannel } from "../../../../src/backend/runtime/workers/worker-child-channel.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { recordBrowserAction, withBrowserActionNotes } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { submitSsoForm } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
@@ -20,6 +21,31 @@ import { healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFa
 const {executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, readPersistedNotes, actionBindingQueuedRun, actionBindingSessions, cleanup } = createRunExecutorTestWorld();
 
 afterEach(cleanup);
+
+it("fails the execution boundary on a missing log acknowledgment before advancing the claim", async () => {
+  const harness = await executorHarness();
+  const { database, clock } = harness.authority;
+  const { run, claim } = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+  const child = createWorkerLogChannel();
+  const unbind = database.bindLogPublisher(child.publish);
+  child.attach(() => {});
+  try {
+    createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }).emitNote({
+      workflow: run.envelope.workflow,
+      address: { runId: run.envelope.runId, attempt: run.envelope.attempt, traceId: run.envelope.traceId, spanPath: run.envelope.traceId },
+      level: "step", message: "Waiting for log durability",
+    });
+    vi.useFakeTimers();
+    const result = assert.rejects(executeClaimedRun({ ...harness.deps, beforeConfirmedWrite: child.flush }, { run, claim, signal: SIGNAL }),
+      /worker-log-flush-deadline/u);
+    await vi.advanceTimersByTimeAsync(5000);
+    await result;
+    assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
+  } finally {
+    vi.useRealTimers();
+    unbind();
+  }
+});
 
 describe("cold login action note secrecy", () => {
   for (const failed of [false, true]) {

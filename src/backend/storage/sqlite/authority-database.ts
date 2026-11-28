@@ -1,4 +1,5 @@
 import { readStartupFile, type StartupFile } from "./startup-file-proof.js";
+import type { LogMutation } from "../events/log-mutations.js";
 import type { FileIdentitySchema } from "../../../models/storage/file-identity.js";
 import { createWorkerSlotRepository } from "./worker-slots.js";
 import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
@@ -314,6 +315,7 @@ export class AuthorityDatabase implements Disposable {
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
 
   #authorityCommitCallbacks: (() => void)[] = [];
+  #logPublisher: ((mutation: LogMutation) => void) | undefined;
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
   #slowOperation: SlowOperationHook | undefined;
   /** Nonzero while an outermost operation is being timed, and again while its hook runs. */
@@ -2433,6 +2435,18 @@ export class AuthorityDatabase implements Disposable {
     this.#authorityCommitCallbacks.push(publish);
   }
 
+  bindLogPublisher(publish: (mutation: LogMutation) => void): () => void {
+    this.#assertOpen();
+    if (this.#logPublisher !== undefined) throw new Error("log-publisher-already-bound");
+    this.#logPublisher = publish;
+    return () => { if (this.#logPublisher === publish) this.#logPublisher = undefined; };
+  }
+
+  #publishLogAfterCommit(mutation: LogMutation): void {
+    const publish = this.#logPublisher;
+    if (publish !== undefined) this.afterAuthorityCommit(() => { publish(mutation); });
+  }
+
 
   canonicalPerson(runId: string) {
     return this.withAuthorityReadSnapshot(() => {
@@ -4067,6 +4081,7 @@ export class AuthorityDatabase implements Disposable {
         read: (work) => this.#withReadSnapshot(work),
         mutate: (work) => this.#authorityWrite("timeline_events", work),
         assertOwner: (record, appending) => assertTimelineOwner(this.#database, record, appending),
+        publishCommitted: mutation => this.#publishLogAfterCommit(mutation),
       }),
       runs: this.#buildRunRepository(),
       failures: Object.freeze({
@@ -5634,6 +5649,7 @@ export class AuthorityDatabase implements Disposable {
           const record = executeNativeRunDeletion(this.#database,prepared,step => this.#lifecycleHooks?.afterDeleteStep?.({runId:request.runId,step}));
           // Debug entries are diagnostics, not run evidence: they leave with the run and stay out of its deletion receipt.
           this.#database.prepare("DELETE FROM debug_events WHERE run_id=?").run(request.runId);
+          this.#publishLogAfterCommit({ kind: "purge-runs", runIds: [request.runId] });
           return {result:record,changes:1 + record.removed.reduce((sum,entry) => sum + entry.rows,0)};
         });
       },

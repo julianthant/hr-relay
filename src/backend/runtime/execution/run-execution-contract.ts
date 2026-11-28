@@ -65,6 +65,7 @@ export interface RunArtifactProjector {
 }
 
 export interface RunExecutorDependencies {
+  readonly beforeConfirmedWrite?: () => Promise<void>;
   readonly debugEvents?: Pick<ReturnType<typeof import("../../logs/debug-events.js").createDebugEventWriter>, "emit">;
   readonly publishCheckpoint?: (repositories: AuthorityRepositories, checkpoint: RunCheckpointRecord) => void;
   readonly lifecycle: WorkerRunLifecyclePort;
@@ -118,7 +119,7 @@ export interface RunExecutionContext {
   readonly requireOriginalClaim: (current: RunRecord) => void;
   readonly pauseAtBoundary: () => void;
   readonly workerTransition: (current: RunRecord, lifecycle: RunLifecycle) => RunMutationOutcome;
-  readonly transitionTo: (lifecycle: RunLifecycle) => RunRecord;
+  readonly transitionTo: (lifecycle: RunLifecycle) => Promise<RunRecord>;
   readonly runningLifecycle: (currentNodeId?: NodeId) => RunLifecycle;
   readonly runSpanIdentity: Readonly<{
     runId: RunRecord["envelope"]["runId"];

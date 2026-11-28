@@ -17,7 +17,8 @@ import { currentBuildId, PARENT_BUILD_ID_ENV } from "../../../runtime/build-id.j
 import { createNativeBrowserProbe } from "../../../runtime/browser/native-browser.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
 import { createIpcRouter } from "../../../runtime/workers/worker-ipc-router.js";
-import { WORKER_MESSAGE_PREFIX } from "../../../runtime/workers/worker-messages.js";
+import { WORKER_LOG_PREFIX, WORKER_MESSAGE_PREFIX, WorkerLogMessageSchema, type WorkerLogAck } from "../../../runtime/workers/worker-messages.js";
+import type { LogWriter } from "../../../storage/events/log-writer.js";
 import { createWorkerPool, WorkerPoolError, WorkerSetupRefusedError, type WorkerMemberView, type WorkerPool, type WorkerPoolMember,
   type WorkerProcessPort } from "../../../runtime/workers/worker-pool.js";
 import { RuntimeAdmission } from "../../../storage/admission/admission.js";
@@ -271,7 +272,7 @@ export function composeWorkerPool(input: WorkerPoolCompositionInput): Readonly<{
 }
 
 // Spawn absolute argv without a shell; inherited stderr keeps bootstrap failures visible.
-export function realWorkerProcessSpawner(lock: RuntimeLifetimeLock, nominatim: ReturnType<typeof createNominatimGeocodeAdapter>): WorkerProcessSpawner {
+export function realWorkerProcessSpawner(lock: RuntimeLifetimeLock, nominatim: ReturnType<typeof createNominatimGeocodeAdapter>, logWriter?: LogWriter): WorkerProcessSpawner {
   return (request) => {
     lock.assertHeld();
     const child = spawnChildProcess(request.command, [...request.args], {
@@ -281,11 +282,60 @@ export function realWorkerProcessSpawner(lock: RuntimeLifetimeLock, nominatim: R
     });
     let workerMessage: (message: unknown) => void = () => undefined;
     if (child.pid !== undefined) {
+      let logEnabled = false, receivedLogSeq = 0, committedLogSeq = 0, replyScheduled = false;
+      const failLog = (error: unknown) => {
+        if (!child.connected) return;
+        child.emit("error", new Error("worker-log-channel-failed", { cause: error }));
+        if (child.connected) child.disconnect();
+      };
+      const sendLog = (message: WorkerLogAck | { kind: "worker-log-enabled" }) => {
+        if (child.connected) child.send(message, error => { if (error !== null) failLog(error); });
+      };
+      const receiveLog = (message: unknown) => {
+        if (logWriter === undefined || !logEnabled) throw new Error("worker-log-channel-unavailable");
+        const entry = WorkerLogMessageSchema.parse(message);
+        if (entry.kind === "worker-log-flush") {
+          if (entry.throughSeq !== receivedLogSeq) throw new Error("worker-log-flush-sequence-invalid");
+          void logWriter.flush().then(
+            () => sendLog({ kind: "worker-log-flushed", requestId: entry.requestId, throughSeq: entry.throughSeq }),
+            failLog,
+          );
+          return;
+        }
+        if (entry.seq !== receivedLogSeq + 1) throw new Error("worker-log-sequence-gap");
+        receivedLogSeq = entry.seq;
+        logWriter.publish({ kind: "append", row: entry.row }, error => {
+          if (error !== undefined) { failLog(error); return; }
+          committedLogSeq = entry.seq;
+          if (!replyScheduled) {
+            replyScheduled = true;
+            queueMicrotask(() => {
+              replyScheduled = false;
+              sendLog({ kind: "worker-log-ack", throughSeq: committedLogSeq });
+            });
+          }
+        });
+      };
       const router = createIpcRouter({ on: (event, listener) => child.on(event, listener), off: (event, listener) => child.off(event, listener),
         disconnect: () => { if (child.connected) child.disconnect(); } }, error => { child.emit("error", error); });
-      router.register(WORKER_MESSAGE_PREFIX, message => { workerMessage(message); });
+      router.register(WORKER_MESSAGE_PREFIX, message => {
+        if (message.kind.startsWith(WORKER_LOG_PREFIX)) {
+          try { receiveLog(message); } catch (error) { failLog(error); }
+          return;
+        }
+        if (message.kind === "worker-ready" && logWriter !== undefined && !logEnabled) {
+          logEnabled = true;
+          sendLog({ kind: "worker-log-enabled" });
+        }
+        workerMessage(message);
+      });
       nominatim.attach(child, router);
-      child.once("exit", () => { router.close(); });
+      child.once("close", (code, signal) => {
+        router.close();
+        if (logWriter !== undefined && (!logEnabled || code !== 0 || signal !== null)) {
+          void logWriter.reconcile().catch(failLog);
+        }
+      });
       let transfer: Promise<void>;
       try { transfer = lock.share(child); lock.observeOwnedChildClosure(child); }
       catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }

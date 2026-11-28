@@ -77,10 +77,11 @@ export async function walkRunPlan(
   });
 
   // Commit terminal state and result in one authority transaction.
-  const settleSuccess = (
+  const settleSuccess = async (
     current: RunRecord,
     built: Readonly<{ record: RunResultRecord; authorization: object }>,
-  ): RunExecutionOutcome => {
+  ): Promise<RunExecutionOutcome> => {
+    if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
     checkCancellation();
     requireOriginalClaim(current);
     const authorization = buildTerminalAuthorization({
@@ -244,7 +245,7 @@ export async function walkRunPlan(
           scheduled: nodes.filter(candidate => plan.get(String(candidate.id))?.mode === "execute" && !retainedTransaction(candidate)).map(candidate => candidate.id),
           now: clock.now(), attempt: envelope.attempt, ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) });
         if (freshness.length > 0) {
-          transitionTo(runningLifecycle(node.id));
+          await transitionTo(runningLifecycle(node.id));
           return await failNode(node, node.uses.id, new TaskError(node.uses.id, "RESUME_VALIDATION_FAILED", freshness.join("\n")));
         }
         if (entry.patches !== undefined) {
@@ -256,6 +257,7 @@ export async function walkRunPlan(
             return await terminalizeAsFailure(buildEntryValidationFailureRecord({ run: getRun(), failureId: deps.ids.uuid(),
               problems: [`injected correction for node "${node.id}" was refused: ${error instanceof Error ? error.message : String(error)}`], occurredAt: instant() }));
           }
+          if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
           deps.authority.authority.runCheckpoints.insert(patched.record);
           entry = { mode: "replay", record: patched.record };
         }
@@ -328,7 +330,7 @@ export async function walkRunPlan(
       if (assertion === undefined || node.kind !== "task") {
         throw new Error(`node "${node.id}" was planned as asserted but the omission plan does not assert a task there`);
       }
-      transitionTo(runningLifecycle(node.id));
+      await transitionTo(runningLifecycle(node.id));
       if (entry.replay !== undefined) {
 
         const replayed = entry.replay;
@@ -397,6 +399,7 @@ export async function walkRunPlan(
         writtenAt: instant(),
         assertion: { step: assertion.step, assertedAt },
       });
+      if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
       deps.authority.authority.runCheckpoints.insert(assertedRecord);
       checkpointRecords.set(String(node.id), assertedRecord);
       outputs[String(node.id)] = value;
@@ -427,7 +430,7 @@ export async function walkRunPlan(
     }
     switch (node.kind) {
       case "task": {
-        transitionTo(runningLifecycle(node.id));
+        await transitionTo(runningLifecycle(node.id));
         const scope = scopeFor(node.dependsOn);
         if (node.when !== undefined) {
           const condition = evaluateNodeCondition(node.when, scope);
@@ -455,7 +458,7 @@ export async function walkRunPlan(
         continue;
       }
       case "branch": {
-        transitionTo(runningLifecycle(node.id));
+        await transitionTo(runningLifecycle(node.id));
         const scope = scopeFor(node.dependsOn);
         const selected = node.choose(scope);
         if (!Object.hasOwn(node.cases, selected)) {
@@ -472,7 +475,7 @@ export async function walkRunPlan(
         continue;
       }
       case "parallel": {
-        transitionTo(runningLifecycle(node.id));
+        await transitionTo(runningLifecycle(node.id));
         if (node.join !== "all") {
           return await failNode(node, undefined, new Error(
             `parallel "${node.id}" join "${node.join}" is not interpretable by this runtime; `
@@ -493,7 +496,7 @@ export async function walkRunPlan(
           recordConditionSkip(node);
           continue;
         }
-        transitionTo(runningLifecycle(node.id));
+        await transitionTo(runningLifecycle(node.id));
         await deps.sessions.closeAll("parked");
         // A new version can carry Cancel or change the version a source gate must bind.
         for (;;) {
@@ -521,6 +524,7 @@ export async function walkRunPlan(
             }
           }
           const resumeAt = nodes[index + 1]?.id ?? node.id;
+          if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
           const outcome = workerTransition(current, RunLifecycleSchema.parse({
             state: "parked-gate",
             gateId: GateIdSchema.parse(String(node.id)),
@@ -534,7 +538,7 @@ export async function walkRunPlan(
         }
       }
       case "transaction": {
-        transitionTo(runningLifecycle(node.id));
+        await transitionTo(runningLifecycle(node.id));
         if (deps.writeSequencer === undefined) {
           return await failNode(node, node.commit.uses.id, new TaskError(
             node.commit.uses.id,
@@ -696,12 +700,13 @@ export async function walkRunPlan(
         const parallel = nodes.find(candidate => candidate.kind === "parallel"
           && candidate.branches.some(branch => branch.nodes.includes(node.id)));
         const owner = parallel?.kind === "parallel" ? parallel : node;
-        transitionTo(runningLifecycle(owner.id));
+        await transitionTo(runningLifecycle(owner.id));
         const unresolved = deps.authority.withAuthorityTransaction?.(repositories =>
           repositories.writeIntents.listAttemptingByItem({ workflowId: envelope.workflow, itemId: envelope.itemId })[0]
             ?? repositories.writeIntents.listByRun(runId).find(intent => intent.status === "parked"));
         if (unresolved !== undefined) {
           const current = getRun();
+          if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
           const recovery = deps.lifecycle.requeue({ commandId: lifecycleCommandId("delegation-write-recovery", { runId, version: current.version }),
             runId, expectedVersion: current.version, claim, cause: "recovery" });
           if (recovery.state !== "recovery-required" || recovery.writeIntentId !== unresolved.writeIntentId

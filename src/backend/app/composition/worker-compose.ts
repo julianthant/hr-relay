@@ -15,8 +15,8 @@ import { createDurableChildRunExecutor } from "../../runtime/execution/durable-c
 import { runQueuedSpanEvent } from "../../runs/commands/run-queued-span.js";
 import { WorkerSessionClosureUnprovedError, withBoundRunConfigFingerprint } from "../../runtime/workers/worker-sessions.js";
 import { createIpcRouter, type IpcRouter } from "../../runtime/workers/worker-ipc-router.js";
-import { createWorkerChildChannel, type WorkerChildChannel } from "../../runtime/workers/worker-child-channel.js";
-import { WORKER_MESSAGE_PREFIX, type WorkerActivity, type WorkerChildMessage } from "../../runtime/workers/worker-messages.js";
+import { createWorkerChildChannel, createWorkerLogChannel, type WorkerChildChannel } from "../../runtime/workers/worker-child-channel.js";
+import { WORKER_LOG_PREFIX, WORKER_MESSAGE_PREFIX, WorkerLogEnableSchema, type WorkerActivity, type WorkerChildMessage } from "../../runtime/workers/worker-messages.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { readFileSync as readBuildFile } from "node:fs";
 import { appendEmergencyFault, withEmergencyTimelineWriter } from "../../logs/emergency-faults.js";
@@ -409,6 +409,9 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   let ocrAccount: ReturnType<typeof createChatGptAccountService> | undefined;
   let accountClosureProven = true;
   let removeStopListeners: (() => void) | undefined;
+  let router: IpcRouter | undefined;
+  const logChannel = launch === undefined ? undefined : createWorkerLogChannel();
+  const removeLogPublisher = logChannel === undefined ? undefined : database.bindLogPublisher(logChannel.publish);
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build });
   slowOperations.attach(debugEvents);
@@ -576,12 +579,11 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       current = next;
       channel?.activity(next);
     };
-    let router: IpcRouter | undefined;
     const send = process.send?.bind(process);
     if (launch !== undefined) {
       if (send === undefined || !process.connected || process.disconnect === undefined) throw new Error("runtime-parent-channel-required");
       const disconnect = process.disconnect.bind(process);
-      const fail = (error: unknown): void => { channelFailure ??= error; stopController.abort(error); };
+      const fail = (error: unknown): void => { channelFailure ??= error; logChannel?.fail(error); stopController.abort(error); };
       router = createIpcRouter({ on: (event, listener) => process.on(event, listener), off: (event, listener) => process.off(event, listener),
         disconnect }, fail);
       const routed = router;
@@ -606,7 +608,17 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         onStop: () => { stopRequested = true; } });
       channel = opened;
       routed.register(WORKER_MESSAGE_PREFIX, message => {
-        try { opened.receive(message); } catch (error) { fail(error); }
+        try {
+          if (message.kind === "worker-log-enabled") {
+            WorkerLogEnableSchema.parse(message);
+            logChannel?.attach(logMessage => {
+              try { send(logMessage, undefined, undefined, error => { if (error !== null) fail(error); }); }
+              catch (error) { fail(error); }
+            });
+          } else if (message.kind.startsWith(WORKER_LOG_PREFIX)) {
+            logChannel?.receive(message);
+          } else opened.receive(message);
+        } catch (error) { fail(error); }
       });
     }
 
@@ -640,6 +652,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         idleRepollMs: resolved.config.daemon.idleRepollMs,
         log,
         debugEvents,
+        ...(logChannel === undefined ? {} : { beforeConfirmedWrite: logChannel.flush }),
         taskNotes,
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
@@ -665,6 +678,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         claimNext: (request, sessions) => {
           assertCurrent();
           return claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
+          ...(logChannel === undefined ? {} : { beforeConfirmedWrite: logChannel.flush }),
           onObservationChanged: attempt => { log.warn("preflight observation changed during claim; re-preparing", { workerId, attempt }); },
           candidateCurrent: run => database.authority.runs.get(run.envelope.runId)?.version === run.version,
           prepareRun: async (run, signal) => {
@@ -706,6 +720,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         artifacts,
         artifactProjector,
         writeSequencerFor: (sessions, taskDeadlineMs) => createWriteSequencer({
+          ...(logChannel === undefined ? {} : { beforeConfirmedWrite: logChannel.flush }),
           stores,
           authority: database,
         lifecycle,
@@ -727,7 +742,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       throw error;
     } finally {
       try { await stopGateSources(); } catch (error) { cleanupErrors.push(error); }
-      router?.close();
     }
     if (channelFailure !== undefined) throw channelFailure instanceof Error ? channelFailure : new Error("worker-ipc-channel-failed", { cause: channelFailure });
     if (report.closure === "unproved") emitFaultWithCauses(debugEvents, undefined, closureFailure, { category: "worker",
@@ -758,6 +772,9 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       code: "WORKER_CLEANUP_FAILED", reason: "resource-closure-unproved" }, { kind: "worker", workerId }); }
     catch (loggingError) { cleanupErrors.push(loggingError); }
   }
+  try { await logChannel?.flush(); } catch (error) { cleanupErrors.push(error); }
+  removeLogPublisher?.();
+  router?.close();
   let databaseClosureProven = false;
   try {
     if (!accountClosureProven) throw new RuntimeCustodyUncertainError(cleanupErrors);

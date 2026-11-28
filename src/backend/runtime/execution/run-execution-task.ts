@@ -607,7 +607,7 @@ export function createTaskExecution(
     const backoffMs = task.impl.retry?.backoffMs ?? 0;
     const need = task.impl.sessions[0];
     for (let taskAttempt = 1; taskAttempt <= attempts; taskAttempt += 1) {
-      transitionTo(runningLifecycle(node.id));
+      await transitionTo(runningLifecycle(node.id));
       const spanPath = taskSpanPath(envelope.traceId, node.id, taskAttempt, claim.claimGeneration);
       emit({
         t: "span.started", kind: "task",
@@ -618,6 +618,7 @@ export function createTaskExecution(
       const failureCauses: FailureEvidenceCause[] = [];
       try {
         const record = await invokeTask(node, task, scope, need, capabilityWiring, spanPath, failureCauses);
+        if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
         if (refreshedRetained || refreshedMember || accounting?.plan.recompute.includes(String(node.id))) {
           pauseAtBoundary();
           if (deps.authority.withAuthorityTransaction === undefined) throw new Error("delegation-accounting-transaction-unavailable");

@@ -33,7 +33,7 @@ interface OrderingHarness {
   readonly dispose: () => void | Promise<void>;
 }
 
-async function orderingHarness(): Promise<OrderingHarness> {
+async function orderingHarness(beforeConfirmedWrite?: () => Promise<void>): Promise<OrderingHarness> {
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
   const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(
@@ -56,6 +56,7 @@ async function orderingHarness(): Promise<OrderingHarness> {
     scheduler: new ManualScheduler(clock),
     taskDeadlineMs: 60_000,
     operator: "local-operator",
+    ...(beforeConfirmedWrite === undefined ? {} : { beforeConfirmedWrite }),
     log: recordingLogger().log
   });
   const execute = (context: WriteSequencerContext): Promise<unknown> =>
@@ -116,6 +117,16 @@ function runningContext(
 }
 
 describe("prepare-end < subject-observed < fence-commit < mutation-call", () => {
+  it("refuses the submit before the fence when the worker log flush times out", async () => {
+    const h = await orderingHarness(() => Promise.reject(new Error("worker-log-flush-deadline")));
+    try {
+      h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+      await assert.rejects(h.execute(runningContext(h)), /worker-log-flush-deadline/u);
+      assert.equal(h.database.authority.writeIntents.findByPermanentKey("ucpath", WRITE_FIXTURE_KEY), undefined);
+      assert.ok(!h.world.events.some(event => event.startsWith("commit-click")));
+    } finally { await h.dispose(); }
+  });
+
   it("orders the four events on one lease and binds the capability to the fenced proof digest", async () => {
     const h = await orderingHarness();
     try {

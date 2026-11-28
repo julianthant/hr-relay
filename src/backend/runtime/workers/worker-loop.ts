@@ -65,6 +65,7 @@ type WorkerClaimRequest = Readonly<{
 }>;
 
 export interface WorkerRunResources {
+  readonly beforeConfirmedWrite?: () => Promise<void>;
  readonly publishCheckpoint?: import("../execution/run-execution-contract.js").RunExecutorDependencies["publishCheckpoint"];
  readonly sessionFactory: WorkerBrowserSessionFactory;
  readonly duoCeremony: DuoCeremonyGateFactory;
@@ -170,6 +171,7 @@ function startHeartbeat(input: Readonly<{
   clock: Clock;
   scheduler: MonotonicDeadlineScheduler;
   intervalMs: number;
+  beforeConfirmedWrite?: () => Promise<void>;
   onLost: () => void;
   onFailure: (cause: unknown) => void;
 }>): Readonly<{ stop: () => void }> {
@@ -179,9 +181,11 @@ function startHeartbeat(input: Readonly<{
     stopped = true;
     handle.cancel();
   };
-  const tick = (): void => {
+  const renew = async (): Promise<void> => {
     if (stopped) return;
     try {
+      if (input.beforeConfirmedWrite !== undefined) await input.beforeConfirmedWrite();
+      if (stopped) return;
       const outcome = input.lifecycle.renewClaim({
         commandId: lifecycleCommandId("heartbeat", { runId: input.runId, claim: input.claim, nonce: input.ids.uuid() }),
         runId: input.runId,
@@ -199,6 +203,7 @@ function startHeartbeat(input: Readonly<{
       input.onFailure(error);
     }
   };
+  const tick = () => { void renew(); };
   handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
   return Object.freeze({ stop });
 }
@@ -443,6 +448,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         clock,
         scheduler: deps.scheduler,
         intervalMs: deps.heartbeatIntervalMs,
+        ...(deps.beforeConfirmedWrite === undefined ? {} : { beforeConfirmedWrite: deps.beforeConfirmedWrite }),
         onLost: (): void => {
           runController.abort(new Error("claim lost during heartbeat renewal: lost"));
         },
@@ -483,6 +489,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             log: deps.log,
             debugEvents: deps.debugEvents,
             retainCallback,
+            ...(deps.beforeConfirmedWrite === undefined ? {} : { beforeConfirmedWrite: deps.beforeConfirmedWrite }),
             ...(deps.taskNotes === undefined ? {} : { taskNotes: deps.taskNotes }),
             ...(writeSequencer === undefined ? {} : { writeSequencer }),
             ...(deps.childRuns === undefined ? {} : { childRuns: deps.childRuns }),
