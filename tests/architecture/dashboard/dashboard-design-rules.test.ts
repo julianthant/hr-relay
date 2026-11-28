@@ -92,3 +92,10 @@ describe("the Duo setup window is reachable by keyboard", () => {
     assert.deepEqual(violations, []);
   });
 });
+
+describe("no Updating text", () => {
+  it("shows a refresh as a spinner only, never the word Updating", () => {
+    const violations = scanTree((path, text) => /\bUpdating\b/.test(text) ? [path] : [], [DASHBOARD_ALL]);
+    assert.deepEqual(violations, []);
+  });
+});

@@ -1,6 +1,6 @@
 import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
-import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, IconButton, PageHeading, SegmentedChoice, Spinner, StatusDot, useSkeletonWait, dsIcon, dsText, type DsStatus } from "../../ds/ui.js";
+import { BodySection, Button, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, DelayedSpinner, IconButton, PageHeading, SegmentedChoice, StatusDot, dsIcon, dsText, type DsStatus } from "../../ds/ui.js";
 import { ChartHeading, SmallLine, StackedBars } from "./analytics-charts.js";
 import { isActivityCalendarDate, type ActivityDateRange } from "./activity-model.js";
 import { analyticsBuckets, analyticsClock, analyticsPeriodLabel, bucketCounts, finished, rowTypicalSeconds, shiftDate, shiftRange, type AnalyticsData, type AnalyticsWorkflow } from "./analytics-model.js";
@@ -15,11 +15,6 @@ const OUTCOMES: readonly { key: "done" | "failed" | "attention"; label: string; 
   { key: "attention", label: "Needs attention", status: "waiting", color: "var(--ds-info-solid-bg)" },
 ];
 const share = (count: number, total: number) => total === 0 ? "—" : `${Math.round(count / total * 100)}%`;
-
-function DelayedSpinner() {
-  const waiting = useSkeletonWait();
-  return <span className={waiting ? "invisible" : undefined}><Spinner /></span>;
-}
 
 /** A small spinner after the period group while a read is in flight, after the skeleton wait; the slot keeps its room so nothing shifts. */
 function ReadingSpinner({ reading }: { reading: boolean }) {

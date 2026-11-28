@@ -41,6 +41,7 @@ export {
   Chip,
   Kbd,
   Spinner,
+  DelayedSpinner,
   Skeleton,
   Separator,
   VisuallyHidden,
