@@ -282,7 +282,12 @@ describe("canonical notification producers", () => {
     try {
       const reading = { freeBytes: 2 * 1024 ** 3, walBytes: 256 * 1024 ** 2, integrityFailed: false, backupFailed: false, leaseExpired: false };
       const observe = () => createNotificationHealthObserver({ database: f.db, clock: f.clock, inbox: f.inbox, read: async () => reading })();
-      await observe(); expect(f.inbox.list("local-operator")).toEqual([]);
+      const transaction = vi.spyOn(f.db, "withAuthorityTransaction");
+      try {
+        await observe();
+        expect(transaction).toHaveBeenCalledTimes(1);
+      } finally { transaction.mockRestore(); }
+      expect(f.inbox.list("local-operator")).toEqual([]);
       f.clock.advanceWall(60_000); reading.walBytes += 1; await observe(); expect(f.inbox.list("local-operator")).toEqual([]);
       f.clock.advanceWall(60_000); reading.walBytes += 1; await observe(); expect(f.inbox.list("local-operator")).toHaveLength(1);
       f.clock.advanceWall(60_000); reading.freeBytes = 1024 ** 3 - 1; reading.integrityFailed = true; reading.backupFailed = true; reading.leaseExpired = true; await observe();
