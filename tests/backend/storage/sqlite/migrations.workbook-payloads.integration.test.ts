@@ -18,7 +18,7 @@ import { storageRecoveryFixture } from "../../../support/helpers/integration/sto
 const CAPTURE = { now: "2026-11-17T00:00:00.000Z", captureFile: () => { throw new Error("no capture expected"); } };
 const CREATED = IsoInstantSchema.parse("2026-11-16T00:00:00.000Z"), SAVED = IsoInstantSchema.parse("2026-11-16T01:00:00.000Z"), USED = IsoInstantSchema.parse("2026-11-16T02:00:00.000Z");
 const TABLES = ["workbook_library", "workbook_creations", "workbook_library_history", "workbook_library_snapshots"] as const;
-const ROWS = 400;
+const ROWS = 600;
 
 const databases: DatabaseSync[] = [];
 afterEach(() => databases.splice(0).forEach(database => database.close()));
