@@ -6,6 +6,8 @@ import type { RunDetailQueryDeps } from "../../../src/backend/runs/queries/run-d
 import { buildRunGate } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { GateDecisionWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
+import { ReferenceReviewSchema } from "../../../src/models/processing/workbooks/reference-fields.js";
+import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { ONBOARDING_WRITE_REVIEW_GATE } from "../../../src/models/workflows/onboarding/read-write-plan.js";
 import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding/result.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
@@ -26,9 +28,10 @@ const PERSON = { emplId: EidSchema.parse("10800000"), name: "Hire, Fixture" };
 /** A name no fixture carries, so finding it anywhere in the run proves a row value leaked. */
 const ROW_ONLY_NAME = "Zebedee Quillfeather";
 
-async function fixture(options: { dryRun?: boolean; mode?: "new-hire" | "rehire" } = {}) {
+async function fixture(options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; newHireReceiptEid?: typeof PERSON.emplId } = {}) {
   const mode = options.mode ?? "rehire";
   const h = await world.executionFixture(false, { match: "unique", selectedRow: true, mode, ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
+    ...(options.newHireReceiptEid === undefined ? {} : { newHireReceiptEid: options.newHireReceiptEid }),
     ...(mode === "rehire" ? { personMatch: { hits: [PERSON], confirmed: [PERSON], dropped: [] } } : {}) });
   const current = (run: RunRecord) => { const stored = h.database.authority.runs.get(run.envelope.runId); assert.ok(stored); return stored; };
   const holding = () => h.checkSheet("Fall roster", "Hires", ["email", "fullName"], [["other@example.test", "Blair Example"], [h.key.toUpperCase(), "Fixture Hire"]]);
@@ -65,7 +68,15 @@ async function fixture(options: { dryRun?: boolean; mode?: "new-hire" | "rehire"
   const cancel = (run: RunRecord) => h.rawExecution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: h.clock.now().toISOString(),
     requestedBy: "local-operator", source: "queue-row", family: "run", type: "cancel", target: { runId: run.envelope.runId, expectedVersion: current(run).version } }));
   const result = (run: RunRecord) => OnboardingResultSchema.parse(h.database.authority.runResults.get(run.envelope.runId)?.result.value);
-  return { ...h, current, holding, missing, renamed, start, reviewThenRun, events, checkLines, nodeSpans, commits, card, cancel, result };
+  const continueReference = (run: RunRecord) => {
+    const parked = current(run);
+    assert.ok(parked.lifecycle.state === "parked-gate");
+    return h.rawExecution.kernel.execute(CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator", source: "dashboard", family: "gate", type: "resolve-gate",
+      target: { runId: run.envelope.runId, gateId: parked.lifecycle.gateId, expectedVersion: parked.version },
+      payload: { result: { schemaHash: deriveSchemaHash(ReferenceReviewSchema, "output"), value: { decision: "continue" } } } }));
+  };
+  return { ...h, current, holding, missing, renamed, start, reviewThenRun, events, checkLines, nodeSpans, commits, card, cancel, result, continueReference };
 }
 
 describe("Onboarding reference spreadsheet check", () => {
@@ -123,6 +134,38 @@ describe("Onboarding reference spreadsheet check", () => {
     assert.deepEqual(f.checkLines(root), ["Not in Issued"]);
     assert.deepEqual(f.nodeSpans(root, "reference-field-review-write-plan"), [["skipped", "condition-false"]]);
     assert.equal(f.commits(), 0);
+  });
+
+  it("matches a native worksheet DOB and reviews a differing confirmed Employee ID before hire review", async () => {
+    const f = await fixture();
+    const root = f.start([f.checkSheet("Reference roster", "Hires", ["email", "dob", "eid"],
+      [[f.key, new Date("2000-01-14T00:00:00.000Z"), "10800009"]])]);
+    const parked = (await f.rawExecution.execute(root, signal())).run;
+    assert.ok(parked?.lifecycle.state === "parked-gate");
+    assert.equal(parked.lifecycle.gateId, "reference-field-review-hire-subject");
+    assert.ok(f.checkLines(root).includes("Hires, row 2: Date of Birth matches"));
+    assert.equal(f.commits(), 0);
+    assert.equal(f.card(root).context, `Hires, row 2 · Employee ID: spreadsheet “10800009”, workflow “${PERSON.emplId}”`);
+    assert.equal(f.continueReference(root).state, "applied");
+    const done = await f.reviewThenRun(f.current(root));
+    assert.ok(done.lifecycle.state === "terminal" && done.lifecycle.outcome === "done");
+    assert.equal(f.commits(), 1);
+  });
+
+  it("reviews the Employee ID first observed in the hire receipt and resumes without resubmitting", async () => {
+    const f = await fixture({ mode: "new-hire", newHireReceiptEid: PERSON.emplId });
+    const root = f.start([f.checkSheet("Reference roster", "Hires", ["email", "eid"], [[f.key, "10800009"]])]);
+    const parked = await f.reviewThenRun(root);
+    assert.ok(parked.lifecycle.state === "parked-gate");
+    assert.equal(parked.lifecycle.gateId, "reference-field-review-hire-receipt");
+    assert.equal(f.card(root).context, `Hires, row 2 · Employee ID: spreadsheet “10800009”, workflow “${PERSON.emplId}”`);
+    assert.deepEqual(f.repository.runOperations(root.envelope.runId), []);
+    assert.equal(f.hire.events.filter(event => event === "commit:hire").length, 1);
+    assert.equal(f.continueReference(root).state, "applied");
+    const done = (await f.rawExecution.execute(f.current(root), signal())).run;
+    assert.ok(done?.lifecycle.state === "terminal" && done.lifecycle.outcome === "done", JSON.stringify(f.database.authority.failures.listByRun(root.envelope.runId)));
+    assert.equal(f.hire.events.filter(event => event === "commit:hire").length, 1);
+    assert.equal(f.repository.runOperations(root.envelope.runId).length, 1);
   });
 
   it("checks a new hire by email without an Employee ID", async () => {

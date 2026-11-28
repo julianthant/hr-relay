@@ -16,7 +16,10 @@ export const onboardingWorkflow = defineWorkflow({
   referenceCheck: defineReferenceCheck({ key: "email", input: { email: "email" }, outputs: {
     "crm-source": { email: "requestedEmail", fullName: ["recordFirstName", "recordLastName"], firstName: "recordFirstName", lastName: "recordLastName", dob: "fields.dob" },
     "hire-plan": { dob: "employee.dob" },
+    "hire-subject": { eid: "person.emplId", fullName: "person.name" },
     "write-plan": { eid: "hire.emplId", fullName: "hire.expectedName" },
+    "hire-receipt": { eid: "emplId", fullName: "displayedName", dob: "dob", email: "email" },
+    "concurrent-hire-receipt": { eid: "emplId", fullName: "displayedName", dob: "dob", email: "email" },
   } }),
   referenceKeys: input => [input.email],
   summary: "Review CRM hire data, independently confirmed UCPath identities and complete transaction findings. Create or reuse the I-9 record, verify the filed hire and fill result cells through the captured master reference.",

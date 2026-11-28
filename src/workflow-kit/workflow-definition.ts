@@ -45,7 +45,7 @@ import type {
   WorkflowDescriptorSpec,
 } from "./workflow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes, parseWorkbookRequirement } from "./workflow.js";
-import { CompareReferenceFields, REFERENCE_LOOKUP_NODE, ReferenceReviewSchema, referenceReviewId } from "../models/processing/workbooks/reference-fields.js";
+import { CompareReferenceFields, REFERENCE_LOOKUP_NODE, ReferenceReviewSchema, referenceComparisonForGate, referenceReviewId } from "../models/processing/workbooks/reference-fields.js";
 import { defineReferenceCheck, referenceFieldsAt } from "./reference-check.js";
 import { PersonLookupInput } from "../models/workflows/person-lookup/input.js";
 import { PersonLookupResultSchema } from "../models/workflows/person-lookup/result.js";
@@ -784,6 +784,11 @@ function referenceStages<Input extends z.ZodType>(
 ) {
   const order = topologicalEntries(steps, parallelMembership(steps));
   const mapped = order.filter(node => Object.hasOwn(definition.outputs, node.id));
+  const branches = order.flatMap(entry => entry.kind === "branch" ? [Object.values(entry.cases)] : []);
+  const compatible = (current: string, earlier: string) => branches.every(cases => {
+    const targets = cases.find(members => members.includes(current));
+    return targets === undefined || targets.includes(earlier) || !cases.some(members => members.includes(earlier));
+  });
   const lookupId = REFERENCE_LOOKUP_NODE;
   const lookupName = definition.lookupName;
   const stageIds = ["start", ...(lookupName === undefined ? [] : [lookupId]), ...mapped.map(node => node.id)];
@@ -828,7 +833,7 @@ function referenceStages<Input extends z.ZodType>(
     } as const,
   };
   const entries = defineStepEntries(group);
-  const earlier: { check: AnyWorkflowEntry; gate: AnyWorkflowEntry }[] = [];
+  const earlier: { source: string; check: AnyWorkflowEntry; gate: AnyWorkflowEntry }[] = [];
   const producers: AnyWorkflowEntry[] = [];
   const referenceEntries: AnyWorkflowEntry[] = [];
   const columns = [...new Set([definition.key, ...Object.keys(definition.input ?? {}), ...Object.values(definition.outputs).flatMap(Object.keys)])];
@@ -858,8 +863,8 @@ function referenceStages<Input extends z.ZodType>(
       const source = mapped.find(node => node.id === suffix);
       if (source !== undefined) producers.push(source);
     }
-    const previous = [...earlier];
-    const resolved = [...producers];
+    const previous = earlier.filter(stage => compatible(suffix, stage.source));
+    const resolved = producers.filter(node => compatible(suffix, node.id));
     const check = author.task(entries.task(checkId(suffix), CompareReferenceFields, {
       replay: "checkpoint", when: { kind: "is-present", of: { from: "reference", typeId: definition.selection.id } },
     }), [...resolved, ...previous.flatMap(stage => [stage.check, stage.gate])], ({ input, outputs }) => {
@@ -887,7 +892,7 @@ function referenceStages<Input extends z.ZodType>(
       label: "Review reference spreadsheet differences", result: ReferenceReviewSchema,
       when: { kind: "is-present", of: { from: "node", nodeId: check.id, path: "review" } },
     }), [check]);
-    earlier.push({ check, gate });
+    earlier.push({ source: suffix, check, gate });
     referenceEntries.push(check, gate);
   }
   return [group, referenceEntries] as const;
@@ -1035,7 +1040,7 @@ export function defineWorkflow<
   const authored = authorSteps(author);
   const reference = spec.referenceCheck === undefined || authored.steps.some(([group]) => group.key === REFERENCE_CHECK_STEP.key)
     ? undefined : referenceStages(spec.referenceCheck, authored.steps, author);
-  // Ready entries run in tuple order. Reference reviews precede later writes without supplying write-authority inputs.
+  // Ready entries run in tuple order, so a field is compared as soon as its producer runs.
   const steps = reference === undefined ? authored.steps : [reference, ...authored.steps];
   const rows = spec.referenceCheck !== undefined && spec.rows !== undefined
     && !spec.rows.some(row => row.members.some(member => member.workflow === undefined && member.step === REFERENCE_CHECK_STEP.key))
@@ -1171,6 +1176,7 @@ interface RuntimeFlowBuilder {
 
 function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodType>(
   definition: WorkflowDefinition<InputSchema, ResultSchema, CompletionProgram | undefined>,
+  dependencies: (entry: RuntimeEntry) => readonly string[],
 ): CompiledFlow<InputSchema, ResultSchema> {
   const builder = flow(definition.input) as unknown as RuntimeFlowBuilder;
   const parallelOf = parallelMembership(definition.steps);
@@ -1185,7 +1191,7 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
     );
   };
   for (const entry of topologicalEntries(definition.steps, parallelOf)) {
-    const dependsOn = entry.references.map(({ id }) => id);
+    const dependsOn = dependencies(entry);
     if (entry.kind === "parallel") continue;
     const parent = parallelOf.get(entry);
     if (parent !== undefined) emitParallel(parent);
@@ -1345,6 +1351,28 @@ export function compileWorkflow<
     return label !== undefined && group.key === entry.id && group.label === label;
   });
   const contracts = Object.freeze(flattenEntries(steps).flatMap(({ contracts: owned }) => owned));
+  const writeReview = referenceCheck?.writeReview;
+  const referenceDependencies = new Map<string, string>();
+  if (writeReview !== undefined) {
+    const order = topologicalEntries(steps, parallelMembership(steps));
+    const authority = order.findIndex(entry => entry.id === writeReview);
+    const gate = referenceReviewId(writeReview);
+    const gateIndex = order.findIndex(entry => entry.kind === "gate" && entry.id === gate);
+    if (authority < 0 || gateIndex <= authority) throw new Error(`invalid reference write review at ${writeReview}`);
+    // The verified identity task consumes the earlier reviews before its own reference review can authorize proceeding.
+    const earlier = order.slice(0, authority).findLast(entry => entry.kind === "gate" && referenceComparisonForGate(entry.id) !== undefined);
+    if (earlier !== undefined) referenceDependencies.set(writeReview, earlier.id);
+    for (const [index, entry] of order.entries()) {
+      if (entry.kind !== "transaction") continue;
+      if (index <= gateIndex) throw new Error(`reference write review ${gate} must precede ${entry.id}`);
+      referenceDependencies.set(entry.id, gate);
+    }
+  }
+  const dependencies = (entry: RuntimeEntry) => {
+    const reference = referenceDependencies.get(entry.id);
+    const authored = entry.references.map(({ id }) => id);
+    return reference === undefined ? authored : [...authored, reference];
+  };
   const descriptor = defineWorkflowDescriptor({
     ...presentation,
     contractFingerprint: workflowContractFingerprint({
@@ -1353,14 +1381,14 @@ export function compileWorkflow<
       input: definition.input,
       canonicalInput: definition.canonicalInput,
       result: definition.result.schema,
-      graph: (flattenEntries(steps) as readonly RuntimeEntry[]).map((entry) => ({ id: entry.id, kind: entry.kind, dependsOn: entry.references.map(({ id }) => id) })),
+      graph: (flattenEntries(steps) as readonly RuntimeEntry[]).map((entry) => ({ id: entry.id, kind: entry.kind, dependsOn: dependencies(entry) })),
       contracts,
       requiredWorkbookFields: definition.requiredWorkbookFields,
       workbookReference: definition.workbookReference,
       workbookCheck: definition.workbookCheck,
       referenceFields: referenceCheck,
     }),
-    flow: compileFlow(definition),
+    flow: compileFlow(definition, dependencies),
     ...(usesDefaultTimeline ? {} : { timeline }),
   });
   for (const [group] of steps) {

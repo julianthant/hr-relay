@@ -11,6 +11,7 @@ const ReferenceCheckDefinitionSchema = z.strictObject({
   key: z.enum(["eid", "email"]),
   input: SourceFields.optional(),
   lookupName: z.string().min(1).optional(),
+  writeReview: NodeIdSchema.optional(),
   outputs: z.record(z.string().refine(id => NodeIdSchema.safeParse(id).success), SourceFields),
 });
 export type ReferenceCheckDefinition = z.input<typeof ReferenceCheckDefinitionSchema>;

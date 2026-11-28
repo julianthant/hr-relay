@@ -21,6 +21,7 @@ import { delegationEvidenceOutput, resolveDelegationEvidenceOutput } from "../..
 import { lifecycleCommandId } from "../../runs/lifecycle/run-record-service.js";
 import type { ChildRunRuntimeNode, RunExecutionContext, RunExecutionState, TaskRuntimeNode } from "./run-execution-contract.js";
 import { requestedParkedWriteRecheck } from "./run-execution-write.js";
+import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 
 function requireStoredCheckpoint(stored: RunCheckpointRecord | undefined, nodeId: string): RunCheckpointRecord {
   if (stored === undefined) {
@@ -33,6 +34,7 @@ type PlanEntry =
   | Readonly<{ mode: "execute" }>
   | Readonly<{ mode: "replay"; record: RunCheckpointRecord; deferred?: true; patches?: readonly CheckpointPatch[] }>
   | Readonly<{ mode: "skipped-condition" }>
+  | Readonly<{ mode: "skipped-branch" }>
 
   | Readonly<{ mode: "asserted"; replay?: RunCheckpointRecord }>
 
@@ -157,6 +159,14 @@ export function prepareRunPlan(
       ?? (previousNode?.kind === "gate" ? readContinuationGate(deps.authority.authority, envelope, String(previousNode.id)) : undefined)
     : undefined;
   const ownGateResume = resolvedResumeGate?.runId === runId;
+  const reviewComparison = ownGateResume && resolvedResumeGate !== undefined ? referenceComparisonForGate(resolvedResumeGate.nodeId) : undefined;
+  // A review after filing resumes from checkpoints bound to the claim that observed the difference.
+  const postWriteReview = reviewComparison !== undefined && !envelope.dryRun
+    && nodes.slice(0, startIndex).some(node => node.kind === "transaction")
+    ? originalCheckpoint(deps.authority.authority, initial, reviewComparison, Number(claim.claimGeneration) - 1) : undefined;
+  const reviewCheckpoint = (node: RuntimeFlowNode) => postWriteReview === undefined ? undefined
+    : originalCheckpoint(deps.authority.authority, initial, node.id, postWriteReview.claimGeneration);
+  const reviewSkippedBranches = new Set<string>();
   const completedOwnDelegation = (node: ChildRunRuntimeNode) => {
     const evidence = deps.authority.withAuthorityTransaction?.(repositories =>
       AuthenticatedRunContinuation.authenticate(repositories, envelope).dependency(String(node.id), String(node.edgeId)));
@@ -181,6 +191,7 @@ export function prepareRunPlan(
 
   const retainedTransaction = (node: RuntimeFlowNode) => node.kind === "transaction"
     && (payPathRecheckInputs !== undefined && node === startNode
+      || postWriteReview !== undefined && nodes.indexOf(node) < (startIndex ?? 0)
       || envelope.continuation?.checkpoints.some(row => row.nodeId === node.id) === true);
   const pendingCommits = nodes.filter(node => node.kind === "transaction" && !retainedTransaction(node)
     && !omissionPlan.omitted.has(String(node.id)) && !omissionPlan.asserted.has(String(node.id))).map(node => node.id);
@@ -237,13 +248,18 @@ export function prepareRunPlan(
     const explicit = startIndex !== undefined && envelope.continuation === undefined;
     const inAncestorRegion = retainedAccounting || envelope.continuation !== undefined || (explicit
       ? index < (startIndex ?? 0) || ownGateResume && index === startIndex && node.id === resolvedResumeGate?.nodeId : ancestorRegionOpen);
+    if (postWriteReview !== undefined && (reviewSkippedBranches.has(node.id) || node.dependsOn.some(id => reviewSkippedBranches.has(id)))) {
+      reviewSkippedBranches.add(node.id);
+      plan.set(String(node.id), { mode: "skipped-branch" });
+      continue;
+    }
     if (!inAncestorRegion) {
       plan.set(String(node.id), { mode: "execute" });
       continue;
     }
     const recheckAncestor = payPathRecheckInputs !== undefined && index < (startIndex ?? 0);
     if (node.kind === "task") {
-      if (!recheckAncestor && node.replay === "always-rerun" && (envelope.continuation === undefined || retainedAccounting || memberRetry !== undefined)) {
+      if (!recheckAncestor && postWriteReview === undefined && node.replay === "always-rerun" && (envelope.continuation === undefined || retainedAccounting || memberRetry !== undefined)) {
         // NEVER consult loadCheckpoint for an always-rerun node (§5.3).
         plan.set(String(node.id), { mode: "execute" });
         continue;
@@ -266,7 +282,8 @@ export function prepareRunPlan(
           continue;
         }
       }
-      const stored = recheckAncestor ? payPathRecheckInputs.get(node.id)
+      const stored = postWriteReview !== undefined ? reviewCheckpoint(node)
+        : recheckAncestor ? payPathRecheckInputs.get(node.id)
         : retainedAccounting || node.uses === CompareReferenceFields && envelope.continuation === undefined
         ? deps.authority.authority.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, node.id, envelope.attempt)
           .filter(record => record.runId === runId).at(-1)
@@ -422,12 +439,39 @@ export function prepareRunPlan(
       continue;
     }
     if (node.kind === "branch" || node.kind === "parallel") {
+      if (postWriteReview !== undefined && node.kind === "branch") {
+        const selected = node.choose(scopeFor(node.dependsOn));
+        if (!Object.hasOwn(node.cases, selected)) throw new RunContinuationRefusedError("run-gate-resume-branch-unavailable");
+        for (const [key, targets] of Object.entries(node.cases)) {
+          if (key !== selected) for (const target of targets) reviewSkippedBranches.add(target);
+        }
+      }
       // Pure control nodes re-derive deterministically from validated data.
       plan.set(String(node.id), { mode: "execute" });
       continue;
     }
     if (explicit && ownGateResume && node.kind === "child-run" && node.await === "terminal") {
-      plan.set(String(node.id), { mode: "replay-child", evidence: completedOwnDelegation(node) });
+      const evidence = completedOwnDelegation(node);
+      if (postWriteReview !== undefined) outputs[String(node.id)] = JsonValueSchema.parse(delegationEvidenceOutput(
+        evidence, node.target.result, deps.authority.evidenceSchemaHash?.bind(deps.authority)));
+      plan.set(String(node.id), { mode: "replay-child", evidence });
+      continue;
+    }
+    if (node.kind === "transaction" && postWriteReview !== undefined) {
+      const checkpoint = reviewCheckpoint(node);
+      const loaded = loadCheckpoint(checkpoint, CheckpointExpectationSchema.parse({
+        descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
+        implFingerprint: taskImplFingerprint(node.commit.uses), outputSchemaHash: deriveSchemaHash(TransactionOutcomeSchema, "output"),
+      }), TransactionOutcomeSchema);
+      if (!loaded.found) {
+        problems.push(`missing settled write "${node.id}" before the reference review: ${loaded.detail}`);
+        continue;
+      }
+      const record = requireStoredCheckpoint(checkpoint, String(node.id));
+      outputs[String(node.id)] = JsonValueSchema.parse(projectTransactionOutcome(node.commit.uses, loaded.output, "Reference review resume",
+        { checkpoint: record, schemaReader: deps.authority.evidenceSchemaHash?.bind(deps.authority) }));
+      checkpointRecords.set(String(node.id), record);
+      plan.set(String(node.id), { mode: "replay", record });
       continue;
     }
     if (explicit) {

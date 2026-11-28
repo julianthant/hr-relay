@@ -2,7 +2,7 @@ import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/check
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
-import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema, type Eid } from "../../../../src/rules/identity/ids.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { canonicalChildExecution } from "./canonical-child-execution.js";
@@ -139,7 +139,7 @@ export function createOnboardingRunWorld() {
             : { referenceDigest: candidate.referenceDigest, workbookVersion: candidate.workbookVersion }) } });
     };
     /** Saves one extra library spreadsheet and returns its pick as the second check; `rows` follow the header row, so the first data row is sheet row 2. */
-    const checkSheet = (name: string, sheetName: string, fields: readonly string[], rows: readonly (readonly string[])[]) => {
+    const checkSheet = (name: string, sheetName: string, fields: readonly string[], rows: readonly (readonly (string | Date)[])[]) => {
       const extra = library.create({ name, themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: sheetName, width: fields.length, hidden: [], headerRow: 1,
         columnBindings: fields.map((fieldId, index) => ({ id: `check-${String(index)}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
         rows: [{ id: "header", cells: fields.map(value => ({ value })) }, ...rows.map((cells, index) => ({ id: `row-${String(index)}`, cells: cells.map(value => ({ value })) }))] }] });
@@ -160,6 +160,7 @@ export function createOnboardingRunWorld() {
     /** The operator cancels when the library patch starts after filing, so the run ends cancelled with its receipts committed. */
     cancelAfterFiling?: boolean;
     hire?: Omit<Parameters<typeof deterministicHireOperations>[0], "now">;
+    newHireReceiptEid?: Eid;
     i9?: Partial<Omit<Parameters<typeof createDeterministicI9Driver>[0], "now">>;
   } = {}) {
     const f = await fixture(options.match, options);
@@ -176,6 +177,12 @@ export function createOnboardingRunWorld() {
       ucpath: () => {
         const base = healthyUcpathDriver();
         return { ...base, ...hire, read: async (id: Parameters<typeof base.read>[0]) => id === UCPATH_HIRE_SUBJECT ? hire.readHireSubject() : base.read(id),
+          scanHireTransactions: async (query: Parameters<typeof hire.scanHireTransactions>[0]) => {
+            const scan = await hire.scanHireTransactions(query);
+            const eid = options.newHireReceiptEid;
+            return query.mode !== "new-hire" || eid === undefined ? scan
+              : { ...scan, rows: scan.rows.map(row => ({ ...row, emplId: eid })) };
+          },
           searchPersonMatch: async (input: unknown) => {
             calls.push({ system: "ucpath", input }); return options.personMatch ?? { hits: [], confirmed: [], dropped: [] };
           } };

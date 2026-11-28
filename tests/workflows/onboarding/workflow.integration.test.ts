@@ -49,7 +49,11 @@ import { FingerprintSchema, GateIdSchema, IsoInstantSchema, WorkflowIdSchema } f
 import { createOperatorProjection, createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/operator.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 
-const referenceStages = expectedReferenceStages(["start", "crm-source", "hire-plan", "write-plan"]);
+const standardReferenceStages = ["start", "crm-source", "hire-plan", "hire-subject", "write-plan"];
+const referenceStages = [
+  ...expectedReferenceStages([...standardReferenceStages, "hire-receipt"]),
+  expectedReferenceStages([...standardReferenceStages, "concurrent-hire-receipt"])[standardReferenceStages.length],
+];
 const descriptor = compileWorkflow(onboardingWorkflow).descriptor;
 const nodes = descriptorRuntimeNodes(descriptor);
 const plan = OnboardingReadHirePlan.output.parse(OnboardingReadHirePlan.example);
@@ -134,7 +138,7 @@ describe("onboarding workflow", () => {
     const entryIds = ["roster-choice", "crm-source", "hire-plan", "ucpath-source", "hire-subject", "i9-lookup-child", "i9-lookup", "i9-profile-plan"];
     const proofSizes = [3, 5, 7, 8];
     const targets = ["hire-plan", "hire-subject", "i9-lookup", "i9-profile-plan"];
-    const referenceProofEntries = [...referenceStages.slice(0, -1).flatMap(stage => stage.ids), "roster-choice", "crm-source", "hire-plan", "ucpath-source", "hire-subject", "i9-lookup-child", "i9-lookup",
+    const referenceProofEntries = [...referenceStages.slice(0, 4).flatMap(stage => stage.ids), "roster-choice", "crm-source", "hire-plan", "ucpath-source", "hire-subject", "i9-lookup-child", "i9-lookup",
       "hire-findings", "hire-review"];
     const referenceStepEntries = new Set(referenceStages.flatMap(stage => stage.ids));
     const writesProofEntries = onboardingWorkflow.steps.flatMap(([, entries]) => entries.map(entry => entry.id)).filter(id => !referenceStepEntries.has(id));

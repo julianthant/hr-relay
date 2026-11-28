@@ -782,7 +782,8 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
                 if (columns.length > 1) throw new WorkbookLibraryError("WORKBOOK_INVALID");
                 if (columns[0] === undefined) return [];
                 const cell = row.cells[columns[0]]?.value;
-                const value = typeof cell === "string" || typeof cell === "number" ? String(cell).trim() : "";
+                const value = cell !== null && typeof cell === "object" ? cell.value.slice(0, 10)
+                  : typeof cell === "string" || typeof cell === "number" ? String(cell).trim() : "";
                 return [{ field, value }];
               }),
             })),
