@@ -1,6 +1,8 @@
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { createOperatorProjection, createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/operator.js";
 import { readRunPanel } from "../../../src/backend/runs/queries/run-detail.js";
+import { projectTypedSteps } from "../../../src/backend/runs/queries/run-detail/typed-values.js";
+import { readRerunValues } from "../../../src/backend/runs/start/rerun-values.js";
 import { projectRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import { EmergencyContactMemberResultSchema } from "../../../src/models/workflows/emergency-contact/result.js";
@@ -22,6 +24,11 @@ afterEach(world.cleanup);
 const { memberFixture } = world;
 const contact = approvedEmergencyContact(EMERGENCY_CONTACT_MEMBER_EXAMPLE.record);
 const desired = contactEffect(contact);
+
+function receiptFor(f: Awaited<ReturnType<typeof memberFixture>>) {
+  return createReceiptService({ database: f.database, runReader: f.execution.lifecycle, descriptors: [compiled.descriptor] })
+    .ensureReceipt(f.run.envelope.runId);
+}
 
 it("emergency-contact/verified-save — commits the declared primary demotion and addition once, then independently verifies and durably settles the persisted whole set", async () => {
   const f = await memberFixture();
@@ -184,7 +191,7 @@ it("turns off the UCPath Save without preparing, fencing or clicking it and logs
   assert.deepEqual(f.database.authority.writeIntents.listByRun(runId), []);
   assert.equal(f.filing.imports(), 1, "an included OnBase filing still runs after a manually completed Save");
   assert.deepEqual(f.database.authority.runResults.get(runId)?.result.value, { disposition: "omitted", step: "contact-preview" });
-  const receipt = createReceiptService({ database: f.database, runReader: f.execution.lifecycle, descriptors: [compiled.descriptor] }).ensureReceipt(runId);
+  const receipt = receiptFor(f);
   assert.partialDeepStrictEqual(receipt.output.find(fact => fact.field === "step"), { state: "satisfied", value: { value: "contact-preview" } });
 
   const { stateRoot } = f.authority;
@@ -212,7 +219,25 @@ it("uses the typed reference result to open the downstream review before a live 
   assert.deepEqual(f.database.authority.writeIntents.listByRun(runId), []);
 });
 
-it("authenticates the approved OCR record but runs neither write when the saved-contact read is turned off", async () => {
+it("records the receipt after a confirmed manual reference read", async () => {
+  const f = await memberFixture({ onbaseFiling: "skip", stepOmissions: [{ step: "reference-check", facts: { referenceResult: "Confirmed" } }] });
+  assert.deepEqual(f.failures, []);
+  assert.equal(f.persistence.submissions.length, 1);
+  assert.partialDeepStrictEqual(receiptFor(f).output.find(fact => fact.field === "disposition"),
+    { state: "satisfied", value: { value: "committed" } });
+});
+
+it("records the Save receipt without releasing a child when OnBase filing is done by hand", async () => {
+  const f = await memberFixture({ stepOmissions: [{ step: "onbase-filing", facts: {} }] });
+  assert.deepEqual(f.failures, []);
+  assert.equal(f.persistence.submissions.length, 1);
+  assert.deepEqual(f.children(), []);
+  assert.equal(f.filing.imports(), 0);
+  assert.partialDeepStrictEqual(receiptFor(f).output.find(fact => fact.field === "disposition"),
+    { state: "satisfied", value: { value: "committed" } });
+});
+
+it("authenticates OCR approval, skips both writes and withholds the typed ID from Logs and Rerun", async () => {
   const f = await memberFixture({ stepOmissions: [
     { step: "contact-plan", facts: { emplId: contact.emplId } },
     { step: "contact-preview", facts: {} },
@@ -224,4 +249,16 @@ it("authenticates the approved OCR record but runs neither write when the saved-
   assert.deepEqual(f.children(), []);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
   assert.deepEqual(f.database.authority.runResults.get(f.run.envelope.runId)?.result.value, { disposition: "omitted", step: "contact-preview" });
+  assert.partialDeepStrictEqual(receiptFor(f).output.find(fact => fact.field === "step"),
+    { state: "satisfied", value: { value: "contact-preview" } });
+
+  const source = f.database.authority.runs.get(f.run.envelope.runId);
+  assert.ok(source?.lifecycle.state === "terminal" && source.lifecycle.outcome === "done");
+  const fields = projectTypedSteps(source, compiled.descriptor).get("contact-plan")?.typedValues?.fields;
+  assert.deepEqual(fields, [{ key: "emplId", label: "Employee ID", withheld: true, mark: "Typed by hand" }]);
+  const values = readRerunValues({ database: f.database, reader: f.execution.lifecycle,
+    descriptors: { resolve: id => id === compiled.descriptor.id ? compiled.descriptor : undefined } },
+  { runId: source.envelope.runId, expectedVersion: source.version });
+  assert.ok(values.state === "available", JSON.stringify(values));
+  assert.deepEqual(values.snapshot.typed?.map(({ step }) => step), ["contact-preview", "onbase-filing"]);
 });
