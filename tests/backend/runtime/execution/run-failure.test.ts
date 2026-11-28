@@ -149,8 +149,9 @@ const FIXTURE_EMPLOYEE_ID = "10456712";
 const PEOPLESOFT_PREFIX = "/psc/ucphrprd/EMPLOYEE/HRMS/";
 const LISTED_SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 
-function storedSignInFailure(detail: string, observedUrl: string, system: "ucpath" | "crm" = "ucpath", check?: "application-route") {
-  const login = new BrowserLoginError(system, "verify-landing", detail, observedUrl, undefined, undefined, check);
+function storedSignInFailure(detail: string, observedUrl: string, system: "ucpath" | "crm" = "ucpath",
+  check?: "application-route", step: BrowserLoginError["step"] = "verify-landing") {
+  const login = new BrowserLoginError(system, step, detail, observedUrl, undefined, undefined, check);
   return buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
     failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
     error: new TaskError(TASK_ID, login.code, login.message, { cause: login }),
@@ -185,28 +186,38 @@ describe("refused sign-in detail", () => {
     assert.equal(stored.includes("secret"), false);
   });
 
-  it("stores a CRM refusal as registry leaves, and Logs still show the catalog sentence", () => {
-    const failure = storedSignInFailure(
-      "the login could not prove the authenticated application",
-      `https://act-crm.my.site.com/hr/ONB_SearchOnboardings?EMPLID=${FIXTURE_EMPLOYEE_ID}`,
-      "crm",
-    );
-    assert.equal(failure.code, "CRM_SIGN_IN_FAILED");
+  it.each([
+    { system: "crm", code: "CRM_SIGN_IN_FAILED", step: "verify-landing",
+      origin: "https://act-crm.my.site.com", path: "/hr/ONB_SearchOnboardings",
+      expected: "Relay could not verify the signed-in CRM page." },
+    { system: "crm", code: "CRM_SIGN_IN_FAILED", step: "sso-form",
+      origin: "https://a5.ucsd.edu", path: "/tritON/profile/SAML2/Redirect/SSO",
+      expected: "Relay could not verify the UCSD sign-in form for CRM." },
+    { system: "ucpath", code: "UCPATH_SIGN_IN_FAILED", step: "verify-landing",
+      origin: "https://ucphrprdpub.universityofcalifornia.edu", path: PEOPLESOFT_PREFIX,
+      expected: "UCPath sign-in failed." },
+  ] as const)("shows the $code $step refusal in Logs without exposing diagnostics", ({ system, code, step, origin, path, expected }) => {
+    const failure = storedSignInFailure("the sign-in check refused", `${origin}${path}?EMPLID=${FIXTURE_EMPLOYEE_ID}`,
+      system, undefined, step);
+    assert.equal(failure.code, code);
     assert.equal(failure.debug?.signInRefusal?.check, undefined);
     assert.deepEqual(failure.debug?.signInRefusal, {
-      system: "crm",
-      step: "verify-landing",
-      pageOrigin: "https://act-crm.my.site.com",
-      pagePath: "/hr/ONB_SearchOnboardings",
+      system,
+      step,
+      pageOrigin: origin,
+      pagePath: path,
     });
-    assert.equal(projectFailureForOperator(failure).summary, "CRM sign-in failed.");
+    const projected = projectFailureForOperator(failure, true);
+    assert.equal(projected.summary, expected);
+    assert.equal(projected.debug, undefined);
     assert.equal(JSON.stringify(failure).includes(FIXTURE_EMPLOYEE_ID), false);
 
     const original = FIXTURE_FAILURE_SECTIONS[FIXTURE_IDS.failedRun].failure;
     assert.ok(original.section === "failure" && original.payload.state === "available");
     const source = original.payload.value;
     const section = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: {
-      ...source, code: "UCPATH_SIGN_IN_FAILED", summary: `private ${FIXTURE_EMPLOYEE_ID}`,
+      ...source, code: failure.code, summary: `private ${FIXTURE_EMPLOYEE_ID}`,
+      display: { title: "Sign in", observation: system === "ucpath" ? `private observation ${FIXTURE_EMPLOYEE_ID}` : projected.summary },
     } } });
     const detail = FIXTURE_RUN_DETAILS[FIXTURE_IDS.failedRun];
     assert.ok(detail);
@@ -215,8 +226,8 @@ describe("refused sign-in detail", () => {
       { artifactUrl: () => { throw new Error("sign-in refusal must not request an artifact"); } });
     const entry = projection.steps.find(step => step.id === source.failureId)?.entries[0];
     assert.ok(entry?.kind === "decision");
-    assert.equal(entry.decision.message, "UCPath sign-in failed.");
-    assert.equal(entry.decision.message.includes(FIXTURE_EMPLOYEE_ID), false);
+    assert.equal(entry.decision.message, expected);
+    assert.equal(JSON.stringify(entry.decision).includes(FIXTURE_EMPLOYEE_ID), false);
   });
 
   it("stores a landing stall as the registry origin when the path is not listed", () => {

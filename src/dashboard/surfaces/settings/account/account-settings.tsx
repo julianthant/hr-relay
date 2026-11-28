@@ -31,12 +31,12 @@ function showsChange(request: ProfileDetailsChangeRequest, account: AccountValue
     && (request.timekeeperInitials === undefined || account.timekeeperInitials === request.timekeeperInitials);
 }
 
-function Group({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
-  return <BodySection title={label} description={description}><FormGroup label={label}>{children}</FormGroup></BodySection>;
+function Group({ label, description, notice, children }: { label: string; description?: string; notice?: ReactNode; children: ReactNode }) {
+  return <BodySection title={label} description={description}>{notice !== undefined && <div className="my-[var(--ds-space-section)]">{notice}</div>}<FormGroup label={label}>{children}</FormGroup></BodySection>;
 }
 
 /** Account page: read-only profile facts, the changeable Relay username and password, the editable UCPath sign-in, Duo status, and Delete account. */
-export function AccountSettings({ page, username, ucpath, deleteAccount }: { page: AccountPage; username: string | undefined; ucpath: ReactNode; deleteAccount: ReactNode }) {
+export function AccountSettings({ page, username, ucpath, credentialsNotice, deleteAccount }: { page: AccountPage; username: string | undefined; ucpath: ReactNode; credentialsNotice?: ReactNode; deleteAccount: ReactNode }) {
   const { duoKeys, onDuoSetup, login } = page;
   const [saved, setSaved] = useState<{ readonly base: string; readonly values: AccountValues } | undefined>();
   const base = JSON.stringify(page.values);
@@ -79,7 +79,7 @@ export function AccountSettings({ page, username, ucpath, deleteAccount }: { pag
       <ResultRow label="Last signed in" value={<span className="inline-flex items-center justify-end gap-3"><span className="text-ui-primary">{formatDayTime(values.lastSignedInAt)}</span><span aria-hidden className="size-[var(--ds-h-sm)]" /></span>} />
     </Group>
     {ucpath}
-    <Group label="Workflow configuration" description="Names workflows put on the forms they file.">
+    <Group label="Workflow configuration" description="Names workflows put on the forms they file." notice={credentialsNotice}>
       {details("Timekeeper name", values.timekeeper, timekeeperName => ({ timekeeperName }), "profile.displayName")}
       {details("Timekeeper initials", values.timekeeperInitials, timekeeperInitials => ({ timekeeperInitials }), "profile.initials")}
     </Group>

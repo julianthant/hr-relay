@@ -1,3 +1,4 @@
+import { recordHistoricalRecover } from "../../../support/helpers/backend/record-historical-recover.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
@@ -126,7 +127,7 @@ it("keeps recovery issuance on the new run and respects exact resume versions", 
   const source = h.start(h.proposal());
   assert.equal((await h.execute(source)).state, "failed");
   const failed = h.fresh(source);
-  const recovered = h.kernel.execute({ commandId: h.ids.uuid(), family: "run", type: "recover-run", source: "dashboard",
+  const recovered = recordHistoricalRecover(h, h.descriptor, { commandId: h.ids.uuid(), family: "run", type: "recover-run", source: "dashboard",
     requestedBy: "local-operator", requestedAt: h.clock.now().toISOString(),
     target: { runId: failed.envelope.runId, expectedVersion: failed.version } });
   assert.ok(recovered.state === "applied");
@@ -237,7 +238,7 @@ it("reuses validated projection records within one snapshot without sharing call
   const source = h.start(h.proposal());
   assert.equal((await h.execute(source)).state, "failed");
   const failed = h.fresh(source);
-  const recovery = h.kernel.execute({ commandId: h.ids.uuid(), family: "run", type: "recover-run", source: "dashboard",
+  const recovery = recordHistoricalRecover(h, h.descriptor, { commandId: h.ids.uuid(), family: "run", type: "recover-run", source: "dashboard",
     requestedBy: "local-operator", requestedAt: h.clock.now().toISOString(),
     target: { runId: failed.envelope.runId, expectedVersion: failed.version } });
   assert.ok(recovery.state === "applied");

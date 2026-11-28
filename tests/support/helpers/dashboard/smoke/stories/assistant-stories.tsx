@@ -1,14 +1,14 @@
-/** Assistant surface stories: the ChatGPT account the panel needs, every turn it can be in, each proposal card and how it is settled,
- * the refusals it shows, files attached to a message, the history it opens on, and the list of chats. The real panel runs on the real controller; a scripted client answers it.
- * The turn's `unknown` state is reached by cancelling a reply that has not answered. The turn's `cancelled` state and a proposal's `edited`
- * disposition come only from typing while a reply is pending, and the composer is disabled then, so no person reaches them. */
+/** Assistant surface stories: the ChatGPT account the panel needs, every turn it can be in, each reply it shows (an answer, a proposal waiting on a typed yes,
+ * the answered yes with its session chip), the refusals it shows, files attached to a message, the history it opens on, and the list of chats.
+ * The real panel runs on the real controller; a scripted client answers it.
+ * The turn's `cancelled` state comes only from typing while a reply is pending, and the composer is disabled then, so no person reaches it. */
 import type { Page } from "@playwright/test";
 import type { ChatGptAccountSnapshot } from "../../../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
-import type { AssistantHistoryState, AssistantRefusalAction, AssistantTurn } from "../../../../../../src/dashboard/surfaces/assistant/assistant-model.js";
+import type { AssistantHistoryState, AssistantTurn } from "../../../../../../src/dashboard/surfaces/assistant/assistant-model.js";
 import type { AssistantFileStage } from "../../../../../../src/dashboard/surfaces/shell/assistant-panel-model.js";
 import type { ChatListView } from "../../../../../../src/dashboard/surfaces/shell/hub-shell-model.js";
 import { ASSISTANT_FAILURES } from "../../../../../../src/models/dashboard/assistant.js";
-import { ASSISTANT_STORY_CHATS, ASSISTANT_STORY_PROMPT, type AssistantProposalKind } from "../../../../fixtures/dashboard/assistant-story-fixtures.js";
+import { ASSISTANT_STORY_CHATS, ASSISTANT_STORY_PROMPT, type AssistantReplyScript } from "../../../../fixtures/dashboard/assistant-story-fixtures.js";
 import { withKnownBreaks } from "../known-breaks.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
 import type { ComposerMenu } from "../../../../../../src/dashboard/surfaces/shell/composer-model.js";
@@ -19,12 +19,16 @@ function scene(title: string, props: AssistantHostProps = {}, story: Partial<Sto
   return { title, render: () => <AssistantHost props={props} />, ready: PANEL, ...story };
 }
 
-const send = async (page: Page): Promise<void> => {
-  await page.locator("textarea[name=message]").fill(ASSISTANT_STORY_PROMPT);
+const sendMessage = async (page: Page, message: string): Promise<void> => {
+  await page.locator("textarea[name=message]").fill(message);
   await page.getByRole("button", { name: "Send message", exact: true }).click();
 };
+const send = (page: Page) => sendMessage(page, ASSISTANT_STORY_PROMPT);
 const press = (name: string) => async (page: Page): Promise<void> => { await page.getByRole("button", { name, exact: true }).first().click(); };
 const then = (...steps: readonly ((page: Page) => Promise<void>)[]) => async (page: Page): Promise<void> => { for (const step of steps) await step(page); };
+const approvalProps = { modelPreference: { slug: "gpt-6.1-sol", effort: "medium" }, fullAccess: true } satisfies AssistantHostProps;
+const openApproval = press("Ask before every action");
+const pickFullAccess = then(openApproval, async page => { await page.getByRole("menuitemradio", { name: /^Full access/u }).click(); });
 /** A story that sends the request and waits on what comes back. */
 const after = (title: string, props: AssistantHostProps, ready: string, ...more: readonly ((page: Page) => Promise<void>)[]): Story =>
   scene(title, props, { play: then(send, ...more), ready });
@@ -51,37 +55,30 @@ const TURN = {
   idle: scene("A new chat waiting for a request"),
   waiting: after("A reply being prepared", { client: { reply: "never" } }, 'text="Preparing a reply…"'),
   failed: after("A reply that never arrived", { client: { reply: "lost" } }, 'text="Reply unavailable."'),
-  unknown: after("A reply cancelled before it answered", { client: { reply: "never" } }, 'text=/unclear whether this finished/', press("Cancel")),
-} satisfies Record<Exclude<AssistantTurn["state"], "proposal" | "cancelled">, Story>;
+  // `unknown` follows only an uncertain model save; the controller tests cover it.
+} satisfies Record<Exclude<AssistantTurn["state"], "cancelled" | "unknown">, Story>;
 
+const reply = (script: AssistantReplyScript): AssistantHostProps => ({ client: { reply: script } });
+const edit = (title: string, script: "spreadsheet-edit" | "settings-edit" | "undo-edit", message: string): Story =>
+  scene(title, { ...reply(script), modelChoices: true, modelPreference: { slug: "gpt-6.1-sol", effort: "medium" } }, { ready: 'text="Edit applied"', play: page => sendMessage(page, message) });
 const REPLY = {
-  answer: after("A short answer", {}, 'text="Employee ID 10101010"'),
-  "answer-long": after("A long answer", { client: { reply: "answer-long" } }, 'text=/Each of these records/'),
-} satisfies Record<"answer" | "answer-long", Story>;
+  answer: after("A short answer", {}, 'text="10101010"'),
+  "answer-long": after("A long answer", reply("answer-long"), 'text=/Each of these records/'),
+  proposal: after("A proposal waiting on a typed yes", reply("proposal"), 'text="Reply yes to file it, or tell me what to change."'),
+  "proposal-many": after("Several rows proposed", reply("proposal-many"), 'text=/Reply yes to save all 3/'),
+  "spreadsheet-edit": edit("A spreadsheet edit", "spreadsheet-edit", "Rename the spreadsheet to Summer tracker."),
+  "settings-edit": edit("A settings edit", "settings-edit", "Turn headless browser mode off."),
+  "undo-edit": edit("A spreadsheet edit undone", "undo-edit", "Undo the tracker change."),
+  "answered-yes": after("A typed yes that started a session", reply("answered-yes"), '.reply-session'),
+  "full-access-dry-run": scene("A dry run started with Full access", { ...approvalProps, ...reply("full-access-dry-run") },
+    { play: then(pickFullAccess, async page => { await page.getByRole("textbox", { name: "Message Relay" }).fill("Start a Separations dry run."); }, press("Send message")), ready: '.reply-session' }),
+} satisfies Record<Exclude<AssistantReplyScript, "never" | "lost" | { readonly refused: unknown }>, Story>;
 
-const proposal = (kind: AssistantProposalKind): AssistantHostProps => ({ client: { reply: { proposal: kind } } });
-const CARD = '[aria-label^="Proposed"]';
-const KIND = {
-  start: after("A workflow start proposed", proposal("start"), CARD),
-  "start-many": after("Several rows proposed to start", proposal("start-many"), CARD),
-  rerun: after("A rerun proposed", proposal("rerun"), CARD),
-  pause: after("A pause proposed", proposal("pause"), CARD),
-  "separations-many": after("Several separations proposed", proposal("separations-many"), CARD),
-} satisfies Record<AssistantProposalKind, Story>;
-
-const DISPOSITION = {
-  review: after("A proposal waiting on a decision", proposal("start"), CARD),
-  confirming: after("A confirmation being applied", { ...proposal("start"), client: { reply: { proposal: "start" }, decision: "never" } }, 'text="Confirming the action…"', press("Confirm")),
-  confirmed: after("A proposal that was confirmed", proposal("start"), '[aria-label="Resolved proposal"]', press("Confirm")),
-  cancelled: after("A proposal that was cancelled", proposal("start"), '[aria-label="Resolved proposal"]', press("Cancel")),
-  stale: after("A proposal the server refused", { client: { reply: { proposal: "start" }, decision: { refused: "ASSISTANT_CONVERSATION_STALE" } } }, 'text=/Plan out of date/', press("Confirm")),
-  unknown: after("A confirmation whose result is not known", { client: { reply: { proposal: "start" }, decision: "unknown" } }, 'text=/Check Queue/', press("Confirm")),
-} satisfies Record<Exclude<Extract<AssistantTurn, { state: "proposal" }>["disposition"], "edited">, Story>;
-
+// A refusal is one notice with no button; the account strip carries Sign in or Open Settings.
 const REFUSAL = {
-  "open-settings": after("A reply refused because the plan is off", { client: { reply: { refused: "ASSISTANT_PLAN_DISABLED" } } }, 'button:has-text("Open Settings")'),
-  retry: after("A reply refused for too many requests", { client: { reply: { refused: "CHATGPT_RATE_LIMITED" } } }, 'button:has-text("Retry")'),
-} satisfies Record<AssistantRefusalAction, Story>;
+  "plan-off": after("A reply refused because the plan is off", { client: { reply: { refused: "ASSISTANT_PLAN_DISABLED" } } }, `[title=${JSON.stringify(ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED)}]`),
+  "rate-limited": after("A reply refused for too many requests", { client: { reply: { refused: "CHATGPT_RATE_LIMITED" } } }, `[title=${JSON.stringify(ASSISTANT_FAILURES.CHATGPT_RATE_LIMITED)}]`),
+};
 
 const HISTORY = {
   loading: scene("History being read", { loading: true }, { ready: '[aria-label="Loading chat"]', slowFetch: { region: '[aria-label="Loading chat"]' } }),
@@ -116,10 +113,16 @@ const MENU = {
     { ready: "#hub-model-trigger" }),
 } satisfies Record<Extract<ComposerMenu, "model">, Story>;
 
+const APPROVAL = {
+  off: scene("Approval menu with Full access off", { ...approvalProps, fullAccess: false }, { play: openApproval, ready: '[data-menu="approval"][data-open]' }),
+  on: scene("Approval menu with Full access picked", approvalProps, { play: then(pickFullAccess, press("Full access")), ready: '[data-menu="approval"][data-open]' }),
+} satisfies Record<"off" | "on", Story>;
+
 const AUDIT_FIXES = "#532";
 const BREAK_SETS = {
   /** The composer's approval picker is switched off while no model preference is served, and its Send button is not painted the accent. */
   COMPOSER: ["no-dead-disabled-control", "primary-button-accent"],
+  MODEL_COMPOSER: ["named-and-focusable", "primary-button-accent"],
   /** COMPOSER, and a control in the open panel (the message box, or a button in the transcript) shows no visible focus ring. */
   COMPOSER_FOCUS: ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
   /** COMPOSER_FOCUS, and the history skeleton is drawn from the loading flag while no read is held. */
@@ -141,33 +144,30 @@ const KNOWN_BREAKS = {
   "attachment/spreadsheet": BREAK_SETS.COMPOSER_FOCUS,
   "attachment/staged": BREAK_SETS.COMPOSER_FOCUS,
   "attachment/unsupported": BREAK_SETS.COMPOSER_FOCUS,
-  "disposition/cancelled": BREAK_SETS.COMPOSER_FOCUS,
-  "disposition/confirmed": BREAK_SETS.COMPOSER_FOCUS,
-  "disposition/confirming": BREAK_SETS.COMPOSER_FOCUS,
-  "disposition/review": BREAK_SETS.COMPOSER_FOCUS,
-  "disposition/stale": BREAK_SETS.COMPOSER_FOCUS,
-  "disposition/unknown": BREAK_SETS.COMPOSER,
+  "approval/off": ["named-and-focusable", "primary-button-accent"],
+  "approval/on": ["named-and-focusable", "primary-button-accent"],
   "history/failed": BREAK_SETS.COMPOSER_FOCUS,
   "history/notice": BREAK_SETS.COMPOSER_FOCUS,
   "history/ready": BREAK_SETS.COMPOSER_FOCUS,
-  "menu/model": ["named-and-focusable", "primary-button-accent"],
-  "kind/pause": BREAK_SETS.COMPOSER_FOCUS,
-  "kind/rerun": BREAK_SETS.COMPOSER_FOCUS,
-  "kind/separations-many": BREAK_SETS.COMPOSER_FOCUS,
-  "kind/start": BREAK_SETS.COMPOSER_FOCUS,
-  "kind/start-many": BREAK_SETS.COMPOSER_FOCUS,
+  "menu/model": BREAK_SETS.MODEL_COMPOSER,
   "plan/enabled": BREAK_SETS.COMPOSER_FOCUS,
-  "refusal/open-settings": BREAK_SETS.COMPOSER_FOCUS,
-  "refusal/retry": BREAK_SETS.COMPOSER_FOCUS,
+  "refusal/plan-off": BREAK_SETS.COMPOSER_FOCUS,
+  "refusal/rate-limited": BREAK_SETS.COMPOSER_FOCUS,
   "reply/answer": BREAK_SETS.COMPOSER_FOCUS,
   "reply/answer-long": BREAK_SETS.COMPOSER_FOCUS,
+  "reply/proposal": BREAK_SETS.COMPOSER_FOCUS,
+  "reply/proposal-many": BREAK_SETS.COMPOSER_FOCUS,
+  "reply/answered-yes": BREAK_SETS.COMPOSER_FOCUS,
+  "reply/spreadsheet-edit": BREAK_SETS.MODEL_COMPOSER,
+  "reply/settings-edit": BREAK_SETS.MODEL_COMPOSER,
+  "reply/undo-edit": BREAK_SETS.MODEL_COMPOSER,
+  "reply/full-access-dry-run": ["named-and-focusable", "primary-button-accent"],
   "turn/failed": BREAK_SETS.COMPOSER_FOCUS,
   "turn/idle": BREAK_SETS.COMPOSER_FOCUS,
-  "turn/unknown": BREAK_SETS.COMPOSER,
   "turn/waiting": BREAK_SETS.COMPOSER,
   "history/loading": BREAK_SETS.COMPOSER_FOCUS_SKELETON,
 } as const;
 
 export const ASSISTANT_STORIES = withKnownBreaks(
-  defineSurface("assistant", { account: ACCOUNT, plan: PLAN, turn: TURN, reply: REPLY, kind: KIND, disposition: DISPOSITION, refusal: REFUSAL, attachment: ATTACHMENT, history: HISTORY, chats: CHATS, menu: MENU }),
+  defineSurface("assistant", { account: ACCOUNT, plan: PLAN, turn: TURN, reply: REPLY, refusal: REFUSAL, attachment: ATTACHMENT, history: HISTORY, chats: CHATS, menu: MENU, approval: APPROVAL }),
   "assistant", AUDIT_FIXES, KNOWN_BREAKS);

@@ -127,6 +127,7 @@ export interface WorkerLoopDependencies {
   readonly controlPoll?: () => "run" | "pause" | "stop";
   /** The child's one turn shared with parent controls: `begin` is false while a control runs. */
   readonly claimTurn?: Readonly<{ begin(): boolean; end(): void }>;
+  readonly watchForWork?: () => AbortSignal;
   /** Hands the loop's session manager to the child's parent-request handlers. */
   readonly bindSessions?: (sessions: WorkerSessionManager) => void;
   readonly browserActivity?: (activity: "acquiring" | "authenticating" | "closing") => () => void;
@@ -206,8 +207,10 @@ async function boundedWait(
   scheduler: MonotonicDeadlineScheduler,
   clock: Clock,
   ms: number,
-  signal: AbortSignal,
+  stopSignal: AbortSignal,
+  workAvailable?: AbortSignal,
 ): Promise<void> {
+  const signal = workAvailable === undefined ? stopSignal : AbortSignal.any([stopSignal, workAvailable]);
   if (ms <= 0 || signal.aborted) return;
   await new Promise<void>((resolve) => {
     const handle = scheduler.schedule(clock.monotonicMs() + ms, () => {
@@ -337,6 +340,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     };
     while (!deps.stopSignal.aborted) {
       // Between items only: the active run always settles before the next poll.
+      const workAvailable = deps.watchForWork?.();
       const directive = deps.controlPoll?.() ?? "run";
       if (directive === "stop") {
         stopped = "stop-directive";
@@ -344,10 +348,11 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       }
       if (directive === "pause" || deps.claimTurn?.begin() === false) {
         // Paused, or a parent control holds the turn: claim nothing and re-poll on the bounded idle cadence.
-        await boundedWait(deps.scheduler, clock, (deps.idleCadence?.() ?? deps.idleRepollMs), deps.stopSignal);
+        await boundedWait(deps.scheduler, clock, (deps.idleCadence?.() ?? deps.idleRepollMs), deps.stopSignal, workAvailable);
         continue;
       }
       let idleDelayMs: number | undefined;
+      let idleWake: AbortSignal | undefined;
       try {
       const claimRequest = {
         commandId: lifecycleCommandId("claim", { workerId, nonce: deps.ids.uuid() }),
@@ -396,6 +401,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         // No browser stays open while a parent waits on a gate or on its children.
         if (parksWhenIdle) await sessions.closeAll("parked");
         idleDelayMs = decision.delayMs;
+        idleWake = workAvailable;
         continue;
       }
 
@@ -507,7 +513,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         for (const state of undeliveredTransitions.splice(0)) {
           deps.log.warn("Worker lifecycle diagnostic delivery failed.", { workerId, state });
         }
-        if (idleDelayMs !== undefined) await boundedWait(deps.scheduler, clock, idleDelayMs, deps.stopSignal);
+        if (idleDelayMs !== undefined) await boundedWait(deps.scheduler, clock, idleDelayMs, deps.stopSignal, idleWake);
       }
     }
     finishRefusal();

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { derivePersistedSettingsFingerprint, SettingsFileRecordSchema } from "../../../models/config/settings.js";
-import { PRE_PANEL_MODE_RETIREMENT_SETTINGS_SCHEMA_HASH, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH,
+import { PRE_ASSISTANT_FULL_ACCESS_SETTINGS_SCHEMA_HASH, PRE_PANEL_MODE_RETIREMENT_SETTINGS_SCHEMA_HASH, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH,
   PRE_RUNS_NOTIFICATIONS_SETTINGS_SCHEMA_HASH, PRE_SEND_SHORTCUT_SETTINGS_SCHEMA_HASH,
   RETIRED_PANEL_MODE, RetiredPanelModeSchema, SettingsSchemaWithPanelMode } from "../../../models/config/settings-record-conversion.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
@@ -10,7 +10,7 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 
 /** The newest schema whose migration converts settings records; a stopped store below it is read through the converter. */
-export const SETTINGS_RECORD_CONVERSION_VERSION = 42;
+export const SETTINGS_RECORD_CONVERSION_VERSION = 45;
 
 type SettingsRecordConversion = Readonly<{
   /** The settings schema hash a stored row carries before this conversion, and after it. */
@@ -39,19 +39,22 @@ const SEND_SHORTCUT_CONVERSION = conversion(3, "send-shortcut", PRE_SEND_SHORTCU
   sendShortcut: "enter",
 });
 const PANEL_MODE_RETIREMENT_CONVERSION = conversion(4, "panel-mode-retirement", PRE_PANEL_MODE_RETIREMENT_SETTINGS_SCHEMA_HASH,
-  "c449d9a78f44a4fcd3e0ff0b07746dd1157a325384321d409edb470a432394c5", {}, [RETIRED_PANEL_MODE]);
+  PRE_ASSISTANT_FULL_ACCESS_SETTINGS_SCHEMA_HASH, {}, [RETIRED_PANEL_MODE]);
+const ASSISTANT_FULL_ACCESS_CONVERSION = conversion(5, "assistant-full-access", PRE_ASSISTANT_FULL_ACCESS_SETTINGS_SCHEMA_HASH,
+  "e101baaff44410844db1a6afa5857aa7a8f8c30052c035e08a03a4dde45bd7e2", { assistantFullAccess: false });
 /**
  * Every conversion of the stored settings record, oldest first; each entry starts at the hash the one before it ends on.
  * An entry is frozen: its hashes and defaults are literals, so the SQL of its migration never changes. A change to the
  * settings schema appends one entry, whose `to` is the new SETTINGS_SCHEMA_HASH, and one migration that runs its marker.
  */
 export const SETTINGS_RECORD_CONVERSIONS: readonly SettingsRecordConversion[] = deepFreeze([
-  PERSON_PREFERENCES_CONVERSION, RUNS_NOTIFICATIONS_CONVERSION, SEND_SHORTCUT_CONVERSION, PANEL_MODE_RETIREMENT_CONVERSION,
+  PERSON_PREFERENCES_CONVERSION, RUNS_NOTIFICATIONS_CONVERSION, SEND_SHORTCUT_CONVERSION, PANEL_MODE_RETIREMENT_CONVERSION, ASSISTANT_FULL_ACCESS_CONVERSION,
 ]);
 export const PERSON_PREFERENCES_CONVERSION_MARKER = PERSON_PREFERENCES_CONVERSION.marker;
 export const RUNS_NOTIFICATIONS_CONVERSION_MARKER = RUNS_NOTIFICATIONS_CONVERSION.marker;
 export const SEND_SHORTCUT_CONVERSION_MARKER = SEND_SHORTCUT_CONVERSION.marker;
 export const PANEL_MODE_RETIREMENT_CONVERSION_MARKER = PANEL_MODE_RETIREMENT_CONVERSION.marker;
+export const ASSISTANT_FULL_ACCESS_CONVERSION_MARKER = ASSISTANT_FULL_ACCESS_CONVERSION.marker;
 
 export function isSettingsRecordConversionMarker(statement: string): boolean {
   return SETTINGS_RECORD_CONVERSIONS.some(entry => entry.marker === statement);
@@ -104,7 +107,7 @@ function snapshotRow(row: Record<string, unknown>) {
     members(convertPreferences({}, SETTINGS_RECORD_CONVERSIONS.slice(0, index + 1))) === members(stored)) + 1;
   if (stored !== undefined && held === 0) throw new Error("settings-record-predecessor-shape-invalid");
   if (held === SETTINGS_RECORD_CONVERSIONS.length) return row;
-  if (stored !== undefined && !RetiredPanelModeSchema.safeParse(stored[RETIRED_PANEL_MODE]).success) {
+  if (stored !== undefined && Object.hasOwn(stored, RETIRED_PANEL_MODE) && !RetiredPanelModeSchema.safeParse(stored[RETIRED_PANEL_MODE]).success) {
     throw new Error("settings-record-predecessor-shape-invalid");
   }
   const preferences = convertPreferences(stored ?? {}, SETTINGS_RECORD_CONVERSIONS.slice(held));

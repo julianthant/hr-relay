@@ -7,6 +7,7 @@ type ActionCommand = z.infer<typeof ActionCommandKeySchema>;
 /** How an option is sent, as declared; the projection binds it to the instance's served key. */
 export type DeclaredSend =
   | Readonly<{ via: "action" | "row-action"; command: ActionCommand }>
+  | Readonly<{ via: "row-action"; navigation: "rerun" }>
   | Readonly<{ via: "gate-arm" }>
   | Readonly<{ via: "start-plan" }>
   | Readonly<{ via: "command"; family: string; type: string }>;
@@ -34,6 +35,7 @@ const parkedWrite: readonly DeclaredOption[] = [
   { id: "saved", label: "Saved", hint: "Relay verifies first.", send: { via: "action", command: "recheck-write" } },
   { id: "not-saved", label: "Not saved, write it again", send: { via: "action", command: "resolve-write-absent" } },
 ];
+export const READ_BACK_SAVED_LABEL = "Checked by hand, continue";
 
 /** How a parked write of each registered write task is asked about: the record, its system, what Relay clicked, where to check and what Not saved does next. */
 export type ParkedWriteRecord = Readonly<{ record: string; system: string; act: "Submit" | "Save" | "Import"; check: string; again: string;
@@ -94,8 +96,8 @@ export const DECISION_CATALOG: Readonly<Record<RunDecisionType, DecisionDeclarat
     { id: "resume", label: "Resume", send: { via: "row-action", command: "resume" } },
     cancelRun,
   ] },
-  stalled: { title: "Run not responding", recommended: ["recover"], options: [
-    { id: "recover", label: "Recover", hint: "From the last completed step.", send: { via: "row-action", command: "recover-run" } },
+  stalled: { title: "Run not responding", recommended: ["rerun"], options: [
+    { id: "rerun", label: "Rerun", send: { via: "row-action", navigation: "rerun" } },
     cancelRun,
   ] },
   refused: { title: "Request refused", recommended: [], projected: false, options: [] },

@@ -33,7 +33,7 @@ export class ScriptedWorkerChild implements WorkerProcessPort {
     this.sent.push(message);
     callback(null);
     setImmediate(() => {
-      if (this.#exited) return;
+      if (this.#exited || message.kind === "worker-work-available") return;
       if (message.kind === "worker-stop") { if (this.behavior.exitOnStop) this.exit(0, null); }
       else if (message.kind === "worker-pause" || message.kind === "worker-resume") {
         this.emit({ kind: "worker-reply", requestId: message.requestId, outcome: { state: "done", result: { directive: message.kind === "worker-pause" ? "pause" : "run" } } });

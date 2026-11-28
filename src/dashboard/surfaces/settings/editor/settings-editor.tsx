@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 import { Form } from "@heroui/react";
-import { Banner, Button, FormGroup, PageHeading, Spinner, dsText, Notice } from "../../../ds/ui.js";
+import { Banner, Button, FailureNotice, FormGroup, PageHeading, Spinner, dsText, Notice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { settingsSectionGroups, formatSetting } from "./settings-draft-model.js";
-import { SettingsValueControl } from "./settings-controls.js";
+import { SavingMark, SettingsValueControl } from "./settings-controls.js";
 import { timeoutReadableValue, timeoutSetting } from "../general/settings-timeouts-model.js";
 import { CompactSettingsSection } from "../general/ui-settings-records-general-paths.js";
 import { PerformanceSettingsSection } from "../general/ui-settings-records-performance.js";
@@ -25,10 +25,10 @@ export function EditableSettingsSection({ editor, sectionId, appearance }: { edi
   if (sectionId === "performance") return <PerformanceSettingsSection editor={editor} />;
   if (sectionId === "providers") return <Banner tone="info" title="Provider settings retired">ChatGPT sign-in is available in General.</Banner>;
   if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings unavailable" description="Reopen Settings to try again." />;
+  if (editor.editor.state === "failed") return <FailureNotice sentence="Settings unavailable; reopen Settings to try again." />;
   const document = editor.editor.document;
   const sections = document.sections.filter(section => section.id === sectionId);
-  if (sections.length === 0) return <Notice tone="danger" title="Section unavailable" />;
+  if (sections.length === 0) return <FailureNotice sentence="Section unavailable." />;
   const leaves = sections.flatMap(section => section.leaves);
   const pageTitle = sections[0]?.label ?? sectionId;
   return <section className="settings-editor">
@@ -49,6 +49,7 @@ export function EditableSettingsSection({ editor, sectionId, appearance }: { edi
               : formatSetting(leaf.defaultValue);
               return <div key={leaf.path} data-settings-path={leaf.path} className="settings-row">
                 <SettingsValueControl leaf={leaf} operation={operation} error={editor.errors[leaf.path]} disabled={editor.locked} update={(raw, immediate) => editor.update(leaf.path, raw, immediate)} />
+              <SavingMark editor={editor} path={leaf.path} />
               {leaf.validity === "unset" && <span className={cn(dsText.meta, "settings-row-hazard text-[color:var(--ds-status-waiting-fg)]")}>Not set</span>}
               {(custom || operation !== undefined) && <div className="settings-row-actions">
                 {custom && !requiredJobEndDate && operation?.kind !== "clear" && <Button size="sm" variant="ghost" title={`Standard value: ${shownDefault}`} onClick={() => editor.clear(leaf.path)} disabled={editor.locked}>Restore standard</Button>}

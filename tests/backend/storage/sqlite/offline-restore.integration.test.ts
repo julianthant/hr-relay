@@ -82,13 +82,15 @@ describe("assistant history through backup and restore", () => {
         return seedAssistantPhaseOne(raw, admission.profileBinding.profileId, now);
       })();
       let db = open();
+      db.bindAssistantEpoch(() => 1);
       const history = db.authority.assistantHistory, id = randomUUID(), messageId = randomUUID();
       assert.equal(history.apply({ operation: "create", conversationId: id, title: "Kept chat" }, now).state, "saved");
       assert.equal(history.apply({ operation: "draft", conversationId: id, draft: "unsent é", composer: "😀" }, now).state, "saved");
-      const accepted = history.accept({ conversationId: id, expectedRevision: 1, messageId, text: "Explain 10812345", modelText: "Explain [[E1.g1]]", subjectRef: null, attachments: [], now });
-      assert.equal(accepted.state, "accepted");
-      assert.equal(typeof history.settle(id, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: "Answer for 10812345", modelText: "Answer for [[E1.g1]]" } }, now), "number");
-      const expected = { conversation: history.conversation(id, now), replay: history.replay(id, 99) };
+      const accepted = history.accept({ conversationId: id, expectedRevision: 1, messageId, text: "Explain 10812345", modelText: "Explain [[E1.g1]]", subjectRef: null, attachments: [], proposalAnswer: null, now });
+      if (accepted.state !== "accepted") assert.fail("the turn was not accepted");
+      assert.equal(typeof history.settle(accepted, { delivery: "answered", usage: { state: "measured", callCount: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        reply: { id: randomUUID(), kind: "answer", parts: [{ kind: "text", runs: [{ kind: "plain", text: "Answer for 10812345" }] }], modelText: "Answer for [[E1.g1]]" } }, now), "number");
+      const expected = { conversation: history.conversation(id, now), replay: history.replay(id, 99, now) };
       db.close();
       const expectedRows = phaseOneRows(profile.path, phaseOneChat);
       assert.deepEqual(Object.values(expectedRows).map(rows => rows.length), [3, 1, 1, 1]);
@@ -104,7 +106,7 @@ describe("assistant history through backup and restore", () => {
       }
       assert.deepEqual(Object.values(phaseOneRows(profile.path, phaseOneChat)).map(rows => rows.length), [0, 0, 0, 0]);
       const manifest = backup.manifests[0]; assert.ok(manifest);
-      assert.equal(manifest.schemaVersion, 43);
+      assert.equal(manifest.schemaVersion, 48);
       const manifestPath = join(root, "backups", "authority", `${manifest.backupFileName}.manifest.json`);
       const verified = await verifyBackupManifestAtPath(admission, manifestPath);
       assert.deepEqual(phaseOneRows(verified.backupPath, phaseOneChat), expectedRows);
@@ -122,7 +124,7 @@ describe("assistant history through backup and restore", () => {
       try {
         const restored = db.authority.assistantHistory;
         assert.deepEqual(restored.list(now), expectedList);
-        assert.deepEqual({ conversation: restored.conversation(id, now), replay: restored.replay(id, 99) }, expected);
+        assert.deepEqual({ conversation: restored.conversation(id, now), replay: restored.replay(id, 99, now) }, expected);
         assert.deepEqual(phaseOneRows(profile.path, phaseOneChat), expectedRows);
       } finally { db.close(); }
     } finally { await profile.close(); }

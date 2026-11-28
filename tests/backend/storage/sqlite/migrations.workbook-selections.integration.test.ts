@@ -94,7 +94,7 @@ it('adds an empty selection authority at 25 and preserves prior mappings, metada
     });
     expect(f.repository.lastUsed('person-lookup')).toBeUndefined();
     expect(f.database.prepare('SELECT * FROM workflow_workbook_selections').all()).toEqual([]);
-    expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(43);
+    expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(48);
     expect(migrationTableNames(25).filter(table => !migrationTableNames(24).includes(table))).toEqual(['workflow_workbook_selections']);
     expect(tableClassification('workflow_workbook_selections')).toBe('authority');
     expect(auditMigrationTableCoverage()).toEqual([]);

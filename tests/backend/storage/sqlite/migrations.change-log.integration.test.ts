@@ -39,7 +39,7 @@ describe("change log migration 31", () => {
       migrateTo31(database);
       for (const value of prior) assert.deepEqual(schemaObjects(database).find(object => object.name === value.name), value);
       assert.deepEqual(migrationTableNames(30).map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), rows);
-      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 43);
+      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 48);
       assert.deepEqual(migrationTableNames(31), migrationTableNames(30));
       assert.deepEqual(auditMigrationTableCoverage(), []);
       assert.deepEqual(schemaObjects(database).filter(object => object.type === "table" && !prior.some(value => value.name === object.name)).map(object => object.name),

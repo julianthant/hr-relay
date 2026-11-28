@@ -52,6 +52,8 @@ export const RerunValuesSnapshotSchema = z.strictObject({
   spreadsheets: z.array(z.strictObject({ typeId: WorkbookIdSchema, libraryId: WorkbookIdSchema, versionId: WorkbookIdSchema, sheetId: WorkbookIdSchema,
     selectedRow: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema }).optional() })).optional(),
   steps: z.array(StepCompletionSchema),
+  /** Completed steps an interrupted rerun can retain. Delegated results stay bound to their authenticated run. */
+  retainedSteps: z.array(z.strictObject({ key: z.string().min(1), repeatable: z.boolean() })).optional(),
   /** Each delegated child workflow a Start row shows: per node, or per phase of a transaction node, the least advanced child run of that workflow. */
   children: z.array(z.strictObject({ workflow: WorkflowIdSchema, steps: z.array(StepCompletionSchema) })).optional(),
   /** The source's child runs that failed, were cancelled or were interrupted and no retry replaced, whatever the steps show. */

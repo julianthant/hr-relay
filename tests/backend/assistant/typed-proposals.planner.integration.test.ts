@@ -56,7 +56,7 @@ async function fixture() {
     browserMode: () => "headless", current: () => ({ profileId: storage.profileId(), epoch: storage.epoch() }), clock: h.clock, actorId: "local-operator" });
   const context: AssistantToolContext = { signal: new AbortController().signal, references: table, actorId: "local-operator", conversationId: chat, operatorText: "x",
     assertCurrent() {}, assertRetainedCurrent() {} };
-  const tool = owner.plugin.tools.find(entry => entry.name === "propose_workflow_start"); assert.ok(tool?.kind === "typed-proposal");
+  const tool = owner.plugin.tools.find(entry => entry.name === "propose_workflow_start"); assert.ok(tool?.kind === "proposal");
   const accept = (proposalAnswer: unknown = null) => {
     const accepted = storage.history.accept({ ...storage.input(chat), proposalAnswer: AssistantAcceptedTurnSchema.shape.proposalAnswer.parse(proposalAnswer) });
     assert.ok(accepted.state === "accepted"); return accepted;

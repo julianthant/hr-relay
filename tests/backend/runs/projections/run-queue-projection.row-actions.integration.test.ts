@@ -12,23 +12,21 @@ afterAll(() => profiles.close());
 const { world, cleanup, queuedEventOf, runRecordOf } = createRunQueueProjectionTestWorld(profiles.create);
 afterEach(cleanup);
 
-it("distinguishes recovering completed dry-run steps from starting a rerun", async () => {
+it.each(["failed", "interrupted"] as const)("serves only the Rerun dialog for a %s dry run", async outcome => {
   const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
   queuedEventOf(w, { seed: 1, dryRun: true, descriptor: personLookupDescriptor });
   claimEventOf(w, 1);
   taskEventsOf(w, 1, "searching", "done");
   w.authority.put(runRecordOf({ seed: 1, dryRun: true, descriptor: personLookupDescriptor,
-    lifecycle: { state: "terminal", outcome: "failed", endedAt: instantOffsetOf(0, 1000), failureId: uuidOf(9001) }, version: 3 }));
+    lifecycle: outcome === "failed"
+      ? { state: "terminal", outcome, endedAt: instantOffsetOf(0, 1000), failureId: uuidOf(9001) }
+      : { state: "terminal", outcome, endedAt: instantOffsetOf(0, 1000) }, version: 3 }));
   w.projection.rebuildFromTimeline();
   const row = w.projection.queueSurface(uuidOf(1));
   assert.ok(row?.dryRun);
   const actions = row.actions.filter(action => action.key === "recover-run" || action.key === "rerun");
-  assert.deepEqual(actions.map(action => ({ key: action.key, label: action.label, icon: action.icon })), [
-    { key: "rerun", label: "Rerun", icon: "retry" },
-    { key: "recover-run", label: "Recover completed steps", icon: "resume" },
-  ]);
-  assert.ok(actions.every(action => action.placement.includes("footer")));
-  assert.ok(actions.find(action => action.kind === "command" && action.command === "recover-run" && action.expectedVersion === 3));
+  assert.deepEqual(actions, [{ key: "rerun", label: "Rerun", icon: "retry", kind: "navigation",
+    navigate: { kind: "rerun", expectedVersion: 3 }, intent: "primary", placement: ["footer", "menu", "data"] }]);
 });
 
 it("withholds cancellation and retry while an UNKNOWN write is parked", async () => {

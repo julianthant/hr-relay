@@ -1,4 +1,4 @@
-import { AssistantActivityWireSchema, AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryViewSchema, AssistantRequestSchema, AssistantRespondEnvelopeSchema } from "../../../../src/models/dashboard/assistant.js";
+import { AssistantActivityWireSchema, AssistantHistoryOperationSchema, AssistantHistoryWireSchema, AssistantM1ConversationWireSchema, AssistantM1RequestSchema, AssistantM1RespondEnvelopeSchema } from "../../../../src/models/dashboard/assistant.js";
 import { ASSISTANT_PLUGIN_MODULES, assistantToolEgress } from "./assistant-tool-egress.js";
 import { ActivityPopulationSelectionSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema } from "../../../../src/models/dashboard/activity-population.js";
 import { ChatGptAccountStatusSchema, ChatGptSignInStartResultSchema, ChatGptSignInCompletionSchema, ChatGptCancelResultSchema, ChatGptOcrTestResultSchema } from "../../../../src/models/dashboard/chatgpt-account.js";
@@ -799,12 +799,12 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/clear-run-history-result", egress: "operator-loopback", module: "src/models/dashboard/run-history.ts", schema: ClearRunHistoryResultSchema },
   { id: "wire/storage-doctor-latest", egress: "operator-loopback", module: "src/models/dashboard/storage.ts", schema: StorageDoctorLatestWireSchema },
   { id: "wire/editable-settings", egress: "operator-loopback", module: "src/models/dashboard/settings-editor.ts", schema: EditableSettingsWireSchema },
-  { id: "request/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantRequestSchema },
-  { id: "wire/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantRespondEnvelopeSchema },
+  { id: "request/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantM1RequestSchema },
+  { id: "wire/assistant", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantM1RespondEnvelopeSchema },
   { id: "request/assistant-history", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantHistoryOperationSchema },
-  { id: "wire/assistant-history", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantHistoryViewSchema },
+  { id: "wire/assistant-history", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantHistoryWireSchema },
   { id: "wire/assistant-activity", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantActivityWireSchema },
-  { id: "wire/assistant-conversation", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantConversationViewSchema },
+  { id: "wire/assistant-conversation", egress: "operator-loopback", module: "src/models/dashboard/assistant.ts", schema: AssistantM1ConversationWireSchema },
   { id: "egress/assistant-user-message", egress: "process-egress", module: "src/backend/assistant/service.ts", schema: z.strictObject({ content: z.string() }) },
   // Replayed rows: operator turns replay as user messages (above); answers and the fixed proposal and decision captions replay as assistant messages.
   { id: "egress/assistant-replay", egress: "process-egress", module: "src/backend/assistant/service.ts", schema: z.strictObject({ answer: z.string(), caption: z.string() }) },
@@ -929,6 +929,17 @@ const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }
   { path: "revision.seed.review.roster.rows[].name", origin: "captured-hr-value" },
 ];
 
+/** A reply part's free-text leaves, inline and in bullets: model text, the HR values it quotes and the chip's subject; ids are served keys. */
+const ASSISTANT_INLINE_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
+  ["text", "external-text"], ["label", "external-text"], ["value", "captured-hr-value"], ["previous", "captured-hr-value"],
+  ["target.query.q", "external-text"], ["target.query.facets.subject", "captured-hr-value"],
+  ...["source.fieldId", "source.fieldPath[]", "source.libraryId", "target.libraryId", "target.location.fieldId"].map(path => [path, "repository-authored"] as const),
+  ...["source.rowId", "source.sheetId", "target.location.rowId", "target.location.sheetId"].map(path => [path, "captured-hr-value"] as const),
+];
+export const ASSISTANT_PART_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
+  ["label", "captured-hr-value"], ["meta", "repository-authored"],
+  ...["runs[]", "items[][]"].flatMap(prefix => ASSISTANT_INLINE_LEAF_ORIGINS.map(([path, origin]) => [`${prefix}.${path}`, origin] as const)),
+];
 /* The answered option's label may be a picked row's name; the actor names are the local profile's own display name. */
 const ANSWER_LEAF_ORIGINS: readonly (readonly [string, LeafOrigin])[] = [
   ["optionId", "repository-authored"], ["label", "captured-hr-value"], ["actor.name", "operator-authored"], ["actor.onBehalfOf.name", "operator-authored"],
@@ -1035,6 +1046,7 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: 'wire/workbook-library-action-status', path: 'record.libraryId', origin: 'repository-authored' },
     { surface: 'wire/workbook-library-action-result', path: 'libraryId', origin: 'repository-authored' },
     { surface: 'wire/workbook-library-catalog', path: '[].libraryId', origin: 'repository-authored' },
+    { surface: 'wire/workbook-library-catalog', path: '[].heldVersionIds[]', origin: 'repository-authored' },
     ...['name', 'worksheets[].id', 'worksheets[].name', 'metadata.typeId'].map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].${path}`, origin: 'captured-hr-value' as const })),
     ...LIBRARY_MUTABLE_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].type.${path}`, origin: 'captured-hr-value' as const })),
     ...['versionId', 'versionName'].map(path => ({ surface: 'wire/workbook-reference', path, origin: path === 'versionId' ? 'repository-authored' : 'operator-authored' })),
@@ -1272,7 +1284,6 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "request/assistant-history", path: "messages[].text", origin: "external-text" },
   { surface: "wire/assistant-history", path: "chats[].title", origin: "operator-authored" },
   { surface: "wire/assistant-activity", path: "rows[].label", origin: "repository-authored" },
-  { surface: "wire/assistant-conversation", path: "messages[].text", origin: "external-text" },
   { surface: "wire/assistant-conversation", path: "messages[].attachments[].name", origin: "local-filesystem-name" },
   { surface: "egress/assistant-user-message", path: "content", origin: "operator-authored",
     exception: "Operator decision D1 (11-06): the operator's typed assistant message is sent to ChatGPT as typed, after maskOperatorText replaces Employee IDs with references and SSNs, emails, phone numbers and long digit runs with fixed markers." },
@@ -1280,26 +1291,12 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     exception: "Operator decision D3 (11-06): a stored answer's model text, which carries references and never substituted values, is replayed to ChatGPT in later turns of the same chat; imported and local rows never replay." },
   { surface: "egress/assistant-replay", path: "caption", origin: "repository-authored" },
   ...assistantToolEgress().origins,
-  { surface: "wire/assistant", path: "result.text", origin: "external-text" },
-  { surface: "wire/assistant", path: "result.message", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "result.proposal.workflowId", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "result.proposal.label", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "result.proposal.targetLabel", origin: "captured-hr-value" },
-  { surface: "wire/assistant", path: "result.action.workflowId", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "result.action.label", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "result.action.targetLabel", origin: "captured-hr-value" },
-  ...["action", "proposal"].flatMap(root => ["row.display.fileName", "startPlan.planned[].display.fileName"].map(path => ({ surface: "wire/assistant", path: `result.${root}.${path}`, origin: "local-filesystem-name" as const }))),
-  { surface: "wire/assistant", path: "result.proposal.facts[].label", origin: "repository-authored" },
-  ...["action", "proposal"].map(root => ({ surface: "wire/assistant", path: `result.${root}.startPlan.stopBefore`, origin: "repository-authored" as const })),
-  { surface: "wire/assistant", path: "result.proposal.facts[].value", origin: "captured-hr-value" },
-  { surface: "wire/assistant", path: "result.action.facts[].label", origin: "repository-authored" },
-  { surface: "wire/assistant", path: "result.action.facts[].value", origin: "captured-hr-value" },
-  ...["action", "proposal"].flatMap(root => ["row.display.documentNumber", "row.display.name", "row.subtitle", "row.title",
-    "startPlan.planned[].display.documentNumber", "startPlan.planned[].display.name"].map(path => ({ surface: "wire/assistant", path: `result.${root}.${path}`, origin: "captured-hr-value" as const }))),
-  { surface: "wire/assistant", path: "result.proposal.startPlan.planned[].title", origin: "captured-hr-value" },
-  { surface: "wire/assistant", path: "result.proposal.startPlan.planned[].subtitle", origin: "captured-hr-value" },
-  { surface: "wire/assistant", path: "result.action.startPlan.planned[].title", origin: "captured-hr-value" },
-  { surface: "wire/assistant", path: "result.action.startPlan.planned[].subtitle", origin: "captured-hr-value" },
+  ...ASSISTANT_PART_LEAF_ORIGINS.map(([path, origin]) => ({ surface: "wire/assistant", path: `result.reply.parts[].${path}`, origin })),
+  ...ASSISTANT_PART_LEAF_ORIGINS.map(([path, origin]) => ({ surface: "wire/assistant-conversation", path: `messages[].payload.parts[].${path}`, origin })),
+  { surface: "wire/assistant-conversation", path: "messages[].payload.parts[]", origin: "repository-authored" },
+  { surface: "wire/assistant-conversation", path: "sessions[].label", origin: "captured-hr-value" },
+  { surface: "wire/assistant-conversation", path: "sessions[].meta", origin: "repository-authored" },
+  { surface: "wire/assistant-conversation", path: "sessions[].stop.descriptor", origin: "repository-authored" },
   { surface: "wire/chatgpt-ocr-test", path: "model", origin: "external-text" },
   { surface: "wire/profile-first-run-check", path: "report.results[].summary", origin: "local-filesystem-name" },
   { surface: "wire/profile-first-run-check", path: "report.results[].availableFor[]", origin: "repository-authored" },
@@ -1512,6 +1509,7 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/dashboard-day", path: "queueSurfaces[].subtitle.value", origin: "captured-hr-value" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].title", origin: "captured-hr-value" },
   { surface: "wire/rerun-values", path: "snapshot.steps[].key", origin: "repository-authored" },
+  { surface: "wire/rerun-values", path: "snapshot.retainedSteps[].key", origin: "repository-authored" },
   { surface: "wire/rerun-values", path: "snapshot.children[].steps[].key", origin: "repository-authored" },
   { surface: "wire/rerun-values", path: "snapshot.typed[].workflow", origin: "repository-authored" },
   { surface: "wire/rerun-values", path: "snapshot.typed[].labels", origin: "repository-authored" },
@@ -1720,9 +1718,10 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].help", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].values[]", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].requiredWhen.equals", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "workflows[].start.steps[].control.form.fields[].replaces.nodeId", origin: "repository-authored" },
   ...["label", "members[].workflow", "members[].nodes[]", "target.workflow", "selection.inputField",
-    "manual.form.fields[].label", "manual.form.fields[].help", "manual.form.fields[].values[]", "manual.form.fields[].replaces.nodeId",
+    "manual.form.fields[].label", "manual.form.fields[].help", "manual.form.fields[].values[]", "manual.form.fields[].requiredWhen.equals", "manual.form.fields[].replaces.nodeId",
   ].map(path => ({ surface: "wire/bootstrap", path: `workflows[].start.rows[].${path}`, origin: "repository-authored" as const })),
 
   { surface: "wire/activity-report", path: "categories[].category.reason", origin: "repository-authored" },

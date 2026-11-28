@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterAll, it } from "vitest";
-import { createAssistantService } from "../../../../../src/backend/assistant/service.js";
+import { createAssistantM1Service } from "../../../../../src/backend/assistant/service.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { registerAssistantRoutes } from "../../../../../src/backend/transports/http/routes/assistant.js";
 import { registerChatGptAccountRoutes } from "../../../../../src/backend/transports/http/routes/chatgpt-account.js";
@@ -18,8 +18,8 @@ const unused = () => { throw new Error("unexpected assistant owner"); };
 async function setup() {
   const f = await chatGptFixture(undefined, profiles.create), app: DashboardApp = new Hono();
   registerChatGptAccountRoutes(app, { clock: f.clock, chatGptAccount: f.service });
-  registerAssistantRoutes(app, createAssistantService({ account: f.service, clock: f.clock, actorId: "local-operator", owner: unused, facts: unused,
-    selectedModel: unused, history: unused, runReferenceLabel: unused }));
+  registerAssistantRoutes(app, createAssistantM1Service({ account: f.service, clock: f.clock, actorId: "local-operator", owner: unused, facts: unused,
+    selectedModel: unused, history: unused, runReferenceLabel: unused, tools: unused, debugEvents: { emit: unused } }));
   const bytes = () => readFileSync(join(f.root, "credentials/chatgpt-account.json")).toString("base64");
   return { ...f, app, bytes };
 }

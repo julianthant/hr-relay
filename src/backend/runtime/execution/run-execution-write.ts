@@ -11,15 +11,15 @@ import type { WriteIntentParkCode } from "../../storage/sqlite/write-commit-cont
 
 type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transaction" }>;
 
-export function requestedPayPathRecheck(
+export function requestedParkedWriteRecheck(
   repositories: Pick<AuthorityRepositories, "writeIntents"> & Parameters<typeof authenticateStoredParkedWriteRecheck>[0],
   run: RunRecord,
   node: TransactionRuntimeNode,
 ) {
-  if (run.envelope.dryRun || run.envelope.startAt !== node.id || node.commit.uses.id !== "ucpath/submit-paypath-work-study") return undefined;
+  if (run.envelope.dryRun || run.envelope.startAt !== node.id) return undefined;
   const matches = repositories.writeIntents.listByRun(run.envelope.runId).filter(intent => intent.status === "parked"
     && intent.taskId === node.commit.uses.id && intent.runAttempt === run.envelope.attempt && intent.recheck?.nodeId === node.id);
-  if (matches.length > 1) throw new RunContinuationRefusedError("paypath-recheck-intent-ambiguous");
+  if (matches.length > 1) throw new RunContinuationRefusedError("parked-write-recheck-intent-ambiguous");
   const [intent] = matches;
   if (intent?.status !== "parked" || intent.recheck === undefined) return undefined;
   return authenticateStoredParkedWriteRecheck(repositories, intent, intent.recheck);

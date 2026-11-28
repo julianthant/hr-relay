@@ -4,7 +4,7 @@ import { Button, Dialog, DialogBody, DialogContent, DialogFooter, type DsDialogS
 import { defineSurface, DIALOG_REFERENCE_SURFACE, DIALOG_REFERENCE_VARIANTS, type Story } from "../story-catalogue.js";
 import { StoryFrame } from "./story-frame.js";
 
-const SIZES = { sm: "sm", md: "md", lg: "lg", xl: "xl" } as const satisfies Record<DsDialogSize, DsDialogSize>;
+const SIZES = { sm: "sm", md: "md", lg: "lg" } as const satisfies Record<DsDialogSize, DsDialogSize>;
 
 function reference(variant: string): Story {
   const size = Object.values(SIZES).find(candidate => variant === candidate || variant === `${candidate}-band`);

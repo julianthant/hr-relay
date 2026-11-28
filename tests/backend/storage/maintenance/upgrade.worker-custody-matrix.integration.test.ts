@@ -1,5 +1,6 @@
+import { ASSISTANT_APPLIED_EDITS_STATEMENTS } from "../../../../src/backend/storage/sqlite/assistant-applied-edits.js";
 import { CHANGE_LOG_OBJECTS, changeLogTriggers } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
-import { ASSISTANT_M2_PROPOSAL_STATEMENTS } from "../../../../src/backend/storage/sqlite/assistant-proposals.js";
+import { ASSISTANT_PROPOSAL_STATEMENTS } from "../../../../src/backend/storage/sqlite/assistant-proposals.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
@@ -21,10 +22,11 @@ import { upgradeProfileAtStartup } from "../../../../src/backend/storage/mainten
 import { AuthorityDatabase as ProfileAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, isWorkerCustodyDroppedTable } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { RUN_SEARCH_FTS_MIGRATION } from "../../../../src/backend/storage/sqlite/run-search-fts.js";
 import { DEBUG_EVENTS_MIGRATION } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { WORKBOOK_PAYLOAD_MIGRATION } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
-import { ASSISTANT_PHASE_ONE_TABLES } from "../../../../src/models/config/authority.js";
+import { ASSISTANT_PHASE_ONE_TABLES, RUN_SEARCH_FTS_TABLES } from "../../../../src/models/config/authority.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
@@ -55,7 +57,7 @@ const hostFacts = { primaryDisplay: null };
 // Tables the conversion (and on 20/21 the pre-build run deletion) rewrites; every other table must come through byte for byte.
 const CHANGED_TABLES = new Set(["runs", "deleted_runs", "run_failures", "run_batches", "database_upgrades", "commands", "command_audits", "timeline_events", "run_search", "run_results", "run_receipts",
   "run_checkpoints", "run_delegations", "delegation_dependencies", "run_requests", "worker_slots", "notifications", "write_intents", "write_attempts",
-  "artifact_outbox", "database_states"]);
+  "artifact_outbox", "database_states", ...RUN_SEARCH_FTS_TABLES]);
 
 /** The table order every schema 18-23 build hashed into a backup manifest's authorityContentFingerprint; a predecessor store must still match it. */
 const PRE_CUSTODY_FINGERPRINT_TABLES = ["assistant_model_preference", "database_states", "database_upgrades", "settings_snapshots", "commands", "command_audits", "settings",
@@ -247,7 +249,7 @@ it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-
   // Schema 29 drops the empty grant table.
   const { assistant_grants: grants, ...keptBefore } = before.kept;
   assert.deepEqual(grants, []);
-  assert.deepEqual(kept, { ...keptBefore, workbook_payloads: [], debug_events: [] });
+  assert.deepEqual(kept, { ...keptBefore, workbook_payloads: [], debug_events: [], assistant_applied_edits: [] });
   assert.deepEqual(after.upgrades.slice(0, before.upgrades.length), before.upgrades);
   assert.ok(after.upgrades.length > before.upgrades.length);
   // Migration 21 rewrites this trigger; every other trigger comes through verbatim.
@@ -259,8 +261,11 @@ it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-
   const addedTriggers = [
     ...WORKBOOK_PAYLOAD_MIGRATION.statements.filter(sql => sql.startsWith("CREATE TRIGGER workbook_payloads_")),
     ...DEBUG_EVENTS_MIGRATION.statements.filter(sql => sql.startsWith("CREATE TRIGGER debug_events_")),
-    ...ASSISTANT_M2_PROPOSAL_STATEMENTS.filter(sql => sql.startsWith("CREATE TRIGGER ")),
+    ...ASSISTANT_PROPOSAL_STATEMENTS.filter(sql => sql.startsWith("CREATE TRIGGER ")),
     ...ASSISTANT_PHASE_ONE_TABLES.flatMap(changeLogTriggers),
+    ...RUN_SEARCH_FTS_MIGRATION.statements.filter(sql => sql.startsWith("CREATE TRIGGER ")),
+    ...ASSISTANT_APPLIED_EDITS_STATEMENTS.filter(sql => sql.startsWith("CREATE TRIGGER ")),
+    ...changeLogTriggers("assistant_applied_edits"),
   ];
   const isAddedTrigger = (row: Record<string, unknown>) => addedTriggers.includes(String(row.sql));
   assert.deepEqual(after.triggers.filter(isAddedTrigger).map(row => String(row.sql)).sort(), addedTriggers.sort());

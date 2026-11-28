@@ -101,7 +101,7 @@ it("shows a refused sample Pause as one toast and leaves the bell count alone", 
     const bell = document.querySelector('button[aria-label^="Notifications,"]');
     assert.ok(bell);
     const previousCount = bell.getAttribute("aria-label");
-    await act(async () => f.button("Pause after this step").click());
+    await act(async () => f.button("Pause").click());
     const request = f.sent[0];
     assert.ok(request.family === "run" && request.type === "pause" && !("targets" in request));
     assert.equal(request.target.runId, world.row.runId);
@@ -110,7 +110,7 @@ it("shows a refused sample Pause as one toast and leaves the bell count alone", 
       state: "rejected", commandId: request.commandId, code: "SAMPLE_RUN_REFUSED", message,
     })));
     assert.deepEqual([...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent), [message]);
-    assert.doesNotMatch(f.host.textContent ?? "", /Pause after this step: rejected/u);
+    assert.doesNotMatch(f.host.textContent ?? "", /Couldn't pause/u);
     assert.equal(bell.getAttribute("aria-label"), previousCount);
   } finally { await f.close(); }
 });
@@ -220,5 +220,33 @@ it("clearing one batch's result notice leaves a later batch's failure listed", a
     await toggleBell();
     assert.equal(results().length, 1, "another batch's failure is its own notice");
     assert.notEqual(results()[0].dataset.id, first);
+  } finally { await f.close(); }
+});
+
+it("dismissing a batch failure's strip keeps its Priority Inbox entry, and a later batch shows a fresh strip", async () => {
+  const f = await mount("paused", FIXTURE_DAY_WIRE, async () => ({ state: "refused", code: "policy-refused", message: "Relay is pausing work to quit." }));
+  const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  const toggleBell = async () => {
+    const bell = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert.ok(bell);
+    await act(async () => bell.click()); await settle();
+  };
+  const results = () => [...document.querySelectorAll<HTMLElement>("li.notice-row")].filter(row => row.querySelector(".notice-title")?.textContent === "Resume: nothing was sent");
+  const strips = () => [...document.querySelectorAll('[role="alert"]')].filter(node => node.textContent === "Resume: nothing was sent");
+  const dismiss = async () => { await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Dismiss"]')?.click()); await settle(); };
+  try {
+    await act(async () => f.button("Resume all").click()); await settle();
+    assert.equal(strips().length, 1);
+    await dismiss();
+    assert.equal(strips().length, 0, "Dismiss hides the strip in place");
+    await toggleBell();
+    assert.equal(results().length, 1, "the same entry stays in the Priority Inbox");
+    const first = results()[0].dataset.id;
+    await toggleBell();
+    await act(async () => f.button("Resume all").click()); await settle();
+    assert.equal(strips().length, 1, "a later failure shows a fresh strip");
+    await dismiss();
+    await toggleBell();
+    assert.equal(results().length, 1, "the newest batch's failure replaces the older one in the Inbox");
+    assert.notEqual(results()[0].dataset.id, first, "and it is its own entry");
   } finally { await f.close(); }
 });

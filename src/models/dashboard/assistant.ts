@@ -105,8 +105,9 @@ export const AssistantFunctionDefinitionSchema = z.strictObject({ type: z.litera
     return value.type === "object" && strict(value);
   }),
 });
+export const ASSISTANT_MAX_TOOLS = 18;
 export const AssistantFunctionNamespaceSchema = z.strictObject({ type: z.literal("namespace"), name: FunctionNameSchema,
-  description: z.string().min(1).max(4000), tools: z.array(AssistantFunctionDefinitionSchema).min(1).max(16),
+  description: z.string().min(1).max(4000), tools: z.array(AssistantFunctionDefinitionSchema).min(1).max(ASSISTANT_MAX_TOOLS),
 });
 export type AssistantFunctionNamespace = z.infer<typeof AssistantFunctionNamespaceSchema>;
 export const AssistantInferenceRequestSchema = z.strictObject({ model: AssistantModelSlugSchema,
@@ -189,6 +190,10 @@ export const ASSISTANT_FAILURES = Object.freeze({
   ASSISTANT_PROPOSAL_REFUSED: ERROR_CATALOG.ASSISTANT_PROPOSAL_REFUSED.text,
   ASSISTANT_PROPOSAL_EXPIRED: ERROR_CATALOG.ASSISTANT_PROPOSAL_EXPIRED.text,
   ASSISTANT_PROPOSAL_CHANGED: ERROR_CATALOG.ASSISTANT_PROPOSAL_CHANGED.text,
+  ASSISTANT_VALUE_NEEDS_SOURCE: ERROR_CATALOG.ASSISTANT_VALUE_NEEDS_SOURCE.text,
+  ASSISTANT_EDIT_STALE: ERROR_CATALOG.ASSISTANT_EDIT_STALE.text,
+  ASSISTANT_UNDO_STALE: ERROR_CATALOG.ASSISTANT_UNDO_STALE.text,
+  ASSISTANT_EDIT_REFUSED: ERROR_CATALOG.ASSISTANT_EDIT_REFUSED.text,
   ASSISTANT_SPREADSHEET_REFUSED: ERROR_CATALOG.ASSISTANT_SPREADSHEET_REFUSED.text,
   ASSISTANT_AUTHORITY_INVALID: ERROR_CATALOG.ASSISTANT_AUTHORITY_INVALID.text,
   ASSISTANT_MODEL_PROPOSAL_REFUSED: ERROR_CATALOG.ASSISTANT_MODEL_PROPOSAL_REFUSED.text,
@@ -204,13 +209,7 @@ export const ASSISTANT_FAILURES = Object.freeze({
   RUN_START_READINESS_CHANGED: ERROR_CATALOG.RUN_START_READINESS_CHANGED.text,
 });
 export type AssistantFailureCode = keyof typeof ASSISTANT_FAILURES;
-export const AssistantActionIdentitySchema = z.strictObject({ chatId: z.uuid(), actionId: z.uuid(), revision: z.number().int().positive() });
-export type AssistantActionIdentity = z.infer<typeof AssistantActionIdentitySchema>;
-const AssistantActionProposalFields = {
-  ...AssistantActionIdentitySchema.shape,
-  expiresAt: z.string().datetime(), label: z.string().min(1).max(160), targetLabel: z.string().min(1).max(160),
-};
-/** At most this many planned rows on one start card. */
+/** At most this many rows in one proposal or session. */
 export const ASSISTANT_START_ROWS_MAX = 20;
 /** What one planned row shows, derived on the server from the planned canonical input, never from model text. */
 export const AssistantRowDisplaySchema = z.discriminatedUnion("kind", [
@@ -219,52 +218,9 @@ export const AssistantRowDisplaySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("file"), fileName: z.string().min(1).max(255), formType: OcrFormTypeSchema }),
   z.strictObject({ kind: z.literal("request") }),
 ]);
-export const AssistantProposalRowSchema = z.strictObject({ title: z.string().min(1), subtitle: z.string().min(1).optional(), display: AssistantRowDisplaySchema })
+export const AssistantPlannedRowSchema = z.strictObject({ title: z.string().min(1), subtitle: z.string().min(1).optional(), display: AssistantRowDisplaySchema })
   .refine(row => row.display.kind !== "person" || row.display.name !== undefined || row.display.employeeId !== undefined, "a person row shows a name or an EID");
-export type AssistantProposalRow = z.infer<typeof AssistantProposalRowSchema>;
-/** The Spreadsheets library changes the assistant may propose; each wraps one existing library owner call. */
-export const AssistantSpreadsheetActionSchema = z.enum(["import", "new-version", "set-type", "sync", "link", "unlink", "rename", "create-version", "use-version", "rename-version"]);
-export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
-  z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("workflow-start"), source: z.enum(["entries", "run", "rerun"]),
-    workflowId: z.string().min(1), dryRun: z.boolean(),
-    startPlan: StartPlanWireSchema.pick({
-      startPlanId: true, workflowId: true, expectedVersion: true, expiresAt: true, dryRun: true,
-      browserMode: true, captureBrowserScreenshots: true, fingerprints: true,
-    }).extend({
-      browserMode: StartPlanWireSchema.shape.browserMode.unwrap(), captureBrowserScreenshots: z.literal(true),
-      planned: z.array(AssistantProposalRowSchema).min(1).max(ASSISTANT_START_ROWS_MAX),
-      /** The descriptor's step a dry run stops before; only a dry run has one. */
-      stopBefore: z.string().min(1).max(160).optional(),
-    }),
-  }).refine(value => value.startPlan.workflowId === value.workflowId && value.startPlan.dryRun === value.dryRun
-    && (value.dryRun || value.startPlan.stopBefore === undefined)
-    && (value.source === "entries" || value.startPlan.planned.length === 1)
-    && Date.parse(value.expiresAt) <= Date.parse(value.startPlan.expiresAt), "assistant start must bind one accepted current plan"),
-  z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("run-action"), action: z.enum(["pause", "resume", "cancel"]),
-    workflowId: z.string().min(1), run: z.strictObject({ runId: z.uuid(), expectedVersion: z.number().int().positive() }), row: AssistantProposalRowSchema }),
-  z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("spreadsheet"), action: AssistantSpreadsheetActionSchema,
-    facts: z.array(z.strictObject({ label: z.string().min(1).max(40), value: z.string().min(1).max(320) })).min(1).max(6) }),
-]);
-export type AssistantActionProposal = z.infer<typeof AssistantActionProposalSchema>;
-/** Confirm carries the SHA-256 of the canonical JSON of the exact proposal the operator reviewed; Cancel is identity only. */
-export const AssistantActionDecisionSchema = AssistantActionIdentitySchema.extend({ decision: z.enum(["confirm", "cancel"]), reviewedDigest: FingerprintSchema.optional() })
-  .refine(value => (value.decision === "confirm") === (value.reviewedDigest !== undefined), "a confirm carries the reviewed proposal digest; a cancel carries none");
-export type AssistantActionDecision = z.infer<typeof AssistantActionDecisionSchema>;
-export const AssistantUnknownActionResultSchema = z.strictObject({ state: z.literal("unknown"), actionId: z.uuid() });
-export const AssistantActionResultSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("applied"), actionId: z.uuid() }),
-  z.strictObject({ state: z.literal("cancelled"), actionId: z.uuid() }),
-  z.strictObject({ state: z.literal("refused"), code: z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureCode, ...AssistantFailureCode[]]) }),
-  AssistantUnknownActionResultSchema,
-]);
-export type AssistantActionResult = z.infer<typeof AssistantActionResultSchema>;
-export const AssistantResultSchema = z.discriminatedUnion("state", [
-  AssistantUnknownActionResultSchema.extend({ action: AssistantActionProposalSchema }).refine(value => value.actionId === value.action.actionId, "assistant-action-response-mismatch"),
-  z.strictObject({ state: z.literal("answered"), text: z.string().max(8000) }),
-  z.strictObject({ state: z.literal("action-proposal"), proposal: AssistantActionProposalSchema }),
-  z.strictObject({ state: z.literal("refused"), code: z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureCode, ...AssistantFailureCode[]]), message: z.string() }),
-]);
-export type AssistantResult = z.infer<typeof AssistantResultSchema>;
+export type AssistantPlannedRow = z.infer<typeof AssistantPlannedRowSchema>;
 
 /** Gate 50 history: 20 chats per profile, 200 messages per chat, absolute 30-day expiry. */
 export const ASSISTANT_CHATS_MAX = 20;
@@ -334,6 +290,9 @@ export type AssistantMessageRecord = z.infer<typeof AssistantMessageRecordSchema
 export const AssistantChatSummarySchema = z.strictObject({ id: z.uuid(), title: Title, revision: Revision, createdAt: z.iso.datetime(), expiresAt: z.iso.datetime() });
 export const AssistantHistoryViewSchema = z.strictObject({ chats: z.array(AssistantChatSummarySchema).max(ASSISTANT_CHATS_MAX), selectedId: z.uuid().nullable() });
 export type AssistantHistoryView = z.infer<typeof AssistantHistoryViewSchema>;
+/** The served chat list and the open proposals waiting on the operator. */
+export const AssistantHistoryWireSchema = AssistantHistoryViewSchema.safeExtend({ needsYou: z.number().int().nonnegative() });
+export type AssistantHistoryWire = z.infer<typeof AssistantHistoryWireSchema>;
 export const AssistantActivityWireSchema = z.strictObject({
   day: z.iso.date(),
   rows: z.array(z.strictObject({ id: z.uuid(), label: z.string().min(1).max(160), at: z.iso.datetime() })),
@@ -378,12 +337,6 @@ export const AssistantReceiptSchema = z.strictObject({
   conversationId: z.uuid(), messageId: z.uuid(), ordinal: z.number().int().min(1), revision: Revision, delivery: AssistantDeliverySchema.exclude(["settled"]),
 });
 export type AssistantReceipt = z.infer<typeof AssistantReceiptSchema>;
-/** `result` settles a turn this request accepted (receipt) or refused before acceptance; `delivery` reads an existing attempt and never carries an action. */
-export const AssistantRespondEnvelopeSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("result"), result: AssistantResultSchema, receipt: AssistantReceiptSchema.optional() }),
-  z.strictObject({ kind: z.literal("delivery"), receipt: AssistantReceiptSchema }),
-]);
-export type AssistantRespondEnvelope = z.infer<typeof AssistantRespondEnvelopeSchema>;
 
 
 const ReplyTextSchema = z.string().min(1).max(8000);
@@ -426,7 +379,7 @@ export const AssistantAcceptedTurnSchema = z.strictObject({
 export type AssistantAcceptedTurn = z.infer<typeof AssistantAcceptedTurnSchema>;
 export const AssistantSessionPartSchema = z.strictObject({ kind: z.literal("session"), runId: RunIdSchema, label: ReplyLabelSchema, meta: z.string().min(1).max(500) });
 export const AssistantReplyPartSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("text"), runs: z.array(AssistantInlineSchema).min(1).max(500) }),
+  z.strictObject({ kind: z.literal("text"), runs: z.array(AssistantInlineSchema).min(1).max(500), editId: z.uuid().optional() }),
   z.strictObject({ kind: z.literal("bullets"), items: z.array(z.array(AssistantInlineSchema).min(1).max(500)).min(1).max(20) }),
   AssistantSessionPartSchema,
   z.strictObject({ kind: z.literal("answered"), attribution: AssistantCommandAttributionSchema, at: IsoInstantSchema }),
@@ -465,6 +418,7 @@ export const AssistantApprovalModeSchema = z.enum(["ask", "full-access"]);
 export type AssistantApprovalMode = z.infer<typeof AssistantApprovalModeSchema>;
 /** The prepared M1 send: the composer's approval pick travels with the message, never through model arguments. */
 export const AssistantM1RequestSchema = AssistantRequestSchema.extend({ approvalMode: AssistantApprovalModeSchema.default("ask") });
+export type AssistantM1Request = z.input<typeof AssistantM1RequestSchema>;
 /** One accepted turn's claim on one session start; its command is the only one the claim admits. */
 export const AssistantSessionClaimSchema = z.strictObject({
   actionId: z.uuid(), acceptedTurn: AssistantAcceptedTurnSchema, approvalMode: AssistantApprovalModeSchema, dryRun: z.boolean(),
@@ -480,49 +434,52 @@ export const AssistantSessionOutcomeSchema = z.discriminatedUnion("state", [
 ]);
 export type AssistantSessionOutcome = z.infer<typeof AssistantSessionOutcomeSchema>;
 /** One reviewed row's closed operation; Relay issues its command only after typed yes. */
-export const AssistantM2ProposalOperationSchema = z.discriminatedUnion("kind", [
+export const AssistantProposalOperationSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("workflow-start"), workflowId: WorkflowIdSchema, submission: JsonValueSchema, reviewed: FingerprintSchema }),
   z.strictObject({ kind: z.literal("rerun"), runId: RunIdSchema, expectedVersion: PositiveIntSchema, selectedStepKeys: StartPlanRequestSchema.shape.selectedStepKeys.unwrap(), reviewed: FingerprintSchema }),
   z.strictObject({ kind: z.literal("run-action"), runId: RunIdSchema, expectedVersion: PositiveIntSchema, action: z.enum(["pause", "resume", "cancel"]) }),
 ]);
-export const AssistantM2ProposalRowSchema = AssistantProposalRowSchema.safeExtend({ id: z.uuid(), ordinal: PositiveIntSchema, operation: AssistantM2ProposalOperationSchema });
-export type AssistantM2ProposalRow = z.infer<typeof AssistantM2ProposalRowSchema>;
+export const AssistantProposalRowSchema = AssistantPlannedRowSchema.safeExtend({ id: z.uuid(), ordinal: PositiveIntSchema, operation: AssistantProposalOperationSchema });
+export type AssistantProposalRow = z.infer<typeof AssistantProposalRowSchema>;
 /** The reviewed start options every row's fresh plan must use and echo. */
-export const AssistantM2ProposalOptionsSchema = StartPlanRequestSchema.pick({ browserMode: true, captureBrowserScreenshots: true })
-  .extend({ priority: StartPlanWireSchema.shape.priority });
-export type AssistantM2ProposalOptions = z.infer<typeof AssistantM2ProposalOptionsSchema>;
-const AssistantM2ProposalShape = z.strictObject({
+export const AssistantProposalOptionsSchema = z.strictObject({
+  browserMode: StartPlanRequestSchema.shape.browserMode,
+  captureBrowserScreenshots: StartPlanRequestSchema.shape.captureBrowserScreenshots,
+  priority: StartPlanWireSchema.shape.priority,
+});
+export type AssistantProposalOptions = z.infer<typeof AssistantProposalOptionsSchema>;
+const AssistantProposalShape = z.strictObject({
   id: z.uuid(), profileId: z.uuid(), conversationId: z.uuid(), revision: PositiveIntSchema, renderedMessageId: z.uuid(), renderedDigest: FingerprintSchema,
-  sourceMessageId: z.uuid(), label: ReplyLabelSchema, dryRun: z.boolean(), options: AssistantM2ProposalOptionsSchema.nullable(), createdAt: IsoInstantSchema,
-  rows: z.array(AssistantM2ProposalRowSchema).min(1).max(ASSISTANT_START_ROWS_MAX),
+  sourceMessageId: z.uuid(), label: ReplyLabelSchema, dryRun: z.boolean(), options: AssistantProposalOptionsSchema.nullable(), createdAt: IsoInstantSchema,
+  rows: z.array(AssistantProposalRowSchema).min(1).max(ASSISTANT_START_ROWS_MAX),
 });
 /** Digest of everything the operator saw, in order; yes binds to it. */
-export function assistantM2ProposalDigest(snapshot: Omit<z.input<typeof AssistantM2ProposalShape>, "renderedDigest"> & { renderedDigest?: string }): string {
+export function assistantProposalDigest(snapshot: Omit<z.input<typeof AssistantProposalShape>, "renderedDigest"> & { renderedDigest?: string }): string {
   const { renderedDigest: _digest, ...rendered } = snapshot;
   return sha256Hex(canonicalJsonStringify(JsonValueSchema.parse(rendered)));
 }
 /** The exact proposal the operator reviewed; it has no own timeout, only its conversation's retention. */
-export const AssistantM2ProposalSnapshotSchema = AssistantM2ProposalShape.refine(snapshot => snapshot.rows.every((row, index) => row.ordinal === index + 1
+export const AssistantProposalSnapshotSchema = AssistantProposalShape.refine(snapshot => snapshot.rows.every((row, index) => row.ordinal === index + 1
   && row.operation.kind === snapshot.rows[0]?.operation.kind) && (snapshot.options === null) === (snapshot.rows[0]?.operation.kind === "run-action") && new Set(snapshot.rows.map(row => row.id)).size === snapshot.rows.length
-  && snapshot.renderedDigest === assistantM2ProposalDigest(snapshot), "assistant-proposal-snapshot-invalid");
-export type AssistantM2ProposalSnapshot = z.infer<typeof AssistantM2ProposalSnapshotSchema>;
+  && snapshot.renderedDigest === assistantProposalDigest(snapshot), "assistant-proposal-snapshot-invalid");
+export type AssistantProposalSnapshot = z.infer<typeof AssistantProposalSnapshotSchema>;
 /** A row's own result; UNKNOWN is terminal and never reclaimed. */
-export const AssistantM2RowResultSchema = z.discriminatedUnion("state", [
+export const AssistantRowResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("not-started") }),
   z.strictObject({ state: z.literal("claimed"), commandId: CommandIdSchema }),
   z.strictObject({ state: z.literal("applied"), commandId: CommandIdSchema, runIds: z.array(RunIdSchema).max(ASSISTANT_START_ROWS_MAX) }),
   z.strictObject({ state: z.literal("refused"), code: ErrorCatalogCodeSchema, commandId: CommandIdSchema.nullable() }),
   z.strictObject({ state: z.literal("unknown"), commandId: CommandIdSchema }),
 ]);
-export type AssistantM2RowResult = z.infer<typeof AssistantM2RowResultSchema>;
-export const AssistantM2ProposalStateSchema = z.discriminatedUnion("state", [
+export type AssistantRowResult = z.infer<typeof AssistantRowResultSchema>;
+export const AssistantProposalStateSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("open") }),
   z.strictObject({ state: z.literal("answered"), answerMessageId: z.uuid() }),
   z.strictObject({ state: z.literal("superseded") }),
 ]);
-export const AssistantM2ProposalRecordSchema = z.strictObject({ snapshot: AssistantM2ProposalSnapshotSchema, lifecycle: AssistantM2ProposalStateSchema,
-  rows: z.array(z.strictObject({ rowId: z.uuid(), result: AssistantM2RowResultSchema })).min(1).max(ASSISTANT_START_ROWS_MAX) });
-export type AssistantM2ProposalRecord = z.infer<typeof AssistantM2ProposalRecordSchema>;
+export const AssistantProposalRecordSchema = z.strictObject({ snapshot: AssistantProposalSnapshotSchema, lifecycle: AssistantProposalStateSchema,
+  rows: z.array(z.strictObject({ rowId: z.uuid(), result: AssistantRowResultSchema })).min(1).max(ASSISTANT_START_ROWS_MAX) });
+export type AssistantProposalRecord = z.infer<typeof AssistantProposalRecordSchema>;
 export function assistantSessionAttribution(claim: AssistantSessionClaim): z.infer<typeof AssistantCommandAttributionSchema> {
   const { acceptedTurn: turn } = AssistantSessionClaimSchema.parse(claim);
   return AssistantCommandAttributionSchema.parse({ kind: "assistant", requestedBy: claim.command.requestedBy, profileId: turn.profileId,
@@ -564,6 +521,9 @@ export type AssistantM1MessageRecord = z.infer<typeof AssistantM1MessageRecordSc
 export const AssistantM1ConversationViewSchema = AssistantConversationViewSchema.extend({
   messages: z.array(AssistantStoredMessageSchema.omit({ text: true }).extend({ payload: AssistantM1MessagePayloadSchema })).max(ASSISTANT_MESSAGES_MAX),
 });
+/** The served chat read: its rows and the current view of each session chip it holds. */
+export const AssistantM1ConversationWireSchema = AssistantM1ConversationViewSchema.extend({ sessions: z.array(AssistantSessionViewSchema).max(ASSISTANT_MESSAGES_MAX) });
+export type AssistantM1ConversationWire = z.infer<typeof AssistantM1ConversationWireSchema>;
 export type AssistantM1ConversationView = z.infer<typeof AssistantM1ConversationViewSchema>;
 export const AssistantM1SettlementSchema = z.strictObject({ delivery: AssistantDeliverySchema.extract(["answered", "refused", "delivery-unknown"]),
   code: FailureCode.optional(), usage: AssistantTurnUsageSchema,

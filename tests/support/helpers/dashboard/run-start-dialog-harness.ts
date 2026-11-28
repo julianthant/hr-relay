@@ -2,6 +2,7 @@ import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { ItemAttemptHistoryResponseSchema } from "../../../../src/models/dashboard/item-attempt-history.js";
 import { FixtureCommandBinding } from "./command-binding.js";
 import { FIXTURE_DAY_WIRE } from "../../fixtures/dashboard/fixture-queue.js";
+import { FIXTURE_CHATGPT_OCR_AVAILABLE } from "../../fixtures/dashboard/fixture-chatgpt-account.js";
 import { uuidOf } from "../../fixtures/dashboard/fixture-identity.js";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { StartCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
@@ -146,6 +147,7 @@ export function createRunStartDialogHarness() {
     let readback: ReturnType<typeof DashboardDayWireSchema.parse> | undefined;
     const methods: Partial<DashboardClient> = { ...served,
       readPreflight: served.readPreflight ?? (async () => READY),
+      checkChatGptAccount: served.checkChatGptAccount ?? (async () => FIXTURE_CHATGPT_OCR_AVAILABLE),
       ...(submitStartPlan === undefined ? {} : { submitStartPlan: async (input: unknown) => {
         reviewedPlan = await submitStartPlan(input);
         return reviewedPlan;

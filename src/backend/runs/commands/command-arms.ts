@@ -21,7 +21,6 @@ const PHASE1_ACTIVE = {
     "reopen-browser",
   ],
   run: [
-    "recover-run",
     "pause",
     "resume",
     "retry",
@@ -61,9 +60,10 @@ function armActions(partition: Readonly<Record<string, readonly string[]>>, fami
 
 for (const { family, actions } of COMMAND_FAMILY_REGISTRY) {
   const active = armActions(PHASE1_ACTIVE, family);
-  if (active.length !== actions.length
+  const available = actions.filter(action => action !== "recover-run");
+  if (active.length !== available.length
     || new Set(active).size !== active.length
-    || actions.some((action) => !active.includes(action))) {
+    || available.some((action) => !active.includes(action))) {
     throw new Error(`command arm partition does not cover family ${family} exactly`);
   }
 }

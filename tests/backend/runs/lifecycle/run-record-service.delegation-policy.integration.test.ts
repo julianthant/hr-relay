@@ -1,3 +1,4 @@
+import { recordHistoricalRecover } from "../../../support/helpers/backend/record-historical-recover.js";
 import { assertDelegationWriteRecoveryRefusals } from "../../../support/helpers/backend/delegation-config-refusals.js";
 import { DelegationInvocationRequestSchema } from "../../../../src/backend/storage/sqlite/delegation-contracts.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -465,7 +466,7 @@ it("retries only the failed member of a mixed group after equivalent runtime rea
     repositories.runtimeConfig.activate({ settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint,
       configFingerprint: active.configFingerprint, activatedAt: f.clock.now().toISOString(), configSnapshotId });
   });
-  const result = f.execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard",
+  const result = recordHistoricalRecover({ ...f, lifecycle: f.execution.lifecycle }, workflow => f.modules.find(module => module.descriptor.id === workflow)?.descriptor, { commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard",
     requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: { runId: failed.envelope.runId, expectedVersion: failed.version } });
   assert.equal(result.state, "applied", JSON.stringify(result));
   assert.deepEqual(f.database.authority.runs.get(doneChild.envelope.runId), doneChild);
@@ -502,7 +503,7 @@ for (const parentOutcome of ["failed", "interrupted"] as const) it(`keeps exact 
     .find(run => run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done"); assert.ok(doneChild);
   const completedCalls = calls.get("10800001"); assert.equal(completedCalls, 2);
   assert.equal(calls.get("10800002"), 1);
-  const retry = f.execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard",
+  const retry = recordHistoricalRecover({ ...f, lifecycle: f.execution.lifecycle }, workflow => f.modules.find(module => module.descriptor.id === workflow)?.descriptor, { commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard",
     requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: { runId: failed.envelope.runId, expectedVersion: failed.version } });
   assert.equal(retry.state, "applied", JSON.stringify(retry));
   let parent = f.database.authority.runs.listByItem({ workflow: failed.envelope.workflow, itemId: failed.envelope.itemId })
@@ -836,7 +837,7 @@ it("refuses a truly interrupted child without inventing a terminal result or rep
   const child = f.database.authority.runs.listChildren(f.root.envelope.runId).find(run => run.lifecycle.state === "queued"); assert.ok(child);
   const source = interruptNextOwnedRun(f, child);
   const before = f.database.authority.runs.listByWorkflow(source.envelope.workflow), parent = f.currentRoot();
-  const result = f.execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard",
+  const result = recordHistoricalRecover({ ...f, lifecycle: f.execution.lifecycle }, workflow => f.modules.find(module => module.descriptor.id === workflow)?.descriptor, { commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard",
     requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: { runId: source.envelope.runId, expectedVersion: source.version } });
   assert.ok(result.state === "rejected"); assert.equal(result.code, "RUN_CONTINUATION_REFUSED");
   assert.equal(result.message, ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);
@@ -859,7 +860,7 @@ it("returns a typed refusal and rolls back parent recovery when a failed child i
   const independent = f.execution.start(descriptor, failed.input.parsed.value, { dryRun: false });
   assert.equal(independent.envelope.itemId, failed.envelope.itemId); assert.equal(independent.envelope.parent, undefined);
   const before = f.modules.map(module => f.database.authority.runs.listByWorkflow(module.descriptor.id));
-  const result = f.execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard",
+  const result = recordHistoricalRecover({ ...f, lifecycle: f.execution.lifecycle }, workflow => f.modules.find(module => module.descriptor.id === workflow)?.descriptor, { commandId: randomUUID(), family: "run", type: "recover-run", source: "dashboard",
     requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: { runId: source.envelope.runId, expectedVersion: source.version } });
   assert.ok(result.state === "rejected"); assert.equal(result.code, "RUN_CONTINUATION_REFUSED");
   assert.equal(result.message, ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);

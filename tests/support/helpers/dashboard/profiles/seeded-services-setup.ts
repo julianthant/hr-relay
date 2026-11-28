@@ -192,10 +192,10 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settingsEditor" | "s
         bulk: bulkCommandId => { const acceptance = database.authority.commands.getBulk(bulkCommandId); return acceptance === undefined ? undefined : { acceptance, children: database.authority.commands.listBulkChildren(bulkCommandId) }; } });
       const profileId = "00000000-0000-4000-8000-000000000001";
       const assistant: AssistantService = {
-        respond: () => Promise.resolve({ kind: "result", result: { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: "The assistant is unavailable. Check the ChatGPT connection." } }),
+        respond: () => Promise.resolve({ kind: "result", result: { state: "no-reply", reason: "ASSISTANT_UNAVAILABLE", canRetry: false, turn: null } }),
         modelPreference: () => ({ profileId, epoch: 1, revision: 1, preference: { slug: "gpt-5.4", effort: "medium" } }),
-        historyView: () => database.authority.assistantHistory.list(clock.now().toISOString()),
-        conversation: id => database.authority.assistantHistory.conversation(id, clock.now().toISOString()),
+        historyView: () => { const now = clock.now().toISOString(); return { ...database.authority.assistantHistory.list(now), needsYou: database.authority.assistantProposals.needsYou(now) }; },
+        conversation: id => { const view = database.authority.assistantHistory.conversation(id, clock.now().toISOString()); return view && { ...view, sessions: [] }; },
         history: input => database.authority.assistantHistory.apply(AssistantHistoryOperationSchema.parse(input), clock.now().toISOString()),
       };
       return {
@@ -218,7 +218,7 @@ createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settingsEditor" | "s
       clock,
     };
     const hub = createDashboardStreamHub({
-      projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER,
+      projection, backfillGaps: trustNotifications?.backfillGapNotifier ?? UNOBSERVED_BACKFILL_GAP_NOTIFIER,
       runPanels: { read: (runId, signal) => readRunPanel(runDetailDeps, runId, signal) },
       ...(trustNotifications === undefined || notificationRoutes === undefined ? {} : {
         notificationPublications: composeNotificationPublications({

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "vitest";
-import { AssistantAcceptedTurnSchema, AssistantM2ProposalSnapshotSchema, AssistantSessionClaimSchema, assistantM2ProposalDigest, type AssistantM2ProposalSnapshot } from "../../../../src/models/dashboard/assistant.js";
+import { AssistantAcceptedTurnSchema, AssistantProposalSnapshotSchema, AssistantSessionClaimSchema, assistantProposalDigest, type AssistantProposalSnapshot } from "../../../../src/models/dashboard/assistant.js";
 import { assistantM1HistoryFixture } from "../../../support/helpers/assistant-m1-history-fixture.js";
 
 const T = "2026-11-09T12:00:00.000Z", hex = (digit: string) => digit.repeat(64);
@@ -29,16 +29,16 @@ function world() {
     return id;
   };
   /** A proposing turn's reply in `conversationId`, then the snapshot rendered in it. */
-  const snapshot = (conversationId = chat, rows = 2, shownOptions: typeof options = options): AssistantM2ProposalSnapshot => {
+  const snapshot = (conversationId = chat, rows = 2, shownOptions: typeof options = options): AssistantProposalSnapshot => {
     const source = accept(conversationId);
     const draft = { id: randomUUID(), profileId: storage.profileId(), conversationId, revision: 1, renderedMessageId: reply(source), sourceMessageId: source.acceptedTurn.messageId,
       label: "Start Person Lookup", dryRun: false, options: shownOptions, createdAt: T, rows: Array.from({ length: rows }, (_, index) => ({ id: randomUUID(), ordinal: index + 1, title: `Row ${String(index + 1)}`,
         display: { kind: "request" as const }, operation: { kind: "workflow-start" as const, workflowId: "person-lookup", submission: { line: String(index) }, reviewed: "e".repeat(64) } })) };
-    return AssistantM2ProposalSnapshotSchema.parse({ ...draft, renderedDigest: assistantM2ProposalDigest(draft) });
+    return AssistantProposalSnapshotSchema.parse({ ...draft, renderedDigest: assistantProposalDigest(draft) });
   };
-  const bound = (shown: AssistantM2ProposalSnapshot): Bound => ({ proposalId: shown.id, proposalRevision: shown.revision, renderedMessageId: shown.renderedMessageId, renderedDigest: shown.renderedDigest });
+  const bound = (shown: AssistantProposalSnapshot): Bound => ({ proposalId: shown.id, proposalRevision: shown.revision, renderedMessageId: shown.renderedMessageId, renderedDigest: shown.renderedDigest });
   /** The operator's answer: a genuine accepted message bound to `shown`. */
-  const answer = (shown: AssistantM2ProposalSnapshot, overrides: Partial<Bound> = {}) => {
+  const answer = (shown: AssistantProposalSnapshot, overrides: Partial<Bound> = {}) => {
     const accepted = accept(shown.conversationId, { ...bound(shown), ...overrides });
     return { ...bound(shown), ...overrides, answerMessageId: accepted.acceptedTurn.messageId, accepted, attempt: accepted, now: T };
   };
@@ -48,9 +48,9 @@ function world() {
 
 it("binds a snapshot digest to everything shown and refuses a changed or reordered row", () => {
   const w = world(), shown = w.snapshot();
-  assert.equal(AssistantM2ProposalSnapshotSchema.safeParse({ ...shown, rows: [...shown.rows].reverse() }).success, false);
-  assert.equal(AssistantM2ProposalSnapshotSchema.safeParse({ ...shown, label: "Start something else" }).success, false);
-  assert.equal(AssistantM2ProposalSnapshotSchema.safeParse({ ...shown, rows: shown.rows.map((row, index) => index === 0 ? { ...row, title: "Changed" } : row) }).success, false);
+  assert.equal(AssistantProposalSnapshotSchema.safeParse({ ...shown, rows: [...shown.rows].reverse() }).success, false);
+  assert.equal(AssistantProposalSnapshotSchema.safeParse({ ...shown, label: "Start something else" }).success, false);
+  assert.equal(AssistantProposalSnapshotSchema.safeParse({ ...shown, rows: shown.rows.map((row, index) => index === 0 ? { ...row, title: "Changed" } : row) }).success, false);
 });
 
 it("issues one open proposal per chat, answers only the exact shown snapshot once and supersedes on a new proposal or change request", () => {
@@ -123,18 +123,18 @@ it("issues only a snapshot rendered in its chat's latest reply to its source mes
   w.finish(w.accept());
   assert.throws(() => w.proposals.issue(shown), /rendered-message-invalid/u);
   const elsewhere = w.snapshot(w.storage.create()), moved = { ...elsewhere, id: randomUUID(), conversationId: w.chat };
-  assert.throws(() => w.proposals.issue(AssistantM2ProposalSnapshotSchema.parse({ ...moved, renderedDigest: assistantM2ProposalDigest(moved) })), /rendered-message-invalid/u);
+  assert.throws(() => w.proposals.issue(AssistantProposalSnapshotSchema.parse({ ...moved, renderedDigest: assistantProposalDigest(moved) })), /rendered-message-invalid/u);
   const current = w.snapshot(), unsourced = { ...current, id: randomUUID(), sourceMessageId: randomUUID() };
-  assert.throws(() => w.proposals.issue(AssistantM2ProposalSnapshotSchema.parse({ ...unsourced, renderedDigest: assistantM2ProposalDigest(unsourced) })), /rendered-message-invalid/u);
+  assert.throws(() => w.proposals.issue(AssistantProposalSnapshotSchema.parse({ ...unsourced, renderedDigest: assistantProposalDigest(unsourced) })), /rendered-message-invalid/u);
   assert.equal(w.proposals.issue(current).lifecycle.state, "open");
 });
 
 it("binds the reviewed start options into the digest", () => {
   const w = world(), shown = w.snapshot();
   for (const changed of [{ ...options, browserMode: "headed" }, { ...options, captureBrowserScreenshots: false }, { ...options, priority: "bulk" }])
-    assert.equal(AssistantM2ProposalSnapshotSchema.safeParse({ ...shown, options: changed }).success, false);
-  assert.equal(AssistantM2ProposalSnapshotSchema.safeParse({ ...shown, options: { ...options, instance: 1 } }).success, false);
-  assert.equal(AssistantM2ProposalSnapshotSchema.safeParse({ ...shown }).success, true);
+    assert.equal(AssistantProposalSnapshotSchema.safeParse({ ...shown, options: changed }).success, false);
+  assert.equal(AssistantProposalSnapshotSchema.safeParse({ ...shown, options: { ...options, instance: 1 } }).success, false);
+  assert.equal(AssistantProposalSnapshotSchema.safeParse({ ...shown }).success, true);
 });
 
 it("claims each row for one command once, keeps UNKNOWN terminal and refuses a row before its claim", () => {
@@ -166,7 +166,7 @@ it("enforces immutability in SQL, cascades with chat deletion and refuses anothe
   assert.throws(() => w.storage.database.prepare("INSERT INTO assistant_proposals(id,conversation_id,revision,rendered_message_id,rendered_digest,state,answer_message_id,snapshot_json,created_at) VALUES(?,?,1,?,?,'open',NULL,'{}',?)")
     .run(randomUUID(), w.chat, randomUUID(), hex("1"), T), /UNIQUE/u);
   const foreign = { ...w.snapshot(), id: randomUUID(), profileId: randomUUID() };
-  assert.throws(() => w.proposals.issue(AssistantM2ProposalSnapshotSchema.parse({ ...foreign, renderedDigest: assistantM2ProposalDigest(foreign) })), /not-owned/u);
+  assert.throws(() => w.proposals.issue(AssistantProposalSnapshotSchema.parse({ ...foreign, renderedDigest: assistantProposalDigest(foreign) })), /not-owned/u);
   w.storage.database.prepare("DELETE FROM assistant_conversations WHERE id=?").run(w.chat);
   assert.equal(w.proposals.read(shown.id), undefined);
   assert.equal(Number(w.storage.database.prepare("SELECT COUNT(*) AS n FROM assistant_proposal_rows").get()?.n), 0);

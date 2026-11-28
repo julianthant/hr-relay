@@ -62,6 +62,25 @@ const LOAD = {
   loaded: scene("General, every setting read", { play: loaded }),
 } satisfies Record<EditableSettingsState["state"], Story>;
 
+/** The edit every refresh story makes: the Job end date typed into while the re-read is held. */
+const JOB_END = 'text="Job end date"';
+const editDuringReread = async (page: Page): Promise<void> => {
+  const month = page.getByRole("spinbutton", { name: /^month, Job end date/ }).first();
+  await month.waitFor();
+  await page.waitForTimeout(1200);
+  await month.click();
+  await page.keyboard.type("06302027");
+};
+const release = async (page: Page): Promise<void> => { await page.evaluate(() => { Reflect.apply(Reflect.get(window, "releaseSettingsRead") as () => void, window, []); }); await page.waitForTimeout(300);
+  const month = await page.getByRole("spinbutton", { name: /^month, Job end date/ }).first().textContent();
+  if (month?.trim() !== "06") throw new Error(`the edited Job end date did not survive the re-read: ${String(month)}`);
+};
+
+const REFRESH = {
+  held: scene("General over its kept document during a held re-read, a field mid-edit", { server: { read: "hold-later" }, host: { rereadOnceLoaded: true }, play: editDuringReread, story: { ready: JOB_END } }),
+  landed: scene("General after the re-read lands, the edit kept", { server: { read: "hold-later" }, host: { rereadOnceLoaded: true }, play: then(editDuringReread, release), story: { ready: JOB_END } }),
+} satisfies Record<"held" | "landed", Story>;
+
 const SECTION = {
   general: scene("General page", { play: loaded }),
   account: scene("Account page", { section: "account", story: { ready: 'h1:has-text("Account"), h2:has-text("Account")' } }),
@@ -202,8 +221,21 @@ const NOTICE = {
   "setting-unavailable": scene("A search target that is not on the page", { host: { searchTarget: "nothing.here" }, play: loaded, story: { ready: 'text=/Setting unavailable/' } }),
 } satisfies Record<Notice, Story>;
 
+const FULL_ACCESS = '[data-settings-path="assistant.fullAccess"]';
+const PERMISSION = {
+  off: scene("Full access turned off", { play: loaded, story: { ready: `${FULL_ACCESS} [data-selected="false"], ${FULL_ACCESS} input:not(:checked)` } }),
+  on: scene("Full access turned on", { play: async page => { await page.getByRole("switch", { name: "Full access" }).click(); },
+    story: { ready: `${FULL_ACCESS} input:checked:enabled` } }),
+} satisfies Record<"off" | "on", Story>;
+
+/** The Account page when its settings read fails: the credential recovery notice, with one sentence of guidance. */
+const CREDENTIAL_RECOVERY = {
+  "read-failed": scene("Credentials that could not be read", { section: "credentials", server: { read: "fail" }, story: { ready: 'text="Credentials unavailable; reopen Settings to try again."' } }),
+} satisfies Record<"read-failed", Story>;
+
 export const SETTINGS_STORIES = defineSurface("settings", {
-  load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-combo": CREDENTIAL_COMBO,
-  save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, "duo-keys": DUO_KEYS, notice: NOTICE,
+  load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-recovery": CREDENTIAL_RECOVERY, "credential-combo": CREDENTIAL_COMBO,
+  refresh: REFRESH, save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, "duo-keys": DUO_KEYS, notice: NOTICE,
+  permission: PERMISSION,
 });
 

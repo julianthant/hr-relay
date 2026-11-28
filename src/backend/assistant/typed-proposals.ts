@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { ASSISTANT_START_ROWS_MAX, AssistantAcceptedTurnSchema, AssistantM2ProposalSnapshotSchema, assistantM2ProposalDigest, type AssistantAcceptedTurn, type AssistantInline,
-  type AssistantM2ProposalOptions, type AssistantM2ProposalRecord, type AssistantM2ProposalRow, type AssistantM2ProposalSnapshot, type AssistantReplyPart } from "../../models/dashboard/assistant.js";
+import { ASSISTANT_START_ROWS_MAX, AssistantAcceptedTurnSchema, AssistantProposalSnapshotSchema, assistantProposalDigest, type AssistantAcceptedTurn, type AssistantInline,
+  type AssistantProposalOptions, type AssistantProposalRecord, type AssistantProposalRow, type AssistantProposalSnapshot, type AssistantReplyPart } from "../../models/dashboard/assistant.js";
 import type { RerunValuesResponse } from "../../models/dashboard/rerun-values.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 import { parseInputRunText, toRawSubmission } from "../../models/workflow/ingress.js";
@@ -9,7 +9,10 @@ import { AssistantCommandAttributionSchema, CommandRequestSchema, StartCommandRe
 import { FingerprintSchema, IsoInstantSchema } from "../../rules/identity/ids.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
-import { workflowDryRunSupport, type AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, runtimeNodeLabel, workflowDryRunSupport, type AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
+import { PersonLookupCanonicalInput } from "../../models/workflows/person-lookup/input.js";
+import { EmergencyContactInputSchema } from "../../models/workflows/emergency-contact/input.js";
+import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
 import type { OcrSourceService } from "../runs/commands/ocr-source-service.js";
 import type { StartPlanService } from "../runs/commands/start-plan-service.js";
 import type { RunRecordService } from "../runs/lifecycle/run-record-service.js";
@@ -18,9 +21,8 @@ import { requireTrustRun } from "../runs/trust/run-reader.js";
 import type { AssistantM1Attempt } from "../storage/sqlite/assistant-history.js";
 import type { AssistantProposalRepository } from "../storage/sqlite/assistant-proposals.js";
 import { AssistantAuthorizationError } from "./authorization.js";
-import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantProposalDraft, type AssistantToolContext, type AssistantTypedProposalTool } from "./plugins/plugin.js";
+import { AssistantToolRefusal, referenceSchema, type AssistantPlugin, type AssistantProposalDraft, type AssistantToolContext, type AssistantProposalTool } from "./plugins/plugin.js";
 import type { AssistantPluginDeps } from "./plugins/registry.js";
-import { plannedRowDisplay } from "./proposals.js";
 import { assistantSessionPart } from "./replies.js";
 
 const TYPED_YES = new Set(["yes", "yes file it", "approve", "go ahead", "do it"]);
@@ -29,8 +31,42 @@ export function isTypedYes(text: string): boolean {
   return TYPED_YES.has(text.normalize("NFKC").toLowerCase().replace(/[.,!]/gu, " ").replace(/\s+/gu, " ").trim());
 }
 
+/** What one planned row shows: the typed identity of its canonical input, never model text; an emergency-contact row names its attached file. */
+export function plannedRowDisplay(workflowId: string, input: unknown, fileName: () => string | undefined = () => undefined): AssistantProposalRow["display"] {
+  const bound = SchemaBoundCanonicalValueSchema.safeParse(input);
+  if (!bound.success) return { kind: "request" };
+  if (PDF_START_WORKFLOWS.has(workflowId)) {
+    const name = EmergencyContactInputSchema.safeParse(bound.data.value).success ? fileName() : undefined;
+    return name === undefined ? { kind: "request" } : { kind: "file", fileName: name, formType: "emergency-contact" };
+  }
+  if (workflowId === "person-lookup") {
+    const parsed = PersonLookupCanonicalInput.safeParse(bound.data.value);
+    if (!parsed.success) return { kind: "request" };
+    const value = parsed.data, name = value.mode === "match" ? `${value.lastName}, ${value.firstName}` : value.name;
+    if (name === undefined && !("emplId" in value)) return { kind: "request" };
+    return { kind: "person", ...(name === undefined ? {} : { name }), ...("emplId" in value && value.emplId !== undefined ? { employeeId: value.emplId } : {}) };
+  }
+  const document = z.object({ documentNumber: z.string().min(1).max(40) }).safeParse(bound.data.value);
+  return document.success ? { kind: "document", documentNumber: document.data.documentNumber } : { kind: "request" };
+}
+/** The step a dry run stops before: the descriptor's first transaction, publication or delegation node. */
+export function dryRunStopStep(descriptor: AnyWorkflowDescriptor): string | undefined {
+  const support = workflowDryRunSupport(descriptor);
+  if (support.state !== "supported") return undefined;
+  const boundary = "firstTransactionNodeId" in support ? support.firstTransactionNodeId
+    : "firstPublicationNodeId" in support ? support.firstPublicationNodeId : support.firstDelegationNodeId;
+  const node = descriptorRuntimeNodes(descriptor).find(candidate => candidate.id === boundary);
+  return node === undefined ? undefined : runtimeNodeLabel(node);
+}
+/** A start's effect line: a dry run names the step it stops before; a real run saves. */
+const startEffect = (descriptor: AnyWorkflowDescriptor, dryRun: boolean) => {
+  if (!dryRun) return "Runs for real and saves.";
+  const step = dryRunStopStep(descriptor);
+  return step === undefined ? "Stops before the commit." : `Stops before the commit: ${step}.`;
+};
+
 /** One row as the operator reviews it: the resolved file, person (name and EID) or document Relay bound, never model wording. */
-function rowRuns(row: Pick<AssistantM2ProposalRow, "title" | "subtitle" | "display">): AssistantInline[] {
+function rowRuns(row: Pick<AssistantProposalRow, "title" | "subtitle" | "display">): AssistantInline[] {
   const { display } = row, value = (text: string): AssistantInline => ({ kind: "value", value: text });
   if (display.kind === "file") return [value(display.fileName)];
   if (display.kind === "person") {
@@ -41,22 +77,24 @@ function rowRuns(row: Pick<AssistantM2ProposalRow, "title" | "subtitle" | "displ
   return [value(row.title), ...(row.subtitle === undefined ? [] : [{ kind: "plain" as const, text: ` · ${row.subtitle}` }])];
 }
 
-/** How a proposal reads in its reply: what will happen, one bullet per row, the reviewed run options, and the yes it waits for. */
+/** How a proposal reads in its reply: what will happen, one bullet per row, the reviewed run options, its effect, and the yes it waits for. */
 export function assistantProposalParts(draft: AssistantProposalDraft): AssistantReplyPart[] {
-  const options = draft.options === null ? [] : [{ kind: "text" as const, runs: [{ kind: "plain" as const,
-    text: `Runs in a ${draft.options.browserMode === "headed" ? "visible" : "hidden"} browser, screenshots ${draft.options.captureBrowserScreenshots ? "on" : "off"}.` }] }];
+  const plain = (text: string) => ({ kind: "text" as const, runs: [{ kind: "plain" as const, text }] });
+  const options = draft.options === null ? [] : [plain(`Runs in a ${draft.options.browserMode === "headed" ? "visible" : "hidden"} browser, screenshots ${draft.options.captureBrowserScreenshots ? "on" : "off"}.`)];
+  const count = draft.rows.length;
   return [
-    { kind: "text", runs: [{ kind: "bold", text: draft.dryRun ? `${draft.label} (dry run)` : draft.label }] },
+    { kind: "text", runs: [...(draft.dryRun ? [{ kind: "plain" as const, text: "Dry run, saves nothing. " }] : []), { kind: "bold", text: draft.label }] },
     { kind: "bullets", items: draft.rows.map(rowRuns) },
     ...options,
-    { kind: "text", runs: [{ kind: "plain", text: "Reply yes to go ahead." }] },
+    plain(draft.effect),
+    plain(count === 1 ? "Reply yes to file it, or tell me what to change." : `Reply yes to save all ${String(count)}, or tell me which to skip or change.`),
   ];
 }
 
 export const AssistantProposalToolOutputSchema = z.strictObject({ status: z.literal("awaiting-yes"), count: z.number().int().min(1).max(ASSISTANT_START_ROWS_MAX) });
 
 export interface AssistantTypedProposalPorts {
-  readonly store: Pick<AssistantProposalRepository, "issue" | "open" | "read" | "claimAnswer" | "supersede" | "claimRow" | "settleRow" | "hasRowCommand">;
+  readonly store: Pick<AssistantProposalRepository, "issue" | "open" | "read" | "claimAnswer" | "supersede" | "claimRow" | "settleRow" | "hasRowCommand" | "needsYou">;
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   served(workflowId: string): boolean;
   readonly plans: Pick<StartPlanService, "prepare" | "plan">;
@@ -75,7 +113,7 @@ export interface AssistantTypedProposalPorts {
   readonly actorId: string;
 }
 
-export type PlannedInputs = Readonly<{ capturedAt: string; runs: readonly Readonly<{ input: unknown; rawInput: unknown; workbookReferences: unknown }>[] }>;
+export type PlannedInputs = Readonly<{ capturedAt: string; runs: readonly Readonly<{ input: unknown; rawInput: unknown; workbookReferences?: unknown }>[] }>;
 
 function refuse(code: "ASSISTANT_PROPOSAL_REFUSED" | "ASSISTANT_PROPOSAL_CHANGED" | "ASSISTANT_READ_STALE" = "ASSISTANT_PROPOSAL_REFUSED"): never { throw new AssistantToolRefusal(code); }
 const same = (left: unknown, right: unknown) => canonicalJsonStringify(JsonValueSchema.parse(left)) === canonicalJsonStringify(JsonValueSchema.parse(right));
@@ -106,7 +144,7 @@ const ROW_REJECTION: Readonly<Record<z.infer<typeof CommandRejectionCodeSchema>,
 };
 /** Workflows whose one input is an attached PDF of a fixed OCR form. */
 const PDF_START_WORKFLOWS = new Set(["emergency-contact"]);
-type StartOptions = Omit<AssistantM2ProposalOptions, "priority"> & Partial<Pick<AssistantM2ProposalOptions, "priority">>;
+type StartOptions = Omit<AssistantProposalOptions, "priority"> & Partial<Pick<AssistantProposalOptions, "priority">>;
 type Rerun = Readonly<{ source: JsonValue; steps: readonly string[] }>;
 
 /** Typed-yes proposals: tools that record what the operator will review, and the one owner that runs a reviewed proposal's rows after its typed yes. */
@@ -185,8 +223,8 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
   const startParameters = z.strictObject({ workflow: z.string().min(1).max(80), entries: z.array(z.string().min(1).max(400)).min(1).max(ASSISTANT_START_ROWS_MAX), dryRun: z.boolean() });
   const rerunParameters = z.strictObject({ run: referenceSchema("R"), dryRun: z.boolean() });
   const runActionParameters = z.strictObject({ run: referenceSchema("R"), action: z.enum(["pause", "resume", "cancel"]) });
-  const tool = (name: string, tier: "write-local" | "leaves-machine", description: string, parameters: z.ZodType, prepare: AssistantTypedProposalTool["prepare"]): AssistantTypedProposalTool =>
-    ({ kind: "typed-proposal", tier, name, description, parameters, output: AssistantProposalToolOutputSchema, privacy: [], prepare });
+  const tool = (name: string, tier: "write-local" | "leaves-machine", description: string, parameters: z.ZodType, prepare: AssistantProposalTool["prepare"]): AssistantProposalTool =>
+    ({ kind: "proposal", tier, name, description, parameters, output: AssistantProposalToolOutputSchema, privacy: [], prepare });
   const ask = " Relay shows the operator what it will do; it runs only after the operator replies yes. Say what you proposed and stop.";
 
   const plugin: AssistantPlugin = { domain: "proposals", tools: [
@@ -196,7 +234,7 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
       const { workflow, entries, dryRun } = startParameters.parse(value), descriptor = startable(workflow, dryRun);
       const sources = await entrySubmissions(descriptor, entries, context);
       if (new Set(sources.map(entry => canonicalJsonStringify(entry.submission))).size !== sources.length) refuse();
-      const options = { browserMode: ports.browserMode(), captureBrowserScreenshots: true }, priorities = new Set<AssistantM2ProposalOptions["priority"]>();
+      const options = { browserMode: ports.browserMode(), captureBrowserScreenshots: true }, priorities = new Set<AssistantProposalOptions["priority"]>();
       const rows: AssistantProposalDraft["rows"][number][] = [];
       for (const entry of sources) {
         context.assertCurrent();
@@ -209,7 +247,7 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
       const [priority] = priorities;
       if (priority === undefined || priorities.size !== 1) refuse();
       context.assertCurrent();
-      return { label: `Start ${descriptor.label}`, dryRun, options: { ...options, priority }, rows };
+      return { label: `Start ${descriptor.label}`, dryRun, options: { ...options, priority }, rows, effect: startEffect(descriptor, dryRun) };
     }),
     tool("propose_rerun", "leaves-machine", "Propose rerunning one run with its own input and all of its steps. Value changes stay in the Rerun dialog. dryRun is true only when the operator asked for a dry run." + ask,
       rerunParameters, async (value, context) => {
@@ -217,7 +255,7 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
         const options = { browserMode: ports.browserMode(), captureBrowserScreenshots: true };
         const { planned, reviewed } = await planOne(descriptor, source.submission, dryRun, options, context.signal, source.rerun);
         context.assertCurrent();
-        return { label: `Rerun ${descriptor.label}`, dryRun, options: { ...options, priority: planned.priority }, rows: [{ title: run.displayName ?? descriptor.label,
+        return { label: `Rerun ${descriptor.label}`, dryRun, options: { ...options, priority: planned.priority }, effect: startEffect(descriptor, dryRun), rows: [{ title: run.displayName ?? descriptor.label,
           display: plannedRowDisplay(run.envelope.workflow, run.input.parsed),
           operation: { kind: "rerun", runId: run.envelope.runId, expectedVersion: run.version, selectedStepKeys: source.rerun.steps, reviewed } }] };
       }),
@@ -226,13 +264,13 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
         const input = runActionParameters.parse(value), run = referencedRun(input.run, context);
         if (hasProtectedSubject(run.input.parsed.protectedBindings)) refuse();
         const verb = input.action === "pause" ? "Pause" : input.action === "resume" ? "Resume" : "Cancel", workflow = label(run.envelope.workflow);
-        return Promise.resolve({ label: `${verb} ${workflow}`, dryRun: false, options: null, rows: [{ title: run.displayName ?? workflow, display: plannedRowDisplay(run.envelope.workflow, run.input.parsed),
+        return Promise.resolve({ label: `${verb} ${workflow}`, dryRun: false, options: null, effect: "Changes only this run in the queue.", rows: [{ title: run.displayName ?? workflow, display: plannedRowDisplay(run.envelope.workflow, run.input.parsed),
           operation: { kind: "run-action", runId: run.envelope.runId, expectedVersion: run.version, action: input.action } }] });
       }),
   ] };
 
   /** The command a reviewed row issues now: fresh plans and runs must still match what the operator reviewed. */
-  async function rowCommand(snapshot: AssistantM2ProposalSnapshot, row: AssistantM2ProposalRow, signal: AbortSignal): Promise<CommandRequest> {
+  async function rowCommand(snapshot: AssistantProposalSnapshot, row: AssistantProposalRow, signal: AbortSignal): Promise<CommandRequest> {
     const identity = { commandId: randomUUID(), requestedAt: now(), requestedBy: ports.actorId, source: "assistant" as const };
     const { operation } = row;
     if (operation.kind === "run-action") {
@@ -256,14 +294,14 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
     return StartCommandRequestSchema.parse({ ...identity, family: "start", type: "start-run",
       target: { workflowId: planned.workflowId, startPlanId: planned.startPlanId, expectedVersion: planned.expectedVersion }, payload: planned.fingerprints });
   }
-  const attribution = (turn: AssistantAcceptedTurn, snapshot: AssistantM2ProposalSnapshot, row: AssistantM2ProposalRow) => AssistantCommandAttributionSchema.parse({ kind: "assistant",
+  const attribution = (turn: AssistantAcceptedTurn, snapshot: AssistantProposalSnapshot, row: AssistantProposalRow) => AssistantCommandAttributionSchema.parse({ kind: "assistant",
     requestedBy: ports.actorId, profileId: turn.profileId, conversationId: turn.conversationId, acceptedMessageId: turn.messageId,
     binding: { kind: "proposal", proposalId: snapshot.id, rowId: row.id } });
   const refusalCode = (error: unknown) => ErrorCatalogCodeSchema.safeParse(error instanceof AssistantToolRefusal || error instanceof AssistantAuthorizationError ? error.code : undefined).data
     ?? "ASSISTANT_PROPOSAL_REFUSED";
 
   /** One row: a refusal before its claim leaves nothing behind; after its claim every failure is UNKNOWN and never retried. */
-  async function runRow(turn: AssistantAcceptedTurn, snapshot: AssistantM2ProposalSnapshot, row: AssistantM2ProposalRow, check: () => void, signal: AbortSignal) {
+  async function runRow(turn: AssistantAcceptedTurn, snapshot: AssistantProposalSnapshot, row: AssistantProposalRow, check: () => void, signal: AbortSignal) {
     let command: CommandRequest;
     try {
       check();
@@ -291,11 +329,11 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
   }
 
   /** The answered reply, read back from each row's stored result: Done, Not done, or Couldn't finish this. */
-  function answerReply(turn: AssistantAcceptedTurn, record: AssistantM2ProposalRecord) {
+  function answerReply(turn: AssistantAcceptedTurn, record: AssistantProposalRecord) {
     const { snapshot } = record, [first] = snapshot.rows;
     if (first === undefined) refuse();
     const parts: AssistantReplyPart[] = [{ kind: "answered", attribution: attribution(turn, snapshot, first), at: IsoInstantSchema.parse(now()) }], lines: string[] = [];
-    const text = (lead: string, row: AssistantM2ProposalRow, tail: readonly AssistantInline[]) => { parts.push({ kind: "text", runs: [{ kind: "plain", text: lead }, ...rowRuns(row), ...tail] }); };
+    const text = (lead: string, row: AssistantProposalRow, tail: readonly AssistantInline[]) => { parts.push({ kind: "text", runs: [{ kind: "plain", text: lead }, ...rowRuns(row), ...tail] }); };
     // The model's replay names rows by number only; the reviewed names, EIDs and files stay in the operator's parts.
     snapshot.rows.forEach((row, index) => {
       const result = record.rows[index]?.result, n = `Row ${String(row.ordinal)}`;
@@ -321,7 +359,7 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
     issue(draft: AssistantProposalDraft, at: Readonly<{ conversationId: string; renderedMessageId: string; sourceMessageId: string; revision: number }>) {
       const base = { id: randomUUID(), profileId: ports.current().profileId, ...at, label: draft.label, dryRun: draft.dryRun, options: draft.options, createdAt: now(),
         rows: draft.rows.map((row, index) => ({ ...row, id: randomUUID(), ordinal: index + 1 })) };
-      return ports.store.issue(AssistantM2ProposalSnapshotSchema.parse({ ...base, renderedDigest: assistantM2ProposalDigest(base) }));
+      return ports.store.issue(AssistantProposalSnapshotSchema.parse({ ...base, renderedDigest: assistantProposalDigest(base) }));
     },
     /** Runs the proposal this accepted typed yes answers, row by row, each under its own claim; the model takes no part. */
     async answer(attempt: AssistantM1Attempt, signal: AbortSignal, assertCurrent: () => void) {
@@ -338,6 +376,8 @@ export function createAssistantTypedProposals(ports: AssistantTypedProposalPorts
       return answerReply(turn, ports.store.read(shown.snapshot.id) ?? refuse());
     },
     /** The command effect hook: a proposal row's command runs only inside its own claim, unchanged, for a still-current turn. */
+    /** Open proposals waiting on the operator: the launcher's needs-you count. */
+    needsYou: (): number => ports.store.needsYou(now()),
     assertEffect(commandId: string, command?: CommandRequest): void {
       const entry = active.get(commandId);
       if (entry === undefined) {

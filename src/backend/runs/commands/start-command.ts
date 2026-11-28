@@ -1,6 +1,7 @@
 import { bindRunWorkbookReference, parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { isStartPlanExpired } from "../../../models/run/start-plan.js";
+import { SourceBoundRunSchema } from "../../../models/run/rerun.js";
 import { startSupersedeTargets } from "../../../models/run/start-supersede.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { type CommandRequest, CommandResultSchema } from "../../../rules/commands/commands.js";
@@ -11,13 +12,16 @@ import type { AuthorityRepositories } from "../../storage/sqlite/authority-repos
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-error.js";
 import { createWorkbookReferenceCapture } from "../../workbooks/workbook-library-service.js";
 import { fanOutQueuedRuns, type TargetReference, type VersionChange } from "../lifecycle/run-fan-out.js";
+import { assertOcrRecoverySnapshotCurrent } from "../lifecycle/ocr-review-authority.js";
+import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { reviewedRunSettingsCurrent } from "../settings/run-settings.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
+import { assertOcrStartReady } from "../start/ocr-readiness.js";
 import { buildRerunPlan, RerunRefusedError } from "../start/rerun.js";
 import { applied, type CommandApplication } from "./command-application.js";
 import type { CommandKernelDependencies } from "./command-kernel.js";
 import { CommandRefusal, conflict, reject } from "./command-refusal.js";
-import { lifecycleRefusal, resolveDescriptorOrReject } from "./run-command-context.js";
+import { lifecycleRefusal, requireRun, resolveDescriptorOrReject } from "./run-command-context.js";
 
 export interface RunConfigIdentity {
   readonly configFingerprint: string;
@@ -87,8 +91,12 @@ export function readStartPlan(
       current = buildRerunPlan(repositories, descriptor, plan.rerun.source, plan.planned, plan.rerun.acknowledgment, plan.stepOmissions,
         dependencies.authority.evidenceSchemaHash?.bind(dependencies.authority));
     } catch (error) {
+      if (error instanceof RunContinuationRefusedError) reject(request, "RUN_CONTINUATION_REFUSED", ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);
       if (!(error instanceof RerunRefusedError)) throw error;
       reject(request, error.code === "source-stale" ? "replan-required" : error.code, error.message);
+    }
+    if (canonicalJsonStringify(current.continuation ?? null) !== canonicalJsonStringify(plan.rerun.continuation ?? null)) {
+      reject(request, "replan-required", "Interrupted run evidence changed. Review the steps again.");
     }
     if (canonicalJsonStringify(current) !== canonicalJsonStringify(plan.rerun)
       || (current.warnings.length > 0 && current.acknowledgment !== current.warningDigest)) {
@@ -105,6 +113,8 @@ export function readStartPlan(
       }
     }
   }
+  // The continuation check above binds the retained references to the exact source run.
+  if (plan.rerun?.continuation !== undefined) return { descriptor, plan, selectedSources: undefined };
   const captureReference = createWorkbookReferenceCapture(repositories.workbooks);
   let selectedSources: { libraryId: string; sheetId: string }[] | undefined;
   for (const planned of plan.planned) {
@@ -171,6 +181,17 @@ export function executeStartRun(
     reject(request, "RUN_START_RESTART_REQUIRED", ERROR_CATALOG.RUN_START_RESTART_REQUIRED.text);
   }
   dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
+  assertOcrStartReady(repositories, descriptor, plan, dependencies.ocrProviderAvailable);
+  const continuation = plan.rerun?.continuation;
+  if (continuation !== undefined && plan.rerun !== undefined) {
+    const source = requireRun(repositories, request, plan.rerun.source.runId);
+    try {
+      assertOcrRecoverySnapshotCurrent(repositories, dependencies.lifecycle, source, workflow => dependencies.descriptors.resolve(workflow));
+    } catch (error) {
+      if (!(error instanceof RunContinuationRefusedError)) throw error;
+      reject(request, "RUN_CONTINUATION_REFUSED", ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);
+    }
+  }
   const consumption = repositories.startPlans.consume({
     startPlanId: request.target.startPlanId,
     expectedVersion: request.target.expectedVersion,
@@ -207,6 +228,7 @@ export function executeStartRun(
     after: consumption.plan.version,
   }];
 
+  const { continuation: _continuation, ...binding } = plan.rerun ?? {};
   const fanOut = fanOutQueuedRuns(
     repositories,
     dependencies.lifecycle,
@@ -214,7 +236,8 @@ export function executeStartRun(
     descriptor,
     {
       commandId: request.commandId, actorId: request.requestedBy,
-      ...(plan.rerun === undefined ? {} : { sourceBound: { ...plan.rerun, confirmationCommandId: request.commandId } }),
+      ...(plan.rerun === undefined ? {} : { sourceBound: SourceBoundRunSchema.parse({ ...binding, confirmationCommandId: request.commandId }) }),
+      ...(continuation === undefined ? {} : { continuation }),
       workflow: plan.workflowId,
       descriptorVersion: plan.descriptorVersion,
       contractFingerprint: plan.descriptorFingerprint,

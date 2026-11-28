@@ -83,7 +83,7 @@ it('retains edited values as a named version without altering an unsupported ori
   await expect(f.service.libraryAction(id, { ...action, change: { ...action.change, name: 'Other' } }, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_OPERATION_CONFLICT' });
   await expect(f.service.libraryAction(id, { ...action, operationId: 'stale' }, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_VERSION_CONFLICT' });
   await expect(f.service.libraryAction(id, { ...action, operationId: 'metadata', expectedRevision: 2,
-    change: { ...action.change, from: { kind: 'values', workbook: encodeEditableWorkbook(original.workbook) } } }, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_INVALID' });
+    change: { ...action.change, name: 'With metadata', from: { kind: 'values', workbook: encodeEditableWorkbook(original.workbook) } } }, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_INVALID' });
   expect(f.service.libraryVersion(id, 'original').workbook).toEqual(encodeEditableWorkbook(original.workbook));
   expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
 });
@@ -160,6 +160,8 @@ it('names a SharePoint version atomically and keeps the prior version in use whe
   expect(f.service.read(f.record.libraryId)).toEqual(before);
   expect(f.service.libraryVersion(f.record.libraryId, version!.id).workbook.sheets[0].rows[1].cells[1].value).toBe('Fresh Person');
   expect(await f.service.libraryAction(f.record.libraryId, request, new AbortController().signal)).toEqual(result);
+  await expect(f.apply({ kind: 'create-version', name: ' Fresh roster ', from: { kind: 'sharepoint' }, useNow: false }))
+    .rejects.toMatchObject({ code: 'WORKBOOK_VERSION_NAME_EXISTS' });
   expect(downloads).toBe(1);
   expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
 });
@@ -400,19 +402,27 @@ it('keeps equal sheet and row identities separate across Library sources and rej
   expect(() => capture({ ...request, expectedVersion: 2 })).toThrow(expect.objectContaining({ code: 'WORKBOOK_VERSION_CONFLICT' }));
 });
 
-it.each([{ width: 2, rows: 62_501, value: 'populated', named: true }, { width: 4, rows: 62_501, value: null, named: false }])(
-  'bounds aggregate selected sheets, counting repeat captures once ($width columns)', async ({ width, rows, value, named }) => {
-    const f = fixture(), workbook = { ...f.record.workbook, libraryId: undefined,
-      sheets: [{ ...f.record.workbook.sheets[0], width,
-        columnBindings: Array.from({ length: width }, (_, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: `Column ${index}`,
-          fieldId: index === 0 ? 'eid' : index === 1 ? 'fullName' : null, basis: index < 2 ? 'manual' as const : 'unmapped' as const })),
-        rows: Array.from({ length: rows }, (_, index) => ({ id: `row-${index}`, cells: Array.from({ length: width }, () => ({ value })) })) }] };
-    const first = f.service.create(workbook), capture = f.service.createReferenceCapture();
-    if (named) await f.service.libraryAction(first.libraryId, { operationId: 'second-named', expectedVersion: 1,
-      expectedRevision: f.repository.libraryState(first.libraryId).revision,
-      change: { kind: 'create-version', name: 'Second named bytes', from: { kind: 'version', versionId: 'original' }, useNow: false } }, new AbortController().signal);
-    const request = { ...captureRequest(f, ['absent']), libraryId: first.libraryId, expectedVersion: f.service.read(first.libraryId).version };
-    const next = named ? { ...request, versionId: 'second-named' } : { ...request, libraryId: f.service.create(workbook).libraryId };
+it.each([{ width: 2, value: 'populated', named: true }, { width: 4, value: null, named: false }])(
+  'bounds aggregate selected sheets, counting repeat captures once ($width columns)', async ({ width, value, named }) => {
+    const f = fixture();
+    const request = captureRequest(f, ['absent']);
+    const next = named
+      ? { ...request, versionId: (await f.apply({ kind: 'create-version', name: 'Second named bytes',
+        from: { kind: 'version', versionId: 'original' }, useNow: false })).action.operationId }
+      : { ...request, libraryId: f.service.create({ ...f.record.workbook, libraryId: undefined }).libraryId };
+
+    // Supply the full-size sheet at the decoded read boundary so capture accounting still uses the production limits.
+    const cells = Array.from({ length: width }, () => ({ value }));
+    const rows = Array.from({ length: 62_501 }, (_, index) => ({ id: `row-${index}`, cells }));
+    const libraryVersion = f.repository.libraryVersion.bind(f.repository);
+    vi.spyOn(f.repository, 'libraryVersion').mockImplementation((id, versionId) => {
+      const selected = libraryVersion(id, versionId);
+      const [sheet] = selected.workbook.sheets;
+      const columnBindings = Array.from({ length: width }, (_, index) => sheet.columnBindings?.[index]
+        ?? { id: `column-${index}`, sourceColumn: index, sourceHeader: '', fieldId: null, basis: 'unmapped' as const });
+      return { ...selected, workbook: { ...selected.workbook, sheets: [{ ...sheet, width, rows, columnBindings }] } };
+    });
+    const capture = f.service.createReferenceCapture();
     capture(request); capture(request); capture(request);
     expect(() => capture(next)).toThrow(expect.objectContaining({ code: 'WORKBOOK_CAPTURE_LIMIT_EXCEEDED' }));
     expect(f.service.createReferenceCapture()(next).rows[0].state).toBe('missing');

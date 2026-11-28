@@ -1,16 +1,23 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it, vi } from "vitest";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/settings-command.js";
+import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
+import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../../src/models/config/settings.js";
 import { APP_VERSION, DAY, DESCRIPTOR_SET_HASH, notificationRecordOf, queuedEventOf, runRecordOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { runningWorkerView } from "../../../support/helpers/backend/fake-worker-port.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const { world, cleanup } = createRunQueueProjectionTestWorld();
 afterEach(cleanup);
@@ -115,6 +122,37 @@ it.each(["rename", "new run", "state change", "removal", "unrelated write"] as c
     assert.ok(!warmReads.includes(independent.runId), "an independent run was read while rebuilding its day");
   },
 );
+
+it("reuses a day after a preferences save and rebuilds it after a runtime config change", async () => {
+  const { w, warm, cold, warmSummaries } = await fixture();
+  const { database, clock, stateRoot } = w;
+  const host = hostConfigFacts({});
+  const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, host, clock), createCredentialStore({ stateRoot }));
+  const save = (patch: SettingsPatch) => {
+    const current = database.authority.runtimeConfig.get();
+    assert.ok(current);
+    const result = executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings }, {
+      commandId: randomUUID(), family: "settings", type: "apply-settings", source: "settings-surface",
+      requestedBy: "local-operator", requestedAt: clock.now().toISOString(), target: { expectedRevision: current.settingsRevision },
+      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+    });
+    assert.equal(result.state, "applied");
+  };
+  save({ "browser.headless": { set: true } });
+  const before = warm.buildDashboardDayWire(DAY);
+  const fingerprint = database.authority.runtimeConfig.get()?.configFingerprint;
+  warmSummaries.length = 0;
+
+  save({ "preferences.notifications.sound": { set: "none" } });
+  assert.equal(database.authority.runtimeConfig.get()?.configFingerprint, fingerprint);
+  assert.equal(warm.buildDashboardDayWire(DAY), before);
+  assert.deepEqual(warmSummaries, []);
+
+  save({ "browser.headless": { set: false } });
+  assert.notEqual(database.authority.runtimeConfig.get()?.configFingerprint, fingerprint);
+  assert.deepEqual(warm.buildDashboardDayWire(DAY), cold.buildDashboardDayWire(DAY));
+  assert.ok(warmSummaries.length > 0, "the day was rebuilt for the new runtime config");
+});
 
 it.each(["shared worker change", "journal gap"] as const)("fully rebuilds a renamed day across a %s", async change => {
   const { w, independent, target, warm, cold, rename, warmSummaries } = await fixture();

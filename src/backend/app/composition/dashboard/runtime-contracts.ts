@@ -6,6 +6,7 @@ import type { RuntimePreflightRunnerFactory } from "../../preflight/runtime-runn
 import type { probeOwnedViteServer } from "../../host/local-vite-probe.js";
 import type { DashboardBuildCommand } from "./build-identity.js";
 import { createTrustNotifications } from "./notifications.js";
+import type { createProfileSettingsProcesses } from "./profile-settings-processes.js";
 import { z } from "zod";
 import type { PreflightReportWireSchema } from "../../../../models/preflight/preflight-contract.js";
 import type { RuntimeIsolation } from "../../../../models/config/define-runtime-isolation.js";
@@ -15,14 +16,13 @@ import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/dea
 import { type WorkerCliLaunchSpec,type WorkerProcessSpawner } from "./worker-process.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
-import { composeProfileAssistantAuthorization,composeProfileRuntime,type ShutdownBackup } from "../storage-compose.js";
+import { composeProfileRuntime,type ShutdownBackup } from "../storage-compose.js";
 import { startDashboardHttpServer,type DashboardHttpListener,type DashboardHttpServer } from "../../../transports/http/http-server.js";
 
 export type DashboardStopFailure = Readonly<{ step: "transport-close" | "stream-close" | "loop-monitor-stop" | "worker-stop"; cause: unknown }>;
 
 export interface DashboardRuntime {
   readonly shutdownRequested?: Promise<void>;
-  readonly assistantAuthorization?: ReturnType<typeof composeProfileAssistantAuthorization>;
   readonly port: number;
   readonly noteWriter: NoteTimelineWriter;
   readonly notificationStatus: ReturnType<typeof createTrustNotifications>["observer"]["status"];
@@ -42,6 +42,7 @@ export interface DashboardComposeInput {
   readonly shutdownBackup?: ShutdownBackup;
   readonly onboardingDuo?: ProfileOnboardingDuoProvider;
   readonly copySignin?: OnboardingDuoProviderOptions["copySignin"];
+  readonly profileSettingsProcesses?: typeof createProfileSettingsProcesses;
   readonly admission?: RuntimeAdmission;
   readonly profile?: Readonly<{ runtime: ReturnType<typeof composeProfileRuntime>; token: string }>;
   readonly isolation: RuntimeIsolation;

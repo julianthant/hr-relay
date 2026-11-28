@@ -95,7 +95,7 @@ export function useRunStartWorkbookRows(
   const rowSource = canonicalJsonStringify([rowReference?.libraryId ?? null, rowReference?.versionId ?? null, rowReference?.sheetIds[0] ?? null]);
   const rowSelectionFresh = selectedWorkbookRows === undefined || selectedWorkbookRows.source === rowSource;
   const rowChoices = rowSelectionFresh ? workbookRows.choices : selectedWorkbookRows?.choices ?? [];
-  return { rowCapability, rowReference, rowIdentity, workbookRows, rowSource, rowSelectionFresh, rowChoices };
+  return { rowCapability, rowReference, rowLibrary, rowVersion, rowIdentity, workbookRows, rowSource, rowSelectionFresh, rowChoices };
 }
 
 export function runStartSpreadsheetReadiness(
@@ -103,6 +103,9 @@ export function runStartSpreadsheetReadiness(
     referenceId, checkSelections, checkPending, requiredTypes }: ReturnType<typeof useRunStartSpreadsheets>,
   referenceSelections: launchDraft.LaunchDraft["referenceSelections"], isRerun: boolean, snapshot: RerunValuesSnapshot | null,
 ) {
+  if (snapshot?.retainedSteps !== undefined) return {
+    spreadsheetsError: false, spreadsheetsReading: false, spreadsheetGone: false, referencesUnavailable: false,
+  };
   const usesSpreadsheets = workbookReference !== undefined || workbookCheck !== undefined;
   const spreadsheetsError = isRerun && usesSpreadsheets && (Boolean(library.catalogError) || compatibilityMissing);
   const spreadsheetsReading = usesSpreadsheets && !spreadsheetsError && (library.catalogLoading || library.catalogRefreshing || library.compatibility === undefined

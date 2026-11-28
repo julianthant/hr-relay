@@ -1,5 +1,5 @@
 /** Assistant reply parts: every part kind, inline kind and session chip state, plus the longest content the schema allows, in the shipped panel's 480px.
- * The parts are mounted directly; the served panel does not draw them until the cutover. */
+ * The parts are mounted directly; the served panel stories in assistant-stories.tsx show them through the controller. */
 import "../../../../../../src/dashboard/surfaces/shell/assistant-panel.css";
 import { AssistantReplyParts } from "../../../../../../src/dashboard/surfaces/assistant/assistant-reply-parts.js";
 import type { SessionChipState } from "../../../../../../src/dashboard/surfaces/assistant/assistant-reply-parts-model.js";

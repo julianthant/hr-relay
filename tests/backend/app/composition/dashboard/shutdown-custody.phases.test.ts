@@ -63,7 +63,7 @@ function dashboardShutdown(closeLanes: () => Promise<void>) {
     hub: { close: async () => { events.push("hub.close"); }, subscriptionsClosed: true },
     stopWorkerControl: async () => { events.push("workers.stop"); },
     takeWorkerStopFailures: () => [],
-    assistantAuthorization: {}, shutdownRequested: Promise.resolve(), noteWriter: {},
+    shutdownRequested: Promise.resolve(), noteWriter: {},
     server: { close: async () => { events.push("transport.close"); }, port: 0 },
     custody: { transportClosed: false, failedClosures: [] },
   } as unknown as Parameters<typeof composeDashboardShutdown>[0]);

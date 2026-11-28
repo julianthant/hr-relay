@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createAssistantM1Service, type AssistantM1ServiceOptions } from "../../../src/backend/assistant/service.js";
 import { ChatGptResourceClosureUnprovedError } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { assistantPersonBinding, resolveAssistantReply } from "../../../src/backend/assistant/replies.js";
-import { AssistantToolRefusal, referenceSchema, type AssistantReadTool } from "../../../src/backend/assistant/plugins/plugin.js";
+import { AssistantChangeOutput, AssistantToolRefusal, referenceSchema, type AssistantChangeTool, type AssistantReadTool } from "../../../src/backend/assistant/plugins/plugin.js";
 import { sessionsPlugin } from "../../../src/backend/assistant/plugins/sessions/index.js";
 import { assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
@@ -35,8 +35,9 @@ async function world() {
   account.service.setDebugEvents(writer);
   const script: Step[] = [], bodies: z.infer<typeof Wire>[] = [], tokens = new Set<string>();
   let current = true, profileId = storage.profileId(), personLabel = `Person ${EXECUTOR_EID}`, onPost: (() => void) | undefined, onBindings: (() => void) | undefined;
+  let editTool: AssistantChangeTool | undefined;
   let sessions: AssistantM1Sessions | undefined, sessionTools = false, typed = typedProposalFixture(storage, timestamp);
-  let failLog: Error | undefined, usageAttempts = 0, tools = 0, facts = 0, catalogs = 0, refuseTool = false, historyFault: "read" | "write" | undefined;
+  let failLog: Error | undefined, usageAttempts = 0, tools = 0, facts = 0, catalogs = 0, refuseTool = false, historyFault: "read" | "write" | undefined, failIssue = false;
   const history = { ...storage.history,
     repeat(...args: Parameters<typeof storage.history.repeat>) { if (historyFault === "read") throw new Error("PRIVATE_HISTORY_CANARY"); return storage.history.repeat(...args); },
     settle(...args: Parameters<typeof storage.history.settle>) { if (historyFault === "write") throw new Error("PRIVATE_HISTORY_CANARY"); return storage.history.settle(...args); } };
@@ -54,12 +55,12 @@ async function world() {
       tools++; if (refuseTool) throw new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE");
       const token = context.references.issue("P", row.envelope.runId, personLabel, EXECUTOR_EID, row.version); tokens.add(token); return { person: token };
     } };
-  const options: AssistantM1ServiceOptions = { account: account.service, proposals: { open: id => typed.owner.open(id), supersede: id => typed.owner.supersede(id), issue: (...args) => typed.owner.issue(...args), answer: (...args) => typed.owner.answer(...args) }, history: () => history, clock: account.clock, actorId: "local-operator",
+  const options: AssistantM1ServiceOptions = { account: account.service, proposals: { open: id => typed.owner.open(id), supersede: id => typed.owner.supersede(id), issue: (...args) => { if (failIssue) throw new Error("PRIVATE_ISSUE_CANARY"); return typed.owner.issue(...args); }, answer: (...args) => typed.owner.answer(...args), needsYou: () => typed.owner.needsYou() }, history: () => history, atomic: storage.outer, clock: account.clock, actorId: "local-operator",
     owner: () => ({ profileId, epoch: storage.epoch() }), assertComposition() { if (profileId !== storage.profileId()) throw new AssistantToolRefusal("ASSISTANT_CONTEXT_STALE"); },
     selectedModel: () => ({ preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent() { if (!current) throw new Error("model changed"); } }),
     facts: () => { facts++; return assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup")); }, runReferenceLabel: () => "Lookup",
-    tools: () => ({ plugins: [{ domain: "fixture", tools: [tool] }, typed.owner.plugin, ...(sessionTools ? [sessionsPlugin()] : [])], ...(sessions === undefined ? {} : { sessions }), bindings(table) { onBindings?.(); return [...tokens].map(token => assistantPersonBinding(table, token, row)); } }),
-    debugEvents: { emit(event) { usageAttempts++; if (failLog !== undefined) throw failLog; writer.emit(event); } } };
+    tools: () => ({ plugins: [{ domain: "fixture", tools: [tool, ...(editTool === undefined ? [] : [editTool])] }, typed.owner.plugin, ...(sessionTools ? [sessionsPlugin()] : [])], ...(sessions === undefined ? {} : { sessions }), bindings(table) { onBindings?.(); return [...tokens].map(token => assistantPersonBinding(table, token, row)); } }),
+    debugEvents: { emit(event) { if (event.area === "assistant-usage") usageAttempts++; if (failLog !== undefined) throw failLog; writer.emit(event); } } };
   let service = createAssistantM1Service(options);
   const create = () => { const id = randomUUID(); assert.equal(service.history({ operation: "create", conversationId: id, title: "Chat" }).state, "saved"); return id; };
   const request = (id = create(), text = "Explain") => { const view = service.conversation(id); assert.ok(view); return { conversationId: id, expectedRevision: view.revision, messageId: randomUUID(), message: text }; };
@@ -69,7 +70,8 @@ async function world() {
     counts: () => ({ catalogs, posts: bodies.length, tools, facts, usageAttempts }), restart() { service = createAssistantM1Service(options); },
     typed: () => typed, restartOwner() { typed = typedProposalFixture(storage, timestamp); service = createAssistantM1Service(options); },
     onPost(hook: () => void) { onPost = hook; }, onBindings(hook: () => void) { onBindings = hook; },
-    failHistory(operation: "read" | "write") { historyFault = operation; },
+    failHistory(operation: "read" | "write") { historyFault = operation; }, failIssue() { failIssue = true; },
+    offerEdit(candidate: AssistantChangeTool) { editTool = candidate; },
     changeModel() { current = false; }, offerSessions(owner?: AssistantM1Sessions) { sessionTools = true; sessions = owner; }, changeOwner() { profileId = randomUUID(); }, refuseTool() { refuseTool = true; },
     personLabel(value: string) { personLabel = value; },
     logFailure(error: Error) { failLog = error; }, changeRevision() { row = RunRecordSchema.parse({ ...row, version: row.version + 1 }); },
@@ -133,6 +135,31 @@ it("rejects miscomposed change tools before catalog/provider and records actual 
     const refusal = result(await w.send()); assert.equal(refusal.state, "no-reply"); if (refusal.state !== "no-reply") assert.fail();
     assert.equal(refusal.canRetry, false); assert.deepEqual(refusal.turn?.usage, { state: "measured", callCount: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0 });
     assert.equal(w.counts().catalogs, 0); assert.equal(w.counts().posts, 0); assert.equal(w.counts().usageAttempts, 1);
+  } finally { await w.close(); }
+});
+it("rolls back a local edit if the same turn cannot save its reply", async () => {
+  const w = await world();
+  try {
+    const { database } = w.storage;
+    database.exec("CREATE TABLE edit_fixture (value TEXT NOT NULL); INSERT INTO edit_fixture VALUES ('before')");
+    let attempted = false;
+    w.offerEdit({ kind: "change", tier: "write-local", name: "change_fixture", description: "Change the test value.",
+      parameters: z.strictObject({ value: z.literal("after") }), output: AssistantChangeOutput, privacy: [],
+      async change() {
+        return () => {
+          attempted = true;
+          database.exec("UPDATE edit_fixture SET value='after'");
+          return { kind: "text", runs: [{ kind: "value", previous: "before", value: "after" }] };
+        };
+      },
+    });
+    w.script.push(call("change_fixture", { value: "after" }));
+    w.failHistory("write");
+    const reply = await w.send();
+    assert.equal(reply.kind, "delivery");
+    assert.equal(attempted, true);
+    assert.equal(database.prepare("SELECT value FROM edit_fixture").get()?.value, "before");
+    assert.equal(w.counts().posts, 1);
   } finally { await w.close(); }
 });
 for (const fault of ["revision", "foreign", "unknown"] as const) it(`refuses ${fault} binding facts without guessing/downgrading a target`, async () => {
@@ -282,6 +309,22 @@ it("starts a session under the accepted turn in ask mode and appends its server-
     assert.equal(JSON.stringify(w.bodies).includes(w.run().envelope.runId), false);
   } finally { await w.close(); }
 });
+it("keeps a started session's chip when the final inference then fails, and settles it as a reply that cannot be resent", async () => {
+  const w = await world(); try {
+    let starts = 0;
+    w.offerSessions({ start() { starts++; return Promise.resolve([w.run()]); } });
+    w.script.push(call("start_session", { workflow: "person-lookup", entries: [String(EXECUTOR_EID)] }), partialTextStream("incomplete"));
+    const input = w.request(), envelope = await w.send(input); const reply = result(envelope);
+    assert.equal(reply.state, "answered"); if (reply.state !== "answered") assert.fail();
+    assert.equal(envelope.receipt?.delivery, "answered");
+    const [failed, session] = reply.reply.parts;
+    assert.ok(failed?.kind === "text" && failed.runs[0]?.kind === "failure" && failed.runs[0].code === "ASSISTANT_RESPONSE_INCOMPLETE");
+    assert.ok(session?.kind === "session"); assert.equal(session.runId, w.run().envelope.runId);
+    assert.equal(starts, 1);
+    const stored = w.service().conversation(input.conversationId); assert.ok(stored);
+    assert.ok(stored.messages.at(-1)?.payload.parts.some(part => part.kind === "session"));
+  } finally { await w.close(); }
+});
 it("offers no retry after a session start was attempted and refuses session tools without their owner before the provider", async () => {
   const w = await world(); try {
     w.offerSessions({ start() { return Promise.reject(new AssistantToolRefusal("ASSISTANT_READ_UNAVAILABLE")); } });
@@ -335,8 +378,21 @@ it("replies with the proposal parts and leaves the chat's proposal open, returni
     const { chat, sent } = propose(w), reply = answered(await sent), open = w.typed().owner.open(chat);
     assert.ok(open); assert.equal(w.counts().posts, 2);
     const kinds = reply.parts.map(part => part.kind); assert.ok(kinds.includes("bullets"));
-    const json = JSON.stringify(reply.parts); assert.ok(json.includes('"kind":"bold"')); assert.ok(json.includes("Reply yes to go ahead.")); assert.equal(open.snapshot.rows.length, 2);
+    const json = JSON.stringify(reply.parts); assert.ok(json.includes('"kind":"bold"')); assert.ok(json.includes("Reply yes to save all 2, or tell me which to skip or change.")); assert.equal(open.snapshot.rows.length, 2);
     assert.equal(w.typed().submitted.length, 0);
+  } finally { await w.close(); }
+});
+
+it("stores no invitation to say yes when its proposal fails to record, so a later yes is never taken as an answer", async () => {
+  const w = await world(); try {
+    w.failIssue();
+    const { chat, input, sent } = propose(w), envelope = await sent;
+    assert.equal(envelope.receipt?.delivery, "delivery-unknown");
+    assert.equal(w.typed().owner.open(chat), undefined);
+    const stored = w.service().conversation(chat); assert.ok(stored);
+    assert.equal(stored.messages.some(message => message.payload.recording.kind === "reply"), false);
+    assert.equal(JSON.stringify(stored).includes("Reply yes to save"), false);
+    assert.equal(stored.messages.find(message => message.id === input.messageId)?.delivery, "delivery-unknown");
   } finally { await w.close(); }
 });
 

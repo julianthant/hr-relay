@@ -1,21 +1,20 @@
-import { ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantRequest, type AssistantRespondEnvelope, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+import { AssistantReplyPartsSchema, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, type AssistantM1Request, type AssistantM1RespondEnvelope, AssistantSessionViewSchema } from '../../../../src/models/dashboard/assistant.js';
 import { CommandExecutor, type CommandExecutionScope, type CommandOutcome } from '../../../../src/dashboard/app/commands/command-executor.js';
 import { AssistantModelPreferenceCommandRequestSchema, CommandResultSchema, type CommandResult } from '../../../../src/rules/commands/commands.js';
 import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
 import assert from 'node:assert/strict';
 import { it, vi } from 'vitest';
-import { assistantProposalDigest, createAssistantController, ASSISTANT_CONFIRM_HOLD } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
-import { ASSISTANT_UNKNOWN_NOTICE } from '../../../../src/dashboard/surfaces/assistant/assistant-model.js';
+import { createAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { assistantModelLabel } from '../../../../src/models/config/assistant-model-preference.js';
-import { ASSISTANT_PAUSE_PROPOSAL, ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
-import { resultClient } from '../../../support/helpers/dashboard/assistant-served-client.js';
+import { resultClient, scriptedEnvelope, type ScriptedReply } from '../../../support/helpers/dashboard/assistant-served-client.js';
+import type { AssistantState, AssistantMessage } from '../../../../src/dashboard/surfaces/assistant/assistant-model.js';
 import { createAssistantHistory } from '../../../../src/dashboard/surfaces/assistant/assistant-history-model.js';
 import { assistantHistoryServer } from '../../../support/helpers/dashboard/assistant-history-server.js';
 
 
 function pending() {
-  let settle: (result: AssistantResult) => void = () => { throw new Error('pending-uninitialized'); };
-  const promise = new Promise<AssistantResult>(resolve => { settle = resolve; });
+  let settle: (result: ScriptedReply) => void = () => { throw new Error('pending-uninitialized'); };
+  const promise = new Promise<ScriptedReply>(resolve => { settle = resolve; });
   return { promise, settle };
 }
 
@@ -39,13 +38,16 @@ it('keeps monotonic identity across New Chat and ignores late replies after canc
     c.abort();
   }
 });
-it('settles actual answer presentation and never interprets Confirm as a request', async () => {
-  let calls = 0;
-  const c = createAssistantController(resultClient({ async assistantRespond() { calls++; return { state: 'answered', text: 'Explanation' }; } }), { authority: 'a' });
+it('settles a served reply as its parts and a refusal as its catalog line', async () => {
+  const replies: ScriptedReply[] = [{ state: 'answered', text: 'Explanation' }, { state: 'no-reply', reason: 'ASSISTANT_RESPONSE_REFUSED' }];
+  const c = createAssistantController(resultClient({ async assistantRespond() { const reply = replies.shift(); assert.ok(reply); return reply; } }), { authority: 'a' });
   c.action({ type: 'edit', value: 'Explain' }); c.action({ type: 'send' });
   await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'idle'));
   assert.equal(c.snapshot().messages.at(-1)?.text, 'Explanation');
-  c.action({ type: 'confirm' }); assert.equal(calls, 1); assert.match(ASSISTANT_CONFIRM_HOLD, /before preparation/u);
+  assert.deepEqual(c.snapshot().messages.at(-1)?.parts, [{ kind: 'text', runs: [{ kind: 'plain', text: 'Explanation' }] }]);
+  c.action({ type: 'edit', value: 'yes' }); c.action({ type: 'send' });
+  await vi.waitFor(() => assert.equal(c.snapshot().messages.at(-1)?.code, 'ASSISTANT_RESPONSE_REFUSED'));
+  assert.equal(c.snapshot().messages.at(-1)?.parts, undefined);
 });
 it('fails a lost chat reply retryably, resends only the kept prompt and never lets an edited draft retry it', async () => {
   let calls = 0;
@@ -62,58 +64,14 @@ it('fails a lost chat reply retryably, resends only the kept prompt and never le
   assert.equal(JSON.stringify(c.snapshot()).includes('actionId'), false);
 });
 
-const actionProposal = { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL } satisfies AssistantResult;
-it('confirms the actual issued action identity once; a lost run start or run action is unknown and nothing retries', async () => {
-  const start = { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL } satisfies AssistantResult;
-  for (const [result, lost, settled] of [[actionProposal, false, 'confirmed'], [actionProposal, true, 'unknown'], [start, true, 'unknown']] as const) {
-    let calls = 0;
-    const c = createAssistantController(resultClient({ assistantRespond: async () => result,
-      assistantDecide: async identity => { calls++; assert.deepEqual(identity, { chatId: result.proposal.chatId, actionId: result.proposal.actionId, revision: result.proposal.revision, decision: 'confirm',
-        reviewedDigest: await assistantProposalDigest(result.proposal) });
-        if (lost) throw new Error('synthetic transport lost'); return { state: 'applied', actionId: identity.actionId }; } }), { authority: 'current' });
-    c.action({ type: 'edit', value: 'pause it' }); c.action({ type: 'send' }); await Promise.resolve(); await Promise.resolve();
-    const initial = c.snapshot().turn; assert.equal(initial.state, 'proposal');
-    if (initial.state === 'proposal' && result === actionProposal) { assert.equal(initial.proposal.mode, 'local-change'); assert.deepEqual(initial.proposal.issued, actionProposal.proposal); }
-    c.action({ type: 'confirm' }); c.action({ type: 'confirm' });
-    await vi.waitFor(() => { const turn = c.snapshot().turn; assert.ok(turn.state === 'proposal' && turn.disposition === settled, String(lost)); });
-    if (lost) assert.equal(c.snapshot().messages.at(-1)?.text, ASSISTANT_UNKNOWN_NOTICE);
-    c.action({ type: 'confirm' }); c.action({ type: 'retry' }); assert.equal(calls, 1);
-  }
-});
-it('holds issued action confirmation after edits, selection changes or cancel without fabricating workflow subjects', async () => {
-  for (const change of ['edit', 'selection', 'cancel'] as const) {
-    let confirmations = 0, cancellations = 0;
-    const c = createAssistantController(resultClient({ assistantRespond: async () => actionProposal,
-      assistantDecide: async input => { if (input.decision === 'confirm') confirmations++; else cancellations++; return { state: 'cancelled', actionId: input.actionId }; } }), { authority: 'one' });
-    c.action({ type: 'edit', value: 'mark notifications read' }); c.action({ type: 'send' }); await Promise.resolve(); await Promise.resolve();
-    if (change === 'edit') c.action({ type: 'edit', value: 'changed' });
-    if (change === 'selection') c.bind({ authority: 'two', subjectRef: 'new-subject' });
-    if (change === 'cancel') { c.action({ type: 'cancel' }); await Promise.resolve(); await Promise.resolve(); }
-    c.action({ type: 'confirm' }); assert.equal(confirmations, 0);
-    if (change === 'cancel') assert.equal(cancellations, 1);
-  }
-});
-
-it('holds an issued automatic unknown card without Confirm, Retry, or another request', async () => {
-  let requests = 0, decisions = 0;
-  const action = ASSISTANT_PAUSE_PROPOSAL;
-  const c = createAssistantController(resultClient({ async assistantRespond() { requests++; return { state: 'unknown', actionId: action.actionId, action }; },
-    async assistantDecide() { decisions++; return { state: 'applied', actionId: action.actionId }; } }), { authority: 'current' });
-  c.action({ type: 'edit', value: 'mark notifications read' }); c.action({ type: 'send' });
-  await vi.waitFor(() => { const turn = c.snapshot().turn; assert.equal(turn.state, 'proposal'); if (turn.state === 'proposal') assert.equal(turn.disposition, 'unknown'); });
-  c.action({ type: 'confirm' }); c.action({ type: 'retry' }); c.action({ type: 'send' }); c.action({ type: 'cancel' });
-  assert.equal(requests, 1); assert.equal(decisions, 0);
-  const turn = c.snapshot().turn; assert.equal(turn.state, 'proposal'); if (turn.state === 'proposal') assert.deepEqual(turn.proposal.action, { chatId: action.chatId, actionId: action.actionId, revision: action.revision });
-});
-
 function preferenceControls() {
   let view = AssistantModelPreferenceViewSchema.parse({ profileId: crypto.randomUUID(), epoch: 2, revision: 3,
     preference: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } });
-  const sent: unknown[] = [], replies: AssistantRequest[] = [], signals: (AbortSignal | undefined)[] = [], feedback: CommandOutcome[] = [];
+  const sent: unknown[] = [], replies: AssistantM1Request[] = [], signals: (AbortSignal | undefined)[] = [], feedback: CommandOutcome[] = [];
   let reads = 0, lostResponse = false, gate: Promise<void> | undefined, answer = 'Done';
   let reader: (signal?: AbortSignal) => Promise<AssistantModelPreferenceView> = async () => view;
   const client = {
-    async assistantRespond(input: AssistantRequest): Promise<AssistantRespondEnvelope> { replies.push(input); return { kind: 'result', result: { state: 'answered', text: answer } }; },
+    async assistantRespond(input: AssistantM1Request): Promise<AssistantM1RespondEnvelope> { replies.push(input); return scriptedEnvelope(input, { state: 'answered', text: answer }); },
     async assistantModelPreference(signal?: AbortSignal) { reads++; signals.push(signal); return reader(signal); },
     async executeCommand(input: unknown): Promise<CommandResult> {
       const command = AssistantModelPreferenceCommandRequestSchema.parse(input); sent.push(command);
@@ -219,40 +177,106 @@ it('preserves an in-flight read when only the outer command binding container ch
 
 it('does not infer or choose a local default when the preference query is not wired', async () => {
   let inferences = 0;
-  const c = createAssistantController(resultClient({ async assistantRespond(): Promise<AssistantResult> { inferences++; return { state: 'answered', text: 'Unexpected' }; } }), { authority: 'selected' });
+  const c = createAssistantController(resultClient({ async assistantRespond(): Promise<ScriptedReply> { inferences++; return { state: 'answered', text: 'Unexpected' }; } }), { authority: 'selected' });
   sendControl(c, ASSISTANT_MODEL_COMMAND);
   await vi.waitFor(() => assert.notEqual(c.snapshot().turn.state, "waiting"));
   assert.equal(inferences, 0); assert.equal(c.snapshot().messages.length, 2);
 });
-it('binds selected-run workflow proposals to the current selection and confirms only through the typed action client', async () => {
-  let confirms = 0;
-  const proposal = ASSISTANT_START_PROPOSAL;
-  const c = createAssistantController(resultClient({ assistantRespond: async request => {
-    assert.equal(request.subjectRef, 'run_selected_1'); return { state: 'action-proposal', proposal };
-  }, assistantDecide: async input => { confirms++; return { state: 'applied', actionId: input.actionId }; } }),
-  { authority: 'current', subjectRef: 'run_selected_1' });
-  c.action({ type: 'edit', value: 'start selected workflow' }); c.action({ type: 'send' });
-  await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'proposal'));
-  assert.equal(confirms, 0);
-  const turn = c.snapshot().turn; assert.equal(turn.state, 'proposal');
-  if (turn.state === 'proposal') {
-    assert.equal(turn.proposal.mode, 'read-only');
-    assert.equal(turn.proposal.values[0].value, 'EID 10101010 · Person Lookup');
-    assert.deepEqual(turn.proposal.values.slice(1, 5), [
-      { label: 'Runs', value: '1' }, { label: 'Mode', value: 'Live read' },
-      { label: 'Browser', value: 'Visible' }, { label: 'Captures', value: 'On' },
-    ]);
-    assert.deepEqual(turn.proposal.issued, proposal);
+it('retries a lost reply under the same message id whether its history read throws or finds nothing, so an accepted turn is replayed, never run twice', async () => {
+  for (const outcome of [async () => { throw new Error('history offline'); }, async () => undefined]) {
+    const ids: string[] = [];
+    const client = resultClient({ async assistantRespond(input): Promise<ScriptedReply> {
+      ids.push(input.messageId); if (ids.length === 1) throw new Error('connection dropped'); return { state: 'answered', text: 'Replayed' }; } });
+    let kept: AssistantState | undefined;
+    const c = createAssistantController(client, { authority: 'a' }, { conversationId: crypto.randomUUID(), read: () => kept,
+      retain: state => { kept = state; }, revision: () => 1, receipt() {}, async local() {}, async refresh() {}, outcome, unsaved() {} });
+    sendControl(c, 'start a lookup for Avery');
+    await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'failed'));
+    c.action({ type: 'retry' });
+    await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'idle'));
+    assert.equal(ids.length, 2); assert.equal(ids[1], ids[0]);
+    sendControl(c, 'another question');
+    await vi.waitFor(() => assert.equal(ids.length, 3)); assert.notEqual(ids[2], ids[0]);
   }
-  c.action({ type: 'confirm' });
-  await vi.waitFor(() => {
-    const turn = c.snapshot().turn;
-    assert.ok(turn.state === 'proposal' && turn.disposition === 'confirmed');
-  });
-  assert.equal(confirms, 1);
-  c.action({ type: 'confirm' }); assert.equal(confirms, 1);
 });
-
+const RUN_ID = '00000000-0000-4000-8000-000000000004';
+function sessionView(rowRevision: number, stoppable: boolean) {
+  return AssistantSessionViewSchema.parse({ runId: RUN_ID, label: 'Sample, Avery', meta: 'Running', rowRevision, state: stoppable ? 'running' : 'cancelled',
+    stop: stoppable ? { runId: RUN_ID, descriptor: { kind: 'command', key: 'cancel', command: 'cancel', label: 'Cancel', intent: 'neutral', placement: ['footer'], expectedVersion: rowRevision } } : null });
+}
+it('re-reads session chips after a session reply, and Stop sends the run\'s Cancel once and proves it by re-reading the chip', async () => {
+  let refreshes = 0, served = sessionView(3, true);
+  const sent: unknown[] = [], feedback: CommandOutcome[] = [];
+  const client = resultClient({
+    async assistantRespond(): Promise<ScriptedReply> { return { state: 'answered', parts: [{ kind: 'session', runId: RUN_ID, label: 'Sample, Avery', meta: 'Running' }] }; },
+    async executeCommand(input: unknown): Promise<CommandResult> {
+      sent.push(input); served = sessionView(4, false);
+      return CommandResultSchema.parse({ state: 'applied', commandId: (input as { commandId: string }).commandId, affectedTargets: [{ family: 'run', runId: RUN_ID }] });
+    },
+    async executeBulkCommand(): Promise<never> { throw new Error('unexpected-bulk'); },
+  });
+  const scope: CommandExecutionScope = { actorId: LOCAL_OPERATOR_ACTOR_ID, client, authority: {}, dayRequest: {} };
+  const commands = { executor: new CommandExecutor(() => scope), scope, feedback: (value: CommandOutcome) => { feedback.push(value); } };
+  let kept: AssistantState | undefined;
+  const c = createAssistantController(client, { authority: 'a', commands }, { conversationId: crypto.randomUUID(), read: () => kept && { ...kept, sessions: [served] },
+    retain: state => { kept = state; }, revision: () => 1, receipt() {}, async local() {}, async refresh() { refreshes++; }, async outcome() { return undefined; }, unsaved() {} });
+  sendControl(c, 'look up Avery');
+  await vi.waitFor(() => assert.equal(c.snapshot().sessions?.[0]?.rowRevision, 3));
+  assert.equal(refreshes, 1);
+  const stop = c.snapshot().sessions?.[0]?.stop; assert.ok(stop);
+  await c.stop(stop);
+  assert.equal(sent.length, 1); assert.equal((sent[0] as { type: string }).type, 'cancel');
+  assert.equal(feedback.at(-1)?.kind, 'confirmed'); assert.equal(refreshes, 3);
+  assert.equal(c.snapshot().sessions?.[0]?.stop, null);
+});
+it('a same-id Retry answered by a delivery receipt restores the started session with its Stop, and the session starts once', async () => {
+  const ids: string[] = [], session = { kind: 'session' as const, runId: RUN_ID, label: 'Sample, Avery', meta: 'Running' };
+  let starts = 0, stored = false;
+  const client = { ...resultClient({ async assistantRespond(): Promise<ScriptedReply> { throw new Error('replaced below'); } }), async assistantRespond(input: AssistantM1Request): Promise<AssistantM1RespondEnvelope> {
+    ids.push(input.messageId);
+    // The server starts once per accepted message id; the resend replays the stored turn as a delivery receipt.
+    if (!stored) { stored = true; starts++; throw new Error('connection dropped after the session started'); }
+    const answered = scriptedEnvelope(input, { state: 'answered', parts: [session] });
+    assert.ok(answered.kind === 'result' && answered.result.state === 'answered' && answered.receipt !== undefined);
+    return { kind: 'delivery', receipt: answered.receipt, acceptedTurn: answered.result.reply.acceptedTurn, usage: answered.result.reply.usage, history: { state: 'observed' } };
+  } };
+  let kept: AssistantState | undefined, reads = 0;
+  const c = createAssistantController(client, { authority: 'a' }, { conversationId: crypto.randomUUID(), read: () => kept && { ...kept, sessions: [sessionView(3, true)] },
+    retain: state => { kept = state; }, revision: () => 1, receipt() {}, async local() {}, async refresh() {}, unsaved() {},
+    // The first read-back fails; after the resend the stored reply carries the session.
+    async outcome(): Promise<AssistantMessage | undefined> { reads++; if (reads === 1) throw new Error('history offline'); return { id: 'stored', role: 'assistant', text: '', parts: AssistantReplyPartsSchema.parse([session]) }; } });
+  sendControl(c, 'start a lookup for Avery');
+  await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'failed'));
+  assert.equal(c.snapshot().sessions?.length ?? 0, 0);
+  c.action({ type: 'retry' });
+  await vi.waitFor(() => assert.ok(c.snapshot().sessions?.[0]?.stop));
+  assert.equal(c.snapshot().turn.state, 'idle');
+  assert.deepEqual(ids, [ids[0], ids[0]]); assert.equal(starts, 1);
+});
+it('Stop re-reads the chip first and sends the run\'s current Cancel when the run moved from queued to running', async () => {
+  let served = sessionView(3, true);
+  const sent: unknown[] = [];
+  const client = resultClient({
+    async assistantRespond(): Promise<ScriptedReply> { return { state: 'answered', parts: [{ kind: 'session', runId: RUN_ID, label: 'Sample, Avery', meta: 'Running' }] }; },
+    async executeCommand(input: unknown): Promise<CommandResult> {
+      sent.push(input); served = sessionView(6, false);
+      return CommandResultSchema.parse({ state: 'applied', commandId: (input as { commandId: string }).commandId, affectedTargets: [{ family: 'run', runId: RUN_ID }] });
+    },
+    async executeBulkCommand(): Promise<never> { throw new Error('unexpected-bulk'); },
+  });
+  const scope: CommandExecutionScope = { actorId: LOCAL_OPERATOR_ACTOR_ID, client, authority: {}, dayRequest: {} };
+  const commands = { executor: new CommandExecutor(() => scope), scope, feedback() {} };
+  let kept: AssistantState | undefined;
+  const c = createAssistantController(client, { authority: 'a', commands }, { conversationId: crypto.randomUUID(), read: () => kept && { ...kept, sessions: [served] },
+    retain: state => { kept = state; }, revision: () => 1, receipt() {}, async local() {}, async refresh() {}, async outcome() { return undefined; }, unsaved() {} });
+  sendControl(c, 'look up Avery');
+  await vi.waitFor(() => assert.equal(c.snapshot().sessions?.[0]?.rowRevision, 3));
+  const stale = c.snapshot().sessions?.[0]?.stop; assert.ok(stale);
+  served = sessionView(5, true);
+  await c.stop(stale);
+  assert.equal(sent.length, 1); assert.equal((sent[0] as { target: { expectedVersion: number } }).target.expectedVersion, 5);
+  assert.equal(c.snapshot().sessions?.[0]?.stop, null);
+});
 
 it('stores a setup reply before publishing it, so the first automatic rename of a New chat uses the current revision', async () => {
   const server = assistantHistoryServer();
@@ -260,11 +284,11 @@ it('stores a setup reply before publishing it, so the first automatic rename of 
     const store = await createAssistantHistory(server.client, { getItem: () => null, removeItem() {} }, server.profileId, new AbortController().signal);
     const [chat] = store.chats.read(); assert.ok(chat); assert.equal(chat.title, 'New chat');
     const view = AssistantModelPreferenceViewSchema.parse({ profileId: server.profileId, epoch: 1, revision: 0, preference: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } });
-    const client = resultClient({ async assistantRespond(): Promise<AssistantResult> { throw new Error('setup commands send nothing to the model'); } });
+    const client = resultClient({ async assistantRespond(): Promise<ScriptedReply> { throw new Error('setup commands send nothing to the model'); } });
     const c = createAssistantController({ ...client, ...server.client, async assistantModelPreference() { return view; } }, { authority: 'selected' }, {
       conversationId: chat.id, read: () => store.read(chat.id), retain: state => { store.retain(chat.id, state); }, revision: () => store.revision(chat.id),
       receipt: receipt => { store.receipt(receipt); }, local: text => store.local(chat.id, text), outcome: id => store.outcome(chat.id, id),
-      decision: id => store.decision(chat.id, id), unsaved: () => { store.unsaved(); } });
+      refresh: () => store.refresh(chat.id), unsaved: () => { store.unsaved(); } });
     // The panel renames as soon as the first reply is published; do the same here.
     let rename: Promise<void> | undefined;
     c.subscribe(() => { if (rename === undefined && c.snapshot().messages.some(message => message.role === 'assistant')) rename = store.chats.rename(chat.id, ASSISTANT_MODEL_COMMAND); });

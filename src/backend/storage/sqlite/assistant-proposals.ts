@@ -1,12 +1,12 @@
 import { z } from "zod";
 import type { DatabaseSync } from "node:sqlite";
-import { ASSISTANT_START_ROWS_MAX, AssistantM2ProposalRecordSchema, AssistantM2ProposalSnapshotSchema, AssistantM2RowResultSchema, AssistantSessionClaimSchema, AssistantSessionOutcomeSchema,
-  type AssistantM2ProposalRecord, type AssistantM2ProposalSnapshot } from "../../../models/dashboard/assistant.js";
+import { ASSISTANT_START_ROWS_MAX, AssistantProposalRecordSchema, AssistantProposalSnapshotSchema, AssistantRowResultSchema, AssistantSessionClaimSchema, AssistantSessionOutcomeSchema,
+  type AssistantProposalRecord, type AssistantProposalSnapshot } from "../../../models/dashboard/assistant.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { assistantM1MessageFromRow, type AssistantM1Attempt, type AssistantM1HistoryRepository } from "./assistant-history.js";
 
 /** Durable proposal and session-claim schema. */
-export const ASSISTANT_M2_PROPOSAL_STATEMENTS = Object.freeze([
+export const ASSISTANT_PROPOSAL_STATEMENTS = Object.freeze([
   `CREATE TABLE assistant_proposals (
     id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES assistant_conversations(id) ON DELETE CASCADE,
     revision INTEGER NOT NULL CHECK(revision>0), rendered_message_id TEXT NOT NULL UNIQUE, rendered_digest TEXT NOT NULL,
@@ -72,7 +72,7 @@ export function createAssistantProposalRepository(ports: Ports) {
     return raw === undefined ? undefined : assistantM1MessageFromRow(raw);
   };
   /** The accepted operator message that answered `snapshot`: its own live accepted turn, bound to exactly this proposal. */
-  const answeredBy = (snapshot: AssistantM2ProposalSnapshot, answerMessageId: string) => {
+  const answeredBy = (snapshot: AssistantProposalSnapshot, answerMessageId: string) => {
     const answer = message(answerMessageId), recording = answer?.payload.recording;
     if (answer?.conversationId !== snapshot.conversationId || recording?.kind !== "accepted-turn") return undefined;
     const turn = recording.acceptedTurn;
@@ -80,18 +80,18 @@ export function createAssistantProposalRepository(ports: Ports) {
       && canonicalJsonStringify(turn.proposalAnswer) === canonicalJsonStringify({ proposalId: snapshot.id, proposalRevision: snapshot.revision,
         renderedMessageId: snapshot.renderedMessageId, renderedDigest: snapshot.renderedDigest }) ? answer : undefined;
   };
-  const record = (raw: unknown): AssistantM2ProposalRecord => {
-    const row = ProposalRowSchema.parse(raw), snapshot = AssistantM2ProposalSnapshotSchema.parse(JSON.parse(row.snapshot_json));
+  const record = (raw: unknown): AssistantProposalRecord => {
+    const row = ProposalRowSchema.parse(raw), snapshot = AssistantProposalSnapshotSchema.parse(JSON.parse(row.snapshot_json));
     if (snapshot.id !== row.id || snapshot.conversationId !== row.conversation_id || snapshot.revision !== row.revision || snapshot.renderedMessageId !== row.rendered_message_id
       || snapshot.renderedDigest !== row.rendered_digest || snapshot.createdAt !== row.created_at || snapshot.profileId !== ports.profileId()) conflict("record-invalid");
     const results = database.prepare("SELECT id,state,command_id,result_json FROM assistant_proposal_rows WHERE proposal_id=? ORDER BY ordinal").all(row.id).map(raw => {
-      const result = ResultRowSchema.parse(raw), parsed = AssistantM2RowResultSchema.parse(JSON.parse(result.result_json));
+      const result = ResultRowSchema.parse(raw), parsed = AssistantRowResultSchema.parse(JSON.parse(result.result_json));
       if (parsed.state !== result.state || ("commandId" in parsed ? parsed.commandId : null) !== result.command_id) conflict("row-invalid");
       return { rowId: result.id, result: parsed };
     });
     if (canonicalJsonStringify(results.map(entry => entry.rowId)) !== canonicalJsonStringify(snapshot.rows.map(entry => entry.id))) conflict("rows-invalid");
     if (row.state === "answered" && (row.answer_message_id === null || answeredBy(snapshot, row.answer_message_id) === undefined)) conflict("answer-invalid");
-    return AssistantM2ProposalRecordSchema.parse({ snapshot, rows: results,
+    return AssistantProposalRecordSchema.parse({ snapshot, rows: results,
       lifecycle: row.state === "answered" ? { state: "answered", answerMessageId: row.answer_message_id } : { state: row.state } });
   };
   const find = (id: string) => {
@@ -135,8 +135,8 @@ export function createAssistantProposalRepository(ports: Ports) {
   return Object.freeze({
     sessions,
     /** Records a rendered proposal and supersedes the chat's earlier open one. */
-    issue(input: AssistantM2ProposalSnapshot): AssistantM2ProposalRecord {
-      const snapshot = AssistantM2ProposalSnapshotSchema.parse(input);
+    issue(input: AssistantProposalSnapshot): AssistantProposalRecord {
+      const snapshot = AssistantProposalSnapshotSchema.parse(input);
       if (snapshot.profileId !== ports.profileId()) conflict("not-owned");
       return ports.mutate("assistant_proposals", () => {
         owned(snapshot.conversationId);
@@ -190,7 +190,7 @@ export function createAssistantProposalRepository(ports: Ports) {
     claimRow(proposalId: string, rowId: string, commandId: string): boolean {
       return ports.mutate("assistant_proposal_rows", () => {
         if (find(proposalId)?.lifecycle.state !== "answered") conflict("not-answered");
-        const result = AssistantM2RowResultSchema.parse({ state: "claimed", commandId });
+        const result = AssistantRowResultSchema.parse({ state: "claimed", commandId });
         if (result.state !== "claimed") return conflict("row-claim-invalid");
         const updated = database.prepare("UPDATE assistant_proposal_rows SET state='claimed',command_id=?,result_json=? WHERE id=? AND proposal_id=? AND state='not-started'")
           .run(result.commandId, canonicalJsonStringify(result), z.uuid().parse(rowId), proposalId);
@@ -198,8 +198,8 @@ export function createAssistantProposalRepository(ports: Ports) {
       });
     },
     /** Settles a claimed row, or refuses a row before its claim; any other prior state throws. */
-    settleRow(proposalId: string, rowId: string, input: Exclude<z.input<typeof AssistantM2RowResultSchema>, { state: "not-started" | "claimed" }>): void {
-      const result = AssistantM2RowResultSchema.parse(input);
+    settleRow(proposalId: string, rowId: string, input: Exclude<z.input<typeof AssistantRowResultSchema>, { state: "not-started" | "claimed" }>): void {
+      const result = AssistantRowResultSchema.parse(input);
       if (result.state === "not-started" || result.state === "claimed") return conflict("row-settlement-invalid");
       ports.mutate("assistant_proposal_rows", () => {
         const updated = result.state === "refused" && result.commandId === null

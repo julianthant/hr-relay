@@ -1,7 +1,7 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { ExternalLink, TriangleAlert } from "lucide-react";
 import { cn } from "../../../lib/utils.js";
-import { BodySection, Button, ButtonLink, Dialog, DialogContent, DialogFooter, FormGroup, ResultRow, Skeleton, dsIcon } from "../../../ds/ui.js";
+import { BodySection, Button, ButtonLink, ConfirmDialog, FormGroup, ResultRow, Skeleton, dsIcon } from "../../../ds/ui.js";
 import { LoadingRegion, SkeletonText } from "../../shared/loading/loading.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { CHATGPT_USAGE_URL, ChatGptAccountContext, useChatGptAccount, type ChatGptAccountPort } from "./chatgpt-account-model.js";
@@ -113,14 +113,7 @@ export function ChatGptAccountSettings({ port: override, grouped = false }: { po
             {connected && account.state === "connected" && <Button variant="secondary" data-destructive disabled={pending !== undefined} loading={pending === "sign-out"} onClick={() => setConfirming(true)}>Disconnect</Button>}
             {!signingIn && (!connected || plan === "disabled") && <Button variant="secondary" disabled={pending !== undefined} loading={pending === "sign-in"} onClick={() => { void perform("sign-in"); }}>{signInExpired ? "Sign in" : "Connect"}</Button>}
           </div>} />;
-  const dialog = confirming && <Dialog open onOpenChange={next => { if (!next) setConfirming(false); }}>
-      <DialogContent size="sm" title="Disconnect ChatGPT?" description="The assistant and OCR stop until you sign in again.">
-        <DialogFooter>
-          <Button variant="secondary" autoFocus onClick={() => setConfirming(false)}>Cancel</Button>
-          <Button variant="danger" onClick={() => { void disconnect(); }}>Disconnect</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>;
+  const dialog = <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="Disconnect ChatGPT?" description="Assistant and OCR stop until you sign in." confirmLabel="Disconnect" destructive onConfirm={() => { void disconnect(); }} />;
   const content = <>
     <div ref={region} data-settings-path="chatgpt.account" onFocusCapture={event => { if (event.target instanceof HTMLElement) actionFocus.current = event.target; }}>
       {grouped ? row : <FormGroup label="ChatGPT">{row}</FormGroup>}

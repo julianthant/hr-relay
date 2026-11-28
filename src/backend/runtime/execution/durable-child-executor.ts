@@ -1,11 +1,13 @@
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { z } from "zod";
 import { RunRecordSchema, runClaim, type RunRecord } from "../../../models/run/record.js";
-import { resolveDelegationEvidenceOutput, readRunPreviewResult, DelegationTerminalEvidenceSchema, RunResultRecordSchema, type DelegationTerminalEvidence } from "../../../models/run/result.js";
+import { resolveDelegationEvidenceOutput, readRunPreviewResult, DelegationOutcomePolicyUnsatisfiedError, DelegationTerminalEvidenceSchema, RunResultRecordSchema, type DelegationTerminalEvidence } from "../../../models/run/result.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
 import { assertDelegationReplayMatches, type DelegationPlan } from "../../../models/workflow/delegation.js";
 import { DelegationManifestRefSchema, type AnyWorkflowRef } from "../../../models/workflow/graph.js";
+import { OcrPageOutcomeSchema } from "../../../models/workflows/ocr/page-accounting.js";
 import { CommandIdSchema, DelegationManifestIdSchema, RunIdSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { DelegationManifestSchema, type DelegationManifest } from "../../../rules/workflow/dependencies.js";
@@ -34,6 +36,38 @@ export interface DelegationAuthority {
   readonly authority: Pick<AuthorityRepositories, "delegationManifests" | "dependencies" | "runResults" | "failures">
     & { readonly runs: Pick<AuthorityRepositories["runs"], "get"> };
   withAuthorityReadSnapshot<Result>(read: () => Result): Result;
+}
+
+export function resolveExecutableChildOutput(evidence: DelegationTerminalEvidence, schema: z.ZodType,
+  failures: Pick<AuthorityRepositories["failures"], "get">, parentEdgeId: string | undefined, schemaReader?: EvidenceSchemaReader) {
+  const firstFailure = () => {
+    for (const { run } of evidence.children) {
+      if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed") continue;
+      const failure = run.lifecycle.failureId === undefined ? undefined : failures.get(run.lifecycle.failureId);
+      if (failure === undefined || failure.runId !== run.envelope.runId || failure.attempt !== run.envelope.attempt
+        || failure.workflowId !== run.envelope.workflow) throw new Error("delegation-child-failure-mismatch");
+      return Object.assign(new Error(failure.summary), { code: failure.code });
+    }
+    return undefined;
+  };
+  let resolution;
+  try {
+    resolution = resolveDelegationEvidenceOutput(evidence, schema, schemaReader);
+  } catch (error) {
+    if (evidence.edgeId === "document-ocr" && error instanceof DelegationOutcomePolicyUnsatisfiedError) throw firstFailure() ?? error;
+    throw error;
+  }
+  if (resolution.kind === "ordinary" && evidence.edgeId === "ocr-pages" && parentEdgeId === "document-ocr") {
+    const pages = OcrPageOutcomeSchema.array().parse(resolution.output);
+    if (pages.length > 0 && !pages.some(page => page.state === "done" && page.output.extraction.record !== null)) {
+      const failure = firstFailure();
+      if (failure !== undefined) throw failure;
+      const cancelled = pages.find(page => page.state === "cancelled");
+      if (cancelled !== undefined) throw Object.assign(new Error(cancelled.reason), { code: "OCR_PAGE_CANCELLED" });
+      throw Object.assign(new Error(ERROR_CATALOG.OCR_NO_REVIEWABLE_RECORDS.text), { code: "OCR_NO_REVIEWABLE_RECORDS" });
+    }
+  }
+  return resolution;
 }
 
 function assertHeldParent(context: Pick<ChildRunContext, "run" | "claim">, parent: RunRecord): void {
@@ -92,7 +126,8 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
           const { node } = context;
           const member = admitted.entries[index];
           if (member?.state === "reused") {
-            values[node.id] = resolveDelegationEvidenceOutput(member.evidence, node.target.result, authority.evidenceSchemaHash?.bind(authority)).output;
+            values[node.id] = resolveExecutableChildOutput(member.evidence, node.target.result, authority.authority.failures,
+              parent.envelope.parent?.edgeId, authority.evidenceSchemaHash?.bind(authority)).output;
             continue;
           }
           const manifest = DelegationManifestSchema.parse(member?.manifest);
@@ -164,7 +199,8 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
           const evidence = DelegationTerminalEvidenceSchema.parse({ state: "delegation-resolved", nodeId: node.id,
             parentRunId: parent.envelope.runId, edgeId: manifest.edgeId, invocationCommandId: authenticated.invocation.commandId,
             manifest, children: settled });
-          values[node.id] = resolveDelegationEvidenceOutput(evidence, node.target.result, authority.evidenceSchemaHash?.bind(authority)).output;
+          values[node.id] = resolveExecutableChildOutput(evidence, node.target.result, authority.authority.failures,
+            parent.envelope.parent?.edgeId, authority.evidenceSchemaHash?.bind(authority)).output;
         }
         if (admitted.state === "released") {
           const wait = authority.authority.dependencies.wait(parent.envelope.runId, batch.descriptor);

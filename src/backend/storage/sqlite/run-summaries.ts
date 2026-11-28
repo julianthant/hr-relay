@@ -5,7 +5,7 @@ import { timelineEventFromRow } from "./timeline-repository.js";
 import { failureResolutionFromRow } from "./failure-resolution.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { CalendarQuerySchema, CalendarWireSchema } from "../../../models/dashboard/calendar.js";
+import { CalendarStoreQuerySchema, CalendarWireSchema } from "../../../models/dashboard/calendar.js";
 import { QueueStatusSchema } from "../../../models/dashboard/projection.js";
 import { RunStateSchema, type RunRecord } from "../../../models/run/record.js";
 import { RunEnvelopeSchema } from "../../../models/run/envelope.js";
@@ -171,7 +171,7 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
       return { items, next: rows.length > query.limit && last !== undefined ? { localDay: last.localDay, runId: last.runId } : null };
     },
     calendar(sourceGeneration: number, input: { month: string; day: string; today: string }) {
-      const { month, day, today } = CalendarQuerySchema.extend({ today: z.iso.date() }).parse(input);
+      const { month, day, today } = CalendarStoreQuerySchema.parse(input);
       if (day > today) throw new Error("calendar-future-day");
       const countRow = z.object({ day: z.iso.date(), count: z.number().int().positive() });
       const monthStart = `${month}-01`, monthEnd = `${month}-31`;

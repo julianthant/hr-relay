@@ -1,16 +1,18 @@
-import { AssistantHistoryResultSchema, AssistantHistoryViewSchema, AssistantModelPreferenceViewSchema } from '../../../../../src/models/dashboard/assistant.js';
-import { AssistantActionDecisionSchema, AssistantActionResultSchema } from "../../../../../src/models/dashboard/assistant.js";
+import { AssistantHistoryResultSchema, AssistantHistoryWireSchema, AssistantModelPreferenceViewSchema } from '../../../../../src/models/dashboard/assistant.js';
 import assert from "node:assert/strict";
-import { ASSISTANT_PAUSE_PROPOSAL } from "../../../../support/fixtures/dashboard/assistant-start.js";
 import { Hono } from "hono";
 import { it } from "vitest";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { registerAssistantRoutes } from "../../../../../src/backend/transports/http/routes/assistant.js";
 
-it("serves no assistant permission route", async () => {
+const NO_REPLY = { kind: "result", result: { state: "no-reply", reason: "ASSISTANT_UNAVAILABLE", canRetry: false, turn: null } } as const;
+
+it("serves no assistant permission or Confirm action route", async () => {
   const app: DashboardApp = new Hono();
   registerAssistantRoutes(app, { async respond() { throw new Error("unexpected inference"); } });
-  for (const method of ["GET", "POST"]) assert.equal((await app.request("http://127.0.0.1:4310/api/v1/assistant/permission", { method })).status, 404);
+  for (const path of ["permission", "action"]) for (const method of ["GET", "POST"]) {
+    assert.equal((await app.request(`http://127.0.0.1:4310/api/v1/assistant/${path}`, { method })).status, 404);
+  }
 });
 
 it("serves the account model catalog uncached and refuses without the service", async () => {
@@ -27,7 +29,7 @@ it("serves the account model catalog uncached and refuses without the service", 
 
 it("guards loopback/origin/media before body or inference and bounds request bytes", async () => {
   const app: DashboardApp = new Hono(); let calls = 0;
-  registerAssistantRoutes(app, { async respond() { calls++; return { kind: "result", result: { state: "answered", text: "Synthetic" } }; } });
+  registerAssistantRoutes(app, { async respond() { calls++; return NO_REPLY; } });
   const headers = { host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json" };
   for (const patch of [{ origin: "https://foreign.example" }, { host: "foreign.example" }, { "content-type": "text/plain" }]) {
     const response = await app.request("http://127.0.0.1:3938/api/v1/assistant/respond", { method: "POST", headers: { ...headers, ...patch }, body: "{}" });
@@ -51,36 +53,16 @@ it("never exposes a thrown service error through framework logs or response", as
   assert.equal(response.status, 400); assert.equal((await response.text()).includes("CANARY_PRIVATE_SERVICE_ERROR"), false);
 });
 
-it("keeps operator confirmation behind the same bounded loopback/media door and accepts only issued identity fields", async () => {
+it("returns a served no-reply envelope unchanged and answers a malformed body with no reply", async () => {
   const app: DashboardApp = new Hono(); let calls = 0;
-  registerAssistantRoutes(app, { async respond() { return { kind: "result", result: { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: "Unavailable" } }; },
-    async decide(input) { calls++; return { state: "cancelled", actionId: AssistantActionDecisionSchema.parse(input).actionId }; } });
-  const url = "http://127.0.0.1:3938/api/v1/assistant/action";
+  registerAssistantRoutes(app, { async respond() { calls++; return NO_REPLY; } });
   const headers = { host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json" };
-  const identity = { chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1, decision: "cancel" };
-  for (const patch of [{ origin: "https://foreign.example" }, { host: "foreign.example" }, { "content-type": "text/plain" }]) {
-    const response = await app.request(url, { method: "POST", headers: { ...headers, ...patch }, body: JSON.stringify(identity) });
-    assert.ok(response.status === 403 || response.status === 415);
-  }
-  for (const body of ["malformed", JSON.stringify({ ...identity, command: { source: "assistant" } }), JSON.stringify({ ...identity, decision: "confirm" }),
-    JSON.stringify({ ...identity, reviewedDigest: "a".repeat(64) }), "x".repeat(20_001)]) {
-    assert.equal((await app.request(url, { method: "POST", headers, body })).status, 400);
-  }
-  assert.equal(calls, 0);
-  const response = await app.request(url, { method: "POST", headers, body: JSON.stringify(identity) });
-  assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
-  assert.equal(calls, 1); assert.equal(AssistantActionResultSchema.parse(await response.json()).state, "cancelled");
-});
-
-it("returns an issued automatic unknown action unchanged without converting it to a generic refusal", async () => {
-  const action = ASSISTANT_PAUSE_PROPOSAL;
-  const result = { state: "unknown" as const, actionId: action.actionId, action };
-  const app: DashboardApp = new Hono(); let calls = 0;
-  registerAssistantRoutes(app, { async respond() { calls++; return { kind: "result", result }; } });
-  const response = await app.request("http://127.0.0.1:3938/api/v1/assistant/respond", { method: "POST", headers: {
-    host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json",
-  }, body: JSON.stringify({ conversationId: "11111111-1111-4111-8111-111111111111", expectedRevision: 1, messageId: "22222222-2222-4222-8222-222222222222", message: "pause it" }) });
-  assert.equal(response.status, 200); assert.equal(calls, 1); assert.deepEqual(await response.json(), { kind: "result", result });
+  const response = await app.request("http://127.0.0.1:3938/api/v1/assistant/respond", { method: "POST", headers,
+    body: JSON.stringify({ conversationId: "11111111-1111-4111-8111-111111111111", expectedRevision: 1, messageId: "22222222-2222-4222-8222-222222222222", message: "pause it" }) });
+  assert.equal(response.status, 200); assert.equal(calls, 1); assert.deepEqual(await response.json(), NO_REPLY);
+  const malformed = await app.request("http://127.0.0.1:3938/api/v1/assistant/respond", { method: "POST", headers, body: "malformed" });
+  assert.equal(malformed.status, 400);
+  assert.deepEqual(await malformed.json(), { kind: "result", result: { state: "no-reply", reason: "ASSISTANT_INVALID", canRetry: false, turn: null } });
 });
 
 
@@ -111,14 +93,14 @@ it('does not serialize a corrupt preference failure or private details', async (
 
 it("serves history reads with no-store, guards history writes before the body and passes refusals through as data", async () => {
   const chat = "33333333-3333-4333-8333-333333333333";
-  const conversation = { id: chat, title: "Chat", revision: 2, draft: "", composer: "", importTotal: 0, importNotice: null, messages: [] };
+  const conversation = { id: chat, title: "Chat", revision: 2, draft: "", composer: "", importTotal: 0, importNotice: null, messages: [], sessions: [] };
   const app: DashboardApp = new Hono(); const writes: unknown[] = [];
   registerAssistantRoutes(app, { async respond() { throw new Error("unexpected inference"); },
-    historyView: () => ({ chats: [{ id: chat, title: "Chat", revision: 2, createdAt: "2026-11-06T12:00:00.000Z", expiresAt: "2026-12-06T12:00:00.000Z" }], selectedId: chat }),
+    historyView: () => ({ chats: [{ id: chat, title: "Chat", revision: 2, createdAt: "2026-11-06T12:00:00.000Z", expiresAt: "2026-12-06T12:00:00.000Z" }], selectedId: chat, needsYou: 0 }),
     conversation: id => id === chat ? conversation : undefined,
     history(input) { writes.push(input); return { state: "refused", code: "ASSISTANT_CONVERSATION_STALE" }; } });
   const list = await app.request("http://127.0.0.1:3938/api/v1/assistant/history");
-  assert.equal(list.status, 200); assert.equal(list.headers.get("cache-control"), "no-store"); assert.equal(AssistantHistoryViewSchema.parse(await list.json()).selectedId, chat);
+  assert.equal(list.status, 200); assert.equal(list.headers.get("cache-control"), "no-store"); assert.equal(AssistantHistoryWireSchema.parse(await list.json()).selectedId, chat);
   const read = await app.request(`http://127.0.0.1:3938/api/v1/assistant/conversations/${chat}`);
   assert.equal(read.status, 200); assert.deepEqual(await read.json(), conversation);
   assert.equal((await app.request("http://127.0.0.1:3938/api/v1/assistant/conversations/44444444-4444-4444-8444-444444444444")).status, 404);

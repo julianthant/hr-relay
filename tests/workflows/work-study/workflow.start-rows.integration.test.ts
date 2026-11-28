@@ -8,27 +8,21 @@ import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 const descriptor = WORKFLOW_MODULES.find(({ descriptor: candidate }) => String(candidate.id) === "work-study")!.descriptor;
 
 describe("Work-Study Start run rows", () => {
-  it("serves the two rows in order, every one locked with its reason", () => {
-    assert.deepEqual(projectStartRows(descriptor).map(({ key, label, kind, lockReason, members }) => ({ key, label, kind, lockReason: lockReason ?? null, members })), [
-      { key: "ucpath-auth", label: "Sign in to UCPath", kind: "locked", lockReason: "guard-read", members: [{ step: "ucpath-auth" }, { step: "reference-check" }] },
-      { key: "transaction", label: "Submit work-study transaction", kind: "locked", lockReason: "form-action", members: [{ step: "transaction" }] },
+  it("serves two switches in order, with typed PayPath values and a done-by-hand transaction", () => {
+    assert.deepEqual(projectStartRows(descriptor).map(({ key, kind, lockReason, target, manual }) =>
+      [key, kind, lockReason, target?.step, manual?.form.fields.map(field => field.key), manual?.forces]), [
+      ["ucpath-auth", "switch", undefined, "ucpath-auth", ["emplId", "displayedName", "positionNumber", "effectiveDate", "positionChangeReason", "positionPool"], []],
+      ["transaction", "switch", undefined, "transaction", [], []],
     ]);
+    assert.deepEqual(descriptor.stepLocks, []);
   });
 
-  it("offers no switch and no typed field on any row", () => {
-    for (const row of projectStartRows(descriptor)) {
-      assert.equal(row.target, undefined, row.key);
-      assert.equal(row.manual, undefined, row.key);
-      assert.equal(row.selection, undefined, row.key);
-    }
-  });
-
-  it("refuses a start that carries typed facts for any step", () => {
-    const keys = projectStartSteps(descriptor).map(({ key }) => key);
-    for (const step of keys) {
-      assert.throws(() => resolveStartStepOmissions(descriptor, keys, [{ step, facts: { value: "typed" } }]),
-        (error: unknown) => error instanceof StartStepOmissionRefusedError, step);
-    }
+  it("requires a complete PayPath form when the read is turned off", () => {
+    const selected = ["reference-check", "transaction"];
+    assert.throws(() => resolveStartStepOmissions(descriptor, selected, undefined),
+      (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "facts-missing");
+    assert.throws(() => resolveStartStepOmissions(descriptor, selected, [{ step: "ucpath-auth", facts: {} }]),
+      (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "facts-invalid");
   });
 
   it("plans nothing new and keeps today's node list", () => {

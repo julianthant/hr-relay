@@ -455,7 +455,7 @@ export { StartPlanRefusalError } from "./commands/start-commands.js";
 export type { WorkbookLibraryQueries } from "./queries/workbook-library-queries.js";
 
 export type { AssistantQueries } from "./queries/assistant-queries.js";
-export type { AssistantModelPreferenceView, AssistantRequest, AssistantResult } from "../../models/dashboard/assistant.js";
+export type { AssistantModelPreferenceView, AssistantM1Request } from "../../models/dashboard/assistant.js";
 
 function parseLoginChange(body: unknown): ProfileLoginChangeResult {
   const wire = WIRE_ERROR_BODY.safeParse(body);

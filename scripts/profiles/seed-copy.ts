@@ -17,6 +17,7 @@ import { SpanEventWireSchema } from "../../src/models/events/types.js";
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../../src/models/notifications/notifications.js";
 import { RunRecordSchema, type RunLifecycle, type RunRecord } from "../../src/models/run/record.js";
 import { RunSessionRecordSchema } from "../../src/models/run/session.js";
+import { deriveIdempotencyKeyDigest, deriveWriteBindingProofDigest, WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../src/rules/write-safety/write-safety.js";
 import { FailureRecordSchema } from "../../src/models/trust/failure.js";
 import { deriveSchemaHash } from "../../src/models/validation/schema-bound-value.js";
 import { canonicalInputSamples } from "../../src/models/workflow/canonical-input.js";
@@ -195,6 +196,28 @@ function seedInput(workflow: AnyWorkflowDescriptor): RunRecord["input"] {
   });
 }
 
+const parkedTaskId = "ucpath/create-termination";
+
+/** The parked intent and its attempt a review card reads. Synthetic: the sample run refuses every answer. */
+function seedParkedWrite({ run, nodeId, parked, id, at }: Readonly<{ run: RunRecord; nodeId: string; at: string;
+  parked: Readonly<{ writeIntentId: string; code: "unknown"; message: string }>; id: (kind: string) => string }>) {
+  const { runId, itemId, workflow, traceId } = run.envelope;
+  const subject = { kind: "person", identifierKind: "eid", bindingDigest: seedDigest, displaySuffix: "SYNTHETIC" } as const;
+  const bindingProof = { kind: "subject-match", version: 1, proofId: id("proof"), runId, attempt: 1, leaseId: id("lease"), taskId: parkedTaskId,
+    observationId: "ucpath.termination.subject", pageStateId: "ucpath.termination-ready", expected: subject, observed: subject, match: "match",
+    observedAt: at, afterPrepareSpanPath: `${traceId}/${nodeId}/prepare` } as const;
+  const bound = { writeIntentId: parked.writeIntentId, generation: 1, runId, runAttempt: 1, bindingProof,
+    bindingProofDigest: deriveWriteBindingProofDigest(bindingProof), fencedAt: at };
+  const authorityReason = { version: 1, code: "inline-recovery-unknown", evidence: { kind: "probe", digest: seedDigest } } as const;
+  const idempotencyKey = `${seedNamespace}|SYNTHETIC|${runId}`;
+  const intent = WriteIntentRecordSchema.parse({ ...bound, workflowId: workflow, itemId, taskId: parkedTaskId, system: "ucpath", idempotencyKey,
+    idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", idempotencyKey), currentAttemptId: id("write-attempt"), version: 1,
+    createdAt: at, updatedAt: at, status: "parked", parkedCode: parked.code, message: parked.message, authorityReason });
+  const attempt = WriteAttemptRecordSchema.parse({ ...bound, writeAttemptId: id("write-attempt"), leaseId: bindingProof.leaseId,
+    outcome: { state: "parked", code: parked.code, message: parked.message, authorityReason }, recordedAt: at });
+  return { intent, attempt, nodeId: NodeIdSchema.parse(nodeId) };
+}
+
 function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) {
   const { workflow, day, state } = slot;
   const live = "live" in slot ? slot.live : undefined;
@@ -213,8 +236,21 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   const title = `Synthetic ${workflow.label} ${live === undefined ? day : "today"} ${state}`;
   const runtimeNodes = descriptorRuntimeNodes(workflow);
   const gate = runtimeNodes.find(node => node.kind === "gate" && node.resolvedBy === "operator");
-  const steps = workflow.timeline.flatMap(category => category.nodes);
-  const step = live?.workerId !== undefined ? steps[Math.floor(steps.length / 2)] : steps[Number.parseInt(hash.slice(4, 8), 16) % steps.length];
+  // Gates and child runs own no task span.
+  const spanless = new Set<string>(runtimeNodes.filter(node => node.kind === "gate" || node.kind === "child-run").map(node => node.id));
+  const steps = workflow.timeline.flatMap(category => category.nodes).filter(node => !spanless.has(node.id));
+  // Today's separation under review is parked on its termination write; history and other workflows stay interrupted.
+  const writeNode = live === undefined || state !== "needs-review" ? undefined
+    : runtimeNodes.find(node => node.kind === "transaction" && node.commit.uses.id === parkedTaskId);
+  const writeStep = steps.findIndex(node => node.id === writeNode?.id);
+  if (writeNode !== undefined && writeStep < 0) throw new SeedCopyError(`seed-copy-write-step-missing: ${workflow.id}`);
+  // A Duo wait holds the first sign-in; any other state has at least one step behind it.
+  const current = writeNode !== undefined ? writeStep : state === "needs-duo" ? 0 : Math.max(Math.min(1, steps.length - 1),
+    live?.workerId !== undefined ? Math.floor(steps.length / 2) : Number.parseInt(hash.slice(4, 8), 16) % steps.length);
+  const step = steps[current];
+  // A waiting run stops at its gate: every step before it is done.
+  const timelineNodes = workflow.timeline.flatMap(category => category.nodes);
+  const stepsBeforeGate = timelineNodes.slice(0, Math.max(0, timelineNodes.findIndex(node => node.id === gate?.id))).filter(node => !spanless.has(node.id)).length;
   const claim = { workerId: seedNamespace, claimGeneration: 1 };
   const completionFields = { schemaVersion: 1, expectedVersion: 2, claim, authorizedAt: settledAt } as const;
   const failure = state !== "failed" ? undefined : FailureRecordSchema.parse({
@@ -226,7 +262,10 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   });
   const outcome = { succeeded: "done", failed: "failed", cancelled: "cancelled", "needs-review": "interrupted" } as const;
   const claimed = live?.workerId === undefined ? undefined : { workerId: live.workerId, claimedAt: new Date(Math.min(now.getTime(), timeMs + 1000)).toISOString(), heartbeatAt: now.toISOString() };
-  const lifecycle: z.input<typeof RunRecordSchema>["lifecycle"] = claimed !== undefined
+  const parked = { writeIntentId: id("write-intent"), code: "unknown", message: "Synthetic example: the save could not be confirmed." } as const;
+  const lifecycle: z.input<typeof RunRecordSchema>["lifecycle"] = writeNode !== undefined
+    ? { state: "parked-write", writeIntentId: parked.writeIntentId, intentGeneration: 1, parkedAt: settledAt, code: parked.code, message: parked.message }
+    : claimed !== undefined
     ? { state: "running", ...claimed, ...(step === undefined ? {} : { currentNodeId: step.id }) }
     : state === "queued" ? { state: "queued" }
     : state === "waiting"
@@ -238,9 +277,9 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   const run = RunRecordSchema.parse({
     envelope: { runId, workflow: workflow.id, itemId: id("item"), traceId, descriptorVersion: workflow.version,
       contractFingerprint: workflow.contractFingerprint, buildId, configFingerprint: seedDigest,
-      configSnapshotId: id("config"), resolvedInstance: {}, shape: "single", priority: "interactive", dryRun: true, attempt: 1, enqueuedAt },
+      configSnapshotId: id("config"), resolvedInstance: {}, shape: "single", priority: "interactive", dryRun: writeNode === undefined, attempt: 1, enqueuedAt },
     input: seedInput(workflow),
-    lifecycle, claimGeneration: state === "paused" || state === "cancelled" || state === "queued" ? 0 : 1, displayName: title,
+    lifecycle, claimGeneration: state === "queued" ? 0 : 1, displayName: title,
     ...(live?.sessionId === undefined ? {} : { sessionId: live.sessionId }),
     ...(state === "cancelling" ? { cancelRequested: true } : {}),
     ...(state === "paused" ? { pause: { state: "paused", commandId: id("pause"), requestedAt: settledAt, pausedAt: settledAt } } : {}),
@@ -250,29 +289,35 @@ function seedRun(slot: SeedSlot, profileId: string, now: Date, buildId: string) 
   });
   const spanPath = runSpanPath(run.envelope.traceId);
   const common = { workflow: workflow.id, runId, traceId, attempt: run.envelope.attempt, pid: 1 };
-  const events: unknown[] = [{ ...runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title }), pid: 1 }];
-  if (run.claimGeneration > 0) events.push({ ...common, t: "run.claimed", workerId: claimed?.workerId ?? claim.workerId, claimGeneration: 1, ts: claimed?.claimedAt ?? enqueuedAt, spanPath });
-  if (claimed !== undefined && step !== undefined) {
-    // The steps before the current one finished; the current one is open.
-    const index = steps.indexOf(step), stepMs = (now.getTime() - Date.parse(claimed.claimedAt)) / (index + 1);
-    for (const [position, node] of steps.slice(0, index + 1).entries()) {
-      const startedAt = new Date(Date.parse(claimed.claimedAt) + position * stepMs).toISOString();
+  const events: Record<string, unknown>[] = [{ ...runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title }), pid: 1 }];
+  if (run.claimGeneration > 0 && step !== undefined) {
+    const startedMs = Date.parse(claimed?.claimedAt ?? enqueuedAt);
+    events.push({ ...common, t: "run.claimed", workerId: claimed?.workerId ?? claim.workerId, claimGeneration: 1, ts: new Date(startedMs).toISOString(), spanPath });
+    // Steps before the current one finished. A held run's current step is open, a paused or parked run has not reached the next one.
+    const reached = state === "succeeded" ? steps.length : state === "waiting" && gate !== undefined ? stepsBeforeGate : state === "paused" || state === "waiting" ? Math.max(1, current) : current + 1;
+    const stepMs = (Date.parse(claimed === undefined ? settledAt : now.toISOString()) - startedMs) / reached;
+    const outcome = run.lifecycle.state === "terminal" ? run.lifecycle.outcome : undefined;
+    for (const [position, node] of steps.slice(0, reached).entries()) {
+      let at = startedMs + position * stepMs;
       const task = { ...common, kind: "task", parentSpanPath: spanPath, spanPath: taskSpanPath(traceId, NodeIdSchema.parse(node.id), 1, 1) };
-      events.push({ ...task, t: "span.started", ts: startedAt, name: node.label });
-      if (node !== step) events.push({ ...task, t: "span.ended", ts: new Date(Date.parse(startedAt) + stepMs).toISOString(), outcome: "done" });
+      const ts = new Date(at).toISOString();
+      events.push({ ...task, t: "span.started", ts, name: node.label });
+      const open = (claimed !== undefined || writeNode !== undefined) && position === reached - 1;
+      at += stepMs;
+      const last = position === reached - 1 && outcome !== undefined && outcome !== "done";
+      if (!open) events.push({ ...task, ...(last && failure !== undefined ? { failureId: failure.failureId } : {}), t: "span.ended",
+        ts: new Date(at).toISOString(), outcome: last ? outcome : "done" });
     }
+  }
+  if (state === "waiting" && gate !== undefined && run.claimGeneration > 0) {
+    events.push({ ...common, t: "gate.opened", ts: settledAt, spanPath, gate: gate.id });
   }
   if (run.lifecycle.state === "terminal") {
-    const { outcome } = run.lifecycle;
     const failureRef = failure === undefined ? {} : { failureId: failure.failureId };
-    if (step !== undefined && (outcome === "done" || outcome === "failed")) {
-      const task = { ...common, kind: "task", parentSpanPath: spanPath, spanPath: taskSpanPath(traceId, NodeIdSchema.parse(step.id), 1, 1) };
-      events.push({ ...task, t: "span.started", ts: enqueuedAt, name: step.label });
-      events.push({ ...task, ...failureRef, t: "span.ended", ts: settledAt, outcome });
-    }
-    events.push({ ...common, ...failureRef, t: "span.ended", kind: "run", ts: settledAt, spanPath, outcome });
+    events.push({ ...common, ...failureRef, t: "span.ended", kind: "run", ts: settledAt, spanPath, outcome: run.lifecycle.outcome });
   }
-  return { ...slot, run, failure, events: SpanEventWireSchema.array().parse(events) };
+  const write = writeNode === undefined ? undefined : seedParkedWrite({ run, nodeId: writeNode.id, parked, id, at: settledAt });
+  return { ...slot, run, failure, write, events: events.map(event => SpanEventWireSchema.parse(event)) };
 }
 
 function seedNotifications(runs: readonly ReturnType<typeof seedRun>[], profileId: string, now: Date) {

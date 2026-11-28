@@ -41,7 +41,7 @@ it("puts the filter tabs after the results, gives workflows their rail icon and 
   await act(async () => root?.render(createElement(TooltipProvider, null, createElement(RailSearch, { data: { today: "2026-08-03", counts: {}, results: [] }, workflows: [{ id: "separations", label: "Separations", icon: "UserMinus" }], startKey: "R", onAction: action => actions.push(action), onWorkflow: () => {}, onResult: () => {} }))));
   await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search"]')!.click());
   const palette = document.querySelector(".search-palette")!;
-  const order = [...palette.querySelector("[cmdk-root]")!.children].filter(child => !child.hasAttribute("cmdk-label")).map(child => child.getAttribute("cmdk-input") !== null ? "input" : child.classList.contains("search-palette-chips") ? "tabs" : "list");
+  const order = [...palette.querySelector("[cmdk-root]")!.children].filter(child => !child.hasAttribute("cmdk-label")).map(child => child.querySelector("[cmdk-input]") ? "input" : child.classList.contains("search-palette-chips") ? "tabs" : "list");
   assert.deepEqual(order, ["input", "list", "tabs"]);
   const rows = [...palette.querySelectorAll(".search-palette-row")];
   assert.deepEqual(rows.slice(0, 5).map(row => row.textContent), ["Start a runR", "Spreadsheets", "Explorer", "Analytics", "Settings"]);
@@ -83,4 +83,39 @@ it("asks for the next page itself when the Runs list does not overflow", async (
   assert.equal(more.mock.calls.length, 0);
   await act(async () => { [...document.querySelectorAll<HTMLButtonElement>(".search-palette-chips button")].find(button => button.textContent === "Runs")!.click(); });
   assert.equal(more.mock.calls.length, 1);
+});
+
+it("is the shared search field and still a combobox driven by the arrow keys and Enter", async () => {
+  const actions: string[] = [];
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(RailSearch, { data: { today: "2026-08-03", counts: {}, results: [] }, workflows: [], onAction: action => actions.push(action), onWorkflow: () => {}, onResult: () => {} }))));
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search"]')!.click());
+  const input = document.querySelector<HTMLInputElement>('input[aria-label="Search Relay"]')!;
+  assert(input.closest(".ds-search-field"));
+  assert.equal(input.getAttribute("role"), "combobox");
+  assert.equal(input.id, document.querySelector<HTMLLabelElement>("[cmdk-label]")!.htmlFor);
+  assert.equal(input.getAttribute("aria-controls"), document.querySelector("[cmdk-list]")!.id);
+  await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })); });
+  await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+  assert.deepEqual(actions, ["spreadsheets"]);
+});
+
+it("keeps cmdk's query state: ArrowDown to Spreadsheets, typing s, then Enter activates the new first result", async () => {
+  const actions: string[] = [];
+  const host = document.body.appendChild(document.createElement("div"));
+  root = createRoot(host);
+  await act(async () => root?.render(createElement(TooltipProvider, null, createElement(RailSearch, { data: { today: "2026-08-03", counts: {}, results: [] }, workflows: [], startKey: "R", onAction: action => actions.push(action), onWorkflow: () => {}, onResult: () => {} }))));
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search"]')!.click());
+  const input = document.querySelector<HTMLInputElement>('input[aria-label="Search Relay"]')!;
+  assert.equal(input.getAttribute("aria-autocomplete"), "list");
+  await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })); });
+  assert.equal(document.getElementById(input.getAttribute("aria-activedescendant")!)?.textContent, "Spreadsheets");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "s");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  assert.equal(document.getElementById(input.getAttribute("aria-activedescendant")!)?.textContent?.startsWith("Start a run"), true);
+  await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+  assert.deepEqual(actions, ["start"]);
 });

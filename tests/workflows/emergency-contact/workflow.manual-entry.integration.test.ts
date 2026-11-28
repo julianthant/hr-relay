@@ -61,10 +61,10 @@ it.each([undefined, true])("keeps page readings and their records when Extract w
 });
 
 it("retains a failed reading without switching to manual-entry review", async () => {
-  const f = await world.fixture({ coordinator: true, extractWithOcr: true, pageCount: 2, failManualPageOnce: 2, onbaseFiling: "skip" });
+  const f = await world.fixture({ coordinator: true, record: true, extractWithOcr: true, pageCount: 2, failManualPageOnce: 2, onbaseFiling: "skip" });
   const review = f.database.authority.ocrReviews.latest(f.run.envelope.runId); assert.ok(review);
   assert.equal("manualEntry" in review.seed.review.accounting, false);
-  assert.deepEqual(review.seed.review.pages, [{ sourcePage: 1, disposition: "blank" }, { sourcePage: 2, disposition: "failed" }]);
+  assert.deepEqual(review.seed.review.pages, [{ sourcePage: 1, disposition: "record" }, { sourcePage: 2, disposition: "failed" }]);
   assert.equal(review.seed.review.accounting.outcomes.length, 2);
   assert.deepEqual(f.pageReads.toSorted(), [1, 2]);
 });

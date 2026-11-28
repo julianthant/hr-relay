@@ -169,7 +169,7 @@ describe("Disconnecting the ChatGPT account", () => {
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     await act(async () => root?.render(createElement(ChatGptAccountSettings, { port: live })));
     await act(async () => button("Disconnect")?.click());
-    assert.match(document.body.textContent ?? "", /Disconnect ChatGPT\?.*The assistant and OCR stop until you sign in again\./u);
+    assert.match(document.body.textContent ?? "", /Disconnect ChatGPT\?.*Assistant and OCR stop until you sign in\./u);
     assert.equal(calls, 0);
     const confirm = [...document.body.querySelectorAll("button")].filter(node => node.textContent === "Disconnect").at(-1);
     assert.ok(confirm); await act(async () => confirm.click());

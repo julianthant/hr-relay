@@ -46,7 +46,8 @@ import type { DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-l
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { DelegationAuthenticationMemo, authenticateDelegationGroup, readDelegationCancellation, readDelegationEvidence, readQueueParents, readDelegationWait, readDelegationWaitState } from "./delegation-authority.js";
 import type { createExclusiveSessionLeaseRepository } from "./exclusive-session-leases.js";
-import type { createAssistantHistoryRepository } from "./assistant-history.js";
+import type { AssistantM1HistoryRepository } from "./assistant-history.js";
+import type { AssistantProposalRepository } from "./assistant-proposals.js";
 import type { FailureTerminalizationStorageStep, SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import type { ArtifactOutboxStorageRecord, ArtifactSinkHeadRecord, DiagnosticAttachmentStorageRecord } from "./storage-records.js";
 import type { AtomicWriteCommitStorageStep, PermanentWriteResolution } from "./write-commit-contracts.js";
@@ -448,7 +449,9 @@ export type DuoCeremonyLeaseRepository = Readonly<{
 export type AuthorityRepositories = Readonly<{
   assistantModelPreference: ReturnType<typeof createAssistantModelPreferenceRepository>;
   assistantAuthorization: ReturnType<typeof createAssistantAuthorizationRepository>;
-  assistantHistory: ReturnType<typeof createAssistantHistoryRepository>;
+  assistantHistory: AssistantM1HistoryRepository;
+  assistantProposals: AssistantProposalRepository;
+  assistantAppliedEdits: import("./assistant-applied-edits.js").AssistantAppliedEditRepository;
   timelineEvents: TimelineRepository;
   runs: RunRepository;
   failures: FailureRepository;

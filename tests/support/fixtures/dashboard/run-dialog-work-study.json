@@ -4,7 +4,7 @@
   "label": "Work-Study",
   "icon": "ClipboardCheck",
   "categoryId": "operations",
-  "descriptorFingerprint": "750a31f2cc651f10c1db9c2547009df4071909f95d13ec566c761eed6815f360",
+  "descriptorFingerprint": "b145fb755f6f16a4eb7e25d82f5308e4ffb004edd11bdbfaa73059d81fe5594f",
   "availability": {
     "state": "available"
   },
@@ -20,7 +20,7 @@
     "enqueue": "reject-active",
     "version": 1,
     "inputRun": {
-      "placeholder": "10000001; 10000002",
+      "placeholder": "Separate Employee IDs with semicolons",
       "parser": {
         "split": {
           "kind": "delimited",
@@ -52,7 +52,7 @@
             "value": "employee-ids",
             "label": "Employee IDs",
             "inputLabel": "Employee IDs",
-            "placeholder": "10000001; 10000002",
+            "placeholder": "Separate Employee IDs with semicolons",
             "defaults": [],
             "parser": {
               "kind": "entries",
@@ -120,8 +120,53 @@
           "ucpath"
         ],
         "control": {
-          "state": "required",
-          "reason": "This workflow requires every node in this step."
+          "state": "omittable",
+          "form": {
+            "fields": [
+              {
+                "key": "emplId",
+                "label": "Employee ID",
+                "replaces": {
+                  "nodeId": "paypath-position",
+                  "path": "emplId"
+                },
+                "kind": "eid"
+              },
+              {
+                "key": "displayedName",
+                "label": "Name in UCPath",
+                "kind": "text"
+              },
+              {
+                "key": "positionNumber",
+                "label": "Position number",
+                "replaces": {
+                  "nodeId": "paypath-position",
+                  "path": "position.positionNumber"
+                },
+                "kind": "text"
+              },
+              {
+                "key": "effectiveDate",
+                "label": "Current position effective date",
+                "optional": true,
+                "kind": "us-date"
+              },
+              {
+                "key": "positionChangeReason",
+                "label": "Current position change reason",
+                "optional": true,
+                "kind": "text"
+              },
+              {
+                "key": "positionPool",
+                "label": "Current position pool",
+                "optional": true,
+                "kind": "text"
+              }
+            ]
+          },
+          "forces": []
         }
       },
       {
@@ -142,8 +187,11 @@
           "ucpath"
         ],
         "control": {
-          "state": "required",
-          "reason": "This workflow requires every node in this step."
+          "state": "omittable",
+          "form": {
+            "fields": []
+          },
+          "forces": []
         }
       }
     ],
@@ -152,8 +200,7 @@
         "key": "ucpath-auth",
         "label": "Sign in to UCPath",
         "includedByDefault": true,
-        "kind": "locked",
-        "lockReason": "guard-read",
+        "kind": "switch",
         "members": [
           {
             "step": "ucpath-auth"
@@ -161,19 +208,78 @@
           {
             "step": "reference-check"
           }
-        ]
+        ],
+        "target": {
+          "step": "ucpath-auth"
+        },
+        "manual": {
+          "form": {
+            "fields": [
+              {
+                "key": "emplId",
+                "label": "Employee ID",
+                "replaces": {
+                  "nodeId": "paypath-position",
+                  "path": "emplId"
+                },
+                "kind": "eid"
+              },
+              {
+                "key": "displayedName",
+                "label": "Name in UCPath",
+                "kind": "text"
+              },
+              {
+                "key": "positionNumber",
+                "label": "Position number",
+                "replaces": {
+                  "nodeId": "paypath-position",
+                  "path": "position.positionNumber"
+                },
+                "kind": "text"
+              },
+              {
+                "key": "effectiveDate",
+                "label": "Current position effective date",
+                "optional": true,
+                "kind": "us-date"
+              },
+              {
+                "key": "positionChangeReason",
+                "label": "Current position change reason",
+                "optional": true,
+                "kind": "text"
+              },
+              {
+                "key": "positionPool",
+                "label": "Current position pool",
+                "optional": true,
+                "kind": "text"
+              }
+            ]
+          },
+          "forces": []
+        }
       },
       {
         "key": "transaction",
         "label": "Submit work-study transaction",
         "includedByDefault": true,
-        "kind": "locked",
-        "lockReason": "form-action",
+        "kind": "switch",
         "members": [
           {
             "step": "transaction"
           }
-        ]
+        ],
+        "target": {
+          "step": "transaction"
+        },
+        "manual": {
+          "form": {
+            "fields": []
+          },
+          "forces": []
+        }
       }
     ]
   }

@@ -1,6 +1,7 @@
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
 import { planDelegationFanOut } from "../../../models/workflow/delegation.js";
+import { delegatedStepOmissions } from "../../../models/workflow/step-omission.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { deriveItemId } from "../../../rules/identity/identifiers.js";
 import { ItemIdSchema } from "../../../rules/identity/ids.js";
@@ -8,6 +9,7 @@ import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validati
 import { workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { ChildRunContext } from "../../runtime/execution/run-execution-contract.js";
 import { hasProtectedSubject, protectedSubjectMatchKey } from "../start/protected-input.js";
+import { applyStepOmissionInputs } from "../start/step-selection.js";
 
 export function canonicalDelegationChild(context: ChildRunContext, target: AnyWorkflowDescriptor, bound: unknown, schemaReader?: EvidenceSchemaReader) {
   const input = JsonValueSchema.parse(target.canonicalInput.parse(bound));
@@ -31,8 +33,12 @@ export function canonicalDelegationChild(context: ChildRunContext, target: AnyWo
 
 export function planCanonicalDelegation(context: ChildRunContext, target: AnyWorkflowDescriptor, schemaReader?: EvidenceSchemaReader) {
   const { node } = context;
+  const raw = node.bind(context.scope);
+  const omissions = delegatedStepOmissions(context.run.envelope.stepOmissions, target.id);
+  const bind = (input: unknown) => applyStepOmissionInputs(target, JsonValueSchema.parse(input), omissions);
+  const bound = omissions === undefined ? raw : Array.isArray(raw) && node.cardinality === "many" ? raw.map(bind) : bind(raw);
   return planDelegationFanOut({ edgeId: node.edgeId, target: node.target, cardinality: node.cardinality, join: node.join,
-    policy: node.policy, bound: node.bind(context.scope),
+    policy: node.policy, bound,
     ...(node.sourceRecordIds === undefined ? {} : { sourceRecordIds: node.sourceRecordIds(context.scope) }), deriveChildItemId: input => {
       const { canonicalItemId } = canonicalDelegationChild(context, target, input, schemaReader);
       return node.deriveChildItemId(input, Object.freeze({ canonicalItemId }));

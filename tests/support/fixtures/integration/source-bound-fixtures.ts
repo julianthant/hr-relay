@@ -69,8 +69,7 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
     assert.ok(publication, "every command creation supplies presentation");
     timeline.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
   } });
-  const resolution = createWriteResolutionExecutor({ continuation: runContinuationPort(lifecycle), descriptors,
-    authority: database, ids  });
+  const resolution = createWriteResolutionExecutor({ continuation: runContinuationPort(lifecycle), descriptors, ids });
   const unused = () => { throw new Error("unrequested runtime operation"); };
   const preflight = createPreflight?.(clock);
   const kernel = createCommandKernel({ lifecycle, appVersion: "0.1.0", authority: database, clock, ids, descriptors,
@@ -154,7 +153,7 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
     }, clock, ids, lifecycleIds, planIds, get queueRoots() {
     return readTimelineRecords(database.authority.timelineEvents).records.flatMap((record) =>
       record.payload.kind === "span" && record.payload.event.t === "run.queued" ? [record.payload.event] : []);
-  }, lifecycle, kernel, planner, world, stores, manager,
+  }, lifecycle, kernel, planner, world, stores, manager, descriptors,
     proposal, command, start, execute, fresh, resolution,
     dispose: async () => {
       if (disposeAttempted) { if (disposeFailure !== undefined) throw disposeFailure; return; }

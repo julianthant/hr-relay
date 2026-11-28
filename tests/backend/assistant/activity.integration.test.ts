@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { Hono } from "hono";
 import { createAssistantActivityQuery } from "../../../src/backend/assistant/activity.js";
+import type { AssistantM1HistoryRepository } from "../../../src/backend/storage/sqlite/assistant-history.js";
 import { registerAssistantRoutes } from "../../../src/backend/transports/http/routes/assistant.js";
 import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -16,19 +17,28 @@ import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.j
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
 const owners: { close(): Promise<void> }[] = [];
+const USAGE = { state: "measured", callCount: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2 } as const;
+const words = (text: string) => [{ kind: "text" as const, runs: [{ kind: "plain" as const, text }] }];
+/** One accepted operator turn in a new chat's first revision. */
+function accept(history: AssistantM1HistoryRepository, input: Readonly<{ conversationId: string; messageId: string; text: string; modelText: string; now: string }>) {
+  const accepted = history.accept({ ...input, expectedRevision: 1, subjectRef: null, attachments: [], proposalAnswer: null });
+  if (accepted.state !== "accepted") assert.fail("turn not accepted");
+  return accepted;
+}
 afterEach(async () => { for (const owner of owners.splice(0)) await owner.close(); });
 
 async function world(assertCurrent: () => void = () => {}) {
   const fixture = await openBoundDatabaseFixture("assistant-activity-test"); owners.push(fixture);
   const clock = manualClock(new Date("2026-11-06T20:00:00.000Z"));
+  fixture.database.bindAssistantEpoch(() => 1);
   const history = fixture.database.authority.assistantHistory;
   const query = createAssistantActivityQuery({ database: fixture.database, clock,
     assertCurrent, workflowLabel: () => "Person Lookup" });
   const refuse = (acceptedAt: string, settledAt: string) => {
     const conversationId = randomUUID(), messageId = randomUUID();
     history.apply({ operation: "create", conversationId, title: "Private chat title" }, acceptedAt);
-    history.accept({ conversationId, messageId, expectedRevision: 1, text: "Private question", modelText: "Private model text", subjectRef: null, attachments: [], now: acceptedAt });
-    history.settle(conversationId, messageId, { delivery: "refused", code: "ASSISTANT_LIMIT" }, settledAt);
+    history.settle(accept(history, { conversationId, messageId, text: "Private question", modelText: "Private model text", now: acceptedAt }),
+      { delivery: "refused", code: "ASSISTANT_LIMIT", usage: USAGE }, settledAt);
     return messageId;
   };
   return { ...fixture, clock, history, query, refuse };
@@ -105,30 +115,22 @@ it("searches the name line case-insensitively, ignores private chat content, and
   assert.deepEqual(w.query.read(), { day: "2026-11-07", rows: [] });
 });
 
-it("serves proposal and review metadata without guessing a spreadsheet action from its caption", async () => {
-  const w = await world(), conversationId = randomUUID(), messageId = randomUUID(), proposalId = randomUUID(), decisionId = randomUUID(), actionId = randomUUID();
-  const proposedAt = "2026-11-06T10:00:00.000Z", reviewedAt = "2026-11-06T10:01:00.000Z";
+it("serves an old proposal's metadata without guessing a spreadsheet action from its caption", async () => {
+  const w = await world(), conversationId = randomUUID(), messageId = randomUUID(), proposalId = randomUUID(), actionId = randomUUID();
+  const proposedAt = "2026-11-06T10:00:00.000Z";
   w.history.apply({ operation: "create", conversationId, title: "Private title" }, proposedAt);
-  w.history.accept({ conversationId, messageId, expectedRevision: 1, text: "Private question", modelText: "Private text", subjectRef: null, attachments: [], now: proposedAt });
-  w.history.settle(conversationId, messageId, { delivery: "answered", reply: { id: proposalId, kind: "proposal", actionId,
-    text: "Private proposal caption", modelText: "Private replay caption" } }, proposedAt);
-  w.history.appendDecision({ conversationId, actionId, messageId: decisionId, text: "Done: Private spreadsheet caption", now: reviewedAt });
-  assert.deepEqual(w.query.read(), { day: "2026-11-06", rows: [
-    { id: decisionId, label: "Reviewed proposal", at: reviewedAt },
-    { id: proposalId, label: "Proposed change", at: proposedAt },
-  ] });
+  w.history.settle(accept(w.history, { conversationId, messageId, text: "Private question", modelText: "Private text", now: proposedAt }),
+    { delivery: "answered", usage: USAGE, reply: { id: proposalId, kind: "proposal", actionId, parts: words("Private spreadsheet caption"), modelText: "Private replay caption" } }, proposedAt);
+  assert.deepEqual(w.query.read(), { day: "2026-11-06", rows: [{ id: proposalId, label: "Proposed change", at: proposedAt }] });
   assert.deepEqual(w.query.read("spreadsheet").rows, []);
 });
 
-it("names canonical proposals, approvals, cancellations, refusals and unknown outcomes from action metadata", async () => {
+it("names an old card's canonical proposal from its action metadata, whatever the action's outcome", async () => {
   const w = await world(), profileId = w.database.getMeta().profileId;
-  const at = "2026-11-06T12:00:00.000Z", later = "2026-11-06T12:01:00.000Z", expiresAt = "2026-11-07T12:00:00.000Z";
+  const at = "2026-11-06T12:00:00.000Z", expiresAt = "2026-11-07T12:00:00.000Z";
   const authorization = w.database.authority.assistantAuthorization;
-  for (const [outcome, label] of [
-    ["applied", "Approved: Start Person Lookup"], ["cancelled", "Declined: Start Person Lookup"],
-    ["rejected", "Refused: Start Person Lookup"], ["unknown", "Outcome unknown: Start Person Lookup"],
-  ] as const) {
-    const conversationId = randomUUID(), messageId = randomUUID(), proposalId = randomUUID(), decisionId = randomUUID(), actionId = randomUUID(), chatId = randomUUID();
+  for (const outcome of ["applied", "cancelled", "rejected", "unknown"] as const) {
+    const conversationId = randomUUID(), messageId = randomUUID(), proposalId = randomUUID(), actionId = randomUUID(), chatId = randomUUID();
     const fingerprint = "a".repeat(64);
     const command = StartCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: at, requestedBy: "local-operator", source: "assistant",
       family: "start", type: "start-run", target: { workflowId: "person-lookup", startPlanId: randomUUID(), expectedVersion: 1 },
@@ -140,8 +142,8 @@ it("names canonical proposals, approvals, cancellations, refusals and unknown ou
       command, plan: { startPlanId: command.target.startPlanId, version: 1, ...command.payload, expiresAt },
       revision: 1, state: "prepared", result: null, createdAt: at, expiresAt });
     w.history.apply({ operation: "create", conversationId, title: "Private name" }, at);
-    w.history.accept({ conversationId, messageId, expectedRevision: 1, text: "Private question", modelText: "Private replay", subjectRef: null, attachments: [], now: at });
-    w.history.settle(conversationId, messageId, { delivery: "answered", reply: { id: proposalId, kind: "proposal", actionId, text: "Private proposal", modelText: "Private reply" } }, at);
+    w.history.settle(accept(w.history, { conversationId, messageId, text: "Private question", modelText: "Private replay", now: at }),
+      { delivery: "answered", usage: USAGE, reply: { id: proposalId, kind: "proposal", actionId, parts: words("Private proposal"), modelText: "Private reply" } }, at);
     if (outcome === "cancelled") authorization.transition(actionId, 1, "cancelled");
     else {
       authorization.transition(actionId, 1, "approved"); authorization.transition(actionId, 2, "claimed");
@@ -150,10 +152,8 @@ it("names canonical proposals, approvals, cancellations, refusals and unknown ou
         ? { state: "applied", commandId: command.commandId, affectedTargets: [{ family: "run", runId: RunIdSchema.parse(randomUUID()) }] }
         : { state: "rejected", commandId: command.commandId, code: "policy-refused", message: "Private refusal detail" });
     }
-    w.history.appendDecision({ conversationId, actionId, messageId: decisionId, text: "Private decision caption", now: later });
     const rows = w.query.read().rows;
     assert.deepEqual(rows.find(row => row.id === proposalId), { id: proposalId, label: "Proposed: Start Person Lookup", at });
-    assert.deepEqual(rows.find(row => row.id === decisionId), { id: decisionId, label, at: later });
   }
 });
 
@@ -177,7 +177,7 @@ it.each([true, false])("names a run action without exposing its display name (ru
     command, plan: null, revision: 1, state: "prepared", result: null, createdAt: at, expiresAt });
   const conversationId = randomUUID(), messageId = randomUUID(), id = randomUUID();
   w.history.apply({ operation: "create", conversationId, title: "Private chat title" }, at);
-  w.history.accept({ conversationId, messageId, expectedRevision: 1, text: "Private question", modelText: "Private model text", subjectRef: null, attachments: [], now: at });
-  w.history.settle(conversationId, messageId, { delivery: "answered", reply: { id, kind: "proposal", actionId, text: "Private caption", modelText: "Private caption" } }, at);
+  w.history.settle(accept(w.history, { conversationId, messageId, text: "Private question", modelText: "Private model text", now: at }),
+    { delivery: "answered", usage: USAGE, reply: { id, kind: "proposal", actionId, parts: words("Private caption"), modelText: "Private caption" } }, at);
   assert.deepEqual(w.query.read().rows, [{ id, label: retained ? "Proposed: Pause Person Lookup" : "Proposed: Pause a run after its current step", at }]);
 });

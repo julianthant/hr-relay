@@ -68,7 +68,8 @@ describe("the launch request fingerprint", () => {
   const source = { libraryId: "l", versionId: "v", sheetId: "s" };
   /** One change per draft field and per input; a field added without one fails to typecheck here. */
   const DRAFT = {
-    text: "x", typed: { workflowId: "plain", draft: { mode: "match" } }, sourceInputUnchanged: true, stepSelection: { workflowId: "plain", keys: ["read"] },
+    text: "x", typed: { workflowId: "plain", draft: { mode: "match" } }, sourceInputUnchanged: true, interruptedRerun: true,
+    stepSelection: { workflowId: "plain", keys: ["read"] },
     stepDrafts: { read: { reason: "r" } }, manualRows: ["kid"], priority: "bulk", dryRunRequested: true, browserMode: "headless",
     referenceSelections: { ref: sheet }, referenceDrafts: { ref: { libraryId: "l" } }, checkPicks: { l: { versionId: "v", sheetIds: ["s"] } },
     selectedWorkbookRows: { source: "s", choices: [] }, launchFields: { fileToOnBase: "yes" }, valueDrafts: { 0: { text: "t", copied: false } }, copiedOmissions: { 0: true },
@@ -109,7 +110,7 @@ describe("the launch request fingerprint", () => {
 describe("the fresh draft", () => {
   it("starts empty with the resting options", () => {
     assert.deepEqual(freshLaunchDraft(plain), {
-      text: "", typed: { workflowId: "plain", draft: {} }, sourceInputUnchanged: false, stepSelection: undefined,
+      text: "", typed: { workflowId: "plain", draft: {} }, sourceInputUnchanged: false, interruptedRerun: undefined, stepSelection: undefined,
       stepDrafts: {}, manualRows: [], priority: undefined, dryRunRequested: false, browserMode: "headed",
       referenceSelections: {}, referenceDrafts: {}, checkPicks: {}, selectedWorkbookRows: undefined, launchFields: {}, valueDrafts: {}, copiedOmissions: {},
     });
@@ -215,10 +216,12 @@ describe("omission facts", () => {
     assert.deepEqual(off.copiedOmissions, {});
   });
   it("opens and closes a child row and a locked row through manualRows, and starts a child row empty", () => {
-    const kid: StepRow = { ...row("read"), key: "kid", stepKey: undefined, child: { workflow: "kids", step: "read" } };
-    const open = toggleRow(freshLaunchDraft(plain), plain, snapshot, kid, false);
+    const withChild: RunStartWorkflow = { ...plain, rows: [{ key: "kid", label: "Read child", kind: "switch", includedByDefault: true,
+      members: [{ workflow: "kids", step: "read" }], target: { workflow: "kids", step: "read" }, manual: { form: OMIT_FORM, forces: [] } }] };
+    const [kid] = startRowsOf(withChild);
+    const open = toggleRow(freshLaunchDraft(withChild), withChild, snapshot, kid, false);
     assert.deepEqual([open.manualRows, open.stepDrafts], [["kid"], {}]);
-    assert.deepEqual(toggleRow(open, plain, snapshot, kid, true).manualRows, []);
+    assert.deepEqual(toggleRow(open, withChild, snapshot, kid, true).manualRows, []);
     const locked: StepRow = { ...row("read"), kind: "locked-manual" };
     assert.deepEqual(toggleManual(freshLaunchDraft(plain), null, locked, true).manualRows, ["read"]);
     assert.deepEqual(toggleManual({ ...freshLaunchDraft(plain), manualRows: ["read"] }, null, locked, false).manualRows, []);
@@ -287,6 +290,27 @@ describe("reference spreadsheet", () => {
 });
 
 describe("rerun restore", () => {
+  it("preselects unfinished work and lets the operator explicitly select a completed required write", () => {
+    const ran = { ...plain, steps: plain.steps.slice(0, 3).map(step => ({ ...step,
+      control: { state: "required" as const, reason: "Required" } })) };
+    const interrupted = RerunValuesSnapshotSchema.parse({ ...snapshot, source: { ...snapshot.source, outcome: "interrupted" },
+      retainedSteps: [{ key: "read", repeatable: true }, { key: "write", repeatable: true }] });
+    const draft = restoreRerunDraft(interrupted, ran);
+    assert.deepEqual(selectedStepKeys(draft, ran), ["finish"]);
+    const write = startRowsOf(ran).find(row => row.key === "write"); assert.ok(write);
+    assert.deepEqual(selectedStepKeys(toggleRow(draft, ran, interrupted, write, true), ran), ["write", "finish"]);
+  });
+  it("opens an interrupted typed-input rerun when its input is unavailable to the browser", () => {
+    const interrupted = RerunValuesSnapshotSchema.parse({ ...snapshot,
+      source: { ...snapshot.source, workflow: workStudy.workflowId, outcome: "interrupted" },
+      sourceInput: { state: "unavailable", reason: "protected" },
+      retainedSteps: [{ key: "read", repeatable: true }, { key: "write", repeatable: true }, { key: "extra", repeatable: true }],
+    });
+    const draft = restoreRerunDraft(interrupted, workStudy);
+    assert.equal(draft.interruptedRerun, true);
+    assert.equal(draft.text, "");
+    assert.deepEqual(selectedStepKeys(draft, workStudy), ["finish"]);
+  });
   it("restores the plain identity text with no value drafts and picks up from the failed step", () => {
     const partial = RerunValuesSnapshotSchema.parse({ ...snapshot, sourceInput: { state: "partial", value: { eid: "10812345" }, identityCopied: true } });
     const ran = { ...plain, steps: plain.steps.slice(0, 3) };

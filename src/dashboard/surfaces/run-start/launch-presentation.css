@@ -58,6 +58,8 @@ div.launch-dialog[data-size="lg"][data-band] > footer { @apply items-start borde
 .launch-dialog .launch-section-head > div > span { @apply text-[13px] text-ui-muted; }
 .launch-dialog .launch-section-head > p { @apply m-0 text-[13px] leading-4 text-ui-secondary; }
 .launch-dialog .launch-content > section { @apply gap-1; }
+/* The Input form: sections (PDF documents, References, ...) sit one section gap apart, wider than the gaps inside a section. */
+.launch-dialog .launch-form-sections { gap: var(--ds-space-body-section-gap); }
 /* Cards fill the content width and never shrink: the scope's own width cap left them short, and an overflow-hidden card shrank behind the footer. */
 .launch-dialog .launch-content .ds-body-scope { max-width: none; flex-shrink: 0; }
 .launch-dialog .launch-content > * { flex-shrink: 0; }

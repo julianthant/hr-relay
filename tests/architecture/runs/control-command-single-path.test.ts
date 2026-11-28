@@ -17,7 +17,7 @@ const RUN_LIFECYCLE_COMMANDS_PATH = "src/backend/runs/commands/run-lifecycle-com
 
 const COMMAND_EXECUTOR_EXPORTS = new Map<string, readonly string[]>([
   [REPLAY_PATH, ["replay"]],
-  [RUN_LIFECYCLE_COMMANDS_PATH, ["executeRecover", "executeRetry", "executeCancel", "executeDelete", "executeBump", "executePresentation"]],
+  [RUN_LIFECYCLE_COMMANDS_PATH, ["executeRetry", "executeCancel", "executeDelete", "executeBump", "executePresentation"]],
   [SETTINGS_COMMAND_PATH, ["executeSettings"]],
   [WORKER_COMMANDS_PATH, ["executeWorkerPoolCommand"]],
   ["src/backend/runs/commands/start-command.ts", ["executeStartRun"]],
@@ -124,58 +124,6 @@ function withoutIntakeCommandReceiptRead(content: string): string {
         && parent.parent.arguments.length === 1 && parent.parent.arguments[0] === parent) {
         admitted = node.expression.expression;
       }
-    }
-    ts.forEachChild(node, inspect);
-  }
-  inspect(source);
-  if (auditUses.length !== 1 || admitted !== auditUses[0]) return content;
-  const start = admitted.name.getStart(source);
-  return content.slice(0, start) + "receiptReads" + content.slice(admitted.name.end);
-}
-
-function withoutAssistantReconciliationAuditRead(content: string): string {
-  const source = ts.createSourceFile("candidate.ts", content, ts.ScriptTarget.Latest, true);
-  const compact = (node: ts.Node): string => node.getText(source).replace(/\s+/gu, "");
-  const auditUses: ts.PropertyAccessExpression[] = [];
-  let admitted: ts.PropertyAccessExpression | undefined;
-  function inspect(node: ts.Node): void {
-    if (ts.isIdentifier(node) && node.text === "commandAudits" && ts.isPropertyAccessExpression(node.parent)
-      && node.parent.name === node) auditUses.push(node.parent);
-    if (ts.isMethodDeclaration(node) && node.name.getText(source) === "reconcile" && node.body !== undefined
-      && node.parameters.map(compact).join(",") === "capability:Chat,id:string" && node.body.statements.length === 1) {
-      const returned = node.body.statements[0];
-      const transaction = ts.isReturnStatement(returned) ? returned.expression : undefined;
-      const callback = transaction !== undefined && ts.isCallExpression(transaction) ? transaction.arguments[0] : undefined;
-      const object = node.parent;
-      if (!ts.isObjectLiteralExpression(object)) return;
-      const freeze = object.parent;
-      if (!ts.isCallExpression(freeze)) return;
-      const outerReturn = freeze.parent, factory = outerReturn.parent?.parent;
-      if (compact(freeze.expression) !== "Object.freeze"
-        || freeze.arguments.length !== 1 || freeze.arguments[0] !== object || !ts.isReturnStatement(outerReturn)
-        || factory === undefined || !ts.isFunctionDeclaration(factory) || factory.name?.text !== "createAssistantAuthorization"
-        || factory.parameters.map(compact).join(",") !== "ports:Ports" || transaction === undefined || !ts.isCallExpression(transaction)
-        || compact(transaction.expression) !== "ports.database.withAuthorityTransaction" || transaction.arguments.length !== 1
-        || callback === undefined || !ts.isArrowFunction(callback) || callback.parameters.length !== 0 || !ts.isBlock(callback.body)) return;
-      const expected = [
-        'constrow=repository.action(z.uuid().parse(id));',
-        'if(row===undefined)thrownewAssistantAuthorizationError("assistant-action-missing");',
-        'chat(capability);',
-        'if(row.chatId!==capability.chatId||(row.state!=="claimed"&&row.state!=="unknown"))thrownewAssistantAuthorizationError("assistant-action-not-reconcilable");',
-        'constaudit=ports.database.authority.commandAudits.findByCommand(row.command.commandId);',
-        'if(audit===undefined||!same(audit.request,row.command)||audit.result.state==="pending")thrownewAssistantAuthorizationError("assistant-canonical-outcome-unproved");',
-        'repository.transition(row.id,row.revision,"settled",audit.result);',
-        'returnaudit.result;',
-      ];
-      if (callback.body.statements.length !== expected.length
-        || callback.body.statements.some((statement, index) => compact(statement) !== expected[index])) return;
-      function findRead(child: ts.Node): void {
-        if (ts.isCallExpression(child) && ts.isPropertyAccessExpression(child.expression)
-          && compact(child) === "ports.database.authority.commandAudits.findByCommand(row.command.commandId)"
-          && ts.isPropertyAccessExpression(child.expression.expression)) admitted = child.expression.expression;
-        ts.forEachChild(child, findRead);
-      }
-      findRead(callback.body);
     }
     ts.forEachChild(node, inspect);
   }
@@ -526,7 +474,7 @@ function withoutDelegationAuditReads(content: string, path: string, commandSourc
     if (!isStopHeldCancelAdmission(worker)) return content;
     const selection = calls[0].parent;
     if (!ts.isConditionalExpression(selection) || selection.whenTrue !== calls[0]
-      || selection.condition.getText(kernel).replace(/\s+/gu, "") !== 'request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel"||request.type==="resume")') return content;
+      || selection.condition.getText(kernel).replace(/\s+/gu, "") !== 'request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="cancel"||request.type==="resume")') return content;
     let callback: ts.Node | undefined = calls[0].parent;
     while (callback !== undefined && !ts.isArrowFunction(callback)) callback = callback.parent;
     if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isCallExpression(callback.parent)
@@ -881,7 +829,7 @@ const EXPECTED_ACTIVE = {
     "resume-worker", "refresh-browser", "reopen-browser",
   ],
   run: [
-    "recover-run", "pause", "resume",
+    "pause", "resume",
     "retry",
     "cancel", "bump", "rename",
 
@@ -906,7 +854,7 @@ describe("control-command-single-path", () => {
     assert.deepEqual(PHASE1_ACTIVE_COMMAND_ARMS, EXPECTED_ACTIVE);
     const partitioned = Object.entries(EXPECTED_ACTIVE).flatMap(([family, actions]) => actions.map((action) => `${family}/${action}`));
     const registry = COMMAND_FAMILY_REGISTRY.flatMap(({ family, actions }) =>
-      actions.map((action) => `${family}/${action}`));
+      actions.filter(action => action !== "recover-run").map((action) => `${family}/${action}`));
     assert.deepEqual([...partitioned].sort(), [...registry].sort());
     assert.equal(new Set(partitioned).size, partitioned.length);
   });
@@ -928,40 +876,6 @@ describe("control-command-single-path", () => {
       const bad = `${source}\n${addition}`;
       assert.notEqual(bad, source);
       assert.ok(bad.includes("commandAudits"), "unrelated audit authority must remain visible");
-    }
-  });
-
-  it("admits only the chat-bound terminal assistant reconciliation audit read", () => {
-    const source = readFileSync(join(REPO_ROOT, "src/backend/assistant/authorization.ts"), "utf8");
-    assert.ok(!withoutAssistantReconciliationAuditRead(source).includes("commandAudits"));
-    const parsed = ts.createSourceFile("candidate.ts", source, ts.ScriptTarget.Latest, true);
-    let method: ts.MethodDeclaration | undefined;
-    function find(node: ts.Node): void {
-      if (ts.isMethodDeclaration(node) && node.name.getText(parsed) === "reconcile") method = node;
-      ts.forEachChild(node, find);
-    }
-    find(parsed); assert.ok(method);
-    const admittedMethod = method;
-    const original = admittedMethod.getText(parsed);
-    const mutate = (from: string, to: string): string => {
-      const changed = original.replace(from, to); assert.notEqual(changed, original);
-      return source.slice(0, admittedMethod.getStart(parsed)) + changed + source.slice(admittedMethod.end);
-    };
-    const mutants = [
-      mutate("findByCommand(row.command.commandId)", "findByCommand(id)"),
-      mutate("commandAudits.findByCommand", "commandAudits.get"),
-      mutate("commandAudits.findByCommand", "commandAudits.insert"),
-      mutate("ports.database.withAuthorityTransaction", "ports.database.withAuthorityReadSnapshot"),
-      mutate("!same(audit.request, row.command) || ", ""),
-      mutate("same(audit.request, row.command)", "same(audit.request, audit.request)"),
-      mutate("chat(capability);", "chat(Object.freeze({ chatId: id }));"),
-      mutate(' || audit.result.state === "pending"', ""),
-      `${source}\nconst extra = ports.database.authority.commandAudits.findByCommand(id);`,
-      `${source}\nconst aliased = ports.database.authority.commandAudits;`,
-    ];
-    for (const bad of mutants) {
-      assert.notEqual(bad, source);
-      assert.ok(withoutAssistantReconciliationAuditRead(bad).includes("commandAudits"));
     }
   });
 
@@ -1029,10 +943,6 @@ describe("control-command-single-path", () => {
         if (path === "src/backend/runs/queries/run-detail/gate-park.ts" && token === "commandAudits") {
           const uses = content.match(/\bcommandAudits\.[A-Za-z]+/gu) ?? [];
           if (uses.length !== 1 || uses[0] !== "commandAudits.parkedWriteChecks") violations.push(`${path} may only read its run's parked-write check audits`);
-          continue;
-        }
-        if (path === "src/backend/assistant/authorization.ts" && token === "commandAudits") {
-          if (withoutAssistantReconciliationAuditRead(content).includes(token)) violations.push(`${path} may only reconcile its chat-bound exact terminal command audit`);
           continue;
         }
         if (expectedSettingsAuditReads !== undefined && token === "commandAudits") {

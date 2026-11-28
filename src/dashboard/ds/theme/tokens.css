@@ -993,6 +993,8 @@ body[data-demo-theme="light"] {
 .ds-tooltip { display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; height: 28px; max-width: 280px; padding: 0 5px 0 12px; border-radius: 8px; font-size: 14px; line-height: 20px; white-space: nowrap; color: var(--ui-primary);
   background: color-mix(in srgb, var(--ds-fg) 6%, var(--ui-field)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-fg) 5%, transparent), 0 6px 20px rgb(0 0 0 / 0.14); }
 [data-demo-theme="dark"] .ds-tooltip { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ds-fg) 5%, transparent), 0 8px 24px rgb(0 0 0 / 0.45); }
+/* Wrap variant: a long name wraps inside the viewport instead of running off one line. */
+.ds-tooltip.ds-tooltip--wrap { height: auto; min-height: 28px; max-width: min(280px, calc(100vw - 16px)); padding-block: 4px; white-space: normal; overflow-wrap: anywhere; }
 .ds-tooltip:not(:has(.ds-tooltip-key)) { padding-right: 12px; }
 /* Card variant: the Analytics chart card (256px, 12px corners, faint edge, soft shadow) for rich content such as the timeline step hover. */
 .ds-tooltip.ds-tooltip--card { display: block; height: auto; width: 256px; max-width: calc(100vw - 16px); padding: 0; border-radius: 12px; white-space: normal;
@@ -1013,8 +1015,9 @@ body[data-demo-theme="light"] {
 .ds-menu-indicator { position: absolute; top: 50%; right: 7px; display: flex; width: 16px; height: 16px; transform: translateY(-50%); pointer-events: none; }
 .ds-menu-check { width: 16px; height: 16px; stroke-width: 1.5; color: var(--ds-menu-fg); }
 .ds-menu-item:has(.ds-menu-copy) { padding-block: 5px; }
+.ds-menu-item:has(.ds-menu-copy--one) { padding-block: 4px; }
 .ds-menu-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
-.ds-menu-copy > span:first-child { font-size: 14px; line-height: 20px; color: var(--ds-menu-fg); }
+.ds-menu-copy > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 20px; color: var(--ds-menu-fg); }
 .ds-menu-copy > span + span { font-size: 13px; line-height: 20px; color: var(--ui-secondary); }
 .ds-menu-label { padding: 6px 8px 4px; font-size: 12px; font-weight: 400; line-height: 16px; color: var(--ui-muted); }
 .ds-menu-separator { height: 1px; margin: 4px 8px; background: var(--ui-stroke); }
@@ -1415,12 +1418,10 @@ body[data-demo-theme="light"] {
   --border-width-field: 1px;
   --field-shadow: none;
 }
-/* Toolbar search edge: a step stronger than the faint field border (Codex). */
-
-.ds-search-field { --field-border: color-mix(in srgb, var(--ds-fg) 12%, var(--ui-canvas)); --field: color-mix(in srgb, var(--ds-fg) 4%, var(--ui-canvas)); --field-hover: var(--field); --field-focus: var(--field); --field-border-focus: color-mix(in srgb, var(--ds-fg) 40%, var(--ui-canvas)); }
-[data-demo-theme="dark"] 
-.ds-search-field { --field-border: color-mix(in srgb, var(--ds-fg) 23%, var(--ui-canvas)); }
-/* `field`: the 8px bordered 28px field inside a page or menu, a 14px magnifier, 13px text. `sidebar` (below) is the filled pill above a list. */
+/* The one search look (the Settings sidebar search): a 32px outlined pill, barely-there fill, 14px magnifier, 13px text; callers set only the width. */
+/* Focus is the caret plus the thin border one step brighter; no second ring. */
+.ds-search-field { --field: color-mix(in srgb, var(--ds-fg) 2%, transparent); --field-hover: var(--field); --field-focus: var(--field); --field-border: color-mix(in srgb, var(--ds-fg) 14%, transparent); --field-border-hover: var(--field-border); --field-border-focus: color-mix(in srgb, var(--ds-fg) 26%, transparent); }
+[data-demo-theme="dark"] .ds-search-field { --field-border: color-mix(in srgb, var(--ds-fg) 16%, transparent); --field-border-focus: color-mix(in srgb, var(--ds-fg) 28%, transparent); }
 .ds-search-field [data-slot="search-field-group"] { width: 100%; height: 32px; min-height: 32px; max-height: 32px; box-sizing: border-box; gap: 8px; padding-inline: 12px 6px; border-radius: 9999px; border: 1px solid var(--field-border); background: var(--field); color: var(--field-foreground); }
 .ds-search-field [data-slot="search-field-search-icon"] { width: 14px; height: 14px; margin: 0; flex-shrink: 0; color: var(--field-placeholder); }
 .ds-search-field [data-slot="search-field-input"] { min-width: 0; width: 100%; height: 100%; padding-block: 0; padding-inline: 0; background: transparent; font-size: 13px; font-weight: 400; line-height: 18px; }
@@ -1430,14 +1431,7 @@ body[data-demo-theme="light"] {
 .ds-menu-search-row svg { width: 16px; height: 16px; flex: none; }
 .ds-menu-search-row input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; box-shadow: none; background: transparent; color: var(--ui-primary); font: inherit; font-size: 13px; line-height: 18px; }
 .ds-menu-search-row input::placeholder { color: var(--ui-muted); opacity: 1; }
-/* Sidebar search: a 32px outlined pill with a barely-there fill; `field` above is the page pill with a thin border and a muted fill. */
-/* Focus is the caret plus the thin border one step brighter; no second ring. */
-.ds-search-field--sidebar { --field: color-mix(in srgb, var(--ds-fg) 2%, transparent); --field-hover: var(--field); --field-focus: var(--field); --field-border: color-mix(in srgb, var(--ds-fg) 14%, transparent); --field-border-hover: var(--field-border); --field-border-focus: color-mix(in srgb, var(--ds-fg) 26%, transparent); --border-width-field: 1px; }
-[data-demo-theme="dark"] .ds-search-field--sidebar { --field-border: color-mix(in srgb, var(--ds-fg) 16%, transparent); --field-border-focus: color-mix(in srgb, var(--ds-fg) 28%, transparent); }
-.ds-search-field--sidebar [data-slot="search-field-group"] { height: 32px; min-height: 32px; max-height: 32px; padding-inline: 12px 6px; border-radius: 9999px; border: 1px solid var(--field-border); }
-.ds-search-field--sidebar [data-slot="search-field-search-icon"] { width: 14px; height: 14px; margin: 0; }
-.ds-search-field--sidebar [data-slot="search-field-input"] { font-size: 13px; line-height: 18px; }
-/* The sidebar field has no edge to step up, so the input itself draws the ring. */
+/* The search field has no edge to step up, so the input itself draws the ring. */
 .ds-search-shortcut { margin-right: var(--ds-space-base); color: var(--ds-fg-muted); }
 
 .ds-body-scope .ds-date-picker--inline {

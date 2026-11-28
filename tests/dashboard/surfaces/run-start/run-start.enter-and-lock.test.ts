@@ -106,7 +106,7 @@ async function toLast(dialog: Opened, kind: Case) {
 }
 const startLabel = (kind: Case) => kind === "spreadsheet" ? "Start run" : "Start live run";
 
-const PRIMARY = /^(Continue|Start (live |dry )?run( again)?)$/u;
+const PRIMARY = /^(Next|Start (live |dry )?run( again)?)$/u;
 const FOCUSABLE = 'a[href], button, input:not([type="hidden"]):not([hidden]), textarea, select, [tabindex]';
 /** Every control focus can rest on, except the primary button. The dialog's own surface and anything switched off are not controls. */
 function controls(): HTMLElement[] {
@@ -152,7 +152,7 @@ describe("Enter on a focused control", () => {
     assert.deepEqual(calls, ["plan"]);
   });
 
-  it("ignores a held Enter that carries over from Continue onto Start", async () => {
+  it("ignores a held Enter that carries over from Next onto Start", async () => {
     const calls: string[] = [];
     const dialog = await openFilled("typed", { submitStartPlan: async () => { calls.push("plan"); return new Promise(() => undefined); } });
     await dialog.enter();
@@ -412,6 +412,32 @@ describe("what a rerun keeps of its source", () => {
     await settleLong();
     assert.match(dialog.text(), /The original input can't be reused; use Start run\./u);
     assert.deepEqual(plans, []);
+  });
+
+  it("opens an interrupted PDF rerun and requests the retained source without restoring its input", async () => {
+    const workflow: RunStartWorkflow = { ...pdf, rows: undefined, steps: [
+      { ...pdf.steps[0], key: "read", label: "Read", control: { state: "omittable",
+        form: { fields: [{ key: "value", label: "Value", kind: "text" }] }, forces: ["finish"] } },
+      { ...pdf.steps[0], key: "finish", label: "Finish", control: { state: "omittable", form: { fields: [] }, forces: [] } },
+    ] };
+    const source = RerunValuesSnapshotSchema.parse({ ...pdfSource({ fileName: "one.pdf" }),
+      source: { ...finished.source, workflow: pdf.workflowId, descriptorVersion: pdf.version, outcome: "interrupted" },
+      sourceInput: { state: "unavailable", reason: "incompatible" }, retainedSteps: [{ key: "read", repeatable: true }] });
+    const { dialog, plans } = await openOneClick({}, { workflow, source });
+    await settleLong();
+    assert.equal(dialog.stage(), "Steps");
+    assert.equal(plans.length, 0);
+    assert.equal(dialog.disabled("Next"), false);
+    await dialog.press("Next");
+    await settleAll();
+    assert.equal(dialog.disabled("Start live run"), false);
+    await dialog.press("Start live run");
+    await settleAll();
+    assert.equal(plans.length, 1);
+    assert.deepEqual(plans[0]?.submissions, []);
+    assert.equal(plans[0]?.workbookReferences, undefined);
+    assert.equal(plans[0]?.rerunSource?.runId, source.source.runId);
+    assert.deepEqual(plans[0]?.selectedStepKeys, ["finish"]);
   });
 
   it("sends the operator to Start run when the original spreadsheet is gone", async () => {

@@ -81,6 +81,7 @@ const CATALOG_ROWS = [
   {"key": "preferences.notifications.failures", "schema": "z.boolean", "defaultKind": "contract", "editability": "operator", "sensitivity": "ordinary", "restartScope": "generation", "sourceClass": "ordinary-settings", "consumers": [{"module": "src/backend/app/config/resolve.ts", "purpose": "leaf composition"}, {"module": "src/backend/runtime/settings/settings-runtime.ts", "purpose": "readback"}, {"module": "src/dashboard/state/person-preferences-model.ts", "purpose": "person appearance and shell"}], "currentSource": [{"kind": "document", "name": "settings.json"}], "targetSource": {"kind": "document", "name": "settings.json"}},
   {"key": "preferences.notifications.sound", "schema": "z.enum", "defaultKind": "contract", "editability": "operator", "sensitivity": "ordinary", "restartScope": "generation", "sourceClass": "ordinary-settings", "consumers": [{"module": "src/backend/app/config/resolve.ts", "purpose": "leaf composition"}, {"module": "src/backend/runtime/settings/settings-runtime.ts", "purpose": "readback"}, {"module": "src/dashboard/state/person-preferences-model.ts", "purpose": "person appearance and shell"}], "currentSource": [{"kind": "document", "name": "settings.json"}], "targetSource": {"kind": "document", "name": "settings.json"}},
   {"key": "preferences.sendShortcut", "schema": "z.enum", "defaultKind": "contract", "editability": "operator", "sensitivity": "ordinary", "restartScope": "generation", "sourceClass": "ordinary-settings", "consumers": [{"module": "src/backend/app/config/resolve.ts", "purpose": "leaf composition"}, {"module": "src/backend/runtime/settings/settings-runtime.ts", "purpose": "readback"}, {"module": "src/dashboard/state/person-preferences-model.ts", "purpose": "person assistant send key"}], "currentSource": [{"kind": "document", "name": "settings.json"}], "targetSource": {"kind": "document", "name": "settings.json"}},
+  {"key": "preferences.assistantFullAccess", "schema": "z.boolean", "defaultKind": "contract", "editability": "operator", "sensitivity": "ordinary", "restartScope": "generation", "sourceClass": "ordinary-settings", "consumers": [{"module": "src/backend/app/config/resolve.ts", "purpose": "leaf composition"}, {"module": "src/backend/runtime/settings/settings-runtime.ts", "purpose": "readback"}, {"module": "src/backend/app/composition/dashboard/assistant.ts", "purpose": "authorize supported assistant dry runs"}, {"module": "src/dashboard/state/person-preferences-model.ts", "purpose": "serve the Full access switch and approval menu"}], "currentSource": [{"kind": "document", "name": "settings.json"}], "targetSource": {"kind": "document", "name": "settings.json"}},
 ] as const;
 
 const CatalogSourceReferenceSchema = z.strictObject({
@@ -121,7 +122,7 @@ export const SettingsCatalogRowSchema = z.strictObject({
   }
 });
 
-export const SettingsCatalogSchema = z.array(SettingsCatalogRowSchema).length(78).superRefine((rows, context) => {
+export const SettingsCatalogSchema = z.array(SettingsCatalogRowSchema).length(79).superRefine((rows, context) => {
   const keys = rows.map((row) => row.key);
   if (new Set(keys).size !== rows.length) {
     context.addIssue({ code: "custom", message: "settings catalog repeats a key" });

@@ -1,5 +1,6 @@
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 import { I9CheckStartInput, I9CheckStartCanonicalInput, I9_CHECK_REFERENCE, i9CheckStartMatchKey } from "../../models/workflows/i9-check/start.js";
+import { usesOcrProvider } from "../../models/workflows/ocr/input.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { PositiveIntSchema } from "../../rules/identity/ids.js";
@@ -15,6 +16,7 @@ export const i9CheckStartWorkflow = defineWorkflow({
   input: I9CheckStartInput, canonicalInput: I9CheckStartCanonicalInput, inputSubject: "document",
   identity: { matchKey: i9CheckStartMatchKey },
   referenceKeys: () => [],
+  requiresOcrProvider: input => input.documents.some(usesOcrProvider),
   plannedOutputs: () => [{ kind: "workbook", name: "I-9 Check results", rowSubject: "person", rows: { state: "after-review" } }],
   presentation: { title: ({ documents }) => documents.length === 1 && documents[0] !== undefined ? documents[0].fileName : `I-9 Check · ${documents.length} PDFs`, subtitle: () => "One results workbook" },
   surface: { shape: "single" }, surfaces: {
@@ -31,11 +33,14 @@ export const i9CheckStartWorkflow = defineWorkflow({
   nodePurposes: [...i9CheckStartDocumentsDefinition.nodePurposes, ...i9CheckStartRosterReferenceDefinition.nodePurposes, ...i9CheckStartRetentionDefinition.nodePurposes],
   artifactProjections: [{ id: "i9-check-tracker", source: { nodeId: "publish-results", fieldPath: "tracker" }, keyFields: ["batchKey"], sink: "xlsx-retention", blocking: true }],
   rows: [
+    { key: "ocr-source-pages", label: "Prepare source pages", members: [{ workflow: "ocr", step: "source-pages" }], target: { workflow: "ocr", step: "source-pages" } },
     { key: "read-forms", label: "Read I-9 forms", members: [{ step: "documents", nodes: ["read-documents"] },
-      { workflow: "ocr", step: "source-pages" }, { workflow: "ocr", step: "page-readings" }] },
+      { workflow: "ocr", step: "page-readings" }], target: { workflow: "ocr", step: "page-readings" } },
+    { key: "ocr-group-records", label: "Group records for review", members: [{ workflow: "ocr", step: "review-records" }], target: { workflow: "ocr", step: "review-records" } },
     { key: "match-people", label: "Match extracted people", members: [{ step: "documents", nodes: ["read-approved-records", "read-people"] },
-      { workflow: "ocr", step: "review-records" }, { workflow: "ocr", step: "identity-lookups" }, { workflow: "ocr", step: "signer-lookups" }] },
-    { key: "review-records", label: "Review extracted records", members: [{ workflow: "ocr", step: "approval" }] },
+      { workflow: "ocr", step: "identity-lookups" }], target: { workflow: "ocr", step: "identity-lookups" } },
+    { key: "ocr-signer-lookups", label: "Look up official signers", members: [{ workflow: "ocr", step: "signer-lookups" }], target: { workflow: "ocr", step: "signer-lookups" } },
+    { key: "review-records", label: "Review extracted records", members: [{ workflow: "ocr", step: "approval" }], target: { workflow: "ocr", step: "approval" } },
     { key: "ucpath-match", label: "Match person in UCPath", members: [{ workflow: "i9-check", step: "person-match" },
       { workflow: "i9-check", step: "reference-check" }], target: { workflow: "i9-check", step: "person-match" } },
     { key: "ucpath-dates", label: "Read employment dates", members: [{ workflow: "i9-check", step: "person-lookup" }], target: { workflow: "i9-check", step: "person-lookup" } },

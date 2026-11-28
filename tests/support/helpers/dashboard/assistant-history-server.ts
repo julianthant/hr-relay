@@ -1,30 +1,23 @@
 import { randomUUID } from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
-import { ASSISTANT_HISTORY_MIGRATION, AssistantHistoryRefusal, createAssistantHistoryRepository } from "../../../../src/backend/storage/sqlite/assistant-history.js";
-import { ASSISTANT_ATTACHMENTS_MIGRATION } from "../../../../src/backend/storage/sqlite/assistant-attachments.js";
+import { AssistantHistoryRefusal } from "../../../../src/backend/storage/sqlite/assistant-history.js";
 import type { AssistantQueries } from "../../../../src/dashboard/client/index.js";
 import {
-  AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryViewSchema,
+  AssistantM1ConversationWireSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryWireSchema,
 } from "../../../../src/models/dashboard/assistant.js";
+import { assistantM1HistoryFixture } from "../assistant-m1-history-fixture.js";
 
-/** The served history routes over the real repository and migration in one in-memory database; each write is one transaction. */
+/** The served history routes over the real turn-accounting repository in one in-memory database; each write is one transaction. */
 export function assistantHistoryServer(profileId: string = randomUUID(), now: () => string = () => new Date().toISOString()) {
-  const database = new DatabaseSync(":memory:");
-  database.exec("PRAGMA foreign_keys=ON");
-  for (const statement of [...ASSISTANT_HISTORY_MIGRATION.statements, ...ASSISTANT_ATTACHMENTS_MIGRATION.statements]) database.exec(statement);
-  const repository = createAssistantHistoryRepository({ database, profileId: () => profileId, read: work => work(),
-    mutate: (_table, work) => {
-      database.exec("BEGIN IMMEDIATE");
-      try { const { result } = work(); database.exec("COMMIT"); return result; } catch (error) { database.exec("ROLLBACK"); throw error; }
-    } });
+  const stamp = now(), storage = assistantM1HistoryFixture({ now: stamp, acceptedAt: stamp, profileId });
+  const { database, history: repository } = storage;
   const writes: unknown[] = [];
   let failWrite: ((input: unknown) => "before" | "after" | undefined) | undefined;
   const client: Required<Pick<AssistantQueries, "assistantHistory" | "assistantConversation" | "assistantHistoryWrite">> = {
-    async assistantHistory() { return AssistantHistoryViewSchema.parse(repository.list(now())); },
+    async assistantHistory() { return AssistantHistoryWireSchema.parse({ ...repository.list(now()), needsYou: storage.proposals().needsYou(now()) }); },
     async assistantConversation(id) {
       const view = repository.conversation(id, now());
       if (view === undefined) throw new Error("ASSISTANT_CONVERSATION_STALE");
-      return AssistantConversationViewSchema.parse(view);
+      return AssistantM1ConversationWireSchema.parse({ ...view, sessions: [] });
     },
     async assistantHistoryWrite(input) {
       const operation = AssistantHistoryOperationSchema.parse(input), fault = failWrite?.(operation);

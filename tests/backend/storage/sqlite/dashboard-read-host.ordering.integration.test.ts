@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -8,10 +8,10 @@ import { z } from "zod";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createDashboardReadHost, ReadLaneRestartedError, type DashboardReadReply } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { workerExecArgv } from "../../../../src/backend/storage/sqlite/backup-inspection-worker.js";
-import { prepareReadLaneStart } from "../../../../src/backend/storage/sqlite/read-lane-admission.js";
+import { prepareReadLaneStart, type ReadLaneName } from "../../../../src/backend/storage/sqlite/read-lane-admission.js";
 import { workerBootstrapEnvironment } from "../../../../src/models/config/secrets.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { LANE_READS_ENTRY, laneBackground, laneBackgroundBarrier, laneSearch, laneSleep, laneStuck, laneTimedSleep } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
+import { LANE_READS_ENTRY, laneBackground, laneBackgroundBarrier, laneSearch, laneSearchBarrier, laneSleep, laneStuck, laneTimedSleep } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -120,6 +120,44 @@ it("holds a checkpoint until the other lane's running read ends, so the checkpoi
   assert.equal(checkpoint.busy, 0);
   assert.equal(checkpoint.walBytesAfter, 0);
   assert.ok(checkpoint.finishedAtMs >= searchStarted + 300, "the checkpoint ran only after the search read released its snapshot");
+});
+
+it("truncates at the boundary between a running Search read and its queued successor", async () => {
+  const fixture = await openBoundDatabaseFixture("read-lane-checkpoint-boundary");
+  cleanups.push(() => fixture.close());
+  const first = barrierDir(), next = barrierDir();
+  const gate = new Int32Array(new SharedArrayBuffer(3 * Int32Array.BYTES_PER_ELEMENT));
+  async function launch(name: ReadLaneName) {
+    const worker = new Worker(LANE_READS_ENTRY, { workerData: {
+      start: prepareReadLaneStart(fixture.profile.admission, fixture.database, name), gate, clock: "host",
+    }, execArgv: workerExecArgv(), env: workerBootstrapEnvironment() });
+    cleanups.push(async () => { await worker.terminate(); });
+    const replies: { kind: string; busy?: number }[] = [];
+    worker.on("message", (reply: { kind: string; busy?: number }) => { replies.push(reply); });
+    await until(() => replies.some(reply => reply.kind === "ready"));
+    return { worker, replies };
+  }
+  const navigation = await launch("navigation"), search = await launch("search");
+  const postSearch = (id: number, dir: string) => search.worker.postMessage({ kind: "read", id, beginSeq: id,
+    module: laneSearchBarrier.module, name: laneSearchBarrier.name, key: String(id), args: { tag: String(id), dir },
+    nowMs: systemClock.nowMs(), processRevision: null, processFacts: null });
+  postSearch(1, first.dir);
+  await until(() => existsSync(join(first.dir, "started")));
+  postSearch(2, next.dir);
+  createNoteTimelineWriter({ repository: fixture.database.authority.timelineEvents, clock: systemClock }).emitNote({ workflow: "person-lookup",
+    address: { workerId: "worker-1", spanPath: "worker-1" }, level: "step", message: "grow the WAL while Search is busy" });
+  const wal = `${fixture.path}-wal`;
+  assert.ok(statSync(wal).size > 0);
+
+  navigation.worker.postMessage({ kind: "checkpoint", id: 3 });
+  await until(() => Atomics.load(gate, 0) === 1 || navigation.replies.length > 1);
+  assert.equal(Atomics.load(gate, 0), 1, "the pending checkpoint reserves the next read boundary");
+  first.release();
+  await until(() => existsSync(join(next.dir, "started")));
+  assert.equal(statSync(wal).size, 0, "the queued Search read starts only after truncation");
+  await until(() => navigation.replies.some(reply => reply.kind === "checkpoint" && reply.busy === 0));
+  next.release();
+  await until(() => search.replies.filter(reply => reply.kind === "read").length === 2);
 });
 
 it("routes search to the navigation worker in shape A and to its own worker in shape B", async () => {

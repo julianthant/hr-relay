@@ -7,6 +7,7 @@ import { z } from "zod";
 import { TimelineEventRecordSchema } from "../../../../src/models/events/timeline.js";
 import { CommandAuditRecordSchema } from "../../../../src/rules/commands/commands.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
+import { inventoryRowOrder } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const retainedCorruptionOwners = new Set<object>();
@@ -77,7 +78,7 @@ it("refuses a missing genuine permanent successful start audit on nonmatching re
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
     const inventory = () => tables.map(({ name }) => {
       if (typeof name !== "string" || !/^[a-z_]+$/u.test(name)) throw new Error("invalid native table name");
-      return { name, rows: raw.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all() };
+      return { name, rows: raw.prepare(`SELECT * FROM ${name} ORDER BY ${inventoryRowOrder(name)}`).all() };
     });
     const before = inventory();
     assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(h.authorityPath), /run-search-retained-actor-source-missing/u);

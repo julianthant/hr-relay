@@ -2,7 +2,7 @@ import type { DashboardCommandBinding } from '../../app/dashboard-app-model.js';
 import { useAssistantController } from "../assistant/assistant-controller-model.js";
 import { Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { History, Pencil, Plus, Trash2, X } from "lucide-react";
-import { Button, Dialog, DialogBody, DialogContent, DialogFooter, EmptyState, Input, SearchInput, SegmentedChoice } from "../../ds/ui.js";
+import { Button, Dialog, DialogBody, DialogContent, DialogFooter, EmptyState, Input, SearchInput, SegmentedChoice, useToasts } from "../../ds/ui.js";
 import { AssistantServedActivity } from "./assistant-thread.js";
 import { publishAssistantModelChoice } from "./assistant-approval-model.js";
 import { assistantOpen, focusAssistantLauncher, useAssistantOpen } from "./assistant-launcher-model.js";
@@ -72,7 +72,8 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
   const model = useHubChats(chatsPort ?? localChats);
   const chatList = chatListView(model.chats, query);
   const assistant = useHubAssistant((id, title) => { if (model.chats.some(chat => chat.id === id)) void model.rename(id, title); }, history);
-  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged, readModels: assistantOpened });
+  const { toast } = useToasts();
+  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged, readModels: assistantOpened, toast });
   const { models: catalog, chooseModel } = servedController;
   const choose = useRef(chooseModel);
   choose.current = chooseModel;
@@ -99,7 +100,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, logoutOpen, onLo
         {list && <header className="hub-slot-header"><div className="hub-slot-title" ref={listHeading} tabIndex={-1}><span>History</span></div><div className="hub-header-actions">
           {icon("History", <History aria-hidden />, () => { leavingToTrigger.current = list; setList(value => !value); })}{icon("New chat", <Plus aria-hidden />, () => { void model.create(); setList(false); })}{icon("Close assistant", <X aria-hidden />, closePanel)}
         </div></header>}
-        {list ? <div className="hub-history"><div className="hub-history-bar"><SearchInput variant="sidebar" aria-label={tab === "chats" ? "Search chats" : "Search activity"} placeholder={tab === "chats" ? "Search chats" : "Search activity"} value={query} onChange={event => setQuery(event.target.value)} />
+        {list ? <div className="hub-history"><div className="hub-history-bar"><SearchInput aria-label={tab === "chats" ? "Search chats" : "Search activity"} placeholder={tab === "chats" ? "Search chats" : "Search activity"} value={query} onChange={event => setQuery(event.target.value)} />
           <SegmentedChoice hideLabel label="History" value={tab} options={HISTORY_TABS} onChange={setTab} /></div>
           {tab === "chats" ? <div className="hub-transcript hub-chat-list" onKeyDown={event => {
           if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || event.target instanceof HTMLInputElement) return;

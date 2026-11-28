@@ -5,7 +5,6 @@ import type { SurfaceField, InputRunSurface, TypedDateControl, TypedInputDraft }
 import { cn } from "../../lib/utils.js";
 import {
   Badge,
-  Banner,
   Button,
   Card,
   CardBody,
@@ -341,8 +340,11 @@ export function TypedInput({
   locked = false,
   onValue,
   rowInput,
+  rowsOwnNotice = false,
 }: {
   rowInput?: ReactNode;
+  /** The row input already shows its own read failure. */
+  rowsOwnNotice?: boolean;
   /** Focus the box on mount; Rerun leaves focus to the dialog, which puts it on Close. */
   autoFocus?: boolean;
   surface: InputRunSurface;
@@ -405,7 +407,7 @@ export function TypedInput({
       </RunList>}
     </>}
     {rowInput === undefined ? <RunSection title="Input" description={`${inputLabel}.`}>{box}{preview.problem !== null && preview.dateProblems === undefined && <p role="alert" className="m-0 text-caption text-ui-danger">{preview.problem}</p>}</RunSection>
-      : <>{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>}
+      : <>{rowInput}{preview.problem !== null && !rowsOwnNotice && <FailureNotice sentence={preview.problem} />}</>}
     {rowInput === undefined && preview.entries.length > 0 && <RunList title="Parsed input" label="Parsed input" aside={`${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`}>
       {preview.entries.map(entry => <RunListRow key={entry.index} title={<span className={cn("font-mono", preview.problem !== null && (preview.refusedIndexes === undefined || preview.refusedIndexes.includes(entry.index)) && "text-ui-danger")}>{entry.sourceText}</span>}>
         {preview.problem !== null && preview.refusedIndexes?.includes(entry.index) === true && <span className="flex items-center gap-2 text-body text-ui-secondary"><CircleAlert aria-hidden className={`${dsIcon.md} text-ui-danger`} />Not valid</span>}

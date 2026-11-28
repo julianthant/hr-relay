@@ -1,6 +1,10 @@
 /** What every assistant story mounts: the real panel on the real controller, a client that answers by script, and the ChatGPT account. */
 import { useLayoutEffect, useMemo, type ReactNode } from "react";
+import { PersonPreferencesContext } from "../../../../../../src/dashboard/lib/person-preferences.js";
+import { createPersonPreferences } from "../../../../../../src/dashboard/state/person-preferences-model.js";
+import { NEUTRAL_PERSON_PREFERENCES } from "../../../../../../src/models/config/person-preferences.js";
 import { useAssistantController } from "../../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
+import { useToasts } from "../../../../../../src/dashboard/ds/ui.js";
 import { DashboardClientProvider } from "../../../../../../src/dashboard/state/client-context.js";
 import { publishAssistantModelChoice } from "../../../../../../src/dashboard/surfaces/shell/assistant-approval-model.js";
 import { assistantOpen } from "../../../../../../src/dashboard/surfaces/shell/assistant-launcher-model.js";
@@ -29,11 +33,13 @@ export interface AssistantHostProps {
   readonly modelPreference?: AssistantModelPreferenceView["preference"];
   /** Publishes served model choices, as the shell does, so the composer's model menu can open. */
   readonly modelChoices?: boolean;
+  readonly fullAccess?: boolean;
 }
 
 function Panel({ props }: { props: AssistantHostProps }) {
   const client = useMemo(() => assistantStoryClient(props.client), [props.client]);
-  const served = useAssistantController(client, client, undefined, false, "story-chat");
+  const { toast } = useToasts();
+  const served = useAssistantController(client, client, undefined, false, "story-chat", undefined, { toast });
   const preference = props.modelPreference;
   useLayoutEffect(() => {
     if (!props.modelChoices || preference === undefined) return;
@@ -51,7 +57,10 @@ function Dock({ children, wide }: { children: ReactNode; wide: boolean }) {
 
 export function AssistantHost({ props }: { props: AssistantHostProps }) {
   const port = useMemo(() => assistantAccountPort(props.account ?? CONNECTED, props.retryable), [props.account, props.retryable]);
-  return <StoryFrame><ChatGptAccountContext.Provider value={port}><Dock wide={props.modelChoices === true}><Panel props={props} /></Dock></ChatGptAccountContext.Provider></StoryFrame>;
+  const preferences = useMemo(() => createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, assistantFullAccess: props.fullAccess === true, animations: false }), [props.fullAccess]);
+  return <StoryFrame><PersonPreferencesContext.Provider value={preferences}><ChatGptAccountContext.Provider value={port}>
+    <Dock wide={props.modelChoices === true || props.fullAccess !== undefined}><Panel props={props} /></Dock>
+  </ChatGptAccountContext.Provider></PersonPreferencesContext.Provider></StoryFrame>;
 }
 
 const SHELL_CLIENT = inertDashboardClient();

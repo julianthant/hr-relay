@@ -43,21 +43,28 @@ it('creates one chat for an empty profile and keeps rename, select, drafts and c
   assert.equal(w.server.repository.conversation(first.id, w.server.now())?.title, 'Saved after the re-read', 'a refused revision re-reads the served chats');
 });
 
-it('restores served rows without a card or Confirm and states every turn delivery', async () => {
+it('restores served rows: an old card reads as an inert line, a reply keeps its parts, and every turn delivery is stated', async () => {
   const w = world(), id = (await w.open()).chats.read()[0]?.id; assert.ok(id);
   const history = w.server.repository, now = w.server.now();
+  const usage = { state: 'measured', callCount: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2 } as const;
+  const words = (text: string) => [{ kind: 'text' as const, runs: [{ kind: 'plain' as const, text }] }];
   const send = (text: string) => {
-    const messageId = randomUUID(), expectedRevision = history.conversation(id, now)?.revision ?? 0;
-    assert.equal(history.accept({ conversationId: id, expectedRevision, messageId, text, modelText: text, subjectRef: null, attachments: [], now }).state, 'accepted');
-    return messageId;
+    const expectedRevision = history.conversation(id, now)?.revision ?? 0;
+    const accepted = history.accept({ conversationId: id, expectedRevision, messageId: randomUUID(), text, modelText: text, subjectRef: null, attachments: [], proposalAnswer: null, now });
+    if (accepted.state !== 'accepted') assert.fail('turn not accepted');
+    return accepted;
   };
-  history.settle(id, send('Prepare a card'), { delivery: 'answered', reply: { id: randomUUID(), kind: 'proposal', actionId: randomUUID(), text: ASSISTANT_PROPOSAL_CAPTION, modelText: 'card' } }, now);
-  history.settle(id, send('Refused one'), { delivery: 'refused', code: 'ASSISTANT_LIMIT' }, now);
+  history.settle(send('Prepare a card'), { delivery: 'answered', usage, reply: { id: randomUUID(), kind: 'proposal', actionId: randomUUID(), parts: words(ASSISTANT_PROPOSAL_CAPTION), modelText: 'card' } }, now);
+  history.settle(send('Refused one'), { delivery: 'refused', code: 'ASSISTANT_LIMIT', usage }, now);
+  history.settle(send('Explain'), { delivery: 'answered', usage, reply: { id: randomUUID(), kind: 'answer', parts: words('Here is how.'), modelText: 'Here is how.' } }, now);
   send('Lost one'); history.settleInterrupted(now);
   const state = (await w.open()).read(id);
   assert.ok(state); assert.equal(state.restored, true); assert.equal(state.turn.state, 'idle');
   assert.deepEqual(state.messages.map(message => message.text), ['Prepare a card', 'This earlier request is no longer available. Ask again.',
-    'Refused one', ASSISTANT_FAILURES.ASSISTANT_LIMIT, 'Lost one', 'The reply was not saved. Do not resend it; ask again as a new message.']);
+    'Refused one', ASSISTANT_FAILURES.ASSISTANT_LIMIT, 'Explain', 'Here is how.', 'Lost one', 'The reply was not saved. Do not resend it; ask again as a new message.']);
+  assert.equal(state.messages[1]?.parts, undefined);
+  assert.deepEqual(state.messages[5]?.parts, words('Here is how.'));
+  assert.deepEqual(state.sessions, []);
   assert.equal(JSON.stringify(state).includes('actionId'), false);
 });
 

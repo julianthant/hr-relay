@@ -1,5 +1,6 @@
-import { ASSISTANT_START_ROWS_MAX, AssistantAttachmentRecordSchema, AssistantConversationRecordSchema, AssistantM1MessageRecordSchema, AssistantM2ProposalSnapshotSchema,
-  AssistantM2ProposalStateSchema, AssistantM2RowResultSchema, AssistantMessageRecordSchema, AssistantModelPreferenceRecordSchema,
+import { AssistantAppliedEditRowSchema } from "./assistant-applied-edits.js";
+import { ASSISTANT_START_ROWS_MAX, AssistantAttachmentRecordSchema, AssistantConversationRecordSchema, AssistantM1MessageRecordSchema, AssistantProposalSnapshotSchema,
+  AssistantProposalStateSchema, AssistantRowResultSchema, AssistantMessageRecordSchema, AssistantModelPreferenceRecordSchema,
   AssistantSessionClaimSchema, AssistantSessionOutcomeSchema } from "../../../models/dashboard/assistant.js";
 import { AssistantChatRecordSchema, AssistantActionRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { EditableWorkbookWireSchema, SavedWorkbookSchema, WorkbookTypeSchema, WorkbookOperationSchema } from "../../../models/dashboard/workbooks.js";
@@ -53,17 +54,17 @@ function storedJson<T extends z.ZodType>(schema: T) {
 
 const AssistantProposalStorageRowSchema = z.strictObject({
   id: z.uuid(), conversation_id: z.uuid(), revision: PositiveIntSchema, rendered_message_id: z.uuid(), rendered_digest: FingerprintSchema,
-  state: z.string(), answer_message_id: z.uuid().nullable(), snapshot_json: storedJson(AssistantM2ProposalSnapshotSchema), created_at: IsoInstantSchema,
+  state: z.string(), answer_message_id: z.uuid().nullable(), snapshot_json: storedJson(AssistantProposalSnapshotSchema), created_at: IsoInstantSchema,
 }).refine(row => {
   const snapshot = row.snapshot_json;
   return row.id === snapshot.id && row.conversation_id === snapshot.conversationId && row.revision === snapshot.revision
     && row.rendered_message_id === snapshot.renderedMessageId && row.rendered_digest === snapshot.renderedDigest && row.created_at === snapshot.createdAt
-    && AssistantM2ProposalStateSchema.safeParse(row.answer_message_id === null ? { state: row.state } : { state: row.state, answerMessageId: row.answer_message_id }).success;
+    && AssistantProposalStateSchema.safeParse(row.answer_message_id === null ? { state: row.state } : { state: row.state, answerMessageId: row.answer_message_id }).success;
 }, "assistant-proposal-storage-row-mismatch");
 
 const AssistantProposalResultStorageRowSchema = z.strictObject({
   id: z.uuid(), proposal_id: z.uuid(), ordinal: PositiveIntSchema.max(ASSISTANT_START_ROWS_MAX), command_id: CommandIdSchema.nullable(),
-  state: z.string(), result_json: storedJson(AssistantM2RowResultSchema),
+  state: z.string(), result_json: storedJson(AssistantRowResultSchema),
 }).refine(row => row.state === row.result_json.state && row.command_id === ("commandId" in row.result_json ? row.result_json.commandId : null),
   "assistant-proposal-result-storage-row-mismatch");
 
@@ -91,6 +92,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   assistant_proposals: AssistantProposalStorageRowSchema,
   assistant_proposal_rows: AssistantProposalResultStorageRowSchema,
   assistant_session_claims: AssistantSessionClaimStorageRowSchema,
+  assistant_applied_edits: AssistantAppliedEditRowSchema,
   run_batches: RunSessionRecordSchema,
   deleted_runs: DeletedRunRecordSchema,
   runs: RunRecordSchema,

@@ -21,18 +21,18 @@ const policies = {
   "repeating-failure": { trigger: "repeating", tone: "danger", detail: "This failure keeps repeating." },
   "storage-degraded": { trigger: "storage", tone: "warning", detail: "Relay could not save everything." },
   "verified-done": { trigger: "verified-done", tone: "positive", detail: "Completed with the required verification evidence." },
-  "backfill-gap": { trigger: "backfill-gap", tone: "warning", detail: "Notification history is incomplete. Reconcile the affected work." },
   "command-refused": { trigger: "command", tone: "warning", detail: "Relay did not do this, so nothing changed." },
   "command-unknown": { trigger: "command", tone: "danger", detail: "Relay could not confirm whether this finished. Open it to check before trying again." },
   "bulk-incomplete": { trigger: "command", tone: "warning", detail: "Some items in this batch were not done. Open it to see each one." },
-} as const satisfies Readonly<Record<NotificationTriggerEvent["kind"], { trigger: string; tone: NotificationItem["tone"]; detail: string }>>;
+} as const satisfies Readonly<Record<Exclude<NotificationTriggerEvent["kind"], "backfill-gap">, { trigger: string; tone: NotificationItem["tone"]; detail: string }>>;
 
-export const inboxMessage = (code: "DASHBOARD_READ_FAILED" | "NOTIFICATION_SOURCE_UNAVAILABLE" | "NOTIFICATION_HISTORY_INCOMPLETE" | "NOTIFICATION_OBSERVATION_FAILED" | "NOTIFICATION_RECEIPT_MISSING" | "NOTIFICATION_COMMAND_PENDING" | "NOTIFICATION_TARGET_UNAVAILABLE" | "NOTIFICATION_REFRESH_PENDING") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
+export const inboxMessage = (code: "DASHBOARD_READ_FAILED" | "NOTIFICATION_SOURCE_UNAVAILABLE" | "NOTIFICATION_OBSERVATION_FAILED" | "NOTIFICATION_COMMAND_PENDING" | "NOTIFICATION_TARGET_UNAVAILABLE" | "NOTIFICATION_REFRESH_PENDING") => formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text;
 
 export function notificationPolicy(row: NotificationWire) {
+  if (row.kind === "backfill-gap") return undefined;
   const source = row.sourceEvent;
   const policy = source?.state === "available" ? Object.entries(policies).find(([kind]) => kind === source.kind)?.[1] : undefined;
-  const trigger = row.kind === "backfill-gap" ? "backfill-gap" : row.kind === "command" ? "command" : row.trigger;
+  const trigger = row.kind === "command" ? "command" : row.trigger;
   return policy?.trigger === trigger ? policy : undefined;
 }
 
@@ -127,8 +127,7 @@ const clearedRow = (row: NotificationWire, cleared: ReadonlyMap<string, number>)
 /** The rows the panel shows: the listed rows the person has not cleared. */
 const shownRows = (rows: readonly NotificationWire[], cleared: ReadonlyMap<string, number> = new Map()) => rows.filter(row => !clearedRow(row, cleared));
 
-export function inboxProjection(rows: readonly NotificationWire[], nowIso: string, gone: ReadonlySet<string> = new Set(), cleared: ReadonlyMap<string, number> = new Map()): { state: NotificationsState; notice: string; needsYou: number } {
-  const notice = rows.some(row => row.kind === "backfill-gap") ? inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE") : "";
+export function inboxProjection(rows: readonly NotificationWire[], nowIso: string, gone: ReadonlySet<string> = new Set(), cleared: ReadonlyMap<string, number> = new Map()): { state: NotificationsState; needsYou: number } {
   const items = foldRows(shownRows(rows, cleared)).map((group): NotificationItem => {
     const shown = notificationItem(group[0], nowIso);
     // A repeating notice says the failure repeats; it is not one more failure.
@@ -137,7 +136,7 @@ export function inboxProjection(rows: readonly NotificationWire[], nowIso: strin
       ...(group.some(row => row.standing === true) ? { standing: true as const } : {}) };
   });
   const needsYou = items.filter(item => !item.read && (item.tone === "danger" || item.tone === "warning")).length;
-  return { state: { state: "ready", items, pinned: [] }, notice, needsYou };
+  return { state: { state: "ready", items, pinned: [] }, needsYou };
 }
 
 export type InboxArrival = Readonly<{ sourceId: string; item: NotificationItem }>;
@@ -227,8 +226,8 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       if (current.current.request !== request || publication.actorId !== request.scope.actorId || delivered.has(publication.sourceId)) return;
       delivered.add(publication.sourceId);
       const row = publication.notification;
-      if (row.kind === "backfill-gap") { setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_HISTORY_INCOMPLETE") }); return; }
-      if (row.state === "snoozed") return;
+      // Replay gaps record a stream resnapshot; the inbox still has its durable rows.
+      if (row.kind === "backfill-gap" || row.state === "snoozed") return;
       const arrival = { sourceId: publication.sourceId, item: notificationItem(row, current.current.binding.authority.now()) };
       for (const listener of arrivalListeners.current) listener(arrival);
       if (!notificationTargetMatches(row, target)) setPublicationNotice({ request, text: inboxMessage("NOTIFICATION_TARGET_UNAVAILABLE") });
@@ -320,15 +319,17 @@ export function useInboxWiring({ client, enabled, binding }: { client: Dashboard
       && replacement.binding.scope.authority === owner.scope.authority) replacement.binding.authority.dayState.refresh();
     return current.current.request === request && outcome.kind === "confirmed";
   };
-  const statusNotice = list?.unavailable === true ? inboxMessage("DASHBOARD_READ_FAILED") : status === undefined ? ""
-    : status.unavailable ? inboxMessage("DASHBOARD_READ_FAILED")
-    : status.status !== undefined && status.status.state !== "ready" ? inboxMessage(status.status.code ?? "NOTIFICATION_OBSERVATION_FAILED") : "";
-  const projection = rows === undefined
-    ? { state: day.state === "failed" || list?.unavailable === true ? { state: "unavailable" as const, reason: inboxMessage("DASHBOARD_READ_FAILED") } : { state: "loading" as const }, notice: "" }
-
-    : inboxProjection(rows, binding.authority.now(), gone?.request === request ? gone.ids : undefined, clearedIds);
+  const observation = status?.status;
+  const statusNotice = list?.unavailable === true || status?.unavailable === true ? inboxMessage("DASHBOARD_READ_FAILED")
+    : observation === undefined || observation.state === "ready" ? ""
+    : observation.code === "NOTIFICATION_RECEIPT_MISSING"
+      ? "Notification history is incomplete. Missing completion receipts."
+      : inboxMessage(observation.code ?? "NOTIFICATION_OBSERVATION_FAILED");
+  const state: NotificationsState = rows !== undefined
+    ? inboxProjection(rows, binding.authority.now(), gone?.request === request ? gone.ids : undefined, clearedIds).state
+    : day.state === "failed" || list?.unavailable === true ? { state: "unavailable", reason: inboxMessage("DASHBOARD_READ_FAILED") } : { state: "loading" };
   const pending = enabled && consistent && status === undefined ? inboxMessage("NOTIFICATION_REFRESH_PENDING") : "";
-  return { state: projection.state, notice: [pending, projection.notice, enabled ? statusNotice : "", commandNotice?.request === request ? commandNotice.text : "", publicationNotice?.request === request ? publicationNotice.text : ""].filter(Boolean).join(" "),
+  return { state, notice: [pending, enabled ? statusNotice : "", commandNotice?.request === request ? commandNotice.text : "", publicationNotice?.request === request ? publicationNotice.text : ""].filter(Boolean).join(" "),
     control,
     canAct: () => usable,
     canClear: () => clearsNow,

@@ -1,5 +1,6 @@
 /** The action vocabulary's pure half — the pill shell and the placement folds. */
 import { cn } from "../../../lib/utils.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../../../models/failures/error-catalog.js";
 import type { CommandSettlement } from "../../../app/commands/command-result.js";
 import {
   actionsAt,
@@ -118,5 +119,27 @@ export function toastAppliedCommandResult(
   });
 }
 
-export const commandResultTitle = (entry: CommandResultFeedEntry) => `${entry.actionLabel}: ${entry.settlement.reason === "conflict" ? "row changed" : "rejected"}`;
-export const commandResultDetail = (entry: CommandResultFeedEntry) => `${entry.subject} · ${entry.settlement.message}`;
+/** Operator copy per refusal code: the server's own sentence names run ids and internals. */
+const REFUSAL_REASON: Partial<Record<Extract<CommandSettlement, { reason: "rejected" }>["code"], string>> = {
+  "invalid-state": "the run already finished or changed",
+  "target-not-found": "the run no longer exists",
+  "target-deleted": "the run was deleted",
+  "policy-refused": "Relay's rules don't allow it",
+  "capability-unavailable": "it isn't available right now",
+};
+const lowerFirst = (text: string) => text.replace(/[.!?]+$/u, "").replace(/^\p{Lu}(?=\p{Ll})/u, letter => letter.toLowerCase());
+/** shortcut: the unresolved-write cancel refusal shares "invalid-state" with the terminal one and differs only by its sentence; give it its own code to drop this match. */
+const UNRESOLVED_WRITE = /holds \S+ write intent/u;
+const refusalReason = (entry: CommandResultFeedEntry): string => {
+  const { settlement } = entry;
+  if (settlement.reason !== "rejected") return settlement.message;
+  const catalog = ErrorCatalogCodeSchema.safeParse(settlement.code);
+  if (catalog.success) return lowerFirst(ERROR_CATALOG[catalog.data].text);
+  if (settlement.code === "invalid-state" && UNRESOLVED_WRITE.test(settlement.message)) return "a write is still unresolved; record whether it landed first";
+  return REFUSAL_REASON[settlement.code] ?? "Relay refused it";
+};
+/** A conflict names the row; a refusal says why: "Couldn't cancel: the run already finished or changed." */
+export const commandResultTitle = (entry: CommandResultFeedEntry) => entry.settlement.reason === "conflict"
+  ? `${entry.actionLabel}: row changed`
+  : `Couldn't ${entry.actionLabel.replace(/ run$/iu, "").toLowerCase()}: ${refusalReason(entry)}.`;
+export const commandResultDetail = (entry: CommandResultFeedEntry) => `${entry.subject} · ${refusalReason(entry)}`;

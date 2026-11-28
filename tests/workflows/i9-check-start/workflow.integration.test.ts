@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import readXlsxFile from "read-excel-file/node";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createI9CheckStartWorld } from "../../support/helpers/backend/i9-check-start-world.js";
@@ -7,6 +8,47 @@ import { I9CheckStartResultSchema } from "../../../src/models/workflows/i9-check
 import { I9CheckRowSchema } from "../../../src/models/workflows/i9-check/check.js";
 import { I9CheckCanonicalInput } from "../../../src/models/workflows/i9-check/input.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
+import { OcrPageWorkflowInputSchema } from "../../../src/models/workflows/ocr-page/input.js";
+import { READ_AT } from "../../support/fixtures/ocr/source-pages.js";
+
+describe("I-9 Start with typed OCR values", () => {
+  const world = createI9CheckStartWorld();
+  afterAll(world.cleanup);
+
+  it("validates one original PDF before Start and admits manual readings for its exact pages", async () => {
+    const f = await world.fixture();
+    const descriptor = f.root.descriptor;
+    const options = { dryRun: true, workbookReferences: [{ entry: 1, libraryId: f.referenceId, versionId: f.selectedReference.versionId,
+      sheetId: "history", expectedVersion: f.library.read(f.referenceId).version }] };
+    const first = { ...f.input.documents[0], readingId: randomUUID(), reading: { kind: "subscription" } };
+    const input = { ...f.input, documents: [first] };
+    const reading = (sourcePage: number, pageKind: string) => JSON.stringify({ sourcePage, pageKind, readAt: READ_AT, record: null });
+    const entry = (readings: string[]) => ({ workflow: "ocr", step: "page-readings", facts: { readings } });
+    const manual = entry([reading(1, "blank"), reading(2, "unrelated")]);
+    assert.throws(() => f.canonical.start(descriptor, input, { ...options, stepOmissions: [entry([reading(1, "i9-section1")])] }),
+      /omission facts are invalid at: readings/u);
+    assert.throws(() => f.canonical.start(descriptor, { ...input, documents: [first, f.input.documents[1]] }, { ...options, stepOmissions: [manual] }),
+      /Start with one document/u);
+    const run = f.canonical.start(descriptor, input, { ...options, stepOmissions: [manual,
+      { workflow: "ocr", step: "review-records", facts: { outcome: "leave unverified" } },
+      { workflow: "ocr", step: "identity-lookups", facts: { outcome: "leave unverified" } },
+      { workflow: "ocr", step: "signer-lookups", facts: { outcome: "leave unverified" } },
+      { workflow: "ocr", step: "approval", facts: { release: "withhold" } },
+    ] });
+    await f.canonical.execute(run, new AbortController().signal);
+    const authority = f.database.authority;
+    const [child] = authority.runs.listChildren(run.envelope.runId);
+    expect(child?.envelope.workflow).toBe("ocr");
+    assert.ok(child?.lifecycle.state === "terminal" && child.lifecycle.outcome === "done");
+    const pages = authority.runs.listChildren(child.envelope.runId);
+    assert.ok(pages.every(page => page.lifecycle.state === "terminal" && page.lifecycle.outcome === "done"));
+    expect(pages.map(page => OcrPageWorkflowInputSchema.parse(page.input.parsed.value)).map(({ page, reading: value }) =>
+      [page.sourcePage, value.kind === "manual" ? value.extraction.source : null]).toSorted()).toEqual([
+      [1, { kind: "operator", actorId: "local-operator" }], [2, { kind: "operator", actorId: "local-operator" }],
+    ]);
+    expect(f.publishCalls).toEqual([]);
+  });
+});
 
 describe("one I-9 PDF Start through admitted children", () => {
   const world = createI9CheckStartWorld();

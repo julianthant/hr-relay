@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AssistantActionProposal, AssistantFailureCode, AssistantM2ProposalOptions, AssistantM2ProposalRow, AssistantToolTier } from "../../../models/dashboard/assistant.js";
+import type { AssistantAcceptedTurn, AssistantFailureCode, AssistantReplyPart, AssistantProposalOptions, AssistantProposalRow, AssistantToolTier } from "../../../models/dashboard/assistant.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { AssistantReferenceKind, AssistantReferenceTable } from "../references.js";
 
@@ -9,12 +9,13 @@ export interface AssistantToolContext {
   readonly signal: AbortSignal;
   readonly references: AssistantReferenceTable;
   readonly actorId: string;
-  /** The conversation whose accepted turn issued this call; a decision caption is bound to it. */
+  /** The conversation whose accepted turn issued this call. */
   readonly conversationId: string;
   /** This turn's masked operator message; typed names and links must appear in it verbatim. */
   readonly operatorText: string;
+  readonly editReads?: Map<string, string>;
   assertCurrent(): void;
-  /** The turn's captured authority (composition, model policy, account) without its request signal; a proposal keeps it for Confirm. */
+  /** The turn's captured authority (composition, model policy, account) without its request signal. */
   assertRetainedCurrent(): void;
 }
 interface AssistantToolIdentity {
@@ -30,28 +31,31 @@ export interface AssistantReadTool extends AssistantToolIdentity {
   readonly privacy: readonly Readonly<{ path: string; origin: AssistantToolLeafOrigin }>[];
   invoke(argumentsValue: unknown, context: AssistantToolContext): Promise<JsonValue>;
 }
-/** Prepares one confirmation card; its result goes to the operator, never back to the model, and ends the turn. */
-export interface AssistantProposalTool extends AssistantToolIdentity {
-  readonly kind: "proposal";
-  propose(argumentsValue: unknown, context: AssistantToolContext): Promise<AssistantActionProposal>;
-}
-/** A small local change (no run) that applies inside the turn without a card; its output returns to the model. */
-export interface AssistantChangeTool extends Omit<AssistantReadTool, "kind"> {
-  readonly kind: "change";
-}
 /** Names one session start; the dispatch owner admits it with the turn's accepted identity. Its output returns to the model. */
 export interface AssistantSessionTool extends Omit<AssistantReadTool, "kind" | "invoke"> {
   readonly kind: "session";
   request(argumentsValue: unknown, context: AssistantToolContext): Readonly<{ workflowId: string; entries: readonly string[] }>;
 }
 /** What one typed-yes proposal will do, from fresh plans; Relay renders it and only the operator's typed yes runs it. */
-export type AssistantProposalDraft = Readonly<{ label: string; dryRun: boolean; options: AssistantM2ProposalOptions | null; rows: readonly Omit<AssistantM2ProposalRow, "id" | "ordinal">[] }>;
+export type AssistantProposalDraft = Readonly<{ label: string; dryRun: boolean; options: AssistantProposalOptions | null; rows: readonly Omit<AssistantProposalRow, "id" | "ordinal">[];
+  /** What the run does and, for a dry run, the step it stops before; shown in the proposal, never stored. */
+  effect: string }>;
 /** Prepares one typed-yes proposal; its output (status and row count) returns to the model and the turn continues. */
-export interface AssistantTypedProposalTool extends Omit<AssistantReadTool, "kind" | "invoke"> {
-  readonly kind: "typed-proposal";
+export interface AssistantProposalTool extends Omit<AssistantReadTool, "kind" | "invoke"> {
+  readonly kind: "proposal";
   prepare(argumentsValue: unknown, context: AssistantToolContext): Promise<AssistantProposalDraft>;
 }
-export type AssistantTool = AssistantReadTool | AssistantChangeTool | AssistantProposalTool | AssistantSessionTool | AssistantTypedProposalTool;
+export interface AssistantChangeContext extends AssistantToolContext {
+  readonly acceptedTurn: AssistantAcceptedTurn;
+  readonly editReads: Map<string, string>;
+}
+/** Prepares a reversible edit. Only the turn settlement transaction calls the returned function. */
+export interface AssistantChangeTool extends Omit<AssistantReadTool, "kind" | "invoke"> {
+  readonly kind: "change";
+  change(argumentsValue: unknown, context: AssistantChangeContext): Promise<() => AssistantReplyPart>;
+}
+export const AssistantChangeOutput = z.strictObject({ status: z.literal("applied") });
+export type AssistantTool = AssistantReadTool | AssistantSessionTool | AssistantProposalTool | AssistantChangeTool;
 export interface AssistantPlugin {
   readonly domain: string;
   readonly tools: readonly AssistantTool[];

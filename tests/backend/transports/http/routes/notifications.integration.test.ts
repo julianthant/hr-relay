@@ -61,7 +61,7 @@ afterAll(() => profiles.close());
 const projectionWorld = createRunQueueProjectionTestWorld(profiles.create);
 afterEach(projectionWorld.cleanup);
 
-it("serves the notification list, collection and target on a read lane with the main read connection disabled", async () => {
+it("serves notification reads and stream refreshes on a lane with the main read connection disabled", async () => {
   const w = await projectionWorld.world();
   const profile = findProfileFixtureAdmission(w.stateRoot);
   assert.ok(profile);
@@ -96,6 +96,13 @@ it("serves the notification list, collection and target on a read lane with the 
       assert.deepEqual(row.context, { state: "storage", concern: "backup" });
       NotificationCollectionTargetSchema.parse(await read(`${collectionPath}?operation=read`));
       NotificationTargetSchema.parse(await read(`/api/v1/notifications/${row.notificationId}/target`));
+      assert.deepEqual(await routes.streamList.read(), rows);
+      const changed = vi.fn();
+      const stop = routes.streamList.onChange(changed);
+      try {
+        await routes.pollList();
+        assert.equal(changed.mock.calls.length, 0);
+      } finally { stop(); }
       assert.equal(snapshot.mock.calls.length, 0);
     } finally { snapshot.mockRestore(); }
   } finally { await lanes.close(); }

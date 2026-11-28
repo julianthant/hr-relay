@@ -706,7 +706,7 @@ describe("a plan that omits a different set cannot be started", () => {
     await dialog.press("Start live run");
     assert.equal(dialog.stage(), "Steps");
 
-    assert.ok(dialog.text().includes("This plan does not describe the steps you omitted"));
+    assert.ok(dialog.text().includes("but the plan omits"));
     assert.ok(dialog.text().includes("kronos-timecard"));
     assert.ok(dialog.text().includes("kuali-finalization"));
     assert.equal(dialog.disabled("Start live run"), true, "a plan for a different run was startable");
@@ -722,7 +722,7 @@ describe("a plan that omits a different set cannot be started", () => {
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
     await dialog.press("Start live run");
-    assert.ok(!dialog.text().includes("This plan does not describe"));
+    assert.ok(!dialog.text().includes("but the plan omits"));
     assert.equal(sent, 1);
   });
 });

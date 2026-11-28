@@ -57,6 +57,16 @@ test("search lists runs for a workflow name and opens the chosen run", async ({ 
   await dashboard.expectRunOpen(dashboard.runId("doneRun"));
 });
 
+test("search keeps focus and typing after ArrowDown", async ({ dashboard, page }) => {
+  await dashboard.open();
+  await openSearch(page);
+  const query = page.getByRole("combobox", { name: "Search Relay" });
+  await query.press("ArrowDown");
+  await expect(query).toBeFocused();
+  await page.keyboard.type("person");
+  await expect(query).toHaveValue("person");
+});
+
 test("search shows the empty state for a query with no match", async ({ dashboard, page }) => {
   await dashboard.open();
   await openSearch(page);

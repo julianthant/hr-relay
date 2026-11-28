@@ -1,7 +1,7 @@
 import { LogSkeleton } from "../../shared/loading/loading.js";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ContextType, type ReactNode } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import { ArrowDownToLine } from "lucide-react";
+import { ArrowDownToLine, CircleCheck, CircleX, LoaderCircle } from "lucide-react";
 import { Button, EmptyState } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { logPlainText, matchRanges, visualLogSteps, type LogEntry, type LogStep } from "./log-feed-model.js";
@@ -26,10 +26,14 @@ function Entry({ entry, onDecision, onCancelRun, timeInStep = false }: { entry: 
     {entry.result && <ResultLine value={entry.result} />}
   </PageCard>;
   if (entry.kind === "click") return <ClickLine label={entry.label} />;
-  return <><LogNote entry={entry} />{entry.captureFailure && <RequiredCaptureStatus state={entry.captureFailure} />}</>;
+  // A step row carries its own time, so rows of one stage line up; the stage heading keeps its own.
+  return <div className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-x-3"><time className="pt-2 text-caption tabular-nums text-ui-muted">{entry.time}</time><div className="min-w-0"><LogNote entry={entry} />{entry.captureFailure && <RequiredCaptureStatus state={entry.captureFailure} />}</div></div>;
 }
+const STEP_STATE_ICON = { done: CircleCheck, active: LoaderCircle, failed: CircleX } as const;
 function LogNote({ entry }: { entry: Extract<LogEntry, { kind: "note" }> }) {
-  return <NoteLine message={entry.message} tone={entry.tone} announce={entry.announce} announceKey={entry.id} />;
+  const Icon = entry.state === undefined ? undefined : STEP_STATE_ICON[entry.state];
+  return <NoteLine message={entry.message} tone={entry.tone} announce={entry.announce} announceKey={entry.id}
+    icon={Icon === undefined ? undefined : <Icon aria-hidden className="size-3.5 self-start translate-y-0.5" />} />;
 }
 
 /** Shorter logs mount every step; longer ones mount only the steps near the viewport. */

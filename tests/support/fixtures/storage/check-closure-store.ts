@@ -151,9 +151,11 @@ export async function seedCheckClosureStore(options: Readonly<{ activeRuns?: boo
   await mutate("delegation_dependencies");
   for (const [table, nth] of [["dryrun_results", 0], ["artifacts", 0], ["artifacts", 1], ["artifacts", 2], ["notifications", 0],
     ["notification_states", 0], ["timeline_events", 0], ["timeline_events", 1],
-    ["assistant_conversations", 0], ["assistant_chats", 0], ["assistant_model_preference", 0]] as const) await mutate(table, nth);
-  caseFor("assistant_actions").prepare?.(database);
-  await mutate("assistant_actions");
+    ["assistant_conversations", 0], ["assistant_model_preference", 0]] as const) await mutate(table, nth);
+  for (const table of ["assistant_proposal_rows", "assistant_session_claims"] as const) {
+    caseFor(table).prepare?.(database);
+    await mutate(table);
+  }
   assert.equal(database.authority.assistantHistory.apply({ operation: "local", conversationId: "6f9c3b1e-2a4d-4c8e-9b7a-1d2e3f4a5b6c",
     expectedRevision: 1, messageId: fixtureUuid("closure-message"), text: "Closure fixture message." }, NOW).state, "saved");
   await mutate("assistant_attachments");

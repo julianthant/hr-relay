@@ -18,6 +18,7 @@ export type ChatGptAccountState = z.infer<typeof ChatGptAccountStateSchema>;
 export const ChatGptAttemptIdSchema = z.uuid();
 export const ChatGptSignInRequestSchema = z.strictObject({ usePlan: z.boolean() });
 export const ChatGptEmptyRequestSchema = z.strictObject({});
+export const ChatGptConnectionCheckRequestSchema = z.strictObject({ fresh: z.literal(true).optional() });
 export const ChatGptAuthorizationUrlSchema = z.url().refine(value => {
   const url = new URL(value);
   return url.origin === "https://auth.openai.com" && url.pathname === "/api/accounts/authorize"
@@ -64,8 +65,18 @@ export const ChatGptUsageStatusSchema = z.discriminatedUnion("state", [
 ]);
 export const ChatGptAccountStatusSchema = z.strictObject({
   account: ChatGptAccountViewSchema, connection: ChatGptConnectionStatusSchema, usage: ChatGptUsageStatusSchema,
+  /** Model evidence from a check that asked for OCR readiness. */
+  ocrModelAvailable: z.boolean().optional(),
 });
 export type ChatGptAccountStatus = z.infer<typeof ChatGptAccountStatusSchema>;
+export const chatGptOcrAvailable = ({ usage, connection }: ChatGptAccountStatus): boolean =>
+  usage.state === "available" && connection.state === "completed";
+
+export function chatGptConnectionCurrent(connection: ChatGptAccountStatus["connection"], nowMs: number): boolean {
+  if (connection.state !== "completed") return false;
+  const age = nowMs - Date.parse(connection.checkedAt);
+  return age >= 0 && age <= 300_000;
+}
 
 export const ChatGptOcrTestResultSchema = z.union([
   z.strictObject({ state: z.literal("completed"), model: z.string().min(1).max(128) }), RefusedSchema, UncertainSchema,

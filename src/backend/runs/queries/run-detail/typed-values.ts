@@ -108,7 +108,8 @@ export function projectTypedSteps(run: RunRecord, descriptor: AnyWorkflowDescrip
         reading: "Not run, typed by hand",
         fields: orderedKeys(entry, fields).map((key) => {
           const value = displayTypedValue(entry, key, entry.facts[key]);
-          const shown = containsProtected(JsonValueSchema.parse(entry.facts[key]), protectedValues) ? { withheld: true as const } : { value };
+          const shown = fields.some(field => field.key === key && field.withheld === true)
+            || containsProtected(JsonValueSchema.parse(entry.facts[key]), protectedValues) ? { withheld: true as const } : { value };
           return { key, label: labelOf(entry, fields, key), ...shown, mark: markOf(copied, key) };
         }),
         ...(doneByHand.length === 0 ? {} : { doneByHand }),

@@ -19,8 +19,8 @@ export const personLookup: AssistantScenario = {
     provider: [{ tool: "read_person", args: { query: employee } }, `The matching person is ${person}.`],
     check({ envelope, requests, proposalStarts, sessionStarts }) {
       const { parts } = answered(envelope);
-      assert.ok(parts.some(part => part.kind === "text" && part.runs.some(run => run.kind === "link"
-        && run.target.kind === "person" && run.label === SCENARIO_PERSON.name)));
+      // The dashboard composition binds references by value.
+      assert.ok(parts.some(part => part.kind === "text" && part.runs.some(run => run.kind === "value" && run.value === SCENARIO_PERSON.name)));
       const result = requests[1]?.input.at(-1);
       assert.ok(result && "type" in result && result.type === "function_call_output");
       assert.deepEqual(JSON.parse(result.output), { person });

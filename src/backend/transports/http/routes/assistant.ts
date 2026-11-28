@@ -1,7 +1,7 @@
 import { wireError } from "./failure-status.js";
 import { z } from "zod";
-import { ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, AssistantModelPreferenceViewSchema, AssistantRequestSchema, AssistantRespondEnvelopeSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
-  AssistantActivityWireSchema, AssistantConversationViewSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryViewSchema, AssistantStageResultSchema } from "../../../../models/dashboard/assistant.js";
+import { ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, AssistantModelPreferenceViewSchema, AssistantM1RequestSchema, AssistantM1RespondEnvelopeSchema,
+  AssistantActivityWireSchema, AssistantM1ConversationWireSchema, AssistantHistoryOperationSchema, AssistantHistoryResultSchema, AssistantHistoryWireSchema, AssistantStageResultSchema } from "../../../../models/dashboard/assistant.js";
 import type { AssistantService } from "../../../assistant/service.js";
 import type { DashboardApp } from "./api-types.js";
 import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "./operator-mutation-ingress.js";
@@ -43,6 +43,7 @@ async function readUpload(request: Request, maxBytes: number, signal: AbortSigna
     try { await reader.cancel(); } finally { reader.releaseLock(); }
   }
 }
+const UNAVAILABLE_NO_REPLY = { kind: "result", result: { state: "no-reply", reason: "ASSISTANT_UNAVAILABLE", canRetry: false, turn: null } } as const;
 const uploadName = (value: string | undefined) => decodeURIComponent(value ?? "");
 
 export function registerAssistantRoutes(app: DashboardApp, service: AssistantService | undefined): void {
@@ -64,11 +65,9 @@ export function registerAssistantRoutes(app: DashboardApp, service: AssistantSer
   app.post("/api/v1/assistant/respond", async c => {
     c.header("Cache-Control", "no-store");
     try {
-      const input = AssistantRequestSchema.parse(await readInput(c.req.raw));
-      return c.json(AssistantRespondEnvelopeSchema.parse(service === undefined
-        ? { kind: "result", result: { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE } }
-        : await service.respond(input, c.req.raw.signal)));
-    } catch { return c.json({ kind: "result", result: { state: "refused", code: "ASSISTANT_INVALID", message: ASSISTANT_FAILURES.ASSISTANT_INVALID } }, 400); }
+      const input = AssistantM1RequestSchema.parse(await readInput(c.req.raw));
+      return c.json(AssistantM1RespondEnvelopeSchema.parse(service === undefined ? UNAVAILABLE_NO_REPLY : await service.respond(input, c.req.raw.signal)));
+    } catch { return c.json({ kind: "result", result: { state: "no-reply", reason: "ASSISTANT_INVALID", canRetry: false, turn: null } }, 400); }
   });
   const HISTORY_UNAVAILABLE = ["ASSISTANT_HISTORY_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE, false] as const;
   app.get("/api/v1/assistant/activity", c => {
@@ -85,7 +84,7 @@ export function registerAssistantRoutes(app: DashboardApp, service: AssistantSer
     c.header("Cache-Control", "no-store");
     try {
       if (service?.historyView === undefined) return c.json(wireError(...HISTORY_UNAVAILABLE), 503);
-      return c.json(AssistantHistoryViewSchema.parse(service.historyView()));
+      return c.json(AssistantHistoryWireSchema.parse(service.historyView()));
     } catch { return c.json(wireError(...HISTORY_UNAVAILABLE), 503); }
   });
   app.get("/api/v1/assistant/conversations/:conversationId", c => {
@@ -94,7 +93,7 @@ export function registerAssistantRoutes(app: DashboardApp, service: AssistantSer
       if (service?.conversation === undefined) return c.json(wireError(...HISTORY_UNAVAILABLE), 503);
       const view = service.conversation(c.req.param("conversationId"));
       return view === undefined ? c.json(wireError("ASSISTANT_CONVERSATION_STALE", ASSISTANT_FAILURES.ASSISTANT_CONVERSATION_STALE, false), 404)
-        : c.json(AssistantConversationViewSchema.parse(view));
+        : c.json(AssistantM1ConversationWireSchema.parse(view));
     } catch { return c.json(wireError(...HISTORY_UNAVAILABLE), 503); }
   });
   app.post("/api/v1/assistant/history", async c => {
@@ -117,14 +116,5 @@ export function registerAssistantRoutes(app: DashboardApp, service: AssistantSer
         name: uploadName(c.req.header("x-relay-file-name")), read: (maxBytes, signal) => readUpload(c.req.raw, maxBytes, signal) }, c.req.raw.signal));
       return c.json(result, result.state === "staged" ? 201 : 422);
     } catch { return c.json(wireError("ASSISTANT_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE, false), 503); }
-  });
-  app.use("/api/v1/assistant/action", operatorMutationIngressGuard);
-  app.post("/api/v1/assistant/action", async c => {
-    c.header("Cache-Control", "no-store");
-    try {
-      const input = AssistantActionDecisionSchema.parse(await readInput(c.req.raw));
-      return c.json(AssistantActionResultSchema.parse(service?.decide === undefined
-        ? { state: "refused", code: "ASSISTANT_UNAVAILABLE" } : await service.decide(input, c.req.raw.signal)));
-    } catch { return c.json({ state: "refused", code: "ASSISTANT_INVALID" }, 400); }
   });
 }

@@ -69,7 +69,7 @@ export function QueueHeader({ title, ask, startId, onStartRun, day, today, onDay
                 {ORDERS.map(entry => <DropdownMenuRadioItem key={entry.key} value={entry.key}>{entry.label}</DropdownMenuRadioItem>)}
               </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
-              <p className="queue-options-note">With Attention first on, runs that need you and failures stay on top; this order applies within each group.</p>
+              <p className="queue-options-note">Attention first keeps runs that need you on top.</p>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
           <DropdownMenuSub>

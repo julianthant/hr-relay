@@ -15,7 +15,7 @@ import { NotificationRecordSchema } from "../../../src/models/notifications/noti
 import { projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { NotificationTargetSchema } from "../../../src/models/notifications/notification-target.js";
 import { ActorIdSchema, CommandIdSchema, FailureIdSchema, ProjectionCursorSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
-import { NotificationPublicationWireSchema, type NotificationArrival } from "../../../src/models/dashboard/subscription.js";
+import { NotificationPublicationWireSchema, type NotificationArrival, type StreamRow } from "../../../src/models/dashboard/subscription.js";
 import { WireErrorSchema } from "../../../src/models/dashboard/primitives.js";
 import type { NotificationTarget } from "../../../src/models/notifications/notification-target.js";
 import { NotificationCommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
@@ -105,7 +105,7 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
   const epoch = { client, bootstrap: FIXTURE_BOOTSTRAP }, dayRequest = {};
   // The day the stream holds carries the inbox rows; the status row arrives on the same stream.
   const store = createRowStore();
-  const status = (value: { state: "available"; value: { state: "ready" | "failed"; code?: "NOTIFICATION_OBSERVATION_FAILED"; pending: number } } | { state: "unavailable"; error: typeof ERROR }) =>
+  const status = (value: Extract<StreamRow, { model: "notification-status" }>["value"]) =>
     act(async () => { store.apply([{ model: "notification-status", key: ActorIdSchema.parse("local-operator"), value }]); });
   if (enabled && statusDelivered) await status(initiallyFailed ? { state: "unavailable", error: ERROR } : { state: "available", value: { state: "ready", pending: 0 } });
   serveNotificationList(store, rows);
@@ -144,13 +144,10 @@ async function harness(enabled = true, initiallyFailed = false, statusDelivered 
     refuseClear: () => { refuseClear = true; }, repeatClears: () => { repeatClear = true; }, feedbacks,
     holdCommands: () => { let release = () => {}; postWait = new Promise<void>(resolve => { release = resolve; }); return release; } };
 }
-it("defines all eight source policies with exact target kinds and honest gap/missing-source notice", () => {
+it("uses source policies and exact target kinds for inbox items", () => {
   const kinds = ["run-failed", "subject-mismatch", "gate-opened", "write-parked", "repeating-failure", "storage-degraded", "verified-done", "backfill-gap"];
-  assert.deepEqual(kinds.map(kind => notificationPolicy(row(kind))?.tone), ["danger", "danger", "warning", "warning", "danger", "warning", "positive", "warning"]);
-  assert.equal(inboxProjection([row("backfill-gap")], now).state.state, "ready");
-  assert.match(inboxProjection([row("backfill-gap")], now).notice, /history is incomplete/);
+  assert.deepEqual(kinds.map(kind => notificationPolicy(row(kind))?.tone), ["danger", "danger", "warning", "warning", "danger", "warning", "positive", undefined]);
   const unsourced = row("run-failed", { sourceEvent: { state: "unavailable" } });
-  assert.equal(inboxProjection([unsourced], now).notice, "", "a missing source adds no inline panel");
   assert.equal(notificationPolicy(unsourced), undefined);
   assert(notificationTargetMatches(row(), { kind: "storage" }));
   assert.equal(notificationTargetMatches(row(), { kind: "run", runId: FIXTURE_DAY_WIRE.queueSurfaces[0].runId, day: "2026-08-03" }), false);
@@ -172,14 +169,12 @@ it("shows retained failed-run workflow and reason without unavailable text or an
   assert.equal(item.workflow, "Onboarding");
   assert.equal(item.subject, "");
   assert.equal(item.detail, summary);
-  assert.equal(projection.notice, "");
   assert.equal(notificationPolicy(retained), undefined);
 
   const unavailable = inboxProjection([retained, row("run-failed", { notificationId: failureId, summary, context: { state: "unavailable" } })], now);
   assert(unavailable.state.state === "ready");
   assert.equal(unavailable.state.items[1].subject, "");
   assert.equal(unavailable.state.items[1].detail, summary);
-  assert.equal(unavailable.notice, "");
 });
 it("folds a failure repeated across runs into one item per workflow, person and failure text, with its repeating notice", () => {
   const other = "00000000-0000-4000-8000-000000000555";
@@ -245,7 +240,6 @@ it("withholds raw subject-mismatch summaries when source evidence is unavailable
     assert.equal(item.detail, state === "available"
       ? "The subject identity did not match."
       : "");
-    assert.equal(projection.notice, "");
     assert.equal(item.detail.includes(runId), false);
     if (state === "unavailable") assert.equal(notificationPolicy(wire), undefined);
   }
@@ -298,7 +292,7 @@ it("keeps mock mode disconnected from inbox reads, writes and publications", asy
   assert.equal(await h.value.control(id, "read"), false); assert.equal(h.requests.length, 0);
 });
 
-it("read-all binds the complete inbox in one command and preserves the pinned backfill notice", async () => {
+it("read-all binds the complete inbox in one command without counting a stream replay gap as unread", async () => {
   const h = await harness();
   const second = "00000000-0000-4000-8000-000000000112";
   const extra = Array.from({ length: 23 }, (_, index) => row("storage-degraded", { notificationId: `00000000-0000-4000-8000-${String(200 + index).padStart(12, "0")}` }));
@@ -311,11 +305,35 @@ it("read-all binds the complete inbox in one command and preserves the pinned ba
   assert.equal(command.type, "notification-read-all"); assert.equal(command.target.matchingCount, 25);
   assert.deepEqual(command.target.members.map(row => [row.notificationId, row.expectedVersion]), [[id, 1], [second, 1], ["00000000-0000-4000-8000-000000000113", 1], ...extra.map(row => [row.notificationId, 1])]);
   assert.equal(h.value.state.state, "ready"); if (h.value.state.state === "ready") assert(h.value.state.items.every(item => item.read));
-  assert.match(h.value.notice, /history is incomplete/);
+  assert.equal(h.value.notice, "");
 });
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 const firstItem = (wiring: InboxWiring) => { assert(wiring.state.state === "ready"); const item = wiring.state.items[0]; assert(item); return item; };
+
+it("shows stored notifications without a history warning after a dashboard stream replay gap", async () => {
+  const h = await harness();
+  const retained = row("backfill-gap", { notificationId: "00000000-0000-4000-8000-000000000112", readOnlyHistory: true });
+  h.setRows([row("storage-degraded", { sourceEvent: { state: "unavailable" } }), retained]);
+  await h.render();
+  assert.equal(firstItem(h.value).id, id);
+  assert.equal(h.value.notice, "");
+
+  const arriving = row("backfill-gap", { notificationId: "00000000-0000-4000-8000-000000000113" });
+  await act(async () => { h.listeners[0](publication(arriving)); });
+  assert.equal(firstItem(h.value).id, id);
+  assert.equal(h.value.notice, "");
+});
+
+it("names missing completion receipts and clears the warning when notification sources recover", async () => {
+  const h = await harness();
+  await h.status({ state: "available", value: { state: "failed", code: "NOTIFICATION_RECEIPT_MISSING", pending: 1 } });
+  assert.equal(h.value.notice, "Notification history is incomplete. Missing completion receipts.");
+  assert.equal(firstItem(h.value).id, id);
+
+  await h.status({ state: "available", value: { state: "ready", pending: 0 } });
+  assert.equal(h.value.notice, "");
+});
 
 it("shows a first status that could not be read with the day's rows, controls off, and recovers when the retry delivers it", async () => {
   const h = await harness(true, true);
@@ -349,7 +367,7 @@ it("keeps the rows display-only when a status update cannot be read, then takes 
   await h.status({ state: "available", value: { state: "failed", code: "NOTIFICATION_OBSERVATION_FAILED", pending: 1 } });
 
   assert.doesNotMatch(h.value.notice, /could not load/);
-  assert(h.value.notice.length > 0, "the observer's own failure is still shown");
+  assert.equal(h.value.notice, "Some notifications may be missing.");
   await act(async () => { assert(await h.value.control(id, "read")); });
   assert.equal(h.commands.length, 1);
 });

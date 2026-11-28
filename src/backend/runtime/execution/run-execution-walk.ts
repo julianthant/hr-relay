@@ -29,7 +29,7 @@ import { AnyRunPreviewStepSchema, resolveDelegationEvidenceOutput, terminalGateD
 import { buildTerminalAuthorization } from "../../runs/lifecycle/terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError } from "../../runs/lifecycle/run-record-service.js";
 import { WorkerSessionClosureUnprovedError } from "../workers/worker-sessions.js";
-import { DelegationPendingSchema } from "./durable-child-executor.js";
+import { DelegationPendingSchema, resolveExecutableChildOutput } from "./durable-child-executor.js";
 import type { ChildRunRuntimeNode, RunExecutionContext, RunExecutionState } from "./run-execution-contract.js";
 import { RunAbandonedError, RunExecutionOutcomeSchema, RunTerminalAdmissionLostError, type RunExecutionOutcome } from "./run-execution-outcome.js";
 import type { RunExecutionPlan } from "./run-execution-plan.js";
@@ -303,7 +303,7 @@ export async function walkRunPlan(
       if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "branch-not-selected" });
       continue;
     }
-    if (entry.mode === "omitted") {
+    if (entry.mode === "omitted" || entry.mode === "manual") {
 
       skippedReasons.set(String(node.id), "step-omitted");
       if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "step-omitted" });
@@ -726,7 +726,12 @@ export async function walkRunPlan(
           requireOriginalClaim(getRun());
           const sourceEvidence = childSourceEvidence(node);
           let raw: unknown;
-          if (sourceEvidence !== undefined) raw = resolveDelegationEvidenceOutput(sourceEvidence, node.target.result, deps.authority.evidenceSchemaHash?.bind(deps.authority)).output;
+          if (sourceEvidence !== undefined) {
+            const resolution = deps.authority.withAuthorityTransaction?.(repositories => resolveExecutableChildOutput(sourceEvidence, node.target.result,
+              repositories.failures, envelope.parent?.edgeId, deps.authority.evidenceSchemaHash?.bind(deps.authority)));
+            if (resolution === undefined) throw new Error("delegation-outcome-authority-unavailable");
+            raw = resolution.output;
+          }
           else if (childBatchOutputs.has(node.id)) raw = childBatchOutputs.get(node.id);
           else {
             const leafIds = owner.kind === "child-run" ? [owner.id] : owner.branches.flatMap(branch => branch.nodes);

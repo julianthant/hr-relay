@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { z } from "zod";
 import { readAuthorityChanges, readSingletonImage, validateAuthorityChanges, validateAuthorityStore } from "../../../../src/backend/storage/sqlite/authority-change-admission.js";
@@ -6,6 +7,7 @@ import { singletonChangeKeys } from "../../../../src/backend/storage/sqlite/auth
 import { dropGuardTriggers, logCursor } from "../../../support/fixtures/storage/raw-authority-writer.js";
 import { AuthorityTableNameSchema, type AuthorityTableName } from "../../../../src/models/config/authority.js";
 import { ASSISTANT_CHAT_TTL_MS } from "../../../../src/models/dashboard/assistant.js";
+import { NotificationCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { seedCheckClosureStore } from "../../../support/fixtures/storage/check-closure-store.js";
 import { seedAssistantPhaseOne } from "../../../support/helpers/assistant-m1-history-fixture.js";
@@ -82,10 +84,27 @@ describe("authority check closure", () => {
   beforeAll(async () => {
     store = await seedCheckClosureStore();
     const { profileId } = store.database.getMeta();
+    const authorization = store.database.authority.assistantAuthorization;
+    const expiresAt = new Date(Date.parse(NOW) + ASSISTANT_CHAT_TTL_MS).toISOString();
+    const chat = authorization.createChat({ id: randomUUID(), profileId, epoch: 1, createdAt: NOW, expiresAt });
+    const command = NotificationCommandRequestSchema.options[0].parse({ commandId: randomUUID(), requestedAt: NOW,
+      requestedBy: "local-operator", source: "assistant", family: "notification", type: "notification-read",
+      target: { notificationId: randomUUID(), actorId: "local-operator", expectedVersion: 1 } });
+    authorization.createAction({ id: randomUUID(), chatId: chat.id, manifest: { revision: 1, entries: [] },
+      binding: { profileId, accountSessionEpoch: chat.epoch, manifestRevision: 1, family: command.family, action: command.type,
+        classification: "local-write", commandId: command.commandId, target: command.target, subject: { kind: "none" },
+        options: { kind: "none" }, configDescriptor: { kind: "none" } },
+      command, plan: null, revision: 1, state: "prepared", result: null, createdAt: NOW, expiresAt });
+    store.database.authority.assistantAppliedEdits.insert({
+      id: randomUUID(), actorId: command.requestedBy, committedAt: NOW, label: "Changed Headless browser",
+      turn: { conversationId: chat.id, messageId: randomUUID(), profileId, epoch: chat.epoch,
+        acceptedAt: NOW, ordinal: 1, acceptedRevision: 2, proposalAnswer: null },
+      details: { kind: "settings", path: "browser.headless", command: "apply-settings", revision: 2,
+        prior: { clear: true }, next: { set: false } },
+    });
     store.closeDatabase();
     raw = new DatabaseSync(store.databasePath);
-    // Seed phase-one rows after the legacy chat expires so the prepared owner's budget reads its own format.
-    seedAssistantPhaseOne(raw, profileId, new Date(Date.parse(NOW) + ASSISTANT_CHAT_TTL_MS).toISOString());
+    seedAssistantPhaseOne(raw, profileId, expiresAt);
     // Another process's raw writer: no foreign keys and no guard triggers, inside a transaction this test rolls back. The
     // capture triggers stay, as they do for every writer that has not changed the schema.
     raw.exec("PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE");

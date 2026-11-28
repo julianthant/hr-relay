@@ -13,8 +13,9 @@ it("retires a saved panel mode from a predecessor snapshot and authenticates the
   const historicalDefaults = SETTINGS_RECORD_CONVERSIONS[0]?.adds ?? {};
   const modeKey = Object.keys(historicalDefaults).find(key => historicalDefaults[key] === "floating");
   assert.ok(modeKey);
-  const remaining = { ...Object.fromEntries(Object.entries(NEUTRAL_PERSON_PREFERENCES).filter(([key]) => key !== modeKey)), theme: "light" };
-  const preferences = { ...remaining, [modeKey]: "sidebar" };
+  const { assistantFullAccess: _fullAccess, ...prior } = NEUTRAL_PERSON_PREFERENCES;
+  const remaining = { ...NEUTRAL_PERSON_PREFERENCES, theme: "light" };
+  const preferences = { ...prior, theme: "light", [modeKey]: "sidebar" };
   const before = { ...CONFIG_SNAPSHOT, preferences, preferencesFingerprint: sha256Hex(canonicalJsonStringify(preferences)) };
   const row = convertSettingsRecordRow("settings_snapshots", { payload_json: canonicalJsonStringify(before) });
   assert.ok(typeof row.payload_json === "string");
@@ -59,6 +60,7 @@ it("keeps the SQL of each numbered upgrade that converts settings records", () =
     { version: 32, statement: "SELECT 'runs-notifications-settings-forward-conversion:d7c2ef90355d8d28333c353c09625f73aaf2f7de031855cd063f7cddff6fa2f5'" },
     { version: 35, statement: "SELECT 'send-shortcut-forward-conversion:339305dc9e801baea651d0717bc85249238ed4ed708b0414d0cf3edb6ce478d2'" },
     { version: 42, statement: "SELECT 'panel-mode-retirement-forward-conversion:ab406fb0f82e2e6e87054d731aba99033fadeb13a2fc43261c41c769b6e67e3e'" },
+    { version: 45, statement: "SELECT 'assistant-full-access-forward-conversion:56a4aa510c0594c70ada31d78439d3b63abb6a43ea00b82bb72b6ea04a118f63'" },
   ]);
-  assert.equal(SETTINGS_RECORD_CONVERSION_VERSION, 42);
+  assert.equal(SETTINGS_RECORD_CONVERSION_VERSION, 45);
 });

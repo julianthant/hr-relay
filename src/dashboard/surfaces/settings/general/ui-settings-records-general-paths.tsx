@@ -1,8 +1,9 @@
 import { Form } from "@heroui/react";
+import { SavingMark } from "../editor/settings-controls.js";
 import { useRef,useState,type ReactNode } from "react";
 import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
-import {BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Select,Switch, Notice, ResultRow } from "../../../ds/ui.js";
+import {BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Select,Switch, Notice, ResultRow, FailureNotice } from "../../../ds/ui.js";
 import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
 import { settingInput,type SettingsDraftOperation } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
@@ -33,7 +34,7 @@ function ScalarRow({ editor, leaf, wide = false, note }: { editor: Editor; leaf:
   const title = settingTitle(leaf);
   const description = note ?? undefined;
   if (leaf.input === "boolean") return <div data-settings-path={leaf.path} className="settings-compact-row">
-    <Switch name={leaf.path} label={title} description={description} checked={raw === "true"} disabled={editor.locked} onCheckedChange={value => editor.update(leaf.path, String(value), true)} />
+    <Switch name={leaf.path} label={title} description={description} checked={raw === "true"} disabled={editor.locked} onCheckedChange={value => editor.update(leaf.path, String(value), true)} /><SavingMark editor={editor} path={leaf.path} />
   </div>;
   return <div data-settings-path={leaf.path} className="settings-compact-row" onKeyDown={event => {
     if (leaf.input !== "date" || editor.draft[leaf.path] === undefined || event.defaultPrevented || event.repeat
@@ -47,6 +48,7 @@ function ScalarRow({ editor, leaf, wide = false, note }: { editor: Editor; leaf:
         : <Input type="text" name={leaf.path} autoComplete="off" value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value)} />}
       </div>
     </Field>
+    <SavingMark editor={editor} path={leaf.path} />
   </div>;
 }
 
@@ -57,6 +59,7 @@ function ChoiceRow({ editor, leaf, choices, note }: { editor: Editor; leaf: Edit
     <ResultRow label={title} description={note ?? undefined} value={<Select aria-label={title} value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value, true)}>
       {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
     </Select>} />
+    <SavingMark editor={editor} path={leaf.path} />
   </div>;
 }
 
@@ -75,6 +78,7 @@ function PathRow({ editor, field }: { editor: Editor; field: NativePathField }) 
         <SettingsPathPicker field={field} label={title} value={raw} disabled={editor.locked} onSelected={path => editor.update(field, path)} />
       </div>
     </Field>
+    <SavingMark editor={editor} path={field} />
   </div>;
 }
 
@@ -98,7 +102,7 @@ export function CompactSettingsSection({ editor, appearance }: { editor: Editor;
   return <section className="settings-compact-page">
     <PageHeading title="General" description="Assistant, app, run, and notification preferences." />
     <AssistantSettings />
-    {editor.editor.state === "failed" && <Notice sticky tone="danger" title="Settings unavailable" description="Reopen Settings to try again." />}
+    {editor.editor.state === "failed" && <FailureNotice sentence="Settings unavailable; reopen Settings to try again." />}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} appearance={appearance} />
       : editor.editor.state === "loading" && <SettingsSectionSkeleton section="general" contentOnly />}
   </section>;

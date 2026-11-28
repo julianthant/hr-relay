@@ -1,13 +1,19 @@
 import { UcpathSaveEmergencyContact } from "../../../../models/systems/ucpath/save-emergency-contact.js";
 import { UcpathStageEmergencyContact } from "../../../../models/systems/ucpath/stage-emergency-contact.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { EmergencyContactMemberInputSchema } from "../../../../models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactMemberResultSchema } from "../../../../models/workflows/emergency-contact/result.js";
 import { defineStep,defineStepEntries,inheritStepProof,type WorkflowAuthor,type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { buildContactPlan } from "../contact-plan/step.js";
+import { CONTACT_PLAN_INCLUDED, buildContactPlan } from "../contact-plan/step.js";
 import type { buildReferenceCheck } from "../reference-check/step.js";
 
+export const CONTACT_PREVIEW_MANUAL: StepManualDeclaration = {
+  off: "manual", ownStartOnly: true, form: { fields: [] }, produces: {}, skips: ["contact-preview"], skipsGatesAndTransactions: true,
+};
+
 export const CONTACT_PREVIEW_STEP = Object.freeze({ ...defineWorkflowStep({ key: "contact-preview", label: "Preview primary contact changes" }), system: "ucpath" as const,
+  manual: CONTACT_PREVIEW_MANUAL,
   review: {
     pages: [
       {
@@ -125,8 +131,14 @@ export function buildContactPreview(author: WorkflowAuthor<typeof EmergencyConta
     prepareBind: ({ outputs }) => outputs["contact-plan"].target,
     commitBind: ({ outputs }) => outputs["contact-plan"].target,
   });
-  return { steps: [[CONTACT_PREVIEW_STEP, [preview]]] as const, result: author.result(EmergencyContactMemberResultSchema, [preview], ({ outputs }) =>
-    ({ disposition: outputs["contact-preview"].disposition, proof: outputs["contact-preview"].output.proof })) };
+  const group = reference === undefined ? CONTACT_PREVIEW_STEP : author.group(CONTACT_PREVIEW_STEP, {
+    review: { ...CONTACT_PREVIEW_STEP.review, when: [CONTACT_PLAN_INCLUDED] },
+  });
+  return { steps: [[group, [preview]]] as const, result: author.result(EmergencyContactMemberResultSchema, [preview], ({ outputs }) => {
+    const save = outputs["contact-preview"];
+    return save === undefined ? { disposition: "omitted" as const, step: CONTACT_PREVIEW_STEP.key }
+      : { disposition: save.disposition, proof: save.output.proof };
+  }) };
 }
 export const contactPreviewDefinition = defineStep({ group: CONTACT_PREVIEW_STEP, build: buildContactPreview,
   proof: { id: "emergency-contact-member-contact-preview", order: 29,

@@ -31,4 +31,11 @@ describe("runLevelDecision", () => {
   it("serves a member's retry before any other run-level state", () => {
     assert.equal(runLevelDecision({ status: "cancelling", childRetryKey: "retry-child", paused: false, stalled: false })?.type, "member-failed");
   });
+
+  it("opens the queue row's Rerun dialog from the interrupted run panel", () => {
+    const rowActions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, { ...facts, status: "blocked", memberCount: 0, interrupted: true });
+    const decision = runLevelDecision({ status: "blocked", paused: false, stalled: true, rowActions });
+    assert.deepEqual(decision?.options[0], { id: "rerun", label: "Rerun", recommended: true,
+      send: { via: "row-action", actionKey: "rerun" } });
+  });
 });

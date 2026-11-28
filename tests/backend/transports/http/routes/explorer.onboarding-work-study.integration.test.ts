@@ -51,8 +51,13 @@ function walk(spec: ExplorerReviewSpec, chosen: Values = {}, decisions: Values =
 
 it("serves Work Study's planned PayPath values, their origins and the live Save and Submit click", async () => {
   const { reviewSpec: spec } = await served("work-study");
-  assert.deepEqual(spec.options, [{ id: "dry-run", label: "Dry run", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }], initial: "false" }]);
-  assert.deepEqual(spec.sessions, [{ system: "ucpath" }]);
+  const skipChoices = [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }];
+  assert.deepEqual(spec.options, [
+    { id: "dry-run", label: "Dry run", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }], initial: "false" },
+    { id: "skip-ucpath-auth", label: "Sign in to UCPath", choices: skipChoices, initial: "run" },
+    { id: "skip-transaction", label: "Submit work-study transaction", choices: skipChoices, initial: "run" },
+  ]);
+  assert.deepEqual(spec.sessions, [{ system: "ucpath", when: [{ "skip-ucpath-auth": ["run"] }, { "skip-transaction": ["run"] }] }]);
   assert.deepEqual(walk(spec).steps.map(entry => entry.id), ["ucpath-auth", "reference-check", "transaction"]);
   const [card] = blocks(spec, "transaction", "card"); assert.ok(card);
   assert.deepEqual([card.title, card.mode], ["PayPath Actions", "fill"]);
@@ -63,6 +68,8 @@ it("serves Work Study's planned PayPath values, their origins and the live Save 
   for (const row of card.rows) assert.ok(spec.sources[row.source]?.detail);
   assert.deepEqual(visible(blocks(spec, "transaction", "click"), walk(spec).values).map(click => click.target), ["Save and Submit"]);
   assert.deepEqual(visible(blocks(spec, "transaction", "click"), walk(spec, { "dry-run": "true" }).values), []);
+  assert.deepEqual(walk(spec, { "skip-ucpath-auth": "skip" }).steps.map(entry => entry.id), ["reference-check", "transaction"]);
+  assert.deepEqual(walk(spec, { "skip-transaction": "skip" }).steps.map(entry => entry.id), ["ucpath-auth", "reference-check"]);
 });
 
 it("stops Work Study before PayPath when the operator cancels an unconfirmed reference check, and never asks during a dry run", async () => {
@@ -131,6 +138,11 @@ it("follows Onboarding's hire approval, rejection and existing-person path witho
   assert.deepEqual(spec.options, [
     { id: "mode", label: "Hire mode", choices: [{ value: "new-hire", label: "New hire" }, { value: "rehire", label: "Rehire" }], initial: "new-hire" },
     { id: "dry-run", label: "Dry run", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }], initial: "false" },
+    ...[
+      ["crm-data", "Read and validate hire data"], ["ucpath-search", "Check UCPath duplicates"], ["i9-search", "Search I-9 profiles"],
+      ["hire-review", "Review UCPath hire findings"], ["reference-check", "Check reference spreadsheets"], ["i9-creation", "Create or reuse the I-9 record"],
+      ["ucpath-hire", "File and verify the UCPath hire"], ["master-results", "Fill verified master results"],
+    ].map(([id, label]) => ({ id: `skip-${id}`, label, choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }], initial: "run" })),
   ]);
   assert.deepEqual(spec.sessions.map(session => session.system).sort(), ["crm", "i9", "ucpath"]);
   const approval = blocks(spec, "hire-review", "decision").find(block => block.id === "hire-approval"); assert.ok(approval);

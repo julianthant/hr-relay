@@ -1,5 +1,5 @@
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
-import { Field, Input, Switch, Textarea, UnitField, dsText } from "../../../ds/ui.js";
+import { Field, Input, Spinner, Switch, Textarea, UnitField, dsText } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { settingInput, type SettingsDraftInput, type SettingsDraftOperation } from "./settings-draft-model.js";
 import { settingNote, settingObjectFieldTitle, settingTitle } from "../settings-presentation.js";
@@ -46,4 +46,9 @@ export function SettingsValueControl({ leaf, operation, error, disabled, update 
         required={leaf.path.startsWith("annualDates.") && leaf.path.endsWith(".jobEndDate")}
         value={raw} min={leaf.minimum} step={leaf.input === "number" ? 1 : undefined} onChange={event => update(event.target.value)} />}
   </Field>;
+}
+
+/** The spinner beside a row whose own command is in flight; other rows stay as they are. */
+export function SavingMark({ editor, path }: { editor: Readonly<{ savingPaths: readonly string[] }>; path: string }) {
+  return editor.savingPaths.includes(path) ? <Spinner label="Saving" className="settings-row-saving" /> : null;
 }

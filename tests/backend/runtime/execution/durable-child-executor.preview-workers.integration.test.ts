@@ -213,10 +213,11 @@ it("retains preview, failed and cancelled members through authorized retries and
   const intent = f.database.authority.writeIntents.get(parked.lifecycle.writeIntentId); assert.ok(intent?.status === "parked");
   const attempts = f.database.authority.writeAttempts.listByIntent(intent.writeIntentId); assert.equal(attempts.length, 1);
   const memberAttempts = f.database.authority.runs.listByItem({ workflow: parked.envelope.workflow, itemId: parked.envelope.itemId });
-  for (const target of [parked, f.current(unknownRoot.envelope.runId)]) for (const type of ["retry", "recover-run"] as const) {
-    const refusal = f.home.execution.kernel.execute(f.command(type, target));
+  for (const target of [parked, f.current(unknownRoot.envelope.runId)]) {
+    assert.throws(() => f.home.execution.kernel.execute(f.command("recover-run", target)), /Open Rerun/u);
+    const refusal = f.home.execution.kernel.execute(f.command("retry", target));
     assert.ok(refusal.state === "rejected");
-    assert.equal(refusal.code, type === "retry" ? "invalid-state" : "RUN_CONTINUATION_REFUSED");
+    assert.equal(refusal.code, "invalid-state");
   }
   assert.deepEqual(f.database.authority.writeIntents.get(intent.writeIntentId), intent);
   assert.deepEqual(f.database.authority.writeAttempts.listByIntent(intent.writeIntentId), attempts);

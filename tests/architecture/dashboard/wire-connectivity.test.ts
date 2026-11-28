@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll,describe,it } from "vitest";
 import { z } from "zod";
+import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../src/backend/runs/commands/command-arms.js";
 import { queueRowActions } from "../../../src/backend/runs/projections/queue-row-actions.js";
 import { availableSections,readRunDetail,readRunSection } from "../../../src/backend/runs/queries/run-detail.js";
 import { ActionCommandKeySchema } from "../../../src/models/dashboard/actions.js";
@@ -28,7 +29,6 @@ import { RunOutcomeSchema,RunRecordSchema,RunStateSchema,type RunRecord } from "
 import { deriveDiagnosticContentDigest } from "../../../src/models/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
-import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { SubjectEvidenceSchema,WriteIntentRecordSchema } from "../../../src/rules/write-safety/write-safety.js";
 import {
 makeWorld,
@@ -350,8 +350,8 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
 
   it("names only commands the kernel accepts, and reviews every command it does not name", () => {
     const actionKeys: readonly string[] = [...ActionCommandKeySchema.options];
-    const kernelTypes = discriminantValues(CommandRequestSchema, "type");
-    assert.ok(kernelTypes.length > actionKeys.length, "the kernel command union introspection under-read");
+    const kernelTypes: readonly string[] = Object.values(PHASE1_ACTIVE_COMMAND_ARMS).flat();
+    assert.ok(kernelTypes.length > actionKeys.length, "the kernel command registry under-read");
 
     const problems: string[] = [];
     for (const key of actionKeys) {
@@ -364,7 +364,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       }
       if (!kernelTypes.includes(key)) {
         problems.push(
-          `ActionCommandKeySchema names "${key}", which CommandRequestSchema does not accept — a served `
+          `ActionCommandKeySchema names "${key}", which the kernel does not accept — a served `
           + "control that 422s on click is worse than an absent one",
         );
       }
@@ -437,8 +437,9 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     assert.ok(arms.some((arm) => !reachable.has(arm) && arm === "invented-section"));
 
     // (b) a command key the kernel does not accept.
-    const kernelTypes = discriminantValues(CommandRequestSchema, "type");
-    assert.ok(kernelTypes.includes("resolve-write-absent"), "introspection missed a known kernel verb");
+    const kernelTypes: readonly string[] = Object.values(PHASE1_ACTIVE_COMMAND_ARMS).flat();
+    assert.ok(kernelTypes.includes("resolve-write-absent"), "the registry missed a known kernel verb");
+    assert.ok(!kernelTypes.includes("recover-run"), "Recover is history-only");
     assert.ok(!kernelTypes.includes("force-done"), "the kernel must never accept a force-done verb");
 
 

@@ -111,7 +111,7 @@ it("verifies a gate-arm answer only against the gate resolved approved by the sa
 });
 
 describe("composeCommandRequest — the run family", () => {
-  for (const verb of ["retry", "recover-run", "pause", "resume", "cancel", "bump"] as const) {
+  for (const verb of ["retry", "pause", "resume", "cancel", "bump"] as const) {
     it(`composes a legal envelope for ${verb}`, () => {
       const composed = composeCommandRequest(
         commandAction({ command: verb }),
@@ -560,41 +560,4 @@ it("checks cancellation effect and rejects an unrelated acknowledged run", async
   assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, command, { ...reply, affectedTargets: [...reply.affectedTargets, { family: "run", runId: other.runId }] })).state, "mismatch");
   cancelled = false;
   assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, command, reply)).state, "mismatch", "acknowledgment cannot replace effect readback");
-});
-
-it("verifies an explicit recovery's new item attempt without expecting the immutable source to change", async () => {
-  const { FIXTURE_DAY_WIRE } = await import("../../../support/fixtures/dashboard/fixture-queue.js");
-  const source = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent === null); assert.ok(source);
-  const nextId = "99999999-9999-4999-8999-999999999999";
-  let correctItem = true;
-  const next = () => ({ ...source, runId: nextId, traceId: "pl-120001-9999", attempt: source.attempt + 1, rowRevision: 1,
-    itemId: correctItem ? source.itemId : "88888888-8888-4888-8888-888888888888", actions: [] });
-  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => Response.json({ ...FIXTURE_DAY_WIRE,
-    queueSurfaces: [...FIXTURE_DAY_WIRE.queueSurfaces, next()] }) });
-  const command = CommandRequestSchema.parse({ family: "run", type: "recover-run", commandId: "77777777-7777-4777-8777-777777777777", source: "queue",
-    requestedBy: "local-operator", requestedAt: "2026-08-03T12:00:00.000Z", target: { runId: source.runId, expectedVersion: source.rowRevision } });
-  const reply = CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
-    affectedTargets: [{ family: "run", runId: nextId }, { family: "run", runId: source.runId }] });
-  assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, command, reply)).state, "matched");
-  correctItem = false;
-  assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, command, reply)).state, "mismatch");
-});
-
-it("reads back a recovered child's authenticated parent and rejects unrelated acknowledgement targets", async () => {
-  const { FIXTURE_DAY_WIRE } = await import("../../../support/fixtures/dashboard/fixture-queue.js");
-  const base = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent === null); assert.ok(base);
-  const parentId = "88888888-8888-4888-8888-888888888888", nextId = "99999999-9999-4999-8999-999999999999";
-  const parent = { ...base, runId: parentId, traceId: "pl-120001-8888", itemId: parentId, rowRevision: base.rowRevision + 1, actions: [] };
-  const source = { ...base, parent: { runId: parentId, visibility: "linked" as const, partitionDay: FIXTURE_DAY_WIRE.day, workflowId: parent.workflowId, label: parent.title, title: parent.title, panelKind: parent.panelKind, status: parent.status } };
-  const next = { ...source, runId: nextId, traceId: "pl-120002-9999", attempt: source.attempt + 1, rowRevision: 1, actions: [] };
-  const unrelated = { ...parent, runId: "66666666-6666-4666-8666-666666666666", traceId: "pl-120003-6666" };
-  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => Response.json({ ...FIXTURE_DAY_WIRE,
-    queueSurfaces: [...FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.runId !== source.runId), source, parent, next, unrelated] }) });
-  const command = CommandRequestSchema.parse({ family: "run", type: "recover-run", commandId: "77777777-7777-4777-8777-777777777777", source: "queue",
-    requestedBy: "local-operator", requestedAt: "2026-08-03T12:00:00.000Z", target: { runId: source.runId, expectedVersion: source.rowRevision } });
-  const reply = CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
-    affectedTargets: [nextId, source.runId, parentId].map(runId => ({ family: "run", runId })) });
-  assert.equal((await verifyShellCommandEffect(client,FIXTURE_DAY_WIRE.day,command,reply)).state,"matched");
-  const extra = CommandResultSchema.parse({ ...reply, affectedTargets: [...("affectedTargets" in reply ? reply.affectedTargets : []), { family: "run", runId: unrelated.runId }] });
-  assert.equal((await verifyShellCommandEffect(client,FIXTURE_DAY_WIRE.day,command,extra)).state,"mismatch");
 });

@@ -1,8 +1,8 @@
 import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
 import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
-import type { StartRowKind, StartRowLockReason, StepOmissionField, StepOmissionForm } from "../../../models/workflow/step-omission.js";
+import type { StartRowKind, StartRowLockReason, StepOmissionField, StepOmissionForm, StepOmissionInput } from "../../../models/workflow/step-omission.js";
 import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-model.js";
-import { foldStepOmissionFacts, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
+import { foldStepOmissionFacts, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue, type StepOmissionStepView } from "./run-start-model.js";
 
 type ServedRow = NonNullable<WorkflowStartWire["rows"]>[number];
 /** One served step as the Run dialog holds it. */
@@ -29,6 +29,7 @@ export interface StepRow {
   readonly key: string;
   readonly label: string;
   readonly kind: StartRowKind;
+  readonly startWithValuesAlone?: true;
   readonly lockReason?: StartRowLockReason;
   /** The grey line under the title. */
   readonly note: string | undefined;
@@ -75,11 +76,18 @@ export function startRowsOf(source: StepRowSource): readonly StepRow[] {
   return source.rows.map((row): StepRow => {
     const own = row.target !== undefined && row.target.workflow === undefined ? row.target.step : undefined;
     const systems = systemNote([...new Set(row.members.flatMap(member => member.workflow === undefined ? stepOf(member.step)?.systems ?? [] : []))]);
-    const forces = row.manual?.forces ?? [];
-    const note = row.kind === "switch" ? forcesNote(forces) ?? systems
+    const workflow = row.target?.workflow;
+    const childRows = source.rows?.filter(other => other.target?.workflow === workflow);
+    const forces = (row.manual?.forces ?? []).map(step => workflow === undefined ? step
+      : childRows?.find(other => other.target?.step === step)?.key ?? step);
+    const cascadeNote = row.off !== undefined && forces.length > 0
+      ? `Also skips: ${forces.map(key => workflow === undefined ? labelOf(key) : childRows?.find(other => other.key === key)?.label ?? key).join(", ")}`
+      : forcesNote(forces);
+    const note = row.kind === "switch" ? cascadeNote ?? systems
       : row.lockReason === undefined ? systems ?? "Automatic" : LOCK_NOTE[row.lockReason];
     return {
       key: row.key, label: row.label, kind: row.kind, note, includedByDefault: row.includedByDefault, forces, selectable: row.selection !== undefined,
+      ...(row.startWithValuesAlone === undefined ? {} : { startWithValuesAlone: row.startWithValuesAlone }),
       members: row.members.map(({ workflow, step, nodes }) => ({ step, ...(workflow === undefined ? {} : { workflow }), ...(nodes === undefined ? {} : { nodes }) })),
       ...(row.lockReason === undefined ? {} : { lockReason: row.lockReason }),
       ...(own === undefined ? {} : { stepKey: own }),
@@ -89,10 +97,29 @@ export function startRowsOf(source: StepRowSource): readonly StepRow[] {
   });
 }
 
+export function childStepViews(rows: readonly StepRow[]): readonly StepOmissionStepView[] {
+  return rows.flatMap((row): StepOmissionStepView[] => row.child !== undefined && row.kind === "switch" && row.form !== undefined
+    ? [{ key: row.key, label: row.label, control: { state: "omittable", form: row.form, forces: row.forces } }]
+    : []);
+}
+
 /** Rows whose fields the operator opened without a step switch: a locked row's Enter manually and a child row switched off. */
 export type ManualRows = readonly string[];
 
-export function rowIncluded(row: StepRow, selectedStepKeys: readonly string[], manualRows: ManualRows): boolean {
+export function retainedRowSteps(row: StepRow, snapshot: RerunValuesSnapshot) {
+  const retained = row.members.map(({ workflow, step }) => {
+    const match = workflow === undefined ? snapshot.retainedSteps?.find(candidate => candidate.key === step) : undefined;
+    return match;
+  });
+  return retained.every(step => step !== undefined) ? retained : [];
+}
+
+export function rowIncluded(row: StepRow, selectedStepKeys: readonly string[], manualRows: ManualRows, snapshot?: RerunValuesSnapshot | null): boolean {
+  if (snapshot?.retainedSteps !== undefined) {
+    const retained = retainedRowSteps(row, snapshot);
+    if (retained.length > 0) return retained.some(({ key }) => selectedStepKeys.includes(key));
+    if (row.members.every(member => member.workflow !== undefined)) return sourceBadge(row, snapshot) !== "completed";
+  }
   if (row.kind !== "switch") return true;
   return row.stepKey === undefined ? !manualRows.includes(row.key) : selectedStepKeys.includes(row.stepKey);
 }
@@ -104,12 +131,13 @@ export function rowFieldsOpen(row: StepRow, selectedStepKeys: readonly string[],
 }
 
 /** The count "N of M included": a switch that is off is left out; a locked row always counts. */
-export function includedRowCount(rows: readonly StepRow[], selectedStepKeys: readonly string[], manualRows: ManualRows): number {
-  return rows.filter(row => rowIncluded(row, selectedStepKeys, manualRows)).length;
+export function includedRowCount(rows: readonly StepRow[], selectedStepKeys: readonly string[], manualRows: ManualRows, snapshot?: RerunValuesSnapshot | null): number {
+  return rows.filter(row => rowIncluded(row, selectedStepKeys, manualRows, snapshot)).length;
 }
 
-/** A run keeps at least one included row, so the last included switch cannot be turned off. */
+/** A single typed-values row can supply the entire run. */
 export function lastIncludedSwitch(row: StepRow, rows: readonly StepRow[], selectedStepKeys: readonly string[], manualRows: ManualRows): boolean {
+  if (row.startWithValuesAlone === true) return false;
   return row.kind === "switch" && rowIncluded(row, selectedStepKeys, manualRows) && includedRowCount(rows, selectedStepKeys, manualRows) === 1;
 }
 
@@ -175,12 +203,17 @@ function rowSourceNodes(row: StepRow, snapshot: RerunValuesSnapshot) {
   });
 }
 
+function isSettledManualOmission(nodes: ReturnType<typeof rowSourceNodes>): boolean {
+  const manuallyOmitted = (node: (typeof nodes)[number]) => node.reason === "step-omitted" || node.reason === "operator-asserted";
+  return nodes.some(manuallyOmitted) && nodes.every(node => node.state === "completed" || manuallyOmitted(node));
+}
+
 /** The source outcome Rerun preselection reads: a condition-skipped step counts as not run and nothing reads Cancelled, so the badge never moves the restart point. */
 export function preselectionBadge(row: StepRow, snapshot: RerunValuesSnapshot): Exclude<SourceBadge, "cancelled"> | undefined {
   const nodes = rowSourceNodes(row, snapshot);
   if (nodes.length === 0) return undefined;
   if (nodes.some(node => node.state === "failed")) return "failed";
-  if (nodes.every(node => node.reason === "step-omitted" || node.reason === "operator-asserted")) return "skipped";
+  if (isSettledManualOmission(nodes)) return "skipped";
   return nodes.every(node => node.state === "completed" && node.reason !== "condition-skipped") ? "completed" : "not-started";
 }
 
@@ -188,7 +221,7 @@ export function sourceBadge(row: StepRow, snapshot: RerunValuesSnapshot): Source
   const nodes = rowSourceNodes(row, snapshot);
   if (nodes.length === 0) return undefined;
   if (nodes.some(node => node.state === "failed")) return "failed";
-  if (nodes.every(node => node.reason === "step-omitted" || node.reason === "operator-asserted")) return "skipped";
+  if (isSettledManualOmission(nodes)) return "skipped";
   if (nodes.every(node => node.state === "completed")) return "completed";
   return snapshot.source.outcome === "cancelled" && nodes.some(node => node.reason === "incomplete-execution") ? "cancelled" : "not-started";
 }
@@ -200,8 +233,8 @@ export function sourceTypedFacts(row: StepRow, snapshot: RerunValuesSnapshot): R
   return snapshot.typed?.find(entry => entry.step === target.step && entry.workflow === target.workflow)?.facts;
 }
 
-export function rowOpenFold(row: StepRow, form: StepOmissionForm, draft: StepOmissionDraft): OpenStepRow {
-  return { row, form, draft, fold: foldStepOmissionFacts(form, draft) };
+export function rowOpenFold(row: StepRow, form: StepOmissionForm, draft: StepOmissionDraft, input?: StepOmissionInput): OpenStepRow {
+  return { row, form, draft, fold: foldStepOmissionFacts(form, draft, input) };
 }
 
 /** A served or typed value as the field shows it: dates read MM/DD/YYYY, a list one per line. */

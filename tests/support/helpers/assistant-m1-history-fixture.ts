@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { AssistantM2ProposalSnapshotSchema, assistantM2ProposalDigest, type AssistantReplyPart } from "../../../src/models/dashboard/assistant.js";
+import { AssistantProposalSnapshotSchema, assistantProposalDigest, type AssistantReplyPart } from "../../../src/models/dashboard/assistant.js";
 import { ASSISTANT_HISTORY_MIGRATION, ASSISTANT_M1_HISTORY_STATEMENTS, createAssistantM1HistoryRepository } from "../../../src/backend/storage/sqlite/assistant-history.js";
 import { ASSISTANT_ATTACHMENTS_MIGRATION } from "../../../src/backend/storage/sqlite/assistant-attachments.js";
-import { ASSISTANT_M2_PROPOSAL_STATEMENTS, createAssistantProposalRepository } from "../../../src/backend/storage/sqlite/assistant-proposals.js";
+import { ASSISTANT_PROPOSAL_STATEMENTS, createAssistantProposalRepository } from "../../../src/backend/storage/sqlite/assistant-proposals.js";
 
 export function assistantM1HistoryFixture(config: Readonly<{ now: string; acceptedAt: string; profileId?: string }>, installedDatabase?: DatabaseSync) {
   const database = installedDatabase ?? new DatabaseSync(":memory:");
@@ -43,7 +43,7 @@ export function assistantM1HistoryFixture(config: Readonly<{ now: string; accept
   let m2 = installedDatabase !== undefined;
   /** Installs M2 in the in-memory fixture once and opens the prepared proposal owner over `accepted`. */
   const proposals = (accepted: Pick<typeof history, "sending"> = history) => {
-    if (!m2) for (const statement of ASSISTANT_M2_PROPOSAL_STATEMENTS) database.exec(statement);
+    if (!m2) for (const statement of ASSISTANT_PROPOSAL_STATEMENTS) database.exec(statement);
     m2 = true;
     return createAssistantProposalRepository({ database, profileId: () => profileId, read: work => ports.read(work), accepted,
       mutate: (_table, work) => transaction(() => { const value = work(); if (value.changes > 0) dirty = true; return value.result; }) });
@@ -72,7 +72,7 @@ export function seedAssistantPhaseOne(database: DatabaseSync, profileId: string,
     label: "Start Person Lookup", dryRun: true, createdAt: now, options: { browserMode: "headless", captureBrowserScreenshots: true, priority: "interactive" } as const,
     rows: [{ id: rowId, ordinal: 1, title: "Synthetic row", display: { kind: "request" } as const,
       operation: { kind: "workflow-start", workflowId: "person-lookup", submission: {}, reviewed: fingerprint } as const }] };
-  const shown = AssistantM2ProposalSnapshotSchema.parse({ ...draft, renderedDigest: assistantM2ProposalDigest(draft) });
+  const shown = AssistantProposalSnapshotSchema.parse({ ...draft, renderedDigest: assistantProposalDigest(draft) });
   proposals.issue(shown);
   const binding = { proposalId: shown.id, proposalRevision: shown.revision, renderedMessageId, renderedDigest: shown.renderedDigest };
   const answer = storage.history.accept({ ...storage.input(conversationId, "Yes"), proposalAnswer: binding });

@@ -168,7 +168,9 @@ describe("clearing notifications", () => {
     const observed = () => {
       const first = database.checkQueueDaySources(day);
       assert.ok(first);
-      return { through: first.through, runIds: [], timelineRunIds: [], lastWorkerClaims: [], relationships: [], month: { from: day, to: day, counts: [] } };
+      assert.equal(first.kind, "full");
+      return { through: first.through, retryConfigFingerprint: first.retryConfigFingerprint,
+        runIds: [], timelineRunIds: [], lastWorkerClaims: [], relationships: [], month: { from: day, to: day, counts: [] } };
     };
     let previous = observed();
     assert.equal(database.checkQueueDaySources(day, previous)?.kind, "unchanged");

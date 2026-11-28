@@ -30,9 +30,14 @@ export function runStartRequestFingerprint(
   { rowIdentity, workbookRows, rowSelectionFresh }: ReturnType<typeof useRunStartWorkbookRows>,
   pdfInput: ReturnType<typeof usePdfRunInput>, rerunSource: RerunLaunchSource | undefined,
   workflowId: string, typedValues: TypedInputDraft, customizeSteps: boolean, dryRun: boolean,
-  captureBrowserScreenshots: boolean, selectedStepKeys: readonly string[], openRows: readonly OpenStepRow[],
+  captureBrowserScreenshots: boolean, selectedStepKeys: readonly string[], openRows: readonly Omit<OpenStepRow, "fold">[],
 ) {
   const { text, browserMode, priority: priorityChoice } = draft;
+  const request = startRequestFingerprint({
+    workflowId, text, dryRun, browserMode, captureBrowserScreenshots, priority: priorityChoice, selectedStepKeys,
+    stepOmissionDrafts: openRows.map(({ row, draft }) => ({ step: row.key, draft })),
+  });
+  if (draft.interruptedRerun) return JSON.stringify([rerunSource?.runId, rerunSource?.expectedVersion, request]);
   return launchDraft.launchRequestFingerprint({
     draft, rowIdentity, customizeSteps, typedValues, rerunSource,
     pdf: { draft: pdfInput.draft, picks: pdfInput.picks, loading: pdfInput.loading, error: pdfInput.error },
@@ -41,26 +46,18 @@ export function runStartRequestFingerprint(
     spreadsheets: launchDraft.namedSpreadsheets(draft, library.catalog),
     versionSources: { state: versionSources.state, sources: versionSources.sources },
     checks: { pending: checkPending, selections: checkSelections },
-    request: startRequestFingerprint({
-      workflowId,
-      text,
-      dryRun,
-      browserMode,
-      captureBrowserScreenshots,
-      priority: priorityChoice,
-      selectedStepKeys,
-      stepOmissionDrafts: openRows.map(({ row, draft }) => ({ step: row.key, draft })),
-    }),
+    request,
   });
 }
 
 export function useRunStartInputPreview(
-  { selectedWorkbookRows, sourceInputUnchanged, text }: launchDraft.LaunchDraft,
+  { interruptedRerun, selectedWorkbookRows, sourceInputUnchanged, text }: launchDraft.LaunchDraft,
   { rowCapability, rowReference, rowSelectionFresh, workbookRows }: ReturnType<typeof useRunStartWorkbookRows>,
   inputRun: RunStartWorkflow["inputRun"], typedValues: TypedInputDraft, snapshot: RerunValuesSnapshot | null,
   rerunSource: RerunLaunchSource | undefined, pdfSurface: UploadRunSurface | undefined, pdfInput: ReturnType<typeof usePdfRunInput>,
 ) {
   return useMemo((): RunInputPreview => {
+    if (interruptedRerun) return { entries: [], submissions: [], problem: null };
     if (pdfSurface !== undefined) return previewPdfRun(pdfSurface, pdfInput.draft, pdfInput.picks);
     if (inputRun.state !== "present") return { entries: [], submissions: [], problem: null };
     if (rowCapability !== undefined) {
@@ -73,7 +70,7 @@ export function useRunStartInputPreview(
     }
     return previewRunInput(inputRun.surface, text, typedValues,
       sourceInputUnchanged && snapshot?.source.runId === rerunSource?.runId && snapshot?.source.version === rerunSource?.expectedVersion && snapshot !== null ? rerunTypedSourceInput(inputRun.surface.typedInput, snapshot.sourceInput) : undefined);
-  }, [inputRun, rowCapability, rowReference, selectedWorkbookRows, rowSelectionFresh, workbookRows.state, workbookRows.error, text, typedValues, snapshot, rerunSource, sourceInputUnchanged, pdfSurface, pdfInput.draft, pdfInput.picks]);
+  }, [interruptedRerun, inputRun, rowCapability, rowReference, selectedWorkbookRows, rowSelectionFresh, workbookRows.state, workbookRows.error, text, typedValues, snapshot, rerunSource, sourceInputUnchanged, pdfSurface, pdfInput.draft, pdfInput.picks]);
 }
 
 export function runStartPlanRequest(
@@ -101,6 +98,11 @@ export function runStartPlanRequest(
   /** The plan request for the draft on screen; the gates keep it from being asked for a draft that cannot plan. */
   const openStepKeys = new Set(openRows.flatMap(({ row }) => row.stepKey === undefined ? [] : [row.stepKey]));
   return () => {
+    if (snapshot?.retainedSteps !== undefined) return StartPlanRequestSchema.parse({
+      workflowId, submissions: [], dryRun, browserMode, captureBrowserScreenshots, priority, selectedStepKeys,
+      rerunSource: { runId: snapshot.source.runId, expectedVersion: snapshot.source.version, intent: "rerun", selectedStepKeys },
+      ...(acknowledgment === undefined ? {} : { warningAcknowledgment: acknowledgment }),
+    });
     const values = snapshot === null ? null : pdfSurface === undefined ? rerunSubmission(snapshot, preview.submissions[0] ?? {}, valueDrafts)
       : { submission: preview.submissions[0], copiedFrom: [] };
     const copiedFrom = [...(values?.copiedFrom ?? []), ...Object.entries(copiedOmissions).flatMap(([index, copied]) => {
@@ -183,18 +185,19 @@ export function runStartGates(
   /** A plan retaining different omissions describes another run; refuse its token. */
   const sentOmittedSteps = customizeSteps && stepOmissions !== null ? stepOmissions.map(({ step }) => step) : [];
   const planOmittedSteps = plan?.omittedSteps ?? [];
-  const omissionMismatch = plan !== null && !sameStepKeys(planOmittedSteps, sentOmittedSteps);
+  const interrupted = snapshot?.retainedSteps !== undefined;
+  const omissionMismatch = !interrupted && plan !== null && !sameStepKeys(planOmittedSteps, sentOmittedSteps);
   const nextStage = adjacentRunStartStage(launchStages, currentStage, "next");
   const onLastStage = nextStage === null;
-  const rerunInputGone = snapshot !== null && snapshot.source.workflow === workflowId && (spreadsheetGone || rerunInputBlocked
+  const rerunInputGone = !interrupted && snapshot !== null && snapshot.source.workflow === workflowId && (spreadsheetGone || rerunInputBlocked
     || declaredInput && preview.submissions.length !== 1 || preview.entries.length === 0 && Object.keys(valueDrafts).length === 0);
   /** A dry source whose workflow has no dry run any more would run live. */
   const dryRunGone = snapshot?.source.dryRun === true && !supportsDryRun;
   const gates: LaunchGates = {
     next: nextStage, inputBlocked: blockedReason !== null, stepsBlocked: stepsBlockedReason !== null, optionsBlocked: optionsBlockedReason !== null,
-    rerunInputBlocked: rerunInputBlocked || rerunInputGone || dryRunGone || spreadsheetsError || spreadsheetsReading,
+    rerunInputBlocked: dryRunGone || !interrupted && (rerunInputBlocked || rerunInputGone || spreadsheetsError || spreadsheetsReading),
     checksBlocked: runChecksBlocked(checks.state),
-    referencesUnavailable,
+    referencesUnavailable: !interrupted && referencesUnavailable,
     path: launchStages.map(stage => stage.label),
     omissionMismatch, plannedCount: plan?.planned.length ?? 0, ...(supportsDryRun ? { dryRun } : {}),
   };

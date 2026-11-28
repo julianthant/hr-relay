@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import { afterEach, it } from "vitest";
 import { queryActivitySummaries } from "../../../src/backend/runs/queries/activity-summaries.js";
-import type { AssistantSettlement } from "../../../src/backend/storage/sqlite/assistant-history.js";
+import type { AssistantM1Settlement } from "../../../src/models/dashboard/assistant.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { createOperatorProjection } from "../../../src/backend/app/composition/dashboard/queue.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
@@ -21,13 +21,16 @@ async function world() {
   const read = (from = "2026-11-01", to = "2026-11-03") => queryActivitySummaries(fixture.database,
     { from, to, generatedAt: "2026-11-06T20:00:00.000Z" },
     { descriptors: { resolve: () => undefined }, ledger: { foldActivityRange: () => ({ systems: [] }) } });
+  fixture.database.bindAssistantEpoch(() => 1);
   const history = fixture.database.authority.assistantHistory;
-  const send = (at: string, settledAt = at, reply?: AssistantSettlement["reply"]) => {
+  const usage = { state: "measured", callCount: 1, inputTokens: 1, outputTokens: 1, totalTokens: 2 } as const;
+  const send = (at: string, settledAt = at, reply?: AssistantM1Settlement["reply"]) => {
     const conversationId = randomUUID(), messageId = randomUUID();
     history.apply({ operation: "create", conversationId, title: "Private chat" }, at);
-    const input = { conversationId, messageId, expectedRevision: 1, text: "Private question", modelText: "Private replay", subjectRef: null, attachments: [], now: at };
-    history.accept(input);
-    history.settle(conversationId, messageId, reply === undefined ? { delivery: "refused", code: "ASSISTANT_LIMIT" } : { delivery: "answered", reply }, settledAt);
+    const input = { conversationId, messageId, expectedRevision: 1, text: "Private question", modelText: "Private replay", subjectRef: null, attachments: [], proposalAnswer: null, now: at };
+    const accepted = history.accept(input);
+    if (accepted.state !== "accepted") assert.fail("turn not accepted");
+    history.settle(accepted, reply === undefined ? { delivery: "refused", code: "ASSISTANT_LIMIT", usage } : { delivery: "answered", usage, reply }, settledAt);
     return { conversationId, messageId, input };
   };
   return { ...fixture, history, read, send };
@@ -94,7 +97,7 @@ it("counts distinct real proposals at their first creation and excludes notifica
   const w = await world(), authorization = w.database.authority.assistantAuthorization;
   const at = "2026-11-02T08:00:00.000Z", expiresAt = "2026-11-02T09:00:00.000Z";
   const proposal = (actionId: string, createdAt: string) => w.send(createdAt, createdAt,
-    { id: randomUUID(), kind: "proposal", actionId, text: "Private proposal", modelText: "Private replay" });
+    { id: randomUUID(), kind: "proposal", actionId, parts: [{ kind: "text", runs: [{ kind: "plain", text: "Private proposal" }] }], modelText: "Private replay" });
   const action = (type: "pause" | "notification-read") => {
     const id = randomUUID(), chatId = randomUUID(), profileId = w.database.getMeta().profileId;
     const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: at, requestedBy: "local-operator", source: "assistant",
@@ -109,13 +112,12 @@ it("counts distinct real proposals at their first creation and excludes notifica
     return id;
   };
   const spreadsheet = randomUUID(), earlier = randomUUID();
-  const first = proposal(spreadsheet, "2026-11-02T07:59:59.999Z");
+  proposal(spreadsheet, "2026-11-02T07:59:59.999Z");
   proposal(spreadsheet, "2026-11-03T12:00:00.000Z");
   proposal(earlier, "2026-10-31T12:00:00.000Z");
   proposal(earlier, "2026-11-02T12:00:00.000Z");
   proposal(action("pause"), at);
   proposal(action("notification-read"), "2026-11-03T12:00:00.000Z");
-  w.history.appendDecision({ conversationId: first.conversationId, actionId: spreadsheet, messageId: randomUUID(), text: "Done: Private caption", now: at });
   const report = w.read();
   assert.deepEqual(report.assistantActions, { state: "retained-history", days: [
     { day: "2026-11-01", proposed: 1 }, { day: "2026-11-02", proposed: 1 }, { day: "2026-11-03", proposed: 0 },

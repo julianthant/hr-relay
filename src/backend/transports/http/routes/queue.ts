@@ -22,8 +22,10 @@ export function registerQueueRoutes(app: DashboardApp, deps: QueueRouteDeps): vo
 
   app.post("/api/v1/start-plans", async (c) => {
     const body: unknown = await c.req.json();
-    await deps.startPlans.prepare?.(body, c.req.raw.signal);
-    return c.json(deps.startPlans.plan(body));
+    const { startPlans } = deps;
+    if (startPlans.prepareAndPlan !== undefined) return c.json(await startPlans.prepareAndPlan(body, c.req.raw.signal));
+    await startPlans.prepare?.(body, c.req.raw.signal);
+    return c.json(startPlans.plan(body));
   });
 
 }

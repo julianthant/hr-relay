@@ -203,7 +203,6 @@ export function createWriteRecoveryTestWorld(profileFixture: () => Promise<Bound
         resolve: (workflowId) =>
           String(descriptor.id) === workflowId ? descriptor : undefined,
       },
-      authority: h.database,
       ids: h.ids
     });
     const makeKernel=()=>{
@@ -214,7 +213,7 @@ export function createWriteRecoveryTestWorld(profileFixture: () => Promise<Bound
       configIdentity:{configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,configFingerprint:CONFIG_SNAPSHOT.fingerprint},
       intakeParser:UNWIRED_INTAKE_PARSER,intakeProjections:NO_INTAKE_PROJECTIONS,
       workerRuntime:{pool:unusedWorkerPool(unused)},
-      writeResolution:createWriteResolutionExecutor({authority:h.database,continuation:runContinuationPort(lifecycle),
+      writeResolution:createWriteResolutionExecutor({continuation:runContinuationPort(lifecycle),
         descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},ids:h.ids })});
     return kernel;
     };

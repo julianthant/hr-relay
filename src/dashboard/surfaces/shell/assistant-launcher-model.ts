@@ -11,13 +11,14 @@ const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const emit = () => { for (const listener of listeners) listener(); };
 
-/** Decisions waiting on the operator: the served inbox's unread priority count, or `assistantNeeds=<n>` in the design frames. */
-let servedNeeds = 0;
+/** Decisions waiting on the operator: the served inbox's unread priority count plus open assistant proposals, or `assistantNeeds=<n>` in the design frames. */
+let servedNeeds = 0, openProposals = 0;
 export const assistantNeeds = {
   report(count: number) { if (count !== servedNeeds) { servedNeeds = count; emit(); } },
+  reportProposals(count: number) { if (count !== openProposals) { openProposals = count; emit(); } },
   get(): number {
     const value = Number(param("assistantNeeds"));
-    return Number.isSafeInteger(value) && value > 0 ? value : servedNeeds;
+    return Number.isSafeInteger(value) && value > 0 ? value : servedNeeds + openProposals;
   },
 };
 export function useAssistantNeedsYou(): number {

@@ -2,7 +2,7 @@ import { readRunCheckpoint } from "../../storage/sqlite/run-continuation.js";
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
 import { containsDryRunSample, DryRunSampleSchema } from "../../../models/workflow/dry-run.js";
-import { acceptsRecheckTransactionId } from "../../../rules/write-safety/parked-resolution.js";
+import { acceptsRecheckTransactionId, isFreshParkedWriteAbsence } from "../../../rules/write-safety/parked-resolution.js";
 import { UcpathTerminationTargetSchema } from "../../../models/ui/ucpath-smart-hr-termination.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
@@ -95,7 +95,7 @@ import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-schedule
 import type { SpanEmitter } from "../../logs/span-emitter.js";
 import { ExecutorSpanEventSchema } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
-import { requestedPayPathRecheck, WriteParkedError } from "../execution/run-execution-write.js";
+import { requestedParkedWriteRecheck, WriteParkedError } from "../execution/run-execution-write.js";
 import type { WriteSequencer, WriteSequencerContext } from "../execution/run-execution-write.js";
 
 /* ── the mutation capability — this module is the SOLE minting point ──────── */
@@ -209,6 +209,7 @@ export interface WriteSequencerAuthority {
   withAuthorityTransaction<Result>(work: (repositories: WriteSequencerRepositories) => Result): Result;
   commitWriteAttempt(input: unknown, checkpoint: unknown): AtomicWriteCommitReport;
   commitRecheckedParkedWrite(input: unknown): AtomicWriteCommitReport;
+  settleResolvedParkedAbsence(input: unknown): WriteIntentRecord;
 }
 
 type TransactionDriverOperation<Result> = (
@@ -1716,11 +1717,15 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     commitInput: unknown,
     intent: Extract<WriteIntentRecord, { status: "attempting" | "parked" }>,
     recheckKeyDigest?: string,
-  ): Promise<unknown> {
+    absenceOperator?: ActorId,
+  ) {
+    const recheck = intent.status === "parked" ? intent.recheck : undefined;
     let verdict: RuntimeProbeVerdict;
+    let probeCompletedAt: number;
     try {
-      if (recheckKeyDigest !== undefined && recheckKeyDigest !== intent.idempotencyKeyDigest) throw new Error("paypath-recheck-target-drift");
-      verdict = await runLiveProbe(context, commitContract, commitInput, "probe", intent.status === "parked" ? intent.recheck : undefined);
+      if (recheckKeyDigest !== undefined && recheckKeyDigest !== intent.idempotencyKeyDigest) throw new Error("parked-write-recheck-target-drift");
+      verdict = await runLiveProbe(context, commitContract, commitInput, "probe", absenceOperator === undefined ? recheck : undefined);
+      probeCompletedAt = deps.clock.monotonicMs();
     } catch (error) {
       const failure = new PostFenceWriteFailure({
         writeIntentId: intent.writeIntentId,
@@ -1766,13 +1771,36 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
       try {
         const settled = settleVerified(context, intent, "recovery-probe", proofValue, outputValue);
-        return { disposition: "committed", proofSource: "recovery-probe", output: settled.output.value, proof: settled.proof.value };
+        return { disposition: "committed" as const, proofSource: "recovery-probe", output: settled.output.value, proof: settled.proof.value };
       } catch (error) {
         if (error instanceof PostFenceWriteFailure) return parkAfterFence(context, error);
         throw error;
       }
     }
-    // Inline recovery parks uncertain absence; only the standalone stabilized recovery may authorize retry.
+    if (verdict.state === "absent" && intent.status === "parked" && recheck !== undefined && absenceOperator !== undefined) {
+      context.signal.throwIfAborted();
+      const resolvedAt = instant();
+      if (context.run.envelope.buildId === currentBuildId() && isFreshParkedWriteAbsence(intent, verdict.evidence, resolvedAt)) {
+        try {
+          const resolved = deps.authority.settleResolvedParkedAbsence({ writeIntentId: intent.writeIntentId, generation: intent.generation,
+            expectedIntentVersion: intent.version, claim: context.claim,
+            settlement: { state: "operator-confirmed-absent", writeIntentId: intent.writeIntentId, generation: intent.generation,
+              operator: absenceOperator, confirmedAt: resolvedAt, evidence: verdict.evidence },
+            resolution: { commandId: recheck.commandId, auditId: recheck.auditId, expectedRunVersion: recheck.expectedRunVersion,
+              writeIntentId: intent.writeIntentId, writeAttemptId: intent.currentAttemptId, generation: intent.generation,
+              bindingProofDigest: intent.bindingProofDigest, idempotencyKeyDigest: intent.idempotencyKeyDigest,
+              runId: intent.runId, runAttempt: intent.runAttempt, decision: "absent", resolvedAt } });
+          if (resolved.status !== "retryable") throw new Error("parked-write-absence-settlement-required");
+          return { disposition: "retry-after-read" as const, intent: resolved, probeCompletedAt };
+        } catch (error) {
+          return parkAfterFence(context, new PostFenceWriteFailure({ writeIntentId: intent.writeIntentId, generation: intent.generation,
+            intentVersion: intent.version, parkCode: "unknown", message: "The read found the write absent, but Relay could not record the result",
+            authorityReason: authorityReason(context.run, "negative-settlement-inconsistent-evidence", "settlement", authorityExceptionDetail(error)),
+            cause: error }));
+        }
+      }
+    }
+
     const parkCode: WriteIntentParkCode = verdict.state === "ambiguous" ? "ambiguous" : "unknown";
     const failure = new PostFenceWriteFailure({
       writeIntentId: intent.writeIntentId,
@@ -1780,8 +1808,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       intentVersion: intent.version,
       parkCode,
       message: `recovery probe for ${commitContract.id} reports ${verdict.state} for `
-        + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(context.run))}; retry authority requires the ref write-safety `
-        + "§4 settlement machine or the operator",
+        + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(context.run))}; `
+        + (absenceOperator === undefined ? "the write remains parked" : "the read did not authorize another attempt"),
       authorityReason: authorityReason(context.run,
         verdict.state === "absent"
           ? "inline-recovery-absent"
@@ -1876,9 +1904,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const sourceBound = envelope.continuation !== undefined && storedCheckpoint !== undefined && storedCheckpoint.runId !== envelope.runId
       ? undefined : envelope.sourceBound;
     const replaysCommittedOutcome = storedCheckpoint !== undefined && (sourceBound === undefined || storedCheckpoint.runId === envelope.runId);
-    const payPathRecheck = requestedPayPathRecheck(deps.authority.authority, run, node);
-    // An audited PayPath recheck can read across builds without admitting a new write.
-    if (payPathRecheck === undefined && !replaysCommittedOutcome && envelope.buildId !== currentBuildId()) {
+    const recheck = requestedParkedWriteRecheck(deps.authority.authority, run, node);
+    const absenceOperator = recheck?.command.type === "resolve-write-absent" ? recheck.command.requestedBy : undefined;
+    const payPathRecheck = commitContract.id === "ucpath/submit-paypath-work-study" && recheck?.command.type === "recheck-write";
+    if (!payPathRecheck && absenceOperator === undefined && !replaysCommittedOutcome && envelope.buildId !== currentBuildId()) {
       throw new TaskError(commitContract.id, "WRITE_BUILD_CHANGED",
         "Relay was updated after this run was approved. Retry the run to approve its write under this version.");
     }
@@ -1901,8 +1930,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const key = occurrence === undefined ? naturalKey
       : IdempotencyKeySchema.parse(repeatOccurrenceKey(businessKeyDigest, occurrence.confirmationCommandId, String(node.id)));
     const keyDigest = deriveIdempotencyKeyDigest(system, key);
-    if (payPathRecheck !== undefined) {
-      return await recoverOwnIntent(context, commitContract, commitInput, payPathRecheck, keyDigest);
+    if (recheck !== undefined && (payPathRecheck || recheck.intent.idempotencyKeyDigest !== keyDigest)) {
+      return await recoverOwnIntent(context, commitContract, commitInput, recheck.intent, keyDigest);
     }
     const siblings = deps.authority.authority.writeIntents.listByBusinessKey(system, businessKeyDigest);
     if (siblings.some((intent) => intent.idempotencyKey !== key && (intent.status !== "committed" && intent.status !== "observed-present"))) {
@@ -1933,7 +1962,17 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     refuseRetiredPermanentKeys(commitContract, commitInput, system, naturalKey, hasProtectedTransactionInput(context.run));
 
     /* beat ① — durable permanent-key lookup, regardless of status/origin */
-    const durable = deps.authority.authority.writeIntents.findByPermanentKey(system, key);
+    let durable = deps.authority.authority.writeIntents.findByPermanentKey(system, key);
+    let resolvedProbeAt: number | undefined;
+    if (recheck !== undefined) {
+      if (durable?.status !== "parked" || durable.writeIntentId !== recheck.intent.writeIntentId || durable.version !== recheck.intent.version) {
+        throw new Error("parked-write-recheck-intent-changed");
+      }
+      const recovery = await recoverOwnIntent(context, commitContract, commitInput, durable, keyDigest, absenceOperator);
+      if (recovery.disposition !== "retry-after-read") return recovery;
+      durable = recovery.intent;
+      resolvedProbeAt = recovery.probeCompletedAt;
+    }
     const decision = decideDurableIntent(durable, { runId: envelope.runId, runAttempt: envelope.attempt });
     if (decision.kind === "reuse") {
       return reuseDurableIntent(context, commitContract, commitInput, decision.record);
@@ -1950,9 +1989,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
     if (decision.kind === "refuse-parked") {
       const existing = decision.record;
-      if (existing.recheck !== undefined && existing.runId === envelope.runId && existing.runAttempt === envelope.attempt) {
-        return await recoverOwnIntent(context, commitContract, commitInput, existing);
-      }
       throw new Error(
         `write intent ${existing.writeIntentId} for ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} is parked (`
         + `${existing.parkedCode}); stored detail is retained only in authority. `
@@ -1967,7 +2003,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const mustProbe = sourceBound !== undefined || node.probePolicy === "always"
       || durable !== undefined
       || envelope.attempt > 1;
-    if (mustProbe) {
+    if (mustProbe && resolvedProbeAt === undefined) {
       const verdict = await readPrewriteProbe(context, commitContract, commitInput, keyDigest, businessKeyDigest);
       if (verdict.state === "present" && occurrence !== undefined) {
         const completion = commitContract.writeSafety.completion;
@@ -2021,7 +2057,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         });
       }
     }
-    const probeDeadline = deps.clock.monotonicMs() + node.probeToFenceMaxMs;
+    const probeDeadline = (resolvedProbeAt ?? deps.clock.monotonicMs()) + node.probeToFenceMaxMs;
     const assertProbeFresh = (): void => {
       if (deps.clock.monotonicMs() >= probeDeadline) {
         throw new StagedPageDiscardedError(
