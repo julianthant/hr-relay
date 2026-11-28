@@ -194,7 +194,8 @@ function seedAssistantReadRun({ context, clock }: Pick<ServedAssistantFixture, '
   const run = RunRecordSchema.parse({ ...candidate, createdAt: now, updatedAt: now, envelope: { ...candidate.envelope,
     traceId: deriveTraceId('pl', candidate.envelope.runId, clock), enqueuedAt: now,
     configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } });
-  const descriptor = DESCRIPTORS.find(value => value.id === run.envelope.workflow), node = descriptor?.timeline?.[0]?.nodes[0]; assert.ok(node);
+  const descriptor = DESCRIPTORS.find(value => value.id === run.envelope.workflow);
+  const node = descriptor?.timeline?.flatMap(step => step.nodes).find(node => node.id === 'searching'); assert.ok(node);
   context.database.withAuthorityTransaction(repositories => {
     assert.equal(repositories.runs.enqueue(run).state, 'inserted');
     const writer = createTimelineEmitter({ repository: repositories.timelineEvents, clock });
@@ -265,7 +266,7 @@ it('serves the read tools through authenticated composition without private prov
 it('refuses an old selected-run revision before reading out the newer run', async () => {
   await withServedAssistant(async fixture => {
     const { context, transport, origin, clock } = fixture, { run, subjectRef } = seedAssistantReadRun(fixture), client = createDashboardClient({ baseUrl: origin });
-    await vi.waitFor(async () => assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12));
+    assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12);
     const cancelled = await client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: 'local-operator', source: 'queue-row',
       family: 'run', type: 'cancel', target: { runId: run.envelope.runId, expectedVersion: run.version } });
     assert.equal(cancelled.state, 'applied');
@@ -293,7 +294,7 @@ it('refuses an old selected-run revision before reading out the newer run', asyn
 it('refuses a selected-run revision changed after the provider POST before reading the newer run', async () => {
   await withServedAssistant(async fixture => {
     const { context, transport, origin, clock } = fixture, { run, subjectRef } = seedAssistantReadRun(fixture), client = createDashboardClient({ baseUrl: origin });
-    await vi.waitFor(async () => assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12));
+    assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12);
     const outputs: unknown[] = [];
     let turns = 0;
     transport.setResponse(init => {
