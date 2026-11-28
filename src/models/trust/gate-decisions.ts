@@ -72,7 +72,7 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     resolution: { source: "workbook-reference", boundNodeId: "read-reference", boundOutputPath: "referenceDigest" },
     arms: [{ value: "selected", outcome: "taken", summary: "an operator selected retained worksheet rows for the retention review", label: "Use the selected rows" }],
   })),
-  ...["ocr", "ocr-source-pages", "emergency-contact", "emergency-contact-read-document"].map(workflowId => ({
+  ...["ocr", "ocr-source-pages", "emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].map(workflowId => ({
     workflowId, gateId: WORKSHEET_ROW_CHOICE_GATE, decisionPath: "decision", boundEvidencePath: "referenceDigest",
     resolution: { source: "workbook-reference", boundInputPath: "roster.referenceDigest", inputCondition: { path: "rosterChoice", equals: "required" } },
     arms: [{ value: "selected", outcome: "taken", summary: "an operator selected retained worksheet rows for the employee roster", label: "Use the selected rows" }],

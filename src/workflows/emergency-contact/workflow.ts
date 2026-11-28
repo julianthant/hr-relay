@@ -31,6 +31,7 @@ export const emergencyContactWorkflow = defineWorkflow({
   scenarios: EMERGENCY_CONTACT_SCENARIOS,
   nodePurposes: [
     { nodeId: WORKSHEET_ROW_CHOICE_GATE, purpose: "Wait for the operator to select a retained row for each conflicting roster employee." },
+    { nodeId: "read-roster-choice", purpose: "Bind the retained roster decision before the OCR child starts." },
     { nodeId: "read-document", purpose: "Await the direct OCR child and its operator release before any contact acquisition." },
     { nodeId: "approved-records", purpose: "Read the immutable current approved snapshot through authenticated child lineage." },
     { nodeId: "read-result", purpose: "Retain the exact released reference and settled member outcomes in a schema-owned result." },
@@ -38,7 +39,7 @@ export const emergencyContactWorkflow = defineWorkflow({
   ],
   rows: [
     { key: "ocr-source-pages", label: "Prepare source pages", members: [{ workflow: "ocr", step: "source-pages" }], target: { workflow: "ocr", step: "source-pages" } },
-    { key: "read-emergency-contact", label: "Read emergency contact", members: [{ step: "read-document", nodes: [WORKSHEET_ROW_CHOICE_GATE, "read-document"] },
+    { key: "read-emergency-contact", label: "Read emergency contact", members: [{ step: "read-document", nodes: [WORKSHEET_ROW_CHOICE_GATE, "read-roster-choice", "read-document"] },
       { workflow: "ocr", step: "page-readings" }], target: { workflow: "ocr", step: "page-readings" } },
     { key: "ocr-group-records", label: "Group records for review", members: [{ workflow: "ocr", step: "review-records" }], target: { workflow: "ocr", step: "review-records" } },
     { key: "match-extracted-people", label: "Match extracted people", members: [{ step: "read-document", nodes: ["approved-records"] },

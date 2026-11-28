@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { describe, it } from "vitest";
 import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { StartStepOmissionRefusedError, projectStartRows, projectStartSteps, resolveStartStepOmissions } from "../../../src/backend/runs/start/step-selection.js";
@@ -7,15 +6,13 @@ import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { emergencyContactMemberModule } from "../../support/helpers/registered-workflows.js";
 
 const descriptor = WORKFLOW_MODULES.find(({ descriptor: candidate }) => String(candidate.id) === "emergency-contact")!.descriptor;
-const nodeDigest = (nodes: ReturnType<typeof descriptorRuntimeNodes>): string => createHash("sha256").update(JSON.stringify(nodes.map((node) =>
-  [String(node.id), node.kind, node.dependsOn.map(String), "dryRun" in node ? node.dryRun ?? null : null]))).digest("hex");
 
 describe("Emergency Contact Start run rows", () => {
   it("serves the OCR switches and keeps the Emergency Contact member rows locked", () => {
     const member = "emergency-contact-member";
     assert.deepEqual(projectStartRows(descriptor).map(({ key, label, kind, lockReason, members }) => ({ key, label, kind, lockReason: lockReason ?? null, members })), [
       { key: "ocr-source-pages", label: "Prepare source pages", kind: "switch", lockReason: null, members: [{ workflow: "ocr", step: "source-pages" }] },
-      { key: "read-emergency-contact", label: "Read emergency contact", kind: "switch", lockReason: null, members: [{ step: "read-document", nodes: ["worksheet-row-choice", "read-document"] },
+      { key: "read-emergency-contact", label: "Read emergency contact", kind: "switch", lockReason: null, members: [{ step: "read-document", nodes: ["worksheet-row-choice", "read-roster-choice", "read-document"] },
         { workflow: "ocr", step: "page-readings" }] },
       { key: "ocr-group-records", label: "Group records for review", kind: "switch", lockReason: null, members: [{ workflow: "ocr", step: "review-records" }] },
       { key: "match-extracted-people", label: "Match extracted people", kind: "switch", lockReason: null, members: [{ step: "read-document", nodes: ["approved-records"] },
@@ -63,10 +60,25 @@ describe("Emergency Contact Start run rows", () => {
   it("keeps the roster decision ahead of the OCR child and preserves the member graph", () => {
     assert.equal(resolveStartStepOmissions(descriptor, projectStartSteps(descriptor).map(({ key }) => key), undefined), undefined);
     assert.deepEqual(descriptorRuntimeNodes(descriptor).map(node => [node.id, node.kind, node.dependsOn]), [
-      ["worksheet-row-choice", "gate", []], ["read-document", "child-run", ["worksheet-row-choice"]],
+      ["worksheet-row-choice", "gate", []], ["read-roster-choice", "task", ["worksheet-row-choice"]], ["read-document", "child-run", ["read-roster-choice"]],
       ["approved-records", "task", ["read-document"]], ["members", "child-run", ["read-document", "approved-records"]],
       ["read-result", "task", ["read-document", "members"]],
     ]);
-    assert.equal(nodeDigest(descriptorRuntimeNodes(emergencyContactMemberModule.descriptor)), "4c30231da6ab1cacfe255d2e7dadec1d6187e7f486c9cb9060a33ead9aebc489");
+    assert.deepEqual(descriptorRuntimeNodes(emergencyContactMemberModule.descriptor)
+      .map(node => [node.id, node.kind, node.dependsOn, "dryRun" in node ? node.dryRun : null]), [
+      ["reference-fields-start", "task", [], null],
+      ["reference-field-review-start", "gate", ["reference-fields-start"], null],
+      ["approved-record", "task", [], null],
+      ["map-contact", "task", ["approved-record"], null],
+      ["reference-fields-map-contact", "task", ["map-contact", "reference-fields-start", "reference-field-review-start"], null],
+      ["reference-field-review-map-contact", "gate", ["reference-fields-map-contact"], null],
+      ["read-contacts", "task", ["map-contact", "approved-record"], null],
+      ["reference-fields-read-contacts", "task", ["map-contact", "read-contacts", "reference-fields-start", "reference-field-review-start",
+        "reference-fields-map-contact", "reference-field-review-map-contact"], null],
+      ["reference-field-review-read-contacts", "gate", ["reference-fields-read-contacts"], null],
+      ["contact-plan", "task", ["map-contact", "read-contacts", "reference-field-review-read-contacts"], null],
+      ["contact-preview", "transaction", ["contact-plan"], "stop-after-prepare"],
+      ["onbase-filing", "child-run", [], null],
+    ]);
   });
 });

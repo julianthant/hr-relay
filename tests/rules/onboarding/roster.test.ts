@@ -4,7 +4,8 @@ import { describe, it } from "vitest";
 import { RunWorkbookReferenceSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_NAME_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
-import { bindOnboardingRoster } from "../../../src/rules/onboarding/roster.js";
+import { bindOnboardingRosterSources } from "../../../src/rules/onboarding/roster.js";
+import type { SchemaBoundCanonicalValue } from "../../../src/models/validation/schema-bound-value.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 
@@ -25,7 +26,8 @@ const boundReference = (value: unknown = reference, selection?: { sheetId: strin
       libraryId: parsed.snapshot.libraryId, versionId: "selected", selectedRow: selection },
       snapshot: { ...parsed.snapshot, versionId: "selected", versionName: "Selected" } } };
 };
-const bind = (value: unknown = reference, selection?: { sheetId: string; rowId: string }) => bindOnboardingRoster(boundReference(value, selection), key, capturedAt);
+const bindHeld = (value: SchemaBoundCanonicalValue) => bindOnboardingRosterSources([value], key, capturedAt).roster;
+const bind = (value: unknown = reference, selection?: { sheetId: string; rowId: string }) => bindHeld(boundReference(value, selection));
 const withValues = (changed: Record<string, unknown>) => ({ ...reference, snapshot: { ...reference.snapshot,
   rows: [{ ...reference.snapshot.rows[0], matches: [{ ...reference.snapshot.rows[0].matches[0], values: changed }] }] } });
 const resolvedReferences = (changed: Record<string, unknown>) => {
@@ -54,7 +56,7 @@ describe("Onboarding roster reference mapping", () => {
     const missing = bind({ ...reference, snapshot: { ...reference.snapshot, rows: [{ key, state: "missing", matches: [] }] } });
     assert.equal(missing.state, "resolve-required"); if (missing.state !== "resolve-required") throw new Error("missing not held");
     assert.equal(missing.reason, "row-missing");
-    const second = { ...reference.snapshot.rows[0].matches[0], rowId: "second" };
+    const second = { ...reference.snapshot.rows[0].matches[0], rowId: "second", values: { ...values, fullName: "Second Hire" } };
     const ambiguous = { ...reference, snapshot: { ...reference.snapshot,
       rows: [{ key, state: "ambiguous", matches: [...reference.snapshot.rows[0].matches, second] }] } };
     assert.equal(bind(ambiguous).state, "resolve-required");
@@ -63,7 +65,7 @@ describe("Onboarding roster reference mapping", () => {
       assert.throws(() => bind({ ...ambiguous, snapshot: { ...ambiguous.snapshot,
         rows: [{ key, state: "ambiguous", matches: [...reference.snapshot.rows[0].matches, candidate] }] } }));
     }
-    assert.throws(() => bindOnboardingRoster({ schemaHash: FingerprintSchema.parse("b".repeat(64)), value: RunWorkbookReferenceSchema.parse(reference) }, key, capturedAt));
+    assert.throws(() => bindHeld({ schemaHash: FingerprintSchema.parse("b".repeat(64)), value: RunWorkbookReferenceSchema.parse(reference) }));
   });
 
   it("binds the exact selected physical row in matched and ambiguous references", () => {
@@ -88,12 +90,12 @@ describe("Onboarding roster reference mapping", () => {
   it("reads retained fifth references without selectors but does not grant historical name-only captures new outputs", () => {
     const fifth = (value: unknown) => ({ schemaHash: deriveSchemaHash(RunWorkbookSelectedRowReferenceSchema, "output"),
       value: RunWorkbookSelectedRowReferenceSchema.parse(value) });
-    assert.equal(bindOnboardingRoster(fifth(reference), key, capturedAt).state, "resolved");
+    assert.equal(bindHeld(fifth(reference)).state, "resolved");
     for (const state of ["missing", "ambiguous"] as const) {
       const row = reference.snapshot.rows[0];
-      const matches = state === "missing" ? [] : [...row.matches, { ...row.matches[0], rowId: "second" }];
+      const matches = state === "missing" ? [] : [...row.matches, { ...row.matches[0], rowId: "second", values: { ...values, fullName: "Second Hire" } }];
       const retained = fifth({ ...reference, snapshot: { ...reference.snapshot, rows: [{ key, state, matches }] } });
-      assert.equal(bindOnboardingRoster(retained, key, capturedAt).state, "resolve-required");
+      assert.equal(bindHeld(retained).state, "resolve-required");
     }
     const names = { request: { ...reference.request, fields: [...ONBOARDING_ROSTER_NAME_FIELDS] },
       snapshot: { ...reference.snapshot, type: { ...reference.snapshot.type, fields: [...ONBOARDING_ROSTER_NAME_FIELDS] },
@@ -106,7 +108,7 @@ describe("Onboarding roster reference mapping", () => {
     for (const schema of [RunWorkbookReferenceSchema, RunWorkbookSelectedRowReferenceSchema]) {
       for (const retainedValue of [names, eleven]) {
         const retained = { schemaHash: deriveSchemaHash(schema, "output"), value: schema.parse(retainedValue) };
-        assert.throws(() => bindOnboardingRoster(retained, key, capturedAt), /onboarding-roster-reference-invalid/u);
+        assert.throws(() => bindHeld(retained), /onboarding-roster-reference-invalid/u);
       }
     }
   });

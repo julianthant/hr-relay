@@ -24,6 +24,9 @@ export function bindOcrRoster(bounds: readonly SchemaBoundCanonicalValue[], read
       return { ...match, referenceDigest, eid: wholeCellEid(match.values.eid) };
     });
   });
+  if (new Set(candidates.map(({ referenceDigest, sheetId, rowId }) => canonicalJsonStringify([referenceDigest, sheetId, rowId]))).size !== candidates.length) {
+    throw new Error("ocr-roster-membership-invalid");
+  }
   const keyed = new Map<string, typeof candidates>();
   for (const candidate of candidates) {
     if (candidate.eid === null) continue;

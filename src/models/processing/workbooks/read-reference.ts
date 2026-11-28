@@ -3,6 +3,7 @@ import { RunWorkbookNamedReferenceSchema, WorkbookIdSchema, WorkbookCellValuesSc
 import { FingerprintSchema, taskId } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 import { WorkbookRefusalSchema } from "./read-result.js";
+import { WorksheetRowChoiceSchema } from "./reference-choice.js";
 
 export const WorkbookReferenceReadRequestSchema = z.strictObject({
   typeId: WorkbookIdSchema, keys: z.string().min(1).array().min(1)
@@ -30,6 +31,14 @@ export const WorkbookReferenceReadSchema = z.strictObject({
   state: z.literal("read"), referenceDigest: FingerprintSchema, reference: retainedReference, sources: readSource.array(),
 });
 export const WorkbookReferenceReadResponseSchema = z.discriminatedUnion("state", [WorkbookReferenceReadSchema, WorkbookRefusalSchema]);
+const worksheetChoiceEvidence = z.strictObject({ choice: WorksheetRowChoiceSchema.nullable() });
+export const ReadWorksheetRowChoice = defineTaskContract({
+  id: taskId("workbooks/read-worksheet-row-choice"), title: "Retain the worksheet row decision", effect: "read",
+  input: worksheetChoiceEvidence, output: worksheetChoiceEvidence, errorCodes: ["WORKBOOK_INVALID"],
+  subject: { kind: "none", reason: "Retains the operator's row choice or the absence of a conflict for a delegated read" },
+  freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" },
+  scenarios: ["workbooks/read-reference"], example: { choice: null },
+});
 
 export function encodeWorkbookReference(referenceValue: z.input<typeof RunWorkbookNamedReferenceSchema>) {
   const reference = RunWorkbookNamedReferenceSchema.parse(referenceValue);

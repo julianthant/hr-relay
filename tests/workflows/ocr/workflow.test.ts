@@ -50,6 +50,7 @@ const lookupCandidate = nodes.find(node => node.id === "lookup-identities");
 assert.ok(prepareCandidate?.kind === "task" && childrenCandidate?.kind === "child-run" && childrenCandidate.cardinality === "many"
   && reviewCandidate?.kind === "task" && lookupCandidate?.kind === "child-run" && lookupCandidate.cardinality === "many" && resultCandidate?.kind === "task");
 const prepare = prepareCandidate, children = childrenCandidate, reviewNode = reviewCandidate, lookup = lookupCandidate, completed = resultCandidate;
+const noRosterChoice = { choice: null };
 
 function requestFixture(pageCount = 3) {
   const source = sourceFixture(pageCount);
@@ -71,7 +72,7 @@ async function reviewFixture(pageCount = 3) {
   }
   const recorded = ocrTaskContext();
   const review = ReadOcrReviewSeed.output.parse(await readOcrReviewSeedTask.impl.run({ input: ReadOcrReviewSeed.input.parse(reviewNode.bind({ input: request,
-    outputs: { "render-pages": rendered, "read-source-pages": source, "read-pages": outcomes } })), ctx: recorded.ctx }));
+    outputs: { "render-pages": rendered, "read-source-pages": source, "read-pages": outcomes, "read-roster-choice": noRosterChoice } })), ctx: recorded.ctx }));
   const seed = buildOcrReviewSeed({ sourceRunId: SOURCE_RUN_ID, roster: null, accounting: accountOcrPages(fixture.manifest, READING_ID, outcomes) });
   return { ...fixture, source, review, seed, outcomes, recorded: recorded.recorded };
 }
@@ -136,15 +137,15 @@ describe("child-only OCR document graph", () => {
     const source = sourceFixture(2, formType);
     const pages = source.inputs.map(input => donePage(input));
     const review = buildOcrReviewSeed({ roster: null, accounting: accountOcrPages(source.manifest, READING_ID, pages, formType) });
-    const outputs = { "build-review": compactOcrReviewSeed(review), "read-pages": pages };
+    const outputs = { "build-review": compactOcrReviewSeed(review), "read-pages": pages, "read-roster-choice": noRosterChoice };
     const person = ocrPersonLookupRequests(review), signer = ocrSignerLookupRequests(review);
     assert.equal(OCR_FORMS[formType].lookup, formType === "i9" ? "i9-lookup" : "person-lookup");
     assert.equal(person.length, formType === "i9" ? 0 : 1);
     assert.equal(signer.length, formType === "i9" ? 1 : 0);
     const signerNode = nodes.find(node => node.id === "lookup-signers");
     assert.ok(signerNode?.kind === "child-run");
-    assert.deepEqual(signerNode.dependsOn, ["build-review", "read-pages"]);
-    assert.deepEqual(lookup.dependsOn, ["build-review", "read-pages"]);
+    assert.deepEqual(signerNode.dependsOn, ["build-review", "read-pages", "read-roster-choice"]);
+    assert.deepEqual(lookup.dependsOn, ["build-review", "read-pages", "read-roster-choice"]);
     const input = OcrInputSchema.parse({ ...requestFixture().request, formType });
     assert.deepEqual(lookup.bind({ input, outputs }), person.map(request => request.input));
     assert.deepEqual(lookup.sourceRecordIds?.({ input, outputs }), person.map(request => request.recordIds));
@@ -199,14 +200,14 @@ describe("child-only OCR document graph", () => {
     assert.equal(review.records.length, 3);
     assert.equal(review.records.every(record => record.issues.includes("duplicate-subject")), true);
     const requests = ocrLookupRequests(seed);
-    const bound = lookup.bind({ input: request, outputs: { "build-review": review, "read-pages": outcomes } });
+    const bound = lookup.bind({ input: request, outputs: { "build-review": review, "read-pages": outcomes, "read-roster-choice": noRosterChoice } });
     assert.deepEqual(bound, requests.map(request => request.input));
     assert.equal(bound.length, 1);
     const input = requests[0].input;
     const itemId = ItemIdSchema.parse(ocrLookupItemId(input));
     assert.equal(lookup.deriveChildItemId(input, { canonicalItemId: itemId }), itemId);
     const outcome = { state: "failed", itemId, runId: "00000000-0000-4000-8000-000000000801", failureId: "00000000-0000-4000-8000-000000000777" };
-    const scope = { input: request, outputs: { "build-review": review, "read-pages": outcomes, "lookup-identities": [outcome], "lookup-signers": [] } };
+    const scope = { input: request, outputs: { "build-review": review, "read-pages": outcomes, "lookup-identities": [outcome], "lookup-signers": [], "read-roster-choice": noRosterChoice } };
     const recorded = ocrTaskContext();
     const result = await finishFixture(scope, recorded);
     assert.deepEqual(result, compactOcrResult(OcrResultSchema.parse({ review: seed, identities: result.identities })));
@@ -299,8 +300,8 @@ describe("child-only OCR document graph", () => {
     const review = ReadOcrReviewSeed.output.parse(await readOcrReviewSeedTask.impl.run({ input: { sourceRunId: SOURCE_RUN_ID, roster: null,
       manifest, readingId: READING_ID, formType: "emergency-contact", outcomes: [failed] }, ctx: ocrTaskContext().ctx }));
     assert.deepEqual(review.pages, [{ sourcePage: 1, disposition: "failed" }]);
-    assert.deepEqual(lookup.bind({ input: request, outputs: { "build-review": review, "read-pages": [failed] } }), []);
-    const result = await finishFixture({ input: request, outputs: { "build-review": review, "read-pages": [failed], "lookup-identities": [], "lookup-signers": [] } });
+    assert.deepEqual(lookup.bind({ input: request, outputs: { "build-review": review, "read-pages": [failed], "read-roster-choice": noRosterChoice } }), []);
+    const result = await finishFixture({ input: request, outputs: { "build-review": review, "read-pages": [failed], "lookup-identities": [], "lookup-signers": [], "read-roster-choice": noRosterChoice } });
     assert.deepEqual(result.identities, []);
   });
 });

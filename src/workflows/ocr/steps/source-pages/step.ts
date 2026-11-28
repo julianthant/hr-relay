@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ReadApprovedOcrSnapshot } from "../../../../models/processing/ocr/read-approved-snapshot.js";
 import { WORKSHEET_ROW_CHOICE_GATE, WorksheetRowChoiceSchema, type WorksheetRowChoice } from "../../../../models/processing/workbooks/reference-choice.js";
+import { ReadWorksheetRowChoice } from "../../../../models/processing/workbooks/read-reference.js";
 import { ApprovedOcrRecordInputSchema } from "../../../../models/workflows/ocr/approved-record.js";
 import type { OcrApprovedSnapshot } from "../../../../models/ocr/review.js";
 import type { WorkflowRef } from "../../../../models/workflow/graph.js";
@@ -39,7 +40,7 @@ const SOURCE_COUNT: StepManualDeclaration = {
   ...DOCUMENT_VALUES,
   form: { fields: [{ key: "pageCount", label: "Original page count", kind: "integer", min: 1,
     help: "Relay renders the PDF to verify the count and bind the original pages." }] },
-  produces: {}, keeps: [WORKSHEET_ROW_CHOICE_GATE, "render-pages", "read-source-pages"],
+  produces: {}, keeps: [WORKSHEET_ROW_CHOICE_GATE, "read-roster-choice", "render-pages", "read-source-pages"],
   refine: ({ pageCount }) => typeof pageCount === "number" && pageCount <= PDF_PAGE_LIMIT ? []
     : [{ field: "pageCount", message: `Enter a page count from 1 through ${PDF_PAGE_LIMIT}.` }],
   bindInput: (input, { pageCount }) => JsonValueSchema.parse(OcrInputSchema.parse({ ...OcrInputSchema.parse(input), assertedPageCount: pageCount })),
@@ -82,14 +83,20 @@ const UNGROUPED_RECORDS = leaveUnread("Record grouping", ["build-review"]);
 const UNVERIFIED_IDENTITIES = leaveUnread("Identity verification", ["lookup-identities"]);
 const UNVERIFIED_SIGNERS = leaveUnread("Signer verification", ["lookup-signers", "read-result"]);
 function reviewSeed(input: z.output<typeof OcrInputSchema>,
-  outputs: Readonly<{ "build-review": OcrReviewCheckpoint; "read-pages": readonly OcrPageOutcome[]; [WORKSHEET_ROW_CHOICE_GATE]?: WorksheetRowChoice }>) {
+  outputs: Readonly<{ "build-review": OcrReviewCheckpoint; "read-pages": readonly OcrPageOutcome[]; "read-roster-choice": { choice: WorksheetRowChoice | null } }>) {
   const readings = new Map<string, OcrPageReading>(outputs["read-pages"].flatMap(page => page.state === "done" ? [[page.output.extractionId, page.output] as const] : []));
-  return hydrateOcrReviewSeed(outputs["build-review"], extractionId => readings.get(extractionId), chooseOcrRoster(input, outputs[WORKSHEET_ROW_CHOICE_GATE]));
+  return hydrateOcrReviewSeed(outputs["build-review"], extractionId => readings.get(extractionId), chooseOcrRoster(input, outputs["read-roster-choice"].choice ?? undefined));
 }
 const rosterChoiceGate = {
   id: WORKSHEET_ROW_CHOICE_GATE, label: "Choose roster rows", resolvedBy: "operator", result: WorksheetRowChoiceSchema,
-  when: { kind: "equals", of: { from: "input", path: "rosterChoice" }, value: "required" },
+  when: { kind: "is-present", of: { from: "input", path: "rosterChoice" } },
 } as const;
+function buildRosterChoice<Input extends z.ZodType>({ gate, task }: Pick<WorkflowAuthor<Input>, "gate" | "task">) {
+  const choice = gate(rosterChoiceGate, []);
+  const bound = task({ id: "read-roster-choice", contract: ReadWorksheetRowChoice, replay: "checkpoint" }, [choice],
+    ({ outputs }) => ({ choice: outputs[WORKSHEET_ROW_CHOICE_GATE] ?? null }));
+  return { choice, bound };
+}
 export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key: "source-pages", label: "Prepare source pages" }), system: "local" as const,
   description: "Render every original PDF page and bind each page's form type and reading method to the source manifest.",
   review: {
@@ -98,7 +105,7 @@ export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key
         id: "source-pdf",
         title: "Source PDF",
         mode: "Read only",
-        nodeIds: [WORKSHEET_ROW_CHOICE_GATE, "render-pages", "read-source-pages"],
+        nodeIds: [WORKSHEET_ROW_CHOICE_GATE, "read-roster-choice", "render-pages", "read-source-pages"],
         lines: [
           { id: "render", kind: "action", text: "Render every original PDF page.", nodeIds: ["render-pages"] },
           { id: "source", kind: "check", text: "Check each original page’s form type and reading method.", nodeIds: ["read-source-pages"] }
@@ -115,12 +122,12 @@ export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key
   } as const,
 });
 export function buildSourcePages({ gate, group, task, result }: WorkflowAuthor<typeof OcrInputSchema>) {
-  const rosterChoice = gate(rosterChoiceGate, []);
+  const { choice, bound: rosterChoice } = buildRosterChoice<typeof OcrInputSchema>({ gate, task });
   const rendered = task({ id: "render-pages", contract: ExtractPdfPages, replay: "checkpoint" }, [rosterChoice], ({ input }) => ({ document: input.document }));
   const source = task({ id: "read-source-pages", contract: ReadOcrSourcePages, replay: "checkpoint" }, [rendered],
     ({ input, outputs }) => ({ request: input, rendered: outputs["render-pages"] }));
   return {
-    rendered, source, rosterChoice, steps: [[group(OCR_SOURCE_PAGES_STEP, { manual: SOURCE_COUNT }), [rosterChoice, rendered, source]]] as const,
+    rendered, source, rosterChoice, steps: [[group(OCR_SOURCE_PAGES_STEP, { manual: SOURCE_COUNT }), [choice, rosterChoice, rendered, source]]] as const,
     result: result(ReadOcrSourcePages.output, [source], ({ outputs }) => ReadOcrSourcePages.output.parse(outputs["read-source-pages"]))
   };
 }
@@ -143,7 +150,7 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
   });
   const review = task({ id: "build-review", contract: ReadOcrReviewSeed, replay: "always-rerun" }, [rendered, source, pages, rosterChoice],
     ({ input, outputs }) => ({
-      ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: chooseOcrRoster(input, outputs[WORKSHEET_ROW_CHOICE_GATE]), formType: input.formType,
+      ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: chooseOcrRoster(input, outputs["read-roster-choice"].choice ?? undefined), formType: input.formType,
       ...(input.extractWithOcr === undefined ? {} : { extractWithOcr: input.extractWithOcr }),
       manifest: buildOcrSourceManifest(input.document, outputs["render-pages"]), readingId: input.readingId, outcomes: [...outputs["read-pages"]]
     }));
@@ -247,12 +254,12 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
       records: readonly OcrApprovedSnapshot["records"][number][]): z.input<MemberInput>;
   }>,
 ) {
-  const rosterChoice = gate(rosterChoiceGate, []);
+  const { choice, bound: rosterChoice } = buildRosterChoice<Input>({ gate, task });
   const ocr = delegate({ id: "read-document", label: "Read and approve PDF",
     target: { id: WorkflowIdSchema.parse("ocr"), input: OcrInputSchema, result: OcrWorkflowResultSchema },
     edgeId: "document-ocr", cardinality: "one", await: "terminal", join: "one",
     policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "manual-parent-resume", visibility: "hidden-unless-failed" },
-  }, [rosterChoice], { bind: ({ input, outputs }) => ({ ...options.ocrInput(input, outputs[WORKSHEET_ROW_CHOICE_GATE]), approval: "release" as const }),
+  }, [rosterChoice], { bind: ({ input, outputs }) => ({ ...options.ocrInput(input, outputs["read-roster-choice"].choice ?? undefined), approval: "release" as const }),
     deriveChildItemId: (_input, context) => context.canonicalItemId });
   const approved = task({ id: "approved-records", label: "Read approved records", contract: ReadApprovedOcrSnapshot, replay: "always-rerun" }, [ocr], ({ outputs }) => {
     const child = outputs["read-document"];
@@ -273,7 +280,7 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
   }, sourceRecordIds: ({ outputs }) => outputs["approved-records"].snapshot.records.filter(options.filter).map(record => [record.recordId]),
   deriveChildItemId: (_input, context) => context.canonicalItemId });
   return { ocr, approved, members, steps: [
-    [{ key: "read-document", label: "Read and approve PDF", system: "local" }, [rosterChoice, ocr, approved]],
+    [{ key: "read-document", label: "Read and approve PDF", system: "local" }, [choice, rosterChoice, ocr, approved]],
     [{ key: "members", label: options.memberLabel, system: options.memberSystem }, [members]],
   ] as const };
 }

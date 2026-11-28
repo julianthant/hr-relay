@@ -1,8 +1,15 @@
 import { defineTask } from "../../../../workflow-kit/task.js";
-import { ReadWorkbookReference, WorkbookReferenceReadRequestSchema, WorkbookReferenceReadResponseSchema } from "../../../../models/processing/workbooks/read-reference.js";
+import { ReadWorkbookReference, ReadWorksheetRowChoice, WorkbookReferenceReadRequestSchema, WorkbookReferenceReadResponseSchema } from "../../../../models/processing/workbooks/read-reference.js";
 import { deriveSchemaHash, schemaBoundValueSchema } from "../../../../models/validation/schema-bound-value.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { evidenceLeaves } from "../../../../models/trust/evidence-classification.js";
+
+export const readWorksheetRowChoiceTask = defineTask(ReadWorksheetRowChoice, {
+  sessions: [], async run({ input, ctx }) {
+    ctx.recordData([{ direction: "read", field: "choice", value: input.choice }]);
+    return input;
+  },
+});
 
 export const readWorkbookReferenceTask = defineTask(ReadWorkbookReference, {
   sessions: [], async run({ input, ctx }) {

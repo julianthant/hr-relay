@@ -189,30 +189,30 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
     { owner: "readDelegationCancellation", id: "source.commandId", guards: ['authored?.result.state!=="applied"', "canonicalJsonStringify(authored.request)!==canonicalJsonStringify(source)", "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(retained)"], calls: ["authenticateCancellationSource(repositories,run,request.cancellationSource)"] },
   ],
   "src/backend/runs/workbooks.ts": [
-    { owner: "authenticateCrmReferenceChoice", id: "gate.commandId", guards: [
-      "data===undefined||data.rows.state!==\"resolve-required\"||!(\"commandId\"ingate)",
-      "complete===undefined||gate.runId!==run.envelope.runId||gate.gateId!==CRM_DOCUMENT_ROW_CHOICE_GATE_ID||String(gate.nodeId)!==String(gate.gateId)||gate.result.schemaHash!==deriveSchemaHash(CrmDocumentRowChoiceSchema,\"output\")||gate.checkpointFingerprint!==deriveGateResultCheckpointFingerprint(gate.result)||canonicalJsonStringify(gate.result.value)!==canonicalJsonStringify(complete)||command?.family!==\"run\"||command.type!==\"resolve-workbook-reference-row\"||command.target.runId!==gate.runId||command.target.gateId!==gate.gateId||command.target.expectedVersion!==gate.expectedVersion||command.requestedBy!==gate.resolvedBy||audit?.result.state!==\"applied\"||audit.completedAt!==gate.resolvedAt||canonicalJsonStringify(audit.request)!==canonicalJsonStringify(command)||event===undefined||event.gate!==gate.gateId||event.ts!==gate.resolvedAt||event.resultHash!==sha256Hex(`hrauto:gate-resolved-span:v1\\0${canonicalJsonStringify(gate.result)}`)||recorded===undefined",
+    { owner: "authenticateBatchReferenceChoice", id: "gate.commandId", guards: [
+      "data===undefined||!(\"commandId\"ingate)",
+      "complete===undefined||gate.runId!==run.envelope.runId||gate.gateId!==data.gateId||String(gate.nodeId)!==String(gate.gateId)||gate.checkpointFingerprint!==deriveGateResultCheckpointFingerprint(gate.result)||canonicalJsonStringify(gate.result)!==canonicalJsonStringify(complete)||command?.family!==\"run\"||command.type!==\"resolve-workbook-reference-row\"||command.target.runId!==gate.runId||command.target.gateId!==gate.gateId||command.target.expectedVersion!==gate.expectedVersion||command.requestedBy!==gate.resolvedBy||audit?.result.state!==\"applied\"||audit.completedAt!==gate.resolvedAt||canonicalJsonStringify(audit.request)!==canonicalJsonStringify(command)||event===undefined||event.gate!==gate.gateId||event.ts!==gate.resolvedAt||event.resultHash!==sha256Hex(`hrauto:gate-resolved-span:v1\\0${canonicalJsonStringify(gate.result)}`)||recorded===undefined",
     ], bindings: {
-      data: "crmReferenceRows(repositories,run,retained)",
-      complete: "completeCrmReferenceChoice(data,crmReferenceSelections(repositories,run,data))",
+      data: "batchReferenceRows(repositories,run,retained)",
+      complete: "completeBatchChoice(data,batchReferenceSelections(repositories,run,data))",
       command: "repositories.commands.get(gate.commandId)",
       audit: "repositories.commandAudits.findByCommand(gate.commandId)",
       recorded: "repositories.timelineEvents.get(lifecycleCommandId(\"timeline-gate-resolved\",gate.commandId))",
       event: "recorded?.payload.kind===\"span\"&&recorded.payload.event.t===\"gate.resolved\"?recorded.payload.event:undefined",
     } },
-    { owner: "crmReferenceSelections", id: "event.commandId", guards: [
-      "record.source.kind!==\"native\"||record.scope.kind!==\"run\"||record.scope.runId!==run.envelope.runId||record.workflow!==run.envelope.workflow||event.runId!==run.envelope.runId||event.workflow!==run.envelope.workflow||event.traceId!==run.envelope.traceId||event.attempt!==data.sourceAttempt||event.gateId!==CRM_DOCUMENT_ROW_CHOICE_GATE_ID||anchor===undefined||source===undefined||chosenDigest!==event.referenceDigest||event.checkpointDigest!==data.checkpointDigest||record.occurredAt!==event.at||record.recordedAt!==event.at||record.eventId!==deriveStableUuid(\"workbook-reference-row-selected\",event.commandId)||command?.family!==\"run\"||command.type!==\"resolve-workbook-reference-row\"||command.target.runId!==event.runId||command.target.gateId!==event.gateId||command.target.key!==event.key||command.target.referenceDigest!==anchor.digest||command.target.libraryId!==anchor.value.snapshot.libraryId||command.target.typeId!==ONBOARDING_ROSTER_TYPE_ID||command.target.workbookVersion!==anchor.value.snapshot.version||(command.payload.referenceDigest===undefined)!==(data.sources.length===1)||command.payload.workbookVersion!==undefined&&command.payload.workbookVersion!==source.value.snapshot.version||command.payload.sheetId!==event.sheetId||command.payload.rowId!==event.rowId||audit?.result.state!==\"applied\"||audit.completedAt!==event.at||canonicalJsonStringify(audit.request)!==canonicalJsonStringify(command)||candidate===undefined||selections.has(event.key)",
+    { owner: "batchReferenceSelections", id: "event.commandId", guards: [
+      "record.source.kind!==\"native\"||record.scope.kind!==\"run\"||record.scope.runId!==run.envelope.runId||record.workflow!==run.envelope.workflow||event.runId!==run.envelope.runId||event.workflow!==run.envelope.workflow||event.traceId!==run.envelope.traceId||event.attempt!==data.sourceAttempt||event.gateId!==data.gateId||anchor===undefined||source===undefined||chosenDigest!==event.referenceDigest||event.checkpointDigest!==data.checkpointDigest||record.occurredAt!==event.at||record.recordedAt!==event.at||record.eventId!==deriveStableUuid(\"workbook-reference-row-selected\",event.commandId)||command?.family!==\"run\"||command.type!==\"resolve-workbook-reference-row\"||command.target.runId!==event.runId||command.target.gateId!==event.gateId||command.target.key!==event.key||command.target.referenceDigest!==anchor.digest||command.target.libraryId!==anchor.value.snapshot.libraryId||command.target.typeId!==data.typeId||command.target.workbookVersion!==anchor.value.snapshot.version||(command.payload.referenceDigest===undefined)!==(data.sources.length===1)||(command.payload.workbookVersion??(data.sources.length===1?source.value.snapshot.version:undefined))!==source.value.snapshot.version||command.payload.sheetId!==event.sheetId||command.payload.rowId!==event.rowId||audit?.result.state!==\"applied\"||audit.completedAt!==event.at||canonicalJsonStringify(audit.request)!==canonicalJsonStringify(command)||candidate===undefined||selections.has(event.key)",
     ], bindings: {
-      selections: "newMap<string,CrmSelection>()",
+      selections: "newMap<string,BatchSelection>()",
       anchor: "data.sources[0]",
       event: "record.payload",
       command: "repositories.commands.get(event.commandId)",
       audit: "repositories.commandAudits.findByCommand(event.commandId)",
-      person: "data.rows.people.find(person=>person.subject.value===event.key)",
+      choice: "data.pending.find(choice=>choice.key===event.key)",
       source: "data.sources.find(item=>item.digest===event.referenceDigest)",
       referenceCommand: "command?.type===\"resolve-workbook-reference-row\"?command:undefined",
       chosenDigest: "referenceCommand?.payload.referenceDigest??(data.sources.length===1?anchor?.digest:undefined)",
-      candidate: "person?.resolution.state===\"resolve-required\"?person.resolution.candidates.find(candidate=>candidate.referenceDigest===event.referenceDigest&&candidate.row.worksheetId===event.sheetId&&candidate.row.rowId===event.rowId):undefined",
+      candidate: "choice?.candidates.find(candidate=>candidate.referenceDigest===event.referenceDigest&&candidate.sheetId===event.sheetId&&candidate.rowId===event.rowId)",
     } },
     { owner: "authenticateOnboardingRosterChoice", id: "gate.commandId", guards: [
       'recorded?.source.kind!=="native"', 'recorded.eventId!==eventId', 'recorded.scope.kind!=="run"',

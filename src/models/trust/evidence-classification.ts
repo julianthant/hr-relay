@@ -638,7 +638,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ]),
   ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-people"), "people"),
   ...open(taskOutput("workflow:i9-check-start/read-reference-conflicts"), "needsChoice"),
-  ...["i9-check-start", "i9-check-start-roster-reference", "i9-check-start-retention", "ocr", "ocr-source-pages", "emergency-contact", "emergency-contact-read-document"].flatMap(id => [
+  ...["i9-check-start", "i9-check-start-roster-reference", "i9-check-start-retention", "ocr", "ocr-source-pages", "emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].flatMap(id => [
     ...open(gateResult(id, "worksheet-row-choice"), "decision"), ...ocrPrivateLeaves(gateResult(id, "worksheet-row-choice"), "referenceDigest", "rows"),
   ]),
   ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-requests"), "people", "children"),
@@ -658,6 +658,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(taskOutput("ocr/read-approved-records"), "state", "code"),
   ...ocrPrivateLeaves(taskOutput("ocr/read-approved-records"), "sources"),
   ...open(taskOutput("workbooks/read-reference"), "state", "reference.snapshot.version", "reference.request.fields", "reference.snapshot.type.fields"),
+  ...ocrPrivateLeaves(taskOutput("workbooks/read-worksheet-row-choice"), "choice"),
   ...population(taskOutput("workbooks/read-reference"), "reference.snapshot.rows", "reference.snapshot.worksheets"),
   ...["referenceDigest", "sources", "reference.request.typeId", "reference.request.libraryId", "reference.request.versionId", "reference.request.keys",
     "reference.snapshot.libraryId", "reference.snapshot.versionId", "reference.snapshot.versionName", "reference.snapshot.type.id", "reference.snapshot.type.name",

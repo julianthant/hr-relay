@@ -15,7 +15,7 @@ import { approvedRecordHasEid,buildApprovedOcrRecords } from "../../../ocr/steps
 import { ReadApprovedOcrSnapshot } from "../../../../models/processing/ocr/read-approved-snapshot.js";
 import { defineStep,inheritStepProof,type WorkflowAuthor,type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 export const READ_DOCUMENT_STEP = Object.freeze({ key: "read-document", label: "Read and approve PDF", system: "local" as const,
-  review: { pages: [{ id: "approved-pdf", title: "Emergency Contact PDF", mode: "Read only", nodeIds: [WORKSHEET_ROW_CHOICE_GATE, "read-document", "approved-records"],
+  review: { pages: [{ id: "approved-pdf", title: "Emergency Contact PDF", mode: "Read only", nodeIds: [WORKSHEET_ROW_CHOICE_GATE, "read-roster-choice", "read-document", "approved-records"],
     lines: [
       { id: "read-and-approve", kind: "read", text: "Read the uploaded PDF and wait for you to review and approve its records in Logs.", nodeIds: ["read-document"] },
       { id: "approved-selection", kind: "check", text: "Use only the current approved records and their original PDF pages.", nodeIds: ["approved-records"] },

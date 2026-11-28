@@ -23,6 +23,7 @@ import { deriveStableUuid, lifecycleCommandId } from "../../rules/identity/ident
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { localDatePart, type Clock } from "../../rules/time/clock.js";
+import { FingerprintSchema } from "../../rules/identity/ids.js";
 import { WorkbookLibraryError } from "../workbooks/workbook-library-error.js";
 import { snapshotRetainedWorkbookReference, writeRecordedRunWorkbook, readRetainedWorkbookReference, verifyRetainedNamedWorkbookReference } from "../workbooks/workbook-library-service.js";
 import type { AnyWorkflowDescriptor } from "../../workflow-kit/workflow.js";
@@ -110,7 +111,7 @@ type ReferenceCommand = Extract<CommandRequest, { type: "resolve-workbook-refere
 type RowCommand = Extract<CommandRequest, { type: "resolve-workbook-row" }>;
 const crmReferenceWorkflows = new Set(["crm-doc-download", "crm-doc-download-reference", "crm-doc-download-package-worksheets"]);
 const i9ReferenceWorkflows = new Set(["i9-check-start", "i9-check-start-roster-reference", "i9-check-start-retention"]);
-const ocrReferenceWorkflows = new Set(["ocr", "ocr-source-pages", "emergency-contact", "emergency-contact-read-document"]);
+const ocrReferenceWorkflows = new Set(["ocr", "ocr-source-pages", "emergency-contact", "emergency-contact-read-document", "emergency-contact-members"]);
 const batchReferenceWorkflows = new Set([...crmReferenceWorkflows, ...i9ReferenceWorkflows, ...ocrReferenceWorkflows]);
 
 
@@ -535,7 +536,7 @@ function worksheetCandidate(sources: BatchRows["sources"], match: Reference["sna
   if (source === undefined || sheet === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   const version = "versionName" in source.value.snapshot ? source.value.snapshot.versionName : undefined;
   const label = [version, sheet.name, match.rowId].filter(Boolean).join(" · ");
-  return { referenceDigest: match.referenceDigest, sheetId: match.sheetId, rowId: match.rowId, label,
+  return { referenceDigest: FingerprintSchema.parse(match.referenceDigest), sheetId: match.sheetId, rowId: match.rowId, label,
     values: Object.entries(match.values).map(([fieldId, value]) => ({ fieldId, value })) };
 }
 
@@ -560,8 +561,9 @@ function batchReferenceRows(repositories: AuthorityRepositories, run: RunRecord,
     return worksheetBatchRows({ typeId: I9_CHECK_REFERENCE.typeId, sources, pending, sourceAttempt: checkpoint.attempt,
       checkpointDigest: sha256Hex(canonicalJsonStringify(checkpoint)) });
   }
-  if (!ocrReferenceWorkflows.has(workflow)) return undefined;
-  const input = (workflow.startsWith("emergency-contact") ? EmergencyContactInputSchema : OcrCanonicalInputSchema).parse(run.input.parsed.value);
+  const canonical = run.input.parsed.value;
+  if (!ocrReferenceWorkflows.has(workflow) || canonical === null || typeof canonical !== "object" || !Object.hasOwn(canonical, "rosterChoice")) return undefined;
+  const input = (workflow.startsWith("emergency-contact") ? EmergencyContactInputSchema : OcrCanonicalInputSchema).parse(canonical);
   if (input.rosterChoice === undefined) return undefined;
   if (input.roster === null) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   const sources = references(run).filter(reference => reference.value.request.typeId === OCR_ROSTER_TYPE_ID);

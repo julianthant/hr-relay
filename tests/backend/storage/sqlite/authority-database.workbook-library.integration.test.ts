@@ -9,7 +9,7 @@ import { AuthorityDatabase, inspectAuthorityBackupReadOnly } from "../../../supp
 import { WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-error.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { bindOcrRoster } from "../../../../src/models/workflows/ocr/roster.js";
+import { bindOcrRoster } from "../../../../src/rules/spreadsheets/ocr-roster.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { encodeSavedWorkbook, RunWorkbookAllRowsReferenceSchema } from "../../../../src/models/dashboard/workbooks.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
@@ -46,8 +46,8 @@ it("captures all roster data rows at the selected version and leaves keyed-empty
     const request = { mode: "all" as const, typeId: "ocr-roster", libraryId: first.libraryId, expectedVersion: 2,
       fields: ["eid", "fullName"] };
     const reference = RunWorkbookAllRowsReferenceSchema.parse({ request, snapshot: repository.snapshot(request) });
-    const captured = bindOcrRoster({ schemaHash: deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output"), value: reference }, clock.now().toISOString());
-    assert.deepEqual(captured.rows.map(row => row.eid), ["10000001", "10000001", null]);
+    const { roster: captured } = bindOcrRoster([{ schemaHash: deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output"), value: reference }], clock.now().toISOString());
+    assert.deepEqual(captured.rows.map(row => row.eid), ["10000001", null]);
     assert.deepEqual(reference.snapshot.rows.map(row => row.matches[0].rowId), ["one", "two", "missing"]);
     assert.deepEqual(repository.snapshot({ typeId: "ocr-roster", libraryId: first.libraryId, keys: [], fields: ["eid", "fullName"] }).rows, []);
     const current = service.read(first.libraryId);
