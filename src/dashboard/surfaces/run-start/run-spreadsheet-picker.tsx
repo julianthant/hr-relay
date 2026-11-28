@@ -56,11 +56,16 @@ function WorksheetMenu({ owner, worksheets, picked, mode, disabled, max, readOnl
       </div>
       <DropdownMenuGroup aria-label={`${owner} worksheets`} className="max-h-56 overflow-y-auto">
         {mode === "one"
-          ? <DropdownMenuRadioGroup value={picked[0] ?? ""} onValueChange={sheetId => onChange([sheetId])}>
-            {found.map(worksheet => <DropdownMenuRadioItem key={worksheet.sheetId} value={worksheet.sheetId} disabled={readOnly}>{worksheet.sheetName}</DropdownMenuRadioItem>)}
+          ? <DropdownMenuRadioGroup value={picked[0] ?? ""} onValueChange={sheetId => { if (!readOnly) onChange([sheetId]); }}>
+            {found.map(worksheet => <DropdownMenuRadioItem key={worksheet.sheetId} value={worksheet.sheetId} aria-disabled={readOnly || undefined}>{worksheet.sheetName}</DropdownMenuRadioItem>)}
           </DropdownMenuRadioGroup>
-          : found.map(worksheet => <DropdownMenuCheckboxItem key={worksheet.sheetId} checked={picked.includes(worksheet.sheetId)} disabled={readOnly || max !== undefined && picked.length >= max && !picked.includes(worksheet.sheetId)}
-            onCheckedChange={on => { const next = on === true ? [...picked, worksheet.sheetId] : picked.filter(id => id !== worksheet.sheetId); if (next.length > 0) onChange(next); }}>{worksheet.sheetName}</DropdownMenuCheckboxItem>)}
+          : found.map(worksheet => <DropdownMenuCheckboxItem key={worksheet.sheetId} checked={picked.includes(worksheet.sheetId)} aria-disabled={readOnly || undefined}
+            disabled={!readOnly && max !== undefined && picked.length >= max && !picked.includes(worksheet.sheetId)}
+            onCheckedChange={on => {
+              if (readOnly) return;
+              const next = on === true ? [...picked, worksheet.sheetId] : picked.filter(id => id !== worksheet.sheetId);
+              if (next.length > 0) onChange(next);
+            }}>{worksheet.sheetName}</DropdownMenuCheckboxItem>)}
       </DropdownMenuGroup>
       {found.length === 0 && <p className="m-0 p-2 text-body text-ui-muted">No worksheets match.</p>}
       <p className="ds-menu-label m-0">{max !== undefined && picked.length >= max ? `${max} worksheets is the most for one run` : worksheets.length === 1 ? "1 worksheet" : `${worksheets.length} worksheets`}</p>
@@ -74,16 +79,18 @@ export function SpreadsheetRow({ name, versions, versionId, note, worksheets, pi
   worksheets: readonly SheetWorksheet[]; picked: readonly string[]; mode: "one" | "many"; busy: boolean; locked?: boolean; worksheetsReady: boolean; max?: number | undefined; inspectWorksheets?: boolean;
   onVersion: (versionId: string) => void; onWorksheets: (sheetIds: readonly string[]) => void; onRemove: () => void;
 }) {
+  const versionsWithLabels = versions.map(({ id, name, savedAt }) => ({ id, label: `${name} · ${formatMonthDay(savedAt, undefined, "short")}` }));
   return <RunListRow title={name} description={note} lead={<Table2 aria-hidden className={`${dsIcon.md} shrink-0 text-ui-muted`} />}>
     <WorksheetMenu owner={name} worksheets={worksheets} picked={picked} mode={mode} disabled={!worksheetsReady || busy && !inspectWorksheets}
       readOnly={inspectWorksheets} max={max} onChange={onWorksheets} />
-    <Select aria-label={`${name} version`} variant="toolbar" className="min-w-0 max-w-52 !border-transparent !bg-transparent !text-ui-muted tabular-nums" disabled={busy} value={versionId} onChange={event => onVersion(event.target.value)}>
-      {versions.map(({ id, name, savedAt }) => {
-        const label = `${name} · ${formatMonthDay(savedAt, undefined, "short")}`;
-        return <option key={id} value={id}><span className="block min-w-0 truncate" title={label}>{label}</span></option>;
-      })}
-    </Select>
-    <IconButton size="xs" label={`Remove ${name}`} disabled={locked} icon={<X aria-hidden className={dsIcon.md} />} onClick={onRemove} />
+    {inspectWorksheets
+      ? <span className="text-body text-ui-muted tabular-nums">{versionsWithLabels.find(version => version.id === versionId)?.label}</span>
+      : <>
+        <Select aria-label={`${name} version`} variant="toolbar" className="min-w-0 max-w-52 !border-transparent !bg-transparent !text-ui-muted tabular-nums" disabled={busy} value={versionId} onChange={event => onVersion(event.target.value)}>
+          {versionsWithLabels.map(({ id, label }) => <option key={id} value={id}><span className="block min-w-0 truncate" title={label}>{label}</span></option>)}
+        </Select>
+        <IconButton size="xs" label={`Remove ${name}`} disabled={locked} icon={<X aria-hidden className={dsIcon.md} />} onClick={onRemove} />
+      </>}
   </RunListRow>;
 }
 

@@ -252,6 +252,7 @@ const REFERENCE = {
   "several-menu": several("The worksheet menu of a several-worksheet reference, three checked", chooseThree),
   "two-start": reference("Onboarding Start with People and Archive selected", onboardingReads, onboardingCatalog, { workflowId: onboarding.id, then: async page => {
     await chooseRoster(page);
+    await dialog(page).getByRole("checkbox", { name: /^Select Archive/u }).click();
     await dialog(page).getByRole("button", { name: "Roster worksheets, Archive" }).click();
     await page.getByRole("menuitemcheckbox", { name: "People" }).click();
     await waitForTwoWorksheets(page);
@@ -267,6 +268,12 @@ const REFERENCE = {
   }) }), "Steps", { catalog: onboardingCatalog, workflowId: onboarding.id, rerun: true, then: async page => {
     await twoWorksheetPicker(page).click();
     await waitForTwoWorksheets(page);
+    await page.keyboard.press("ArrowDown");
+    await page.getByRole("menuitemcheckbox", { name: "Archive", checked: true, disabled: true }).and(page.locator(":focus")).waitFor();
+    await page.keyboard.press("Space");
+    await waitForTwoWorksheets(page);
+    await page.keyboard.press("Escape");
+    await worksheetSearch(page).waitFor({ state: "hidden" });
   } }),
   start: reference("Start, with the chosen spreadsheet", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page); await dialog(page).locator("textarea").first().fill(RUN_DIALOG_TYPED); await press(page, "Next"); await at(page, "Start"); } }),
 } satisfies Record<ReferenceState, Story>;

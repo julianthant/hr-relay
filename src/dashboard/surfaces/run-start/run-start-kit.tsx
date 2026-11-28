@@ -470,9 +470,10 @@ export function RunSpreadsheets({ reference, check, busy: reading, locked = fals
     ? <SpreadsheetPicker label="Add spreadsheet" options={checkOptions(check.sheets)} busy={busy} onPick={check.onAdd} />
     : <SpreadsheetPicker label={chosen ? "Change spreadsheet" : "Add spreadsheet"} options={referenceOptions} busy={busy}
       onPick={libraryId => reference?.onPick(libraryId, reference.sheets.find(sheet => sheet.libraryId === libraryId)?.currentVersionId ?? "")} />;
-  const note = missingSheet ? "Previous worksheet unavailable; choose again" : worksheetsState === "loading" ? "Loading worksheets…" : undefined;
+  const note = worksheetsState === "loading" ? "Loading worksheets…"
+    : worksheetsState === "ready" && missingSheet ? (inspectWorksheets ? "A saved worksheet is unavailable." : "Previous worksheet unavailable; choose again") : undefined;
   return <div className="flex min-w-0 flex-col gap-3">
-    <SpreadsheetSection title={title} description={description} picker={picker}>
+    <SpreadsheetSection title={title} description={description} picker={inspectWorksheets ? null : picker}>
       {(reference !== undefined && chosen !== undefined || check?.sheets.some(sheet => sheet.pickedSheetIds !== undefined)) && <>
       {reference !== undefined && chosen && <SpreadsheetRow name={chosen.name} versions={chosen.versions} versionId={reference.chosenVersionId ?? chosen.currentVersionId} note={note}
         worksheets={worksheets} picked={chosenSheetIds} mode={reference.several ? "many" : "one"} max={reference.several ? MAX_SELECTED_WORKBOOK_SOURCES : undefined} busy={busy} locked={locked} worksheetsReady={worksheetsState === "ready" && !reading}

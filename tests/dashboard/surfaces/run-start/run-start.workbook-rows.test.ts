@@ -185,6 +185,7 @@ it("reruns the original person and mode with both saved worksheets and the picke
   }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
   await h.settle();
   assert.equal(checkboxRows().length, 0); assert.equal(document.querySelector(".launch-dialog textarea") === null, true);
+  assert.equal(h.buttons().some(button => ["Change spreadsheet", "Roster version", "Remove Roster"].includes(h.buttonName(button))), false);
   const picker = h.buttons().find(button => h.buttonName(button) === "Roster worksheets, 2 worksheets"); assert.ok(picker);
   await act(async () => picker.click());
   assert.deepEqual([...document.body.querySelectorAll('[role="menuitemcheckbox"]')].map(item =>
