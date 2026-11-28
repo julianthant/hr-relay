@@ -43,7 +43,7 @@ export interface WorkbookLibraryRepository {
   hasQueuedOperation(libraryId: string): boolean;
   snapshot(value: unknown): z.infer<typeof WorkbookSnapshotSchema>;
   runOperations(runId: string): readonly WorkbookOperationRecord[];
-  catalog(): readonly WorkbookLibraryEntry[];
+  catalog(at?: string): readonly WorkbookLibraryEntry[];
   libraryState(libraryId: string): WorkbookLibraryState;
   /** Replaces the entry's last finished SharePoint sync. */
   recordSync(libraryId: string, record: WorkbookLibrarySyncRecord): void;
@@ -422,9 +422,8 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       const source = deps.repository.libraryVersion(libraryId);
       return importLocalWorkbook(decodeEditableWorkbook({ ...source.workbook, libraryId: undefined, name: request.name }), request.tags);
     },
-    catalog: () => deps.repository.catalog().map(entry => entry.sync !== undefined && running.has(entry.libraryId)
+    catalog: () => deps.repository.catalog(deps.clock.now().toISOString()).map(entry => entry.sync !== undefined && running.has(entry.libraryId)
       ? { ...entry, sync: { ...entry.sync, state: 'running' as const } } : entry),
-    hasRunningSync: () => running.size !== 0,
     libraryVersion: (libraryId: string, versionId?: string) => deps.repository.libraryVersion(input(WorkbookIdSchema, libraryId), versionId === undefined ? undefined : input(WorkbookIdSchema, versionId)),
     libraryActionRecord: (libraryId: string, operationId: string) => deps.repository.libraryActionRecord(input(WorkbookIdSchema, libraryId), input(WorkbookIdSchema, operationId)),
     libraryActionStatus(libraryId: string, operationId: string) {
@@ -451,8 +450,12 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       signal.throwIfAborted();
       const apply = (workbook?: EditableWorkbookWire) => { assertCurrent(); return deps.repository.libraryAction(libraryId, action, deps.clock.now().toISOString(), workbook); };
       if (action.change.kind === 'sync') return tracked(libraryId, () => withDownloadedWorkbook(libraryId, action.operationId, signal, apply));
-      return action.change.kind === 'create-version' && action.change.from.kind === 'sharepoint'
-        ? withDownloadedWorkbook(libraryId, action.operationId, signal, apply) : apply();
+      if (action.change.kind === 'create-version' && action.change.from.kind === 'sharepoint') {
+        const name = action.change.name.trim();
+        if (state.versions.some(version => version.name.trim() === name)) throw new WorkbookLibraryError('WORKBOOK_VERSION_NAME_EXISTS');
+        return withDownloadedWorkbook(libraryId, action.operationId, signal, apply);
+      }
+      return apply();
     },
     create(value: unknown): SavedWorkbook {
       const workbook = input(EditableWorkbookSchema, value);

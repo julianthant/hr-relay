@@ -29,7 +29,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const { toast } = useToasts();
   const [openId, setOpenId] = useState<string>();
   const wiring = useSpreadsheetWiringAdapter(true, openId ?? null, true);
-  const { adapter, catalog, compatibility, catalogLoading, catalogError, openError, draft, pendingLibraries } = wiring;
+  const { adapter, catalog, compatibility, catalogLoading, catalogRefreshing, catalogError, openError, draft, pendingLibraries } = wiring;
   const [dialog, setDialog] = useState<{ kind: DialogKind; id: string }>();
   const [importDraft, setImportDraft] = useState<ImportDraft>();
   const [sharePoint, setSharePoint] = useState(false);
@@ -72,7 +72,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
     else setDialog({ kind: action, id });
   };
   const bank = operatorTags(sheets);
-  const rows: RowActions = { open: setOpenId, version: id => setDialog({ kind: 'versions', id }), menu, logs: sheet => { if (sheet.run) onOpenRun?.(sheet.run.id, sheet.run.day); },
+  const rows: RowActions = { open: setOpenId, version: id => { void adapter.refreshCatalog(); setDialog({ kind: 'versions', id }); }, menu, logs: sheet => { if (sheet.run) onOpenRun?.(sheet.run.id, sheet.run.day); },
     tags: (id, tags) => void change(id, { kind: 'set-tags', tags: [...tags] }), bank };
   const warned = useRef(false);
   const back = () => {
@@ -162,7 +162,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
   const pendingNote = (entries: readonly WorkbookLibraryEntry[]) => <span className="inline-flex min-h-6 items-center gap-2"><Loader2 aria-hidden className={`${dsIcon.md} animate-spin motion-reduce:animate-none`} />{entries.map(entry => <span key={entry.libraryId} className="inline-flex items-center gap-1">{syncing.current.has(entry.libraryId) ? `Syncing ${entry.name} isn't confirmed yet.` : `The change to ${entry.name} isn't confirmed yet.`}<V2Button look="line" onClick={() => void checkPending(entry.libraryId)}>Check result</V2Button></span>)}</span>;
   return <section aria-label="Spreadsheets" className="hub-sheets-library settings-compact-page min-w-0">
     {importDraft ? <DraftDetail draft={importDraft} bank={bank} fields={fields} adding={adding} onChange={setImportDraft} onDiscard={discardDraft} onAdd={() => addDraft(importDraft)} />
-    : openId && open ? (<SheetDetail key={openId} sheet={open} onBack={back} onMenu={action => menu(openId, action)} onVersion={() => setDialog({ kind: 'versions', id: openId })}>
+    : openId && open ? (<SheetDetail key={openId} sheet={open} onBack={back} onMenu={action => menu(openId, action)} onVersion={() => rows.version(openId)}>
       {pendingLibraries.includes(openId) && open && <div className="mb-2">{pendingNote([catalog.filter(item => item.libraryId === openId)[0]])}</div>}
       {draft ? <SheetDetailGrid sheet={open} document={draft.document} fields={fields} onMap={(worksheet, patch) => void saveMapping(worksheet, patch)} onCopy={copyAll} copying={copying} />
         : openError ? <Grey className="ds-text-ui">This spreadsheet couldn't be opened. <V2Button look="plain" onClick={back}>Back</V2Button></Grey>
@@ -178,7 +178,7 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
             : <Grey className="ds-text-ui">No spreadsheets match.</Grey>}
         </div>}</div>
     </>}
-    {dialog && target && <SheetDialog kind={dialog.kind} sheet={target} onClose={() => setDialog(undefined)} actions={{
+    {dialog && target && <SheetDialog kind={dialog.kind} sheet={target} deleteReady={!catalogLoading && !catalogRefreshing && !catalogError} onClose={() => setDialog(undefined)} actions={{
       rename: name => void change(target.id, { kind: 'rename', name }),
       clone: async name => {
         const result = await adapter.cloneLibrary(target.id, { name });
@@ -190,6 +190,12 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
       createVersion: (name, from) => void change(target.id, { kind: 'create-version', name, from, useNow: false },
         from.kind === 'sharepoint' ? 'Created the version' : `Created ${name}`, "Couldn't create the version"),
       renameVersion: (versionId, name) => void change(target.id, { kind: 'rename-version', versionId, name }, `Renamed to ${name}`, "Couldn't rename the version"),
+      canDeleteVersion: async versionId => {
+        const refreshed = await adapter.refreshCatalog();
+        if (refreshed?.state !== 'ready') return false;
+        const entry = refreshed.catalog.find(item => item.libraryId === target.id && !item.state.removed);
+        return entry !== undefined && sheetOf(entry).versions.find(version => version.id === versionId)?.inUse === false;
+      },
       deleteVersion: versionId => void change(target.id, { kind: 'delete-version', versionId }, 'Deleted the version', "Couldn't delete the version"),
       remove: () => void change(target.id, { kind: 'remove' }).then(removed => { if (removed && openId === target.id) setOpenId(undefined); }),
     }} />}
