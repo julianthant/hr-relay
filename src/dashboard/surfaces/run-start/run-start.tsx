@@ -441,7 +441,8 @@ export function RunStartDialog({
   const typedInputRef = useRef<HTMLTextAreaElement>(null);
 
   const preview = useRunStartInputPreview(draft, savedRows, inputRun, typedValues, snapshot, rerunSource, pdfSurface, pdfInput);
-  const openRows: readonly OpenStepRow[] = useMemo(() => openRowDrafts.map(open => rowOpenFold(open, { submissions: preview.submissions })),
+  const openRows: readonly OpenStepRow[] = useMemo(() => openRowDrafts.map(({ row, form, draft }) =>
+    rowOpenFold(row, form, draft, { submissions: preview.submissions })),
     [openRowDrafts, preview.submissions]);
   const stepOmissions = useMemo(() => stepEntries(openRows), [openRows]);
 

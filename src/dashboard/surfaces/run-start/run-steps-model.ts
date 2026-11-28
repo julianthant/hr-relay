@@ -213,8 +213,8 @@ export function sourceTypedFacts(row: StepRow, snapshot: RerunValuesSnapshot): R
   return snapshot.typed?.find(entry => entry.step === target.step && entry.workflow === target.workflow)?.facts;
 }
 
-export function rowOpenFold(open: Omit<OpenStepRow, "fold">, input: StepOmissionInput): OpenStepRow {
-  return { ...open, fold: foldStepOmissionFacts(open.form, open.draft, input) };
+export function rowOpenFold(row: StepRow, form: StepOmissionForm, draft: StepOmissionDraft, input?: StepOmissionInput): OpenStepRow {
+  return { row, form, draft, fold: foldStepOmissionFacts(form, draft, input) };
 }
 
 /** A served or typed value as the field shows it: dates read MM/DD/YYYY, a list one per line. */
