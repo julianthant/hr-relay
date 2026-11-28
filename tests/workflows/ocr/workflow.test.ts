@@ -173,7 +173,7 @@ describe("child-only OCR document graph", () => {
     assert.equal(children.policy.cascadeCancel, "cascade");
     assert.equal(lookup.join, "all-settled");
     assert.deepEqual(workflowTerminalResultExecution(descriptor).dependsOn, ["read-result", "approve-records", "build-review"]);
-    assert.deepEqual(completed.dependsOn, ["build-review", "read-pages", "lookup-identities", "lookup-signers"]);
+    assert.deepEqual(completed.dependsOn, ["build-review", "read-pages", "lookup-identities", "lookup-signers", "read-roster-choice"]);
     assert.deepEqual(descriptor.timeline.map(step => step.key), ["source-pages", "page-readings", "review-records", "identity-lookups", "signer-lookups", "approval"]);
     assert.equal(children.policy.visibility, "hidden-unless-failed");
     assert.equal(lookup.policy.visibility, "inline");
@@ -237,7 +237,7 @@ describe("child-only OCR document graph", () => {
     const head = { document: manifest.document, pageCount: 3, fingerprint: manifest.fingerprint };
     assert.deepEqual(source, { manifest: head });
     assert.deepEqual(recorded.recorded, [{ direction: "read", field: "manifest", value: head }]);
-    assert.deepEqual(children.dependsOn, ["render-pages", "read-source-pages"]);
+    assert.deepEqual(children.dependsOn, ["render-pages", "read-source-pages", "read-roster-choice"]);
     assert.deepEqual(children.bind({ input: request, outputs: { "render-pages": rendered, "read-source-pages": source } }),
       inputs.map(page => ({ page, reading: { kind: "subscription" } })));
     assert.throws(() => children.bind({ input: request, outputs: { "render-pages": rendered,

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
-import { OcrInputSchema, OCR_INPUT_EXAMPLE } from "../../../../src/models/workflows/ocr/input.js";
+import { OcrCanonicalInputSchema, OcrInputSchema, OCR_INPUT_EXAMPLE } from "../../../../src/models/workflows/ocr/input.js";
 import { PreManualOcrReviewCheckpointSchema, OcrReviewSeedSchema, buildOcrReviewSeed, hydrateOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
 import { RosterRowFactsSchema } from "../../../../src/rules/matching/roster-match.js";
 import { IsoInstantSchema, WorkflowIdSchema, type TaskId } from "../../../../src/rules/identity/ids.js";
@@ -101,7 +101,7 @@ const definition = (includeRecordIds: boolean) => defineWorkflow({
   id: "ocr", requiredWorkbookFields: [], version: 1, code: "oc", label: "OCR", icon: "FileScan", category: "documents",
   summary: "Reads every original page, groups records and retains identity lookup outcomes for review.",
   input: retainedInput, canonicalInput: defineCanonicalInput(retainedInput,
-    retainedInput.extend({ approval: retainedInput.shape.approval.removeDefault() }), [retainedInput.parse({ ...OCR_INPUT_EXAMPLE, roster: null })]),
+    OcrCanonicalInputSchema.extend({ roster: retainedRoster.nullable() }), [retainedInput.parse({ ...OCR_INPUT_EXAMPLE, roster: null })]),
   inputSubject: "document", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
   capabilities: { review: true, editData: false }, verdicts: [], details: [], surfaces: {},
   role: defineWorkflowRole({ kind: "composition" }),

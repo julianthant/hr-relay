@@ -123,7 +123,7 @@ export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key
 });
 export function buildSourcePages({ gate, group, task, result }: WorkflowAuthor<typeof OcrInputSchema>) {
   const { choice, bound: rosterChoice } = buildRosterChoice<typeof OcrInputSchema>({ gate, task });
-  const rendered = task({ id: "render-pages", contract: ExtractPdfPages, replay: "checkpoint" }, [rosterChoice], ({ input }) => ({ document: input.document }));
+  const rendered = task({ id: "render-pages", contract: ExtractPdfPages, replay: "checkpoint" }, [], ({ input }) => ({ document: input.document }));
   const source = task({ id: "read-source-pages", contract: ReadOcrSourcePages, replay: "checkpoint" }, [rendered],
     ({ input, outputs }) => ({ request: input, rendered: outputs["render-pages"] }));
   return {
@@ -140,7 +140,7 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
     target: { id: WorkflowIdSchema.parse("ocr-page"), input: OcrPageWorkflowInputSchema, result: OcrPageReadingSchema },
     edgeId: "ocr-pages", cardinality: "many", await: "terminal", join: "all-settled",
     policy: { ...childPolicy, visibility: "hidden-unless-failed" }
-  }, [rendered, source], {
+  }, [rendered, source, rosterChoice], {
     bind: ({ input, outputs }) => {
       const work = ocrPageWorkInputs(input, outputs["render-pages"]);
       if (work.manifest.fingerprint !== outputs["read-source-pages"].manifest.fingerprint) throw new Error("OCR source pages changed after they were bound.");

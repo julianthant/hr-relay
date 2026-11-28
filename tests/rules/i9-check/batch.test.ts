@@ -93,10 +93,10 @@ it("merges the same approved person across PDFs and refuses contradictory identi
 });
 it("rejects roster membership, malformed dates and missing fields rather than inventing retention facts", () => {
   const f = fixture(), facts = reference(f);
-  expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: retainedRead({ ...facts, snapshot: { ...facts.snapshot, rows: facts.snapshot.rows.toReversed() } }) })).toThrow("i9-check-reference-membership-mismatch");
+  expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: retainedRead({ ...facts, snapshot: { ...facts.snapshot, rows: facts.snapshot.rows.toReversed() } }) })).toThrow("reference must retain exact keys, fields and row membership");
   for (const field of ["eid", "ppsEid", "separationDate", "roster.action"]) {
     const rows = facts.snapshot.rows.map(row => ({ ...row, matches: row.matches.map(match => ({ ...match, values: match.values.filter(cell => cell.fieldId !== field) })) }));
-    expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: retainedRead({ ...facts, snapshot: { ...facts.snapshot, rows } }) })).toThrow("i9-check-reference-field-unavailable");
+    expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: retainedRead({ ...facts, snapshot: { ...facts.snapshot, rows } }) })).toThrow("reference must retain exact keys, fields and row membership");
   }
   const rows = facts.snapshot.rows.map(row => ({ ...row, matches: row.matches.map(match => ({ ...match, values: match.values.map(cell => cell.fieldId === "separationDate" ? { ...cell, value: "invalid" } : cell) })) }));
   expect(() => i9CheckPersonRequests({ request: f.request, people: f.people, reference: retainedRead({ ...facts, snapshot: { ...facts.snapshot, rows } }) })).toThrow("i9-check-roster-date-invalid");

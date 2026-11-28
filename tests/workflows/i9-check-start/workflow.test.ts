@@ -13,7 +13,8 @@ it("compiles one PDF batch with admitted OCR and existing person children, one w
   expect(descriptor.surface).toEqual({ shape: "single" });
   expect(descriptor.timeline.map(step => step.key)).toEqual(["documents", "roster-reference", "retention"]);
   expect(nodes.filter(node => node.kind === "child-run").map(node => node.target.id)).toEqual(["ocr", "i9-check"]);
-  expect(nodes.every(node => node.kind === "task" || node.kind === "child-run")).toBe(true);
+  expect(nodes.filter(node => node.kind === "gate").map(node => node.id)).toEqual(["worksheet-row-choice"]);
+  expect(nodes.every(node => node.kind === "task" || node.kind === "child-run" || node.kind === "gate")).toBe(true);
   expect(workflowProjections(descriptor).contracts.every(contract => contract.effect === "read")).toBe(true);
   expect(nodes.filter(node => node.kind === "task" && node.uses.id === "workbooks/read-result")).toHaveLength(1);
   expect(descriptor.artifactProjections).toEqual([{ id: "i9-check-tracker", source: { nodeId: "publish-results", fieldPath: "tracker" }, keyFields: ["batchKey"], sink: "xlsx-retention", blocking: true }]);

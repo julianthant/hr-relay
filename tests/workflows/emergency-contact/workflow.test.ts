@@ -82,7 +82,7 @@ it("carries the run's OnBase pick to every member and keeps it out of the OCR ch
     assert.deepEqual(z.array(EmergencyContactMemberInputSchema).parse(members.bind(picked)).map(member => member.onbaseFiling), [pick, pick]);
     const ocr = descriptorRuntimeNodes(descriptor).find(node => node.id === "read-document");
     assert.ok(ocr?.kind === "child-run");
-    assert.equal("onbaseFiling" in OcrInputSchema.parse(ocr.bind({ input: picked.input, outputs: {} })), false);
+    assert.equal("onbaseFiling" in OcrInputSchema.parse(ocr.bind({ input: picked.input, outputs: { "read-roster-choice": { choice: null } } })), false);
   }
 });
 

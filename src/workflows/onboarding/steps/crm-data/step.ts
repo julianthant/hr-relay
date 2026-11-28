@@ -131,7 +131,7 @@ const group = Object.freeze({
     picks: [{ nodeId: ONBOARDING_ROSTER_GATE_ID, title: "Saved onboarding roster rows",
       columns: ["Email", "Legal name", "Preferred name"],
       rows: [{ cells: ["bea.morrow@example.test", "Morrow, Bea Avery", "Morrow, Bea Avery"] }],
-      question: { title: "Choose roster row", context: "If the exact email is missing or has several matches, Logs asks you to choose and revalidate the saved worksheet and row before reading CRM." } }],
+      question: { title: "Choose roster row", context: "When saved rows for the same email disagree, Logs asks you to choose a row before reading CRM. Agreeing rows proceed as one hire." } }],
   } as const
 });
 const entries = defineStepEntries(group);
@@ -153,7 +153,7 @@ export function buildCrmData(author: WorkflowAuthor<typeof OnboardingInput>) {
 export const onboardingCrmDataDefinition = defineStep({
   group, build: buildCrmData,
   nodePurposes: [
-    { nodeId: ONBOARDING_ROSTER_GATE_ID, purpose: "Hold missing or duplicate exact-key roster matches for a revalidated worksheet and row choice." },
+    { nodeId: ONBOARDING_ROSTER_GATE_ID, purpose: "Hold missing or conflicting exact-key roster matches for a revalidated worksheet and row choice." },
     { nodeId: "crm-source", purpose: "Read the exact email-bound CRM hire record through the existing driver task." },
     { nodeId: "hire-plan", purpose: "Validate hire values and split the roster legal and lived names against the CRM record." },
   ],
