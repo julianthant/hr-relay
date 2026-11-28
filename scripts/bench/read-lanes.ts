@@ -331,12 +331,10 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
           Reflect.deleteProperty(window, "relayG4Click");
           const started = Promise.withResolvers<void>();
           Reflect.set(window, "relayG4WorkStart", started.promise);
-          const deadline = AbortSignal.timeout(timeout);
-          const expire = () => { started.reject(new Error("read-lanes-g4-pointerup-timeout")); };
-          deadline.addEventListener("abort", expire, { once: true });
+          const deadline = setTimeout(() => { started.reject(new Error("read-lanes-g4-pointerup-timeout")); }, timeout);
           void started.promise.catch(() => undefined);
           node.addEventListener("pointerup", () => {
-            deadline.removeEventListener("abort", expire);
+            clearTimeout(deadline);
             Reflect.set(window, "relayG4Click", performance.timeOrigin + performance.now());
             started.resolve();
           }, { once: true });
