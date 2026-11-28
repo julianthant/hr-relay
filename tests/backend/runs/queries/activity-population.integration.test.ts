@@ -187,6 +187,8 @@ describe("selected Analytics population", () => {
         payload: { kind: "span", event },
       }));
     }
+    // Admit the raw fixture writes before tracing the report's source queries.
+    f.database.summaryWorkflows();
     const { value: report, statements } = traceSqliteStatements(() => queryActivitySummaries(f.database, { from: "2026-10-01", to: "2026-10-02", generatedAt: at }, {
       descriptors: { resolve: workflow => workflow === "person-lookup" ? personLookupDescriptor : undefined },
       ledger: { foldActivityRange: () => ({ systems: [] }) },
