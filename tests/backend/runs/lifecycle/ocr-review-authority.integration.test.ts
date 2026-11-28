@@ -65,6 +65,30 @@ it("fails an Emergency Contact run with the reason its only OCR page failed", as
   assert.equal(database.authority.ocrReviews.latest(run.envelope.runId), undefined);
 });
 
+it("ends an Emergency Contact run with the recorded reason its only OCR page was cancelled", async () => {
+  const { canonical, database, parentRun, run, clock } = await world.fixture({ coordinator: true, dryRun: true, holdPages: true });
+  const [page] = database.authority.runs.listChildren(run.envelope.runId);
+  assert.ok(page);
+  const reason = "The wrong page was attached.";
+  const cancelled = canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard",
+    requestedBy: "local-operator", requestedAt: clock.now().toISOString(), reason,
+    target: { runId: page.envelope.runId, expectedVersion: page.version } });
+  assert.equal(cancelled.state, "applied", JSON.stringify(cancelled));
+  assert.deepEqual(database.authority.dependencies.cancellationOutcome(page.envelope.runId), { cancelledBy: "operator", reason });
+
+  const signal = new AbortController().signal;
+  const ocr = await canonical.step(parentRun, signal);
+  assert.equal(ocr.run.envelope.runId, run.envelope.runId);
+  assert.ok(ocr.outcome.state === "failed");
+  const parent = await canonical.step(parentRun, signal);
+  assert.equal(parent.run.envelope.runId, parentRun.envelope.runId);
+  assert.ok(parent.outcome.state === "failed");
+  const failure = database.authority.failures.get(parent.outcome.failureId);
+  assert.equal(failure?.summary, reason);
+  assert.notEqual(failure?.code, "OCR_NO_REVIEWABLE_RECORDS");
+  assert.equal(database.authority.ocrReviews.latest(run.envelope.runId), undefined);
+});
+
 it("ends an Emergency Contact PDF containing only blank pages before approval", async () => {
   const { canonical, database, parentRun, run } = await world.fixture({ coordinator: true, dryRun: true, holdPages: true, pageCount: 2 });
   const signal = new AbortController().signal;

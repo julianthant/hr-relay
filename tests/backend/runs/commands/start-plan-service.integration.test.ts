@@ -297,7 +297,7 @@ it("rolls a canonical plan back with its enclosing transaction and retains the e
   assert.ok(h.database.authority.startPlans.get(accepted.startPlanId));
 });
 
-it("checks Emergency Contact OCR at planning and confirmation and refuses a newly revoked session", async () => {
+it.each(["revoked session", "missing OCR model"] as const)("checks Emergency Contact OCR at planning and confirmation and refuses a %s", async fault => {
   const descriptor = compileWorkflow(emergencyContactWorkflow).descriptor;
   const account = await chatGptFixture(undefined, profileFixtures.create);
   try {
@@ -326,7 +326,8 @@ it("checks Emergency Contact OCR at planning and confirmation and refuses a newl
     assert.equal(wire.refused.length, 0, JSON.stringify(wire.refused));
     assert.equal(wire.planned.length, 1);
     assert.equal(catalogCalls(), 1);
-    account.setModelsHook(async () => Response.json({ detail: "withheld" }, { status: 401 }));
+    if (fault === "revoked session") account.setModelsHook(async () => Response.json({ detail: "withheld" }, { status: 401 }));
+    else account.setModels({ models: [{ slug: "gpt-5", display_name: "Other model", visibility: "list" }] });
     assert.equal(ocrReadiness.ocrProviderAvailable(), true);
     const unexpected = (): never => assert.fail("unrequested Start effect");
     const kernel = createCommandKernel({ ...ocrReadiness, authority: h.database, lifecycle: testRunService(h.database, CLOCK), clock: CLOCK,
@@ -342,6 +343,12 @@ it("checks Emergency Contact OCR at planning and confirmation and refuses a newl
     assert.equal(catalogCalls(), 2);
     assert.equal(h.database.authority.startPlans.get(wire.startPlanId)?.consumedBy, undefined);
     assert.deepEqual(h.database.authority.runs.listByWorkflow(descriptor.id), []);
+    if (fault === "missing OCR model") {
+      assert.equal(account.service.readStatus().connection.state, "completed");
+      assert.equal(ocrReadiness.ocrProviderAvailable(), false);
+      await assert.rejects(h.service.prepareAndPlan?.(start(true), signal) ?? assert.fail("missing prepared Start service"),
+        { message: ERROR_CATALOG.PROVIDER_UNAVAILABLE.text });
+    }
   } finally { await account.cleanup(); }
 });
 
