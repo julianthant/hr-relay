@@ -105,7 +105,9 @@ async function interruptMidRun(emplIds: readonly string[]) {
   await until(() => markers().find(name => name === `stop-shutdown-${String(workerPid)}`), "the parent's worker-stop", diagnostics);
   await until(() => runs().every(run => run.state === "queued") || undefined, "the held run to park before its search returns", diagnostics);
   writeFileSync(join(barrier, "release"), "");
-  const exit = await Promise.race([exited, new Promise<never>((_, reject) => setTimeout(() => { reject(new Error(`dashboard did not exit\n${diagnostics()}`)); }, scaledMs(90_000)))]);
+  const deadline = Promise.withResolvers<never>();
+  const timer = setTimeout(() => { deadline.reject(new Error(`dashboard did not exit\n${diagnostics()}`)); }, scaledMs(90_000));
+  const exit = await Promise.race([exited, deadline.promise]).finally(() => clearTimeout(timer));
 
   assert.deepEqual(exit, { code: 0, signal: null }, diagnostics());
   const firstPhase = output().indexOf('"phase":"closing transport"');
@@ -215,22 +217,37 @@ it("an idle Person Lookup worker claims and starts a task within two seconds of 
 }, 180_000);
 
 it.skipIf(process.platform === "win32")("one terminal SIGINT drains two idle worker children and logs every shutdown phase through exit 0", async () => {
-  const { child, post, origin, credential, markers, diagnostics, exited, output } = await startDashboard(true);
+  const { f, child, post, origin, credential, markers, diagnostics, exited, output } = await startDashboard(true);
   await startIdleWorkers(post, credential, 2);
   assert.ok(child.pid);
   const stream = await fetch(`${origin}/events/v1?topics=dashboard-day:2026-11-05`, { headers: { "x-relay-session": credential } });
   assert.equal(stream.status, 200);
+  {
+    using log = new DatabaseSync(join(f.stateRoot, "dashboard.db"), { readOnly: true });
+    const idle = log.prepare("SELECT count(DISTINCT worker_id) AS count FROM debug_events WHERE json_extract(payload_json,'$.payload.event.reason')='worker-idle'");
+    await until(() => idle.get()?.count === 2 || undefined, "both workers to become idle and commit their idle events", diagnostics);
+  }
   // Model a busy dashboard whose workers finish handling the terminal interrupt first.
   process.kill(child.pid, "SIGSTOP");
   try {
     process.kill(-child.pid, "SIGINT");
-    await until(() => markers().filter(name => name.startsWith("exit-0-")).length === 2 || undefined, "both workers to finish the terminal interrupt", diagnostics);
+    const exits = await until(() => {
+      const observed = markers().filter(name => name.startsWith("exit-"));
+      return observed.some(name => !name.startsWith("exit-0-")) || observed.length === 2 ? observed : undefined;
+    }, "both workers to finish the terminal interrupt", diagnostics);
+    assert.equal(exits.filter(name => name.startsWith("exit-0-")).length, 2, diagnostics());
   } finally { process.kill(child.pid, "SIGCONT"); }
   assert.deepEqual(await exited, { code: 0, signal: null }, diagnostics());
   assert.equal(markers().filter(name => name.startsWith("exit-0-")).length, 2, diagnostics());
   assert.deepEqual([...output().matchAll(/"message":"dashboard shutdown","phase":"([^"]+)"/gu)].map(match => match[1]),
     ["closing transport", "stopping workers", "closing store", "backing up", "done"], diagnostics());
   assert.doesNotMatch(output(), /unhandled-rejection|UnhandledPromiseRejection/iu);
+  using state = new DatabaseSync(f.path, { readOnly: true });
+  using timeline = new DatabaseSync(join(f.stateRoot, "timeline.db"), { readOnly: true });
+  const workerEnds = "SELECT id, payload_json FROM timeline_events WHERE kind='span.ended' AND json_extract(payload_json,'$.payload.event.kind')='worker' ORDER BY cursor";
+  const ended = state.prepare(workerEnds).all();
+  assert.equal(ended.length, 2, diagnostics());
+  assert.deepEqual(timeline.prepare(workerEnds).all(), ended, diagnostics());
 }, 180_000);
 
 it.each(["stream-close", "transport-close", "worker-stop"] as const)("Ctrl+C completes the verified backup before exiting 1 after %s fails", async fault => {

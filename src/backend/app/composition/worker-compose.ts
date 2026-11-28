@@ -411,7 +411,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   let removeStopListeners: (() => void) | undefined;
   let router: IpcRouter | undefined;
   const stopController = new AbortController();
-  let channelFailure: unknown, announcedWorkerReady = false;
+  let channelFailure: unknown, announcedWorkerReady = false, receivedProcessSignal = false;
   const logChannel = launch === undefined ? undefined : createWorkerLogChannel(error => {
     channelFailure = error;
     database.refuseWritesAfterLogFailure(error);
@@ -533,6 +533,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   })();
 
   const forwardStop = (reason: string) => (): void => {
+    receivedProcessSignal = true;
     stopController.abort(new Error(reason));
   };
   const onSigint = forwardStop(`worker ${workerId} received SIGINT`);
@@ -778,8 +779,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       code: "WORKER_CLEANUP_FAILED", reason: "resource-closure-unproved" }, { kind: "worker", workerId }); }
     catch (loggingError) { cleanupErrors.push(loggingError); }
   }
-  // Before readiness the parent reconciles startup records from state after the worker exits.
-  if (announcedWorkerReady) {
+  // The parent reconciles from state on exit when startup has not announced readiness or a process signal may have reached the parent too.
+  if (announcedWorkerReady && !receivedProcessSignal) {
     try { await logChannel?.drain(); } catch (error) { cleanupErrors.push(error); }
   }
   removeLogPublisher?.();
