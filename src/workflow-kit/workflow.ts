@@ -911,7 +911,7 @@ function deriveStepOmissions(
         throw new Error(`${id}: ${owner} produces ${node.kind} node "${produced}"; only task nodes are ever asserted`);
       }
       if (node.dryRun === "stop-before-publish") {
-        throw new Error(`${id}: ${owner} produces publishing task "${produced}"; manual values cannot stand for publication`);
+        throw new Error(`${id}: ${owner} produces publishing task "${produced}"; a publishing task always runs`);
       }
       if (typeof manual.produces[produced] !== "function") {
         throw new Error(`${id}: ${owner} producer for "${produced}" is not a function`);

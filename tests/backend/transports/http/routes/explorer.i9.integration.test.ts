@@ -184,7 +184,8 @@ it("defaults the retention recommendation to Shred for nobody found and manual r
 
 it("serves the I-9 Lookup search and every Section 2 status without inventing a person-pick gate", async () => {
   const spec = await review("i9-lookup");
-  assert.deepEqual(spec.options, []);
+  assert.deepEqual(spec.options, [{ id: "skip-lookup", label: "Look up Section 2 signer", initial: "run",
+    choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }] }]);
   assert.deepEqual(spec.sessions, [{ system: "i9" }]);
   assert.deepEqual(blocks(spec, "lookup", "click").map(click => click.target), ["Search Options", "Clear Search Filters & Results", "Search"]);
   const cards = blocks(spec, "lookup", "card");

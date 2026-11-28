@@ -259,8 +259,10 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
       const journal = lifecycle.inspectJournal(repositories, "delegation-invocation", invocation, { kind: "none" });
       if (journal.state === "divergent") throw new Error("delegation-replay-divergent");
       let manifest = repositories.delegationManifests.get(manifestId);
-      // Typed values apply to one person: released with more than one member, they are refused.
-      if ((parent.envelope.stepOmissions?.length ?? 0) > 0 && plan.children.length > 1) throw new RunContinuationRefusedError("delegation-typed-values-many-members");
+      // A parent-only stop or manual action carries no values that could cross member boundaries.
+      const memberSensitive = parent.envelope.stepOmissions?.some(entry => entry.workflow !== undefined || Object.keys(entry.facts).length > 0
+        || !descriptor.stepOmissions.some(spec => spec.step === entry.step && (spec.stop !== undefined || spec.off === "manual")));
+      if (memberSensitive === true && plan.children.length > 1) throw new RunContinuationRefusedError("delegation-typed-values-many-members");
       const stepOmissions = delegatedStepOmissions(parent.envelope.stepOmissions, target.id);
       if (journal.state === "new") {
         if (manifest !== undefined) throw new Error("delegation-manifest-orphaned");

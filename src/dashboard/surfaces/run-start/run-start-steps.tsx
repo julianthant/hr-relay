@@ -67,7 +67,7 @@ export function RunStartSteps({
                       const note = retained !== undefined ? included ? undefined : "Uses the earlier result."
                         : forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.`
                         : needs.length > 0 ? `Needs ${stepLabels(needs)}. Turn off if done by hand.`
-                        : oneSubjectOnly ? "One person only." : !included && row.stop !== undefined ? row.stop
+                        : oneSubjectOnly ? "One person only." : !included && row.stop !== undefined ? [row.note, row.stop].filter(Boolean).join(" ")
                           : doneByHand && !included ? "Done outside Relay." : row.note;
                       const failure = stepsFailure !== null && stepsFailure.rowKey === row.key ? { [stepsFailure.fieldKey]: stepsFailure.text } : {};
                       return <RunListRow key={row.key} title={row.label} description={note}

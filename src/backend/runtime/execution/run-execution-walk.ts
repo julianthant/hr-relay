@@ -306,7 +306,7 @@ export async function walkRunPlan(
     if (entry.mode === "omitted" || entry.mode === "manual") {
       const reason = omissionPlan.stopped.has(String(node.id)) ? "required-evidence-unavailable" : "step-omitted";
       skippedReasons.set(String(node.id), reason);
-      if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason });
+      if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "step-omitted" });
       const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
       emit({
         t: "span.started", kind: "task",

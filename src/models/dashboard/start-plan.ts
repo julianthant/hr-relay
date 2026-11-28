@@ -35,8 +35,9 @@ const SHARED_REQUEST_LEAVES = {
   workbookReferences: z.array(WorkbookActiveSelectionSchema).optional(),
 } as const;
 
-const hasStartSelection = (request: { rerunSource?: unknown; selectedStepKeys?: string[] | undefined }) =>
-  request.rerunSource !== undefined || request.selectedStepKeys?.length !== 0;
+const hasStartSelection = (request: { rerunSource?: unknown; selectedStepKeys?: string[] | undefined; stepOmissions?: z.infer<typeof StepOmissionsSchema> | undefined }) =>
+  request.rerunSource !== undefined || request.selectedStepKeys?.length !== 0
+  || request.stepOmissions?.some(entry => entry.workflow === undefined) === true;
 const hasStartInput = (request: { rerunSource?: unknown; submissions: unknown[] }) =>
   request.submissions.length > 0 || request.rerunSource !== undefined;
 

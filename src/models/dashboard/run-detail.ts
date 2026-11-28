@@ -63,7 +63,7 @@ import {
   wireResourceSchema,
 } from "./primitives.js";
 import { QueueStatusSchema } from "./projection.js";
-import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../events/types.js";
+import { NoteFieldWireSchema, ObservedDataPointWireSchema, SpanNotRunReasonSchema } from "../events/types.js";
 
 /** Every `action` option of a served decision names an action served beside it, so a decision never offers an unreachable control. */
 function refineDecisionActions(decision: RunDecisionWire | undefined, actions: readonly Pick<ActionDescriptorWire, "key">[], context: z.RefinementCtx, path: (string | number)[]): void {
@@ -86,7 +86,7 @@ export const RunIdentityWireSchema = z.strictObject({
 });
 
 /** The closed `not-run` reasons a conditional node can record — the SAME vocabulary the durable result uses; the timeline never invents a third value. */
-export const TimelineNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]);
+export const TimelineNotRunReasonSchema = SpanNotRunReasonSchema;
 
 /** How long ONE step took, or why that is not a number: the executor's own span measurement for the SAME `(attempt, spanPath)` identity, never a wall-clock reconstruction. */
 export const TimelineDurationSchema = z.discriminatedUnion("state", [

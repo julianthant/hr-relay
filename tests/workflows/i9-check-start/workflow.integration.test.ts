@@ -207,7 +207,10 @@ describe("I-9 Check Start omissions", () => {
     const { root: { descriptor }, database, run: queued, clock } = f;
     const runId = queued.envelope.runId;
     if (review) for (let i = 0; i < 2; i++) {
-      await f.canonical.execute(queued, signal);
+      const reviewing = await f.canonical.execute(queued, signal);
+      const failures = reviewing.outcomes.flatMap(outcome => outcome.state === "failed"
+        ? [database.authority.failures.get(outcome.failureId)?.summary] : []);
+      expect(database.authority.runs.listChildren(runId).some(child => child.lifecycle.state === "parked-gate"), JSON.stringify(failures)).toBe(true);
       f.approveNext();
     }
     const { run } = await f.canonical.execute(queued, signal);
@@ -230,8 +233,8 @@ describe("I-9 Check Start omissions", () => {
         ? [readDelegationEvidence(database.authority, entry.parentRunId, entry.nodeId)] : []),
     });
     const receiptField = publication ? "workbook.step" : "reason";
-    expect(receipt.output.find(fact => fact.field === receiptField)?.value)
-      .toMatchObject({ value: publication ? "publication" : "retention-results-unavailable" });
+    expect(receipt.output.find(fact => fact.field === receiptField))
+      .toMatchObject({ state: "satisfied", value: { value: publication ? "publication" : "retention-results-unavailable" } });
 
     const reader = f.canonical.lifecycle;
     const descriptors = { resolve: (id: string) => id === descriptor.id ? descriptor : undefined };
