@@ -311,9 +311,10 @@ async function measureG4(shape: Shape, profile: CopyProfile, workspace: string,
     const credentials = operatorCredentials();
     const active = await client.signInProfile({ email: credentials.RELAY_EMAIL, password: credentials.RELAY_PASSWORD });
     const { proof, session } = auth;
-    if (active.state !== "active" || active.profileId !== input.profileId || active.duoState !== "ready" || proof === undefined || session === undefined) {
-      throw new Error("read-lanes-g4-copy-session-unavailable");
-    }
+    if (active.state !== "active") throw new Error(`read-lanes-g4-sign-in-${active.state === "refused" ? active.code : active.state}`);
+    if (active.profileId !== input.profileId) throw new Error("read-lanes-g4-sign-in-profile-mismatch");
+    if (active.duoState !== "ready") throw new Error("read-lanes-g4-sign-in-duo-unavailable");
+    if (proof === undefined || session === undefined) throw new Error("read-lanes-g4-sign-in-headers-missing");
     const browser = await chromium.launch({ headless: true });
     return await withG4Cleanup(async () => {
       const context = await browser.newContext({ locale: "en-US", serviceWorkers: "block", viewport: { width: 1280, height: 800 } });
