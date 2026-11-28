@@ -61,8 +61,9 @@ same rendered note on both commits. Pick an existing Queue row that mounts on th
 node --import tsx scripts/bench/logs-window.ts <base-sha> <target-sha> --fixture <private-json> --output <report-json>
 ```
 
-The benchmark alternates five fresh dashboard launches per commit and uses one Chromium
-window. It times opening Logs from Queue, then entering the query, through the rendered
+The benchmark launches the baseline first because the target upgrades the log files.
+It uses one Chromium window per launch and measures twenty opens on each commit by default.
+It times opening Logs from Queue, then entering the query, through the rendered
 result and two animation frames. The target must serve a matching step-note search response.
 The report contains timings, match counts, failures, and host load. It omits the fixture
 values. The checkout returns to its original commit when the run ends.

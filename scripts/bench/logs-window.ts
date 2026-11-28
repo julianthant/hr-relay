@@ -22,6 +22,7 @@ function percentiles(values: readonly number[]) {
 async function measure({ context, page, origin }: HeadlessCopySession, fixture: z.output<typeof Fixture>, expectIndex: boolean) {
   const { runId, day, workflow, query } = fixture;
   if (context.pages().length !== 1) throw new Error("log-window-bench-window-count");
+  page.setDefaultTimeout(10_000);
   const queryString = new URLSearchParams({ day, view: JSON.stringify({ workflow }) });
   await page.goto(`${origin}/?${queryString.toString()}`);
   const row = page.locator(`[data-demo-row-id="${runId}"] [data-queue-open]`);
@@ -52,7 +53,7 @@ async function measure({ context, page, origin }: HeadlessCopySession, fixture: 
 }
 
 const { positionals, values } = parseArgs({ allowPositionals: true, options: {
-  fixture: { type: "string" }, output: { type: "string" }, runs: { type: "string", default: "5" },
+  fixture: { type: "string" }, output: { type: "string" }, runs: { type: "string", default: "20" },
 } });
 const [base, target] = z.tuple([FullSha, FullSha]).parse(positionals);
 const fixture = Fixture.parse(JSON.parse(readFileSync(z.string().parse(values.fixture), "utf8")));
@@ -86,14 +87,19 @@ async function switchTo(sha: string) {
 async function sample(sha: string, expectIndex: boolean) {
   stop.signal.throwIfAborted();
   await switchTo(sha);
+  const trials: ({ state: "measured"; openMs: number; searchMs: number; matches: number; load: number }
+    | { state: "error"; error: string; load: number })[] = [];
   try {
-    return await withHeadlessCopySignin(async session => {
+    await withHeadlessCopySignin(async session => {
       const hash = createHash("sha256");
       for await (const bytes of createReadStream(join(session.stateRoot, "files", "imported-history.sqlite"))) hash.update(bytes);
       const observed = hash.digest("hex");
       historyDigest ??= observed;
       if (observed !== historyDigest) throw new Error("log-window-bench-history-changed");
-      return { state: "measured" as const, ...await measure(session, fixture, expectIndex), load: loadavg()[0] };
+      for (let index = 0; index < repetitions; index++) {
+        session.signal.throwIfAborted();
+        trials.push({ state: "measured", ...await measure(session, fixture, expectIndex), load: loadavg()[0] });
+      }
     }, { expectedSha: sha, signal: stop.signal, beforeStart({ stateRoot }) {
       const state = openReadOnlyDatabase(join(stateRoot, "state.db"), 250);
       try {
@@ -106,19 +112,17 @@ async function sample(sha: string, expectIndex: boolean) {
     } });
   } catch (error) {
     const code = error instanceof Error && /^[a-z0-9-]+$/u.test(error.message) ? error.message : "log-window-bench-browser-or-sample-error";
-    return { state: "error" as const, error: code, load: loadavg()[0] };
+    trials.push({ state: "error", error: code, load: loadavg()[0] });
   }
+  return trials;
 }
 
 try {
-  const before = [], after = [];
-  for (let index = 0; index < repetitions; index++) {
-    before.push(await sample(base, false));
-    after.push(await sample(target, true));
-  }
-  const summarize = (sha: string, trials: Awaited<ReturnType<typeof sample>>[]) => {
+  const before = await sample(base, false);
+  const after = await sample(target, true);
+  const summarize = (sha: string, trials: Awaited<ReturnType<typeof sample>>) => {
     const hits = trials.filter(trial => trial.state === "measured");
-    return { sha, trials, failures: trials.length - hits.length, ...(hits.length === 0 ? {} : {
+    return { sha, trials, failures: trials.length - hits.length, unrun: Math.max(0, repetitions - trials.length), ...(hits.length === 0 ? {} : {
       openMs: percentiles(hits.map(hit => hit.openMs)), searchMs: percentiles(hits.map(hit => hit.searchMs)),
     }) };
   };
@@ -126,7 +130,7 @@ try {
   const matchCounts = [...new Set([...before, ...after].flatMap(trial => trial.state === "measured" ? [trial.matches] : []))];
   writeFileSync(output, `${JSON.stringify({ baseline, candidate, matchCounts, windows: 1, node: process.version, cores: availableParallelism() }, null, 2)}\n`,
     { mode: 0o600, flag: "wx" });
-  if (baseline.failures || candidate.failures || matchCounts.length !== 1) process.exitCode = 1;
+  if (baseline.failures || candidate.failures || baseline.unrun || candidate.unrun || matchCounts.length !== 1) process.exitCode = 1;
 } finally {
   process.off("SIGINT", interrupt);
   process.off("SIGTERM", interrupt);
