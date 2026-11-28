@@ -213,8 +213,6 @@
   flex-direction: column;
   gap: var(--ds-space-section);
 }
-[data-settings-path] { position: relative; }
-.settings-row-saving { position: absolute; inset-block-start: 50%; inset-inline-end: calc(-1 * var(--ds-space-section)); width: 1rem; height: 1rem; translate: 0 -50%; }
 .settings-compact-row:has(.ds-switch-row) { display: flex; flex-wrap: wrap; align-items: center; }
 .settings-compact-row:has(.ds-switch-row) .ds-switch-row { flex: 1; min-width: 0; }
 .settings-compact-row:has(.ds-switch-row) > p { flex-basis: 100%; }

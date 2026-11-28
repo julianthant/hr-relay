@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, ResultRow, dsIcon } from "../../../ds/ui.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { formatSetting } from "../editor/settings-draft-model.js";
+import { SavingMark } from "../editor/settings-controls.js";
 import { ProtectedSettingField } from "./settings-protected-field.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
@@ -24,8 +25,8 @@ export function ProtectedPencilRow({ editor, name, label, thing, description }: 
   const operation = credentials.draft[name];
   const typed = operation?.kind === "set" ? operation.raw.trim() : "";
   const changed = typed !== "" && !(name === "ucpathUserId" && stored !== undefined && typed === formatSetting(stored.value));
-  // A username waiting for a fresh revision to save shows what was typed, not the stored value.
-  const waiting = name === "ucpathUserId" && !open && typed !== "" ? typed : undefined;
+  // A username waiting for a fresh revision, or being saved, shows what was typed; after a failed save the row shows the served value and the draft waits in the dialog.
+  const waiting = name === "ucpathUserId" && !open && typed !== "" && (credentials.save.state === "idle" || credentials.save.state === "saving") ? typed : undefined;
   const shown = stored === undefined && waiting === undefined ? "Not set" : name === "ucpathUserId" ? waiting ?? formatSetting(stored?.value) : "••••••••";
   const close = (): void => { credentials.reset(name); setOpen(false); };
   return <div data-settings-path={`protected.${name}`}>
@@ -42,5 +43,6 @@ export function ProtectedPencilRow({ editor, name, label, thing, description }: 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <SavingMark editor={{ savingPaths: credentials.savingNames }} path={name} />
   </div>;
 }

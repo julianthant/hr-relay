@@ -71,9 +71,11 @@ export function useProtectedSettings(input: {
     if (busy.current) return;
     pending.current = undefined; setDraft({}); setErrors({}); setSave({ state: "idle" });
   };
+  /** The credentials of the command in flight: only their rows show a spinner. */
+  const [savingNames, setSavingNames] = useState<readonly string[]>([]);
   const perform = async (command: ProtectedSettingsAttempt): Promise<void> => {
     if (busy.current || binding === undefined) return;
-    busy.current = true; pending.current = command.commandId; setSave({ state: "saving" });
+    busy.current = true; pending.current = command.commandId; setSave({ state: "saving" }); setSavingNames(Object.keys(command.payload.entries));
     attemptScope.current = binding.scope;
     let document: EditableSettingsWire | undefined;
     let entryNames: readonly string[] = [];
@@ -106,7 +108,7 @@ export function useProtectedSettings(input: {
     };
     try {
       await binding.executor.execute(command, options);
-    } finally { busy.current = false; }
+    } finally { busy.current = false; setSavingNames([]); }
   };
 
   const submit = (): void => {
@@ -163,6 +165,6 @@ export function useProtectedSettings(input: {
     });
   });
   useEffect(() => { adopted(); }, [binding?.scope, retained?.request.commandId, retained?.state]);
-  return { draft, errors, save: shown, dirtyCount: Object.keys(draft).length, locked: !input.editable || save.state === "saving" || pending.current !== undefined,
+  return { draft, errors, save: shown, dirtyCount: Object.keys(draft).length, savingNames, locked: !input.editable || save.state === "saving" || pending.current !== undefined,
     explicitSave, setExplicitSave, update, clear, reset, discard, submit };
 }

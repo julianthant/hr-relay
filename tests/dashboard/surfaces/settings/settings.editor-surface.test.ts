@@ -445,6 +445,23 @@ it("keeps an explicit username Save visible and unsent until the held re-read la
   assert.match(host.querySelector('[data-settings-path="protected.ucpathUserId"]')?.textContent ?? "", /held-username/u);
 });
 
+it("shows a spinner on the credential row whose entry is being saved, and no other row", async () => {
+  const applied: unknown[] = [];
+  const transport = await settingsClient(applied, "held");
+  host = await mountSettingsPage(transport.client, "credentials");
+  const input = host.querySelector<HTMLInputElement>('input[name="ucpathUserId"]');
+  assert.ok(input);
+  await act(async () => { // eslint-disable-next-line @typescript-eslint/unbound-method
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (setter === undefined) throw new Error("input setter unavailable");
+    Reflect.apply(setter, input, ["spinner-username"]); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => { host?.querySelector("form")?.requestSubmit(); });
+  await vi.waitFor(() => { assert.equal(applied.length, 1); });
+  assert.equal(host.querySelector('[data-settings-path="protected.ucpathUserId"] [aria-label="Saving"]') === null, false);
+  assert.equal(host.querySelectorAll('[aria-label="Saving"]').length, 1, "the password row shows no spinner");
+  await act(async () => { transport.release(); });
+});
+
 it("shows a spinner only on the row whose own command is held", async () => {
   const applied: unknown[] = [];
   const transport = await settingsClient(applied, "held");
