@@ -271,8 +271,8 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
         const systems = workflowProjections(target).systems;
         const inherited = Object.fromEntries(Object.entries(parent.envelope.requestedInstance ?? {}).filter(([system]) => systems.includes(system)));
         const resolvedInstance = resolveInstances(target, inherited);
-        // A child that declares the parent's second check runs it on the parent's own picks; the required references stay with the parent.
-        const checkReferences = target.workbookCheck === undefined ? []
+        // Person Lookup returns identity to its caller. Batch members own each individual comparison.
+        const checkReferences = target.workbookCheck === undefined || target.id === "person-lookup" ? []
           : (parent.input.workbookReferences ?? []).filter(bound => parseRunWorkbookReference(bound).request.typeId === target.workbookCheck?.id);
         const children = plan.children.map((planned, index) => {
           const { input, bindings, matchKey, canonicalItemId } = canonicalDelegationChild(context, target, planned.input, schemaReader);

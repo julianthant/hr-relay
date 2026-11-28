@@ -33,11 +33,11 @@ describe("start step selection", () => {
         key, includedByDefault, state: control.state,
       })),
       [
+        { key: "reference-check", includedByDefault: true, state: "required" },
         { key: "searching", includedByDefault: true, state: "omittable" },
         { key: "cross-verify", includedByDefault: true, state: "selectable" },
         { key: "active-status", includedByDefault: true, state: "omittable" },
         { key: "crm-dates", includedByDefault: true, state: "selectable" },
-        { key: "reference-check", includedByDefault: true, state: "required" },
       ],
     );
   });
@@ -57,11 +57,11 @@ describe("start step selection", () => {
     assert.deepEqual(
       steps.map(({ key, control }) => [key, control.state, control.state === "omittable" ? control.forces : []]),
       [
+        ["reference-check", "required", []],
         ["kuali-extraction", "omittable", ["identity-check", "identity-review", "kuali-finalization"]],
         ["identity-check", "omittable", ["identity-review"]],
         ["kronos-timecard", "omittable", []],
         ["identity-review", "omittable", []],
-        ["reference-check", "required", []],
         ["pending-termination", "omittable", []],
         ["ucpath-transaction", "omittable", []],
         ["kuali-finalization", "omittable", []],

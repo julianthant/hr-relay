@@ -24,7 +24,7 @@ it.each([
 });
 
 it("compiles the sign-in and transaction steps with one stop-after-prepare Save, so Dry run is offered", () => {
-  expect(descriptor.timeline.map(step => [step.key, step.label])).toEqual([["ucpath-auth", "Sign in to UCPath"], ["reference-check", "Check reference spreadsheets"], ["transaction", "Submit work-study transaction"]]);
+  expect(descriptor.timeline.map(step => [step.key, step.label])).toEqual([["reference-check", "Reference spreadsheets"], ["ucpath-auth", "Sign in to UCPath"], ["transaction", "Submit work-study transaction"]]);
   expect(descriptorRuntimeNodes(descriptor).filter(node => node.kind === "transaction").map(node => String(node.id))).toEqual(["save-transaction"]);
   expect(workflowDryRunSupport(descriptor).state).toBe("supported");
 });

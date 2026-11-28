@@ -1,3 +1,4 @@
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import type { z } from "zod";
@@ -11,7 +12,7 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import type { WorkbookActiveSelectionSchema } from "../../../../src/models/dashboard/workbook-library.js";
-import { REFERENCE_CHECK } from "../../../../src/models/processing/workbooks/verify-person.js";
+import { REFERENCE_CHECK_ID } from "../../../../src/models/processing/workbooks/reference-fields.js";
 import type { StepOmissions } from "../../../../src/models/workflow/step-omission.js";
 import type { UcpathPersonOrgDriver } from "../../../../src/models/ui/ucpath-person-org.js";
 import { UcpathCandidateSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
@@ -64,17 +65,17 @@ export function createPersonLookupReferenceWorld() {
       configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint, activatedAt: snapshot.capturedAt });
     const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
     const runWorkbooks = createRunWorkbookService({ database, clock });
-    const canonical = canonicalChildExecution(harness.deps, database, path, id => SERVER_REGISTRY[id]?.descriptor, undefined, { workbooks: library,
+    const canonical = canonicalChildExecution({ ...harness.deps, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }) }, database, path, id => SERVER_REGISTRY[id]?.descriptor, undefined, { workbooks: library,
       resources: (_reader, run) => ({ providers: { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
         adapters: { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
           references: { runId: run.envelope.runId, write: () => { throw new Error("Person Lookup must not write a reference"); },
-            verifyPerson: command => runWorkbooks.verifyPerson(run, command) } }) } } }) });
+            readFields: command => runWorkbooks.readReferenceFields(run, command) } }) } } }) });
     /** Saves one library spreadsheet; `rows` follow the header row, so the first data row is sheet row 2. */
     const spreadsheet = (name: string, sheetName: string, fields: readonly string[], rows: readonly (readonly (string | number)[])[]): z.infer<typeof WorkbookActiveSelectionSchema> => {
       const saved = library.create({ name, themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: sheetName, width: fields.length, hidden: [], headerRow: 1,
         columnBindings: fields.map((fieldId, index) => ({ id: `column-${String(index)}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
         rows: [{ id: "header", cells: fields.map(value => ({ value })) }, ...rows.map((cells, index) => ({ id: `row-${String(index)}`, cells: cells.map(value => ({ value })) }))] }] });
-      return { entry: 1, typeId: REFERENCE_CHECK.id, libraryId: saved.libraryId, versionId: library.libraryVersion(saved.libraryId).version.id,
+      return { entry: 1, typeId: REFERENCE_CHECK_ID, libraryId: saved.libraryId, versionId: library.libraryVersion(saved.libraryId).version.id,
         sheetId: "sheet", expectedVersion: library.read(saved.libraryId).version };
     };
     const run = async (input: unknown, picks: readonly z.infer<typeof WorkbookActiveSelectionSchema>[], selectedStepKeys?: readonly string[], stepOmissions?: StepOmissions) => {

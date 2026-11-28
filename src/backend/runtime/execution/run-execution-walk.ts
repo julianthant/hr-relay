@@ -223,6 +223,11 @@ export async function walkRunPlan(
     if (input.signal.aborted) throw abortReason(`run ${runId} execution was aborted`);
     let entry = plan.get(String(node.id));
     if (entry === undefined) throw new Error(`node "${node.id}" has no execution plan entry`);
+    if (entry.mode === "skipped-branch") {
+      if (!excludedByBranch(node)) throw new RunContinuationRefusedError("run-gate-resume-branch-changed");
+      skippedReasons.set(String(node.id), "branch-not-selected");
+      continue;
+    }
     if (entry.mode === "replay") {
       if (entry.deferred) {
         if (node.kind !== "task") throw new RunContinuationRefusedError("run-continuation-deferred-task-required");

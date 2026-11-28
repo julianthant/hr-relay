@@ -16,7 +16,7 @@ import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/e
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 
 import { z } from "zod";
-import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowDryRunSupport, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
 import {
@@ -123,6 +123,12 @@ interface WorkerFold {
   eventCount: number;
 }
 
+function descriptorIsReadOnly(descriptor: AnyWorkflowDescriptor | undefined): boolean {
+  if (descriptor === undefined) return false;
+  const support = workflowDryRunSupport(descriptor);
+  return support.state === "unsupported" && support.reason === "no-transaction-node";
+}
+
 /* ── dependencies ────────────────────────────────────────────────────────── */
 
 // Production summaries share the authority snapshot; fixture readers may omit this port.
@@ -208,6 +214,8 @@ export interface RunQueueProjectionDeps {
     getReceipt(runId: string): RunEvidenceReceipt | undefined;
 
     canonicalPerson?(runId: string): RunSummary["person"];
+    /** Whether an assistant start command created this run. */
+    startedByAssistant?(runId: string): boolean;
 
     latestCheckpoint(
       workflowId: string,
@@ -1671,6 +1679,7 @@ export class RunQueueProjection {
       attempt: queued.attempt,
       parent: this.#parentWire(context, authority),
       ...(row === undefined ? {} : { actorId: row.queued.actorId }),
+      ...(this.#deps.authority.startedByAssistant?.(queued.runId) !== true ? {} : { startedBy: { kind: "assistant" as const, readOnly: authority.envelope.dryRun || descriptorIsReadOnly(descriptor) } }),
       // Use the enqueued app build; the serving build cannot describe when this run began.
       appVersion: authority.appVersion === undefined
         ? { state: "absent", reason: "app build was not recorded at enqueue" }

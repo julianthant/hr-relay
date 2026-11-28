@@ -133,7 +133,7 @@ describe("bootstrap start-surface block", () => {
               fixAction: { kind: "import-workbook", workflowId: descriptor.id } },
           spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookFields: [...descriptor.requiredWorkbookFields],
           ...(descriptor.workbookReference === undefined ? {} : { workbookReference: descriptor.workbookReference }),
-          ...(["person-lookup", "separations", "onboarding", "work-study", "i9-check-start", "emergency-contact", "emergency-contact-member"].includes(String(descriptor.id)) ? { workbookCheck: { id: "reference-check", keyFieldId: "eid" } } : {}),
+          ...(["person-lookup", "separations", "onboarding", "work-study", "i9-check-start", "emergency-contact", "emergency-contact-member"].includes(String(descriptor.id)) ? { workbookCheck: { id: "reference-check", keyFieldId: String(descriptor.id) === "onboarding" ? "email" : "eid" } } : {}),
           steps: projectStartSteps(descriptor).map((step) => ({
             key: step.key,
             label: step.label,

@@ -42,9 +42,9 @@ export function QueueHeader({ title, ask, startId, onStartRun, day, today, onDay
   const reset = () => { if (day !== today) onDay(today); onFilter(["all"]); onSort("attention", "newest"); };
   return <header aria-label="Queue header" className="queue-header">
     <h2 className="queue-header-title">{title}</h2>
-    {dayMark}
     <div className="queue-header-actions">
       {ask}
+      {dayMark}
       <DropdownMenu>
         <Tooltip side="bottom" content="Options">
           <DropdownMenuTrigger asChild>

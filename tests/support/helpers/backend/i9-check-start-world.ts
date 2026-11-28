@@ -1,3 +1,4 @@
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { i9CheckStartModule } from "../registered-workflows.js";
 import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/driver/fake.js";
 import { WorkbookNamedReferenceSnapshotSchema } from "../../../../src/models/dashboard/workbooks.js";
@@ -22,7 +23,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { searchPartitionDay } from "../../../../src/models/dashboard/search-calendar.js";
 import type { WorkbookLibraryChangeSchema } from "../../../../src/models/dashboard/workbook-library.js";
 import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../src/models/workflows/i9-check/start.js";
-import { REFERENCE_CHECK } from "../../../../src/models/processing/workbooks/verify-person.js";
+import { REFERENCE_CHECK_ID, ReadReferenceFieldsRequestSchema } from "../../../../src/models/processing/workbooks/reference-fields.js";
 import { OcrApprovedSnapshotSchema, ocrReviewDigest, ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
 import { answersFingerprint } from "../../../../src/models/ocr/extraction.js";
 import { OcrApprovalReferenceSchema } from "../../../../src/models/workflows/ocr/result.js";
@@ -51,10 +52,10 @@ import type { z } from "zod";
 export function createI9CheckStartWorld() {
   const world = createRunExecutorTestWorld();
   return { cleanup: world.cleanup, /** `checks` are extra library spreadsheets picked as the second check; `rows` follow the header row, so the first data row is sheet row 2. */
-  async fixture(options: Readonly<{ dryRun?: boolean;
+  async fixture(options: Readonly<{ dryRun?: boolean; nameSearch?: "none" | "multiple";
     selection?: Pick<Parameters<ReturnType<typeof canonicalChildExecution>["start"]>[2], "selectedStepKeys" | "stepOmissions">;
     checks?: readonly Readonly<{ name: string; sheet: string; fields: readonly string[]; rows: readonly (readonly string[])[] }>[] }> = {}) {
-    const publishCalls: string[] = [], projections: (readonly string[])[] = [];
+    const publishCalls: string[] = [], fieldReads: { runId: string; key: string }[] = [], projections: (readonly string[])[] = [];
     const pages = new Map<string, z.output<typeof ExtractPdfPagesOutputSchema>>();
     const renderer = defineTask(ExtractPdfPages, { sessions: [], async run({ input, ctx }) {
       const output = pages.get(input.document.id); assert.ok(output);
@@ -69,7 +70,13 @@ export function createI9CheckStartWorld() {
       { ...i9Candidate, emplId: EidSchema.parse("10000002"), name: "Example, Blair", startDate: "06/01/2020" },
     ];
     const sessions = sessionFactoryHarness({ crm: () => healthyCrmDriver(), i9: () => createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: clock.now().toISOString() }), ucpath: (): UcpathPersonOrgDriver => ({ ...createDeterministicUcpathPersonOrgDriver(),
-      async searchPersonOrg(input) { return i9Search(candidates.filter(candidate => input.kind === "by-name" ? candidate.name === input.name : candidate.emplId === input.emplId)); },
+      async searchPersonOrg(input) {
+        const found = candidates.filter(candidate => input.kind === "by-name" ? candidate.name === input.name : candidate.emplId === input.emplId);
+        if (input.kind !== "by-name" || options.nameSearch === undefined) return i9Search(found);
+        return i9Search(options.nameSearch === "none" ? [] : found.flatMap(candidate => [
+          candidate, { ...candidate, emplId: EidSchema.parse("10000009") },
+        ]));
+      },
       async searchPersonMatch(input) {
         const confirmed = candidates.filter(candidate => candidate.name === `${input.lastName}, ${input.firstName}`).map(candidate => ({ emplId: candidate.emplId, name: candidate.name }));
         return { hits: confirmed, confirmed, dropped: [] };
@@ -113,14 +120,17 @@ export function createI9CheckStartWorld() {
     const runWorkbooks = createRunWorkbookService({ database, clock }), readRefusals = new Set<string>();
     const projector = composeWorkerArtifactProjector({ admission, database, artifacts, clock });
     const resolve = (id: string) => (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
-    const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve, createOcrCheckpointPublication, { workbooks: library,
+    const canonical = canonicalChildExecution({ ...harness.deps, artifacts, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }) }, database, path, resolve, createOcrCheckpointPublication, { workbooks: library,
       resources: (reader, run) => ({ artifactProjector: { projectOutbox: ids => { projections.push(ids); return projector.projectOutbox(ids); } }, providers: { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
         adapters: { "ocr.review": createOcrReviewAdapter({ reader: createApprovedOcrRecordReader({ database, reader, run, resolveDescriptor: resolve, assertCurrent: () => admission.assertProfileRuntime() }), clock }),
           "workbooks.library": countPublishes(createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
             publicationSource: () => { const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
               return { workflowId: descriptor.id, workflowLabel: descriptor.label, partitionDay: searchPartitionDay(new Date(run.envelope.enqueuedAt)) }; },
             references: { runId: run.envelope.runId, write: () => { throw new Error("I-9 fixture must not patch a reference"); },
-              verifyPerson: command => runWorkbooks.verifyPerson(run, command), read: request => {
+              readFields: command => {
+              fieldReads.push({ runId: run.envelope.runId, key: command.key });
+              return runWorkbooks.readReferenceFields(run, command);
+            }, read: request => {
               assert.equal(request.typeId, I9_CHECK_REFERENCE.typeId); assert.deepEqual(request.keys, [...expected.values()]);
               for (const [name, captured] of [
                 ["missing run", { ...run, envelope: { ...run.envelope, runId: randomUUID() } }],
@@ -138,7 +148,7 @@ export function createI9CheckStartWorld() {
     });
     function countPublishes(adapter: ReturnType<typeof createWorkbookLibraryAdapter>) {
       return { ...adapter, invoke: (...args: Parameters<typeof adapter.invoke>) => {
-        if (args[0].payload.schemaHash !== deriveSchemaHash(WorkbookReferenceReadRequestSchema, "output")) publishCalls.push(args[0].capability);
+        if (![WorkbookReferenceReadRequestSchema, ReadReferenceFieldsRequestSchema].some(schema => deriveSchemaHash(schema, "output") === args[0].payload.schemaHash)) publishCalls.push(args[0].capability);
         return adapter.invoke(...args);
       } };
     }
@@ -162,7 +172,7 @@ export function createI9CheckStartWorld() {
       const extra = library.create({ name: check.name, themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: check.sheet, width: check.fields.length, hidden: [], headerRow: 1,
         columnBindings: check.fields.map((fieldId, index) => ({ id: `check-${String(index)}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
         rows: [{ id: "header", cells: check.fields.map(value => ({ value })) }, ...check.rows.map((cells, index) => ({ id: `row-${String(index)}`, cells: cells.map(value => ({ value })) }))] }] });
-      return { entry: 1, typeId: REFERENCE_CHECK.id, libraryId: extra.libraryId, versionId: library.libraryVersion(extra.libraryId).version.id,
+      return { entry: 1, typeId: REFERENCE_CHECK_ID, libraryId: extra.libraryId, versionId: library.libraryVersion(extra.libraryId).version.id,
         sheetId: "sheet", expectedVersion: library.read(extra.libraryId).version };
     });
     const run = canonical.start(root.descriptor, input, { dryRun: options.dryRun ?? false, ...options.selection, workbookReferences: [{ entry: 1,
@@ -210,6 +220,6 @@ export function createI9CheckStartWorld() {
       return child.envelope.runId;
     };
     return { harness, database, clock, admission, artifacts, canonical, run, input, root, library, referenceId: saved.libraryId,
-      selectedReference, changeReference, readRefusals, approveNext, publishCalls, projections, plan: canonical.plans.at(-1) };
+      selectedReference, changeReference, readRefusals, approveNext, publishCalls, fieldReads, projections, plan: canonical.plans.at(-1) };
   } };
 }

@@ -10,7 +10,6 @@ import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, t
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { PAYPATH_POSITION_NODE } from "../../tasks/read-paypath-position.js";
 import { TRANSACTION_PLAN_NODE } from "../../tasks/read-transaction-plan.js";
-import type { buildReferenceCheck } from "../reference-check/step.js";
 import { buildUcpathAuth } from "../ucpath-auth/step.js";
 
 const PAGE = "PayPath Actions";
@@ -70,12 +69,11 @@ const saveEntry = defineStepEntries(TRANSACTION_STEP).transaction(SAVE_NODE, {
   dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000,
 });
 
-/** `reference` is the composition's reference-check review; the Save waits for it so a stop comes before anything is filed. */
-export function buildTransaction(author: WorkflowAuthor<typeof WorkStudyInput>, upstream: ReturnType<typeof buildUcpathAuth>, reference?: ReturnType<typeof buildReferenceCheck>) {
+export function buildTransaction(author: WorkflowAuthor<typeof WorkStudyInput>, upstream: ReturnType<typeof buildUcpathAuth>) {
   const plan = author.task({ id: TRANSACTION_PLAN_NODE, label: "Plan work-study transaction", contract: WorkStudyReadTransactionPlan, replay: "always-rerun", step: TRANSACTION_STEP },
     [upstream.read], ({ input, outputs }) => ({ input, read: outputs[PAYPATH_POSITION_NODE] }));
   const target = ({ outputs }: { outputs: { [TRANSACTION_PLAN_NODE]: WorkStudyPlan } }) => workStudyTarget(outputs[TRANSACTION_PLAN_NODE]);
-  const save = author.transaction(saveEntry, reference === undefined ? [plan] : [plan, reference.review], { prepareBind: target, commitBind: target });
+  const save = author.transaction(saveEntry, [plan], { prepareBind: target, commitBind: target });
   return { plan, steps: [[TRANSACTION_STEP, [plan, save]]] as const,
     result: author.result(TransactionResultSchema, [plan, save], ({ outputs }): z.input<typeof TransactionResultSchema> => {
       const filed = outputs[SAVE_NODE];

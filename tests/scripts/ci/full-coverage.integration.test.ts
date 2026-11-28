@@ -19,9 +19,9 @@ function location(line: number) {
 }
 
 it.each([
-  { secondHit: 1, status: 0, lines: 100 },
-  { secondHit: 0, status: 1, lines: 50 },
-])("merges V8 reports with an unmapped branch arm and exits $status at $lines% coverage", ({ secondHit, status, lines }) => {
+  { secondHit: 1, branchHits: [[2, -2], [0, 1]], status: 0, lines: 100, branches: 100 },
+  { secondHit: 0, branchHits: [[1, -1], [0, 0]], status: 1, lines: 50, branches: 50 },
+])("merges V8 reports with a negative unmapped branch arm and exits $status at $lines% line coverage", ({ secondHit, branchHits, status, lines, branches }) => {
   const directory = mkdtempSync(join(tmpdir(), "relay-full-coverage-"));
   try {
     const artifacts = join(directory, "artifacts");
@@ -41,7 +41,7 @@ it.each([
           },
           s: { 0: shard === 1 ? 1 : 0, 1: shard === 2 ? secondHit : 0 },
           f: { 0: 1 },
-          b: { 0: [0, 0] },
+          b: { 0: branchHits[shard - 1] },
         },
       }));
     }
@@ -51,7 +51,7 @@ it.each([
     expect(result.error).toBeUndefined();
     expect(result.status, result.stderr).toBe(status);
     expect(result.stdout).toContain("Full coverage for 1 files");
-    expect(result.stdout).toContain(`Safety-critical ${file}: lines ${lines}%, statements ${lines}%, functions 100%, branches 0%`);
+    expect(result.stdout).toContain(`Safety-critical ${file}: lines ${lines}%, statements ${lines}%, functions 100%, branches ${branches}%`);
     if (status === 1) {
       expect(result.stderr).toContain(`Coverage for lines (50%) does not meet "${file}" threshold (80%)`);
     } else {

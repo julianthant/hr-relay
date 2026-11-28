@@ -154,7 +154,7 @@ const [WORK_STUDY] = startWorkflows([workStudySnapshot]);
 if (WORK_STUDY === undefined) throw new Error("the saved Work-Study entry is missing");
 export const RUN_DIALOG_WORK_STUDY = WORK_STUDY.workflowId;
 export const RUN_DIALOG_WRITE_RERUN_CATALOG = buildWorkflowCatalog([WORK_STUDY], Object.freeze({ [WORK_STUDY.workflowId]: "served" as const }));
-const WRITE_NODES = { "ucpath-auth": ["paypath-position"], "reference-check": ["reference-check", "reference-stop", "reference-check-review"], transaction: ["transaction-plan", "save-transaction"] } as const;
+const WRITE_NODES = { "ucpath-auth": ["paypath-position"], "reference-check": ["reference-fields-start", "reference-field-review-start", "reference-fields-paypath-position", "reference-field-review-paypath-position"], transaction: ["transaction-plan", "save-transaction"] } as const;
 const WRITE_RECEIPT = { nodeId: "save-transaction", taskId: "ucpath/submit-paypath-work-study", writeIntentId: "20000000-0000-4000-8000-000000000002", evidenceDigest: HASH } as const;
 
 /** A Work-Study run cancelled after Save and Submit committed, before its filing step finished; its reference stop was condition-skipped and the receipt is the source's own. */
@@ -163,7 +163,7 @@ export function runDialogWriteRerunSnapshot(): RerunValuesResponse {
     sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED, effectiveDate: "2026-08-03" } },
     source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORK_STUDY, descriptorVersion: WORK_STUDY.version, contractFingerprint: HASH, outcome: "cancelled", dryRun: false, priority: "interactive", browserMode: "headless" },
     steps: WORK_STUDY.steps.map(({ key }) => key !== "transaction"
-      ? { key, state: "completed", nodes: (WRITE_NODES[key as keyof typeof WRITE_NODES] ?? []).map(nodeId => ({ nodeId, state: "completed", reason: nodeId === "reference-stop" ? "condition-skipped" : "checkpoint" })) }
+      ? { key, state: "completed", nodes: (WRITE_NODES[key as keyof typeof WRITE_NODES] ?? []).map(nodeId => ({ nodeId, state: "completed", reason: nodeId.startsWith("reference-field-review-") ? "condition-skipped" : "checkpoint" })) }
       : { key, state: "unfinished", nodes: [{ nodeId: "transaction-plan", state: "completed", reason: "checkpoint" },
         { nodeId: "save-transaction", state: "unfinished", reason: "incomplete-execution" }] }),
     values: [], transactions: [{ stepKey: "transaction", ...WRITE_RECEIPT, disposition: "committed", filedBySource: true }],

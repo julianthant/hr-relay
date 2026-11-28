@@ -2,7 +2,7 @@ import { z } from "zod";
 import { SavedWorkbookSchema, EditableWorkbookSchema, type WorkbookOperationReceipt } from "../../models/dashboard/workbooks.js";
 import { WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema, type WorkbookReferenceWriteSchema } from "../../models/processing/workbooks/read-result.js";
 import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema } from "../../models/processing/workbooks/read-reference.js";
-import { WorkbookPersonCheckRequestSchema, WorkbookPersonCheckSchema } from "../../models/processing/workbooks/verify-person.js";
+import { ReadReferenceFieldsRequestSchema, ReadReferenceFieldsResultSchema } from "../../models/processing/workbooks/reference-fields.js";
 import { RunIdSchema, WorkflowIdSchema, DateOnlySchema } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
@@ -14,7 +14,7 @@ export function createWorkflowWorkbookService(deps: Readonly<{ repository: Workb
   publicationSource?: () => Readonly<{ workflowId: string; workflowLabel: string; partitionDay: string }>;
   references?: Readonly<{ runId: string; write(command: z.infer<typeof WorkbookReferenceWriteSchema>): WorkbookOperationReceipt;
     read?(command: z.infer<typeof WorkbookReferenceReadRequestSchema>): z.infer<typeof WorkbookReferenceReadSchema>;
-    verifyPerson?(command: z.infer<typeof WorkbookPersonCheckRequestSchema>): z.infer<typeof WorkbookPersonCheckSchema> }>;
+    readFields?(command: z.infer<typeof ReadReferenceFieldsRequestSchema>): z.infer<typeof ReadReferenceFieldsResultSchema> }>;
 }>) {
   return Object.freeze({
     readReference(runIdValue: unknown, commandValue: unknown, signal: AbortSignal) {
@@ -25,11 +25,11 @@ export function createWorkflowWorkbookService(deps: Readonly<{ repository: Workb
       signal.throwIfAborted();
       return result;
     },
-    verifyPerson(runIdValue: unknown, commandValue: unknown, signal: AbortSignal) {
-      const runId = RunIdSchema.parse(runIdValue), command = WorkbookPersonCheckRequestSchema.parse(commandValue);
+    readReferenceFields(runIdValue: unknown, commandValue: unknown, signal: AbortSignal) {
+      const runId = RunIdSchema.parse(runIdValue), command = ReadReferenceFieldsRequestSchema.parse(commandValue);
       signal.throwIfAborted();
-      if (deps.references?.runId !== runId || deps.references.verifyPerson === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-      const result = WorkbookPersonCheckSchema.parse(deps.references.verifyPerson(command));
+      if (deps.references?.runId !== runId || deps.references.readFields === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+      const result = ReadReferenceFieldsResultSchema.parse(deps.references.readFields(command));
       signal.throwIfAborted();
       return result;
     },

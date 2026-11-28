@@ -90,27 +90,22 @@ it("continues an agreed identity and waits before filing when identity approval 
   assert.ok(walk(spec).steps.some(entry => entry.id === "kuali-finalization"));
   const waiting = walk(spec, {}, { "identity-result": "true" });
   assert.equal(waiting.stop?.value, "true");
-  assert.deepEqual(waiting.steps.map(entry => entry.id), ["kuali-extraction", "identity-check", "kronos-timecard", "identity-review"]);
+  assert.deepEqual(waiting.steps.map(entry => entry.id), ["reference-check", "kuali-extraction", "identity-check", "kronos-timecard", "identity-review"]);
 });
 
-it("continues a confirmed reference check and waits before writing when a picked spreadsheet needs review", async () => {
+it("continues without a difference and lets the operator cancel a mismatch in either mode", async () => {
   const { reviewSpec: spec } = await served();
-  const decisions = blocks(spec, "reference-check", "decision");
-  assert.equal(decisions.length, 1, "one decision explains the check and its conditional approval");
-  const decision = decisions[0]; assert.ok(decision);
-  assert.deepEqual([decision.id, decision.label, decision.initial], ["reference-result", "Reference check", "null"]);
-  assert.deepEqual(decision.outcomes.filter(outcome => ["null", "true"].includes(outcome.value)), [
-    { value: "null", label: "No review needed", then: "Continues when the spreadsheets confirm the person, none were picked, or this is a dry run.", stops: false },
-    { value: "true", label: "Reference needs review", then: "Waits for you to review the reference spreadsheets in Logs before anything is filed.", stops: true, when: [{ "dry-run": ["false"] }] },
-  ]);
-  const waiting = walk(spec, {}, { "reference-result": "true" });
-  assert.equal(waiting.stop?.value, "true");
-  assert.equal(waiting.steps.at(-1)?.id, "reference-check");
-  assert.ok(!waiting.steps.some(entry => entry.id === "ucpath-transaction"));
-  const dry = walk(spec, { "dry-run": "true" }, { "reference-result": "true" });
-  assert.equal(dry.stop, undefined);
-  assert.equal(dry.values["reference-result"], "null");
-  assert.deepEqual(visible(decision.outcomes, dry.values).filter(outcome => ["null", "true"].includes(outcome.value)).map(outcome => outcome.value), ["null"]);
+  const [comparison, review] = blocks(spec, "reference-check", "decision"); assert.ok(comparison); assert.ok(review);
+  assert.deepEqual([comparison.id, comparison.initial], ["reference-result", "null"]);
+  assert.deepEqual([review.id, review.initial], ["reference-check-review", "continue"]);
+  assert.ok(walk(spec).steps.some(entry => entry.id === "ucpath-transaction"));
+  for (const dryRun of ["false", "true"]) {
+    const stopped = walk(spec, { "dry-run": dryRun }, { "reference-result": "true", "reference-check-review": "cancelled" });
+    assert.equal(stopped.stop?.value, "cancelled");
+    assert.equal(stopped.steps.at(-1)?.id, "reference-check");
+    assert.ok(!stopped.steps.some(entry => entry.id === "ucpath-transaction"));
+    assert.equal(walk(spec, { "dry-run": dryRun }, { "reference-result": "true" }).values["reference-check-review"], "continue");
+  }
 });
 
 it("continues an already filed termination without saving twice and stops at every unconfirmed write", async () => {
@@ -173,7 +168,7 @@ it("serves the default run and every Start run step choice with matching labels 
     { id: "dry-run", label: "Dry run", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }], initial: "false" },
     ...skippable.map(([id, label]) => ({ id: `skip-${id}`, label, choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }], initial: "run" })),
   ]);
-  const all = ["kuali-extraction", "identity-check", "kronos-timecard", "identity-review", "reference-check", "pending-termination", "ucpath-transaction", "kuali-finalization"];
+  const all = ["reference-check", "kuali-extraction", "identity-check", "kronos-timecard", "identity-review", "pending-termination", "ucpath-transaction", "kuali-finalization"];
   const ordinary = walk(spec);
   assert.deepEqual(ordinary.steps.map(entry => entry.id), all);
   assert.equal(ordinary.stop, undefined);
@@ -188,7 +183,7 @@ it("serves the default run and every Start run step choice with matching labels 
   const byHand = walk(spec, { "skip-identity-check": "skip", "skip-pending-termination": "skip", "skip-ucpath-transaction": "skip", "skip-kuali-finalization": "skip" });
   assert.deepEqual(systems(byHand.values), ["kuali", "new-kronos"]);
   assert.deepEqual(spec.steps.map(entry => [entry.id, entry.title, entry.system]), workflow.timeline.map(group => [group.key, group.label, group.system]));
-  assert.deepEqual(spec.steps.map(entry => entry.title), ["Kuali extraction", "Identity check", "Kronos timecard", "Identity approval", "Check reference spreadsheets", "Pending terminations", "UCPath transaction", "Kuali finalization"]);
+  assert.deepEqual(spec.steps.map(entry => entry.title), ["Reference spreadsheets", "Kuali extraction", "Identity check", "Kronos timecard", "Identity approval", "Pending terminations", "UCPath transaction", "Kuali finalization"]);
   for (const entry of spec.steps) {
     assert.ok(entry.description.some(line => line.text.trim().length > 0), entry.title);
     assert.ok(entry.checks.length > 0, entry.title);
@@ -229,7 +224,7 @@ it("lists every declared task failure explicitly; the unlisted rule is reserved 
   const extraction = blocks(spec, "kuali-extraction", "decision")[0]; assert.ok(extraction);
   const missing = walk(spec, {}, { [extraction.id]: "document-not-in-action-list" });
   assert.equal(missing.stop?.value, "document-not-in-action-list");
-  assert.deepEqual(missing.steps.map(entry => entry.id), ["kuali-extraction"]);
+  assert.deepEqual(missing.steps.map(entry => entry.id), ["reference-check", "kuali-extraction"]);
 });
 
 it("serves fictional examples and operator wording without task identifiers or failure-code text", async () => {

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import { AdmittedAnswerSchema } from "../ocr/extraction.js";
 import { OCR_FORMS } from "../ocr/form-registry.js";
+import { CompareReferenceFields, referenceComparisonForGate } from "../processing/workbooks/reference-fields.js";
 import { GateIdSchema, TaskIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import {
   DataClassificationSchema,
@@ -598,17 +599,14 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   }),
   /* PeopleSoft alert text is free text that can name the employee. */
   { scope: taskOutput("ucpath/read-paypath-position"), path: "alertText", classification: "direct-identifier", transform: "drop" },
-  ...payPathReadLeaves(workflowResult("work-study-ucpath-auth"), ""),
+  ...["work-study-ucpath-auth", "work-study-reference-check"].flatMap(id => payPathReadLeaves(workflowResult(id), "")),
   ...workStudyPlanLeaves(taskOutput("workflow:work-study/read-transaction-plan"), ""),
   ...["work-study", "work-study-transaction"].flatMap(id => [
     ...workStudyPlanLeaves(workflowResult(id), "plan."), ...open(workflowResult(id), "state"), ...workStudyProofLeaves(workflowResult(id), "receipt."),
   ]),
   ...["work-study", "work-study-ucpath-auth", "work-study-transaction", "work-study-reference-check"].flatMap(id => [...person(workflowInput(id), "emplId"), ...open(workflowInput(id), "effectiveDate")]),
-  /* The reference review stores only that the operator continued; whether to ask is a flag. */
-  ...["work-study", "work-study-reference-check", "separations", "separations-reference-check", "onboarding", "onboarding-reference-check", "emergency-contact-member", "emergency-contact-member-reference-check"].flatMap(id => open(gateResult(id, "reference-check-review"), "decision")),
-  ...["work-study", "separations", "onboarding", "emergency-contact-member"].flatMap(store => open(taskOutput(`workflow:${store}/read-reference-stop`), "ask")),
-  ...["work-study-reference-check", "separations-reference-check", "onboarding-reference-check", "i9-check-reference-check", "emergency-contact-member-reference-check"].flatMap(id => open(workflowResult(id), "check", "check.state", "check.result", "check.checks")),
   ...person(workflowInput("separations-reference-check"), "emplId", "employeeName"),
+  ...person(workflowResult("separations-reference-check"), "emplId"),
   ...approvedOcrRecordLeaves(taskOutput("ocr/read-approved-record"), "record."),
   ...approvedOcrSnapshotLeaves(taskOutput("ocr/read-approved-snapshot")),
   ...approvedOcrSnapshotLeaves(workflowResult("emergency-contact-read-document")),
@@ -630,7 +628,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...["emergency-contact-member", "emergency-contact-member-contact-preview", "emergency-contact-member-onbase-filing"].flatMap(id => [
     ...open(workflowResult(id), "disposition", "step"), ...contactProofLeaves(workflowResult(id), "proof."),
   ]),
-  ...contactPlannedOutputLeaves(workflowResult("emergency-contact-member-contact-plan")),
+  ...["emergency-contact-member-contact-plan", "emergency-contact-member-reference-check"].flatMap(id => contactPlannedOutputLeaves(workflowResult(id))),
   ...["emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."), ...ocrRosterLeaves(workflowInput(id), "roster."),
     ...open(workflowInput(id), "reading.kind", "onbaseFiling", "extractWithOcr"), ...ocrPrivateLeaves(workflowInput(id), "fileName", "readingId", "reading.actorId", "reading.assertions"),
@@ -723,7 +721,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...onboardingPrivateLeaves(gateResult(id, "roster-choice"), "row.references.legalName", "row.references.livedName"),
   ]),
   ...[taskOutput("workflow:onboarding/read-hire-plan"), workflowResult("onboarding-crm-data")].flatMap(scope => onboardingPlanLeaves(scope)),
-  ...[taskOutput("workflow:onboarding/match-hire-subject"), workflowResult("onboarding-ucpath-search")].flatMap(scope => onboardingSubjectLeaves(scope)),
+  ...[taskOutput("workflow:onboarding/match-hire-subject"), workflowResult("onboarding-ucpath-search"), workflowResult("onboarding-reference-check")].flatMap(scope => onboardingSubjectLeaves(scope)),
   ...[taskOutput("workflow:onboarding/read-i9-lookup"), workflowResult("onboarding-i9-search")].flatMap(scope => onboardingLookupLeaves(scope)),
   ...onboardingProfileLeaves(taskOutput("workflow:onboarding/read-i9-profile-plan")),
   ...onboardingRosterLeaves(taskOutput("workflow:onboarding/read-write-plan"), "roster."),
@@ -806,12 +804,12 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...population(taskOutput("workflow:i9-check/read-employment-candidates"), "candidates"),
   ...person(taskOutput("workflow:i9-check/read-employment-candidates"), "candidates.emplId", "candidates.name"),
   ...open(taskOutput("workflow:i9-check/read-employment-candidates"), "candidates.hireDate"),
-  ...[taskOutput("workflow:i9-check/read-match-outcome"), taskOutput("workflow:i9-check/read-retention-row"), workflowResult("i9-check"), workflowResult("i9-check-roster-match"), workflowResult("i9-check-person-match"), workflowResult("i9-check-person-lookup")].flatMap(scope => [
+  ...[taskOutput("workflow:i9-check/read-match-outcome"), taskOutput("workflow:i9-check/read-retention-row"), workflowResult("i9-check"), workflowResult("i9-check-roster-match"), workflowResult("i9-check-reference-check"), workflowResult("i9-check-person-match"), workflowResult("i9-check-person-lookup")].flatMap(scope => [
     ...open(scope, "identity.status", "identity.candidateCount", "identity.reason"),
     ...person(scope, "identity.eid", "identity.name"),
     ...population(scope, "identity.candidateEids"),
   ]),
-  ...[taskOutput("workflow:i9-check/read-retention-row"), workflowResult("i9-check"), workflowResult("i9-check-roster-match")].flatMap(scope => [
+  ...[taskOutput("workflow:i9-check/read-retention-row"), workflowResult("i9-check"), workflowResult("i9-check-roster-match"), workflowResult("i9-check-reference-check")].flatMap(scope => [
     ...person(scope, "row.employeeName", "row.ppsEid", "row.ucpathEmplId", "row.reviewerName"),
     { scope, path: "row.recordId", classification: "direct-identifier", transform: "digest" },
     ...open(scope, "row.hireDate", "row.separationDate", "row.foundInUcpath", "row.action", "row.notes"),
@@ -871,10 +869,11 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...population(workflowResult("person-lookup-cross-verify"), "verifiedCrm.records", "crmResults.records"),
   ...open(workflowResult("person-lookup-cross-verify"), "verifiedCrm.state", "verifiedCrm.code", "verifiedCrm.reason"),
   ...activeStatusLeaves(workflowResult("person-lookup-active-status"), ""),
-  ...personLookupResultLeaves(workflowResult("person-lookup-crm-dates")),
-  /* The reference check names the picked spreadsheet, its sheet, the outcome and the row number; it carries no value from a row. */
-  ...open(taskOutput("workbooks/verify-person"), "state", "result", "checks"),
-  ...open(workflowResult("person-lookup-reference-check"), "check", "check.state", "check.result", "check.checks"),
+  ...["person-lookup-crm-dates", "person-lookup-reference-check"].flatMap(id => personLookupResultLeaves(workflowResult(id))),
+  ...open(taskOutput("workbooks/read-reference-fields"), "review", "matches"),
+  ...["captured", "mismatches"].map(path => ({
+    scope: taskOutput("workbooks/read-reference-fields"), path, classification: "sensitive-hr", transform: "drop",
+  })),
 
         /* These describe the READ, not about the person, so they are open. */
   ...person(KRONOS_TIMECARD_INPUT, "emplId", "expectedName"),
@@ -1214,6 +1213,9 @@ export function classifyEvidenceLeaf(
   scope: EvidenceValueScope,
   path: string,
 ): EvidenceFieldClassification {
+  if (scope.kind === "gate-result" && path === "decision" && referenceComparisonForGate(scope.gateId) !== undefined) {
+    return EvidenceFieldClassificationSchema.parse({ scope, path, classification: "safe-diagnostic", transform: "allow" });
+  }
   const entry = BY_SCOPE_AND_PATH.get(`${evidenceScopeKey(scope)}\u0000${path}`);
   if (entry === undefined) {
     throw new z.ZodError([{ code: "custom", path: [path], message:
@@ -1231,7 +1233,7 @@ export function redactEvidenceLeaf(
   leaf: EvidenceLeaf,
 ): z.infer<typeof RedactedFieldSchema> {
   const declared = classifyEvidenceLeaf(scope, leaf.path);
-  if (leaf.field === "ssn") {
+  if (leaf.field === "ssn" || scope.kind === "task-output" && scope.taskId === CompareReferenceFields.id && declared.transform === "drop") {
     return RedactedFieldSchema.parse({ key: leaf.path, ...redactValue(declared.classification, declared.transform, leaf.value) });
   }
   const redaction = redactDiagnosticFields([{

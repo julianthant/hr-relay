@@ -46,7 +46,7 @@ import type { WorkbookActiveSelectionSchema } from "../../../../../src/models/da
 import { CRM_DOCUMENT_ROSTER_FIELDS } from "../../../../../src/models/workflows/crm-doc-download/documents.js";
 import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_TYPE_ID } from "../../../../../src/models/workflows/onboarding/roster.js";
 import { OCR_ROSTER_FIELDS, OCR_ROSTER_TYPE_ID } from "../../../../../src/models/workflows/ocr/roster.js";
-import { REFERENCE_CHECK } from "../../../../../src/models/processing/workbooks/verify-person.js";
+import { REFERENCE_CHECK_ID } from "../../../../../src/models/processing/workbooks/reference-fields.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
 import type { TestClock } from "../../../../../src/rules/time/clock.js";
@@ -261,7 +261,7 @@ export function createScriptedExecutor(deps: Readonly<{
           "workbooks.library": recordingPublishes(claimed, script, createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: claimed.envelope.runId, clock,
             publicationSource: () => ({ workflowId: target.id, workflowLabel: target.label, partitionDay: searchPartitionDay(new Date(claimed.envelope.enqueuedAt)) }),
             references: { runId: claimed.envelope.runId, write: command => { if (target.id !== "onboarding") throw new Error("the scripted workflow writes no reference"); return runWorkbooks.write(claimed, command); }, read: command => runWorkbooks.read(claimed, command),
-              verifyPerson: command => runWorkbooks.verifyPerson(claimed, command) } })) } };
+              readFields: command => runWorkbooks.readReferenceFields(claimed, command) } })) } };
       deps.reportWorker(slot.workerId, WorkerActivitySchema.parse({ state: "busy", runId: claimed.envelope.runId }));
       return withBoundRunConfigFingerprint(manager, claimed.envelope.configFingerprint, () => executeClaimedRun(
         { ...common, descriptor: target, writeSequencer, providers, artifacts, artifactProjector,
@@ -343,10 +343,12 @@ export function createScriptedExecutor(deps: Readonly<{
   let referenceLibraryId: string | undefined;
   const reviewReference = (): ScriptedReference => {
     referenceLibraryId ??= library.create({ name: "Award roster.xlsx", themes: [], hasFormulas: false, sheets: [{
-      id: "sheet", name: "Awards", width: 1, hidden: [], headerRow: 1,
-      columnBindings: [{ id: "column-0", sourceColumn: 0, sourceHeader: "eid", fieldId: "eid", basis: "manual" }],
-      rows: [{ id: "header", cells: [{ value: "eid" }] }, { id: "row-0", cells: [{ value: "10000009" }] }] }] }).libraryId;
-    return { entry: 1, typeId: REFERENCE_CHECK.id, libraryId: referenceLibraryId, versionId: library.libraryVersion(referenceLibraryId).version.id,
+      id: "sheet", name: "Awards", width: 2, hidden: [], headerRow: 1,
+      columnBindings: [{ id: "column-0", sourceColumn: 0, sourceHeader: "eid", fieldId: "eid", basis: "manual" },
+        { id: "column-1", sourceColumn: 1, sourceHeader: "fullName", fieldId: "fullName", basis: "manual" }],
+      rows: [{ id: "header", cells: [{ value: "eid" }, { value: "fullName" }] },
+        { id: "row-0", cells: [{ value: "10812345" }, { value: "Fictional Different Person" }] }] }] }).libraryId;
+    return { entry: 1, typeId: REFERENCE_CHECK_ID, libraryId: referenceLibraryId, versionId: library.libraryVersion(referenceLibraryId).version.id,
       sheetId: "sheet", expectedVersion: library.read(referenceLibraryId).version };
   };
 
