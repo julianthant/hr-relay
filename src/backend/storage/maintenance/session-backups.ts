@@ -140,7 +140,7 @@ export function createSessionBackups(input: Readonly<{ admission: RuntimeAdmissi
     candidates.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt) || right.name.localeCompare(left.name));
     let newest: VerifiedManifest | undefined, keep: FileProof[] = [];
     for (const candidate of candidates) {
-      const [manifest, backup] = candidate.pair, identity = `${manifest.identity}|${backup.identity}`;
+      const [manifest, backup] = candidate.pair, identity = candidate.pair.map(proof => proof.identity).join("|");
       if (passed.get(manifest.path) !== identity) {
         passed.delete(manifest.path);
         if (!await backupBytesMatch(backup.path, candidate.backup)) { retired.push(...candidate.pair); continue; }

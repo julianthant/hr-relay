@@ -349,7 +349,7 @@ function inTransaction<T>(db: DatabaseSync, begin: "BEGIN" | "BEGIN IMMEDIATE", 
     return result;
   } catch (error) {
     try { db.exec("ROLLBACK"); }
-    catch (rollback) { throw new AggregateError([error, rollback], "log-database-rollback-failed"); }
+    catch (rollback) { throw new AggregateError([error, rollback], "log-database-rollback-failed", { cause: rollback }); }
     throw error;
   }
 }
@@ -483,7 +483,7 @@ export function openLogDatabases(statePath: string, root: string) {
     };
   } catch (error) {
     try { close(); }
-    catch (failure) { throw new AggregateError([error, failure], "log-database-open-failed"); }
+    catch (failure) { throw new AggregateError([error, failure], "log-database-open-failed", { cause: failure }); }
     throw error;
   }
 }

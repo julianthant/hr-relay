@@ -23,16 +23,16 @@ const catalogCodeOf = (error: unknown): ErrorCatalogCode | undefined =>
 export function createWorkerLogChannel() {
   type Append = Extract<WorkerLogMessage, { kind: "worker-log-append" }>;
   const retained = new Map<number, Append>();
-  const barriers = new Map<string, { throughSeq: number; finish(error?: unknown): void }>();
+  const barriers = new Map<string, { throughSeq: number; finish(error?: Error): void }>();
   let tail = 0, acknowledged = 0, send: ((message: WorkerLogMessage) => void) | undefined;
-  let failure: { error: unknown } | undefined;
+  let failure: Error | undefined;
   const fail = (error: unknown) => {
-    failure ??= { error };
-    for (const barrier of barriers.values()) barrier.finish(error);
+    failure ??= error instanceof Error ? error : new Error("worker-log-channel-failed", { cause: error });
+    for (const barrier of barriers.values()) barrier.finish(failure);
     barriers.clear();
   };
   return {
-    publish(mutation: LogMutation): void {
+    publish: (mutation: LogMutation): void => {
       if (mutation.kind !== "append" || failure !== undefined) return;
       const seq = ++tail;
       const message: Append = { kind: "worker-log-append", seq, row: mutation.row };
@@ -61,8 +61,8 @@ export function createWorkerLogChannel() {
         barrier.finish();
       }
     },
-    flush(): Promise<void> {
-      if (failure !== undefined) return Promise.reject(failure.error);
+    flush: (): Promise<void> => {
+      if (failure !== undefined) return Promise.reject(failure);
       if (tail === acknowledged || send === undefined) return Promise.resolve();
       const requestId = randomUUID(), throughSeq = tail;
       const barrier = Promise.withResolvers<void>();

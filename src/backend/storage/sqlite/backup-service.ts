@@ -1,4 +1,4 @@
-import { descriptorStatus, fileStatus, privateFileNumber, type DirectoryIdentity } from "../file-identity.js";
+import { descriptorStatus, fileStatus, privateFileNumber, sameDirectory, type DirectoryIdentity } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { AuthorityDatabase } from "./authority-database.js";
@@ -40,6 +40,7 @@ import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import {
   StoppedAuthorityBackupManifestSchema,
+  AuthorityBackupManifestSchema,
   UnboundPredecessorBackupManifestSchema,
   AuthorityBackupRequestSchema,
   AuthorityBackupRunReportSchema,
@@ -336,6 +337,7 @@ function backupSuffix(purpose: "clean-shutdown" | "in-session" | undefined): str
 
 const BackupAttemptToken = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const BackupStageName = new RegExp(`^\\.authority-${BackupAttemptToken}\\.(?:sqlite\\.tmp(?:-(?:journal|wal|shm))?|manifest\\.json\\.tmp)$`, "u");
+const BackupLogStageName = new RegExp(`^\\.authority-${BackupAttemptToken}\\.logs\\.tmp$`, "u");
 const FinalBackupName = new RegExp(`^authority-g\\d+-\\d{17}-${BackupAttemptToken}(?:\\.shutdown|\\.session)?\\.sqlite$`, "u");
 const RestoreStageName = new RegExp(`^(\\.restore-${BackupAttemptToken}\\.sqlite\\.tmp)(?:-(?:journal|wal|shm))?$`, "u");
 
@@ -395,9 +397,10 @@ function reconcileAbandonedBackups(root: string, assertHeld: () => void, readUpg
   if (!noSymlinkAncestry(directory, ancestry)) return 0;
   const names = new Set(readdirSync(directory));
   const stages = [...names].filter(name => BackupStageName.test(name));
+  const logStages = [...names].filter(name => BackupLogStageName.test(name));
   const unpaired = [...names].filter(name => FinalBackupName.test(name)
     && !names.has(`${name}.manifest.json`) && !names.has(`${name}.manifest.json.retiring`));
-  if (stages.length === 0 && unpaired.length === 0) return 0;
+  if (stages.length === 0 && logStages.length === 0 && unpaired.length === 0) return 0;
   assertMaintenanceCustodyAvailable("backup");
   statDirectory(directory, "authority backup", 0o700);
 
@@ -424,7 +427,28 @@ function reconcileAbandonedBackups(root: string, assertHeld: () => void, readUpg
     if (file === undefined) throw new Error("abandoned-backup-file-unsafe");
     return file;
   });
-  return removeAbandonedFiles(directory, ancestry, abandoned, assertHeld, "abandoned-backup-file-changed");
+  const removed = removeAbandonedFiles(directory, ancestry, abandoned, assertHeld, "abandoned-backup-file-changed");
+  for (const stage of logStages) removeBackupLogStage(join(directory, stage), assertHeld);
+  if (logStages.length > 0) fsyncPath(directory);
+  return removed + logStages.length;
+}
+
+function removeBackupLogStage(root: string, assertHeld: () => void): void {
+  const identity = statDirectory(root, "log backup staging", 0o700);
+  const owned = new Set(BACKUP_LOG_NAMES.flatMap(name => ["", "-wal", "-shm", "-journal"].map(suffix => `${name}.db${suffix}`)));
+  const files = readdirSync(root).map(name => {
+    const file = owned.has(name) ? abandonedFile(root, name) : undefined;
+    if (file === undefined) throw new Error("abandoned-backup-log-stage-unsafe");
+    return file;
+  });
+  for (const file of files) {
+    assertHeld();
+    if (!sameDirectory(statDirectory(root, "log backup staging", 0o700), identity)) throw new Error("abandoned-backup-log-stage-changed");
+    removeExactPath(file.path, file, false, "abandoned-backup-log-stage-changed");
+  }
+  assertHeld();
+  if (!sameDirectory(statDirectory(root, "log backup staging", 0o700), identity)) throw new Error("abandoned-backup-log-stage-changed");
+  rmdirSync(root);
 }
 
 function abandonedFile(directory: string, name: string): (DirectoryIdentity & { path: string }) | undefined {
@@ -560,13 +584,19 @@ export class AuthorityBackupService {
       const stem = `authority-g${String(inspection.authorityGeneration)}-${compactTime}-${token}`;
       const backupFileName = `${stem}${backupSuffix(this.#purpose)}.sqlite`;
       const finalBackupPath = join(this.#directory, backupFileName);
-      let logFiles: AuthorityBackupManifest["logFiles"];
-      if (expected.kind === "profile" && isCurrentAuthoritySchemaVersion(inspection.schemaVersion)) {
+      let logFiles: z.input<typeof AuthorityBackupManifestSchema>["logFiles"];
+      const withLogs = expected.kind === "profile" && isCurrentAuthoritySchemaVersion(inspection.schemaVersion);
+      if (withLogs) {
         mkdirSync(temporaryLogRoot, { mode: 0o700 });
         const builder = startLogWriter({ statePath: temporaryBackupPath, root: temporaryLogRoot, onFault: () => {} });
         try { await builder.ready; } finally { await builder.close(); }
         this.#signal?.throwIfAborted();
         this.#admission.assertAuthorityBackupWrite(this.#directory);
+        removeReadOnlyInspectionCompanions(temporaryBackupPath);
+      }
+      renameSync(temporaryBackupPath, finalBackupPath);
+      finalPaths.push(finalBackupPath);
+      if (withLogs) {
         const publish = async (name: typeof BACKUP_LOG_NAMES[number]) => {
           const source = join(temporaryLogRoot, `${name}.db`), target = `${finalBackupPath}.${name}.db`;
           fsyncPath(source);
@@ -577,10 +607,7 @@ export class AuthorityBackupService {
           return { byteSize, sha256 };
         };
         logFiles = { timeline: await publish("timeline"), dashboard: await publish("dashboard") };
-        removeReadOnlyInspectionCompanions(temporaryBackupPath);
       }
-      renameSync(temporaryBackupPath, finalBackupPath);
-      finalPaths.push(finalBackupPath);
       const stats = statSync(finalBackupPath);
       this.#admission.assertAuthorityBackupWrite(this.#directory);
       fsyncPath(this.#directory);
@@ -637,13 +664,7 @@ export class AuthorityBackupService {
     if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw primary.error;
     const cleanupFailures: unknown[] = [];
     try {
-      if (existsSync(temporaryLogRoot)) {
-        for (const name of BACKUP_LOG_NAMES) {
-          for (const suffix of ["", "-wal", "-shm", "-journal"]) rmSync(join(temporaryLogRoot, `${name}.db${suffix}`), { force: true });
-        }
-        // This directory was exclusively created for this attempt.
-        rmdirSync(temporaryLogRoot);
-      }
+      if (existsSync(temporaryLogRoot)) removeBackupLogStage(temporaryLogRoot, () => this.#admission.assertAuthorityBackupWrite(this.#directory));
     } catch (error) { cleanupFailures.push(error); }
     if (primary !== undefined) {
       try { if (finalManifestPath !== undefined && existsSync(finalManifestPath)) rmSync(finalManifestPath); }

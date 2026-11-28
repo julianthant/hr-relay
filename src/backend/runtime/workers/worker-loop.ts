@@ -65,7 +65,6 @@ type WorkerClaimRequest = Readonly<{
 }>;
 
 export interface WorkerRunResources {
-  readonly beforeConfirmedWrite?: () => Promise<void>;
  readonly publishCheckpoint?: import("../execution/run-execution-contract.js").RunExecutorDependencies["publishCheckpoint"];
  readonly sessionFactory: WorkerBrowserSessionFactory;
  readonly duoCeremony: DuoCeremonyGateFactory;
@@ -78,6 +77,7 @@ const PREFLIGHT_RETRY_CAP_MS = 60_000;
 const WORKER_REPORT_OUTCOME_LIMIT = 32;
 
 export interface WorkerLoopDependencies {
+  readonly beforeConfirmedWrite?: () => Promise<void>;
   readonly debugEvents?: import("../execution/run-execution-contract.js").RunExecutorDependencies["debugEvents"];
  readonly resourcesForRun?: (run:RunRecord)=>WorkerRunResources;
  readonly idleCadence?: ()=>number;

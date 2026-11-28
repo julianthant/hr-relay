@@ -429,6 +429,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     },
   });
   const childRuns = createDurableChildRunExecutor({ authority: database,
+    ...(logChannel === undefined ? {} : { beforeConfirmedWrite: logChannel.flush }),
     admission: { admitAndRelease: (context, plan) => runRecordService.admitDelegation(context, plan) },
     resolveTarget: id => {
       const target = executionDescriptor(id);
