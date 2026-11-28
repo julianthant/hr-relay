@@ -416,7 +416,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
       };
       let current = soundValue, revision = settingsDocument.revision;
       // Settings takes over the dashboard, so dispatch its ordinary command from the Queue page.
-      async function changeSetting() {
+      const changeSetting = async () => {
         const next = current === "default" ? "none" : "default";
         const patch = SettingsPatchSchema.parse({ [sound]: { set: next } });
         const command = SettingsCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: systemClock.now().toISOString(),
@@ -441,7 +441,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, input: { days: read
         revision = result.settingsRevision;
         current = next;
         return { start, end };
-      }
+      };
 
       type Snapshot = Awaited<ReturnType<typeof snapshot>>;
       const baseline: Span[] = [], uncontendedSse: Snapshot[] = [];
