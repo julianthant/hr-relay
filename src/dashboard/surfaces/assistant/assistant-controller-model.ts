@@ -14,9 +14,11 @@ import { replyText, type SessionStop } from './assistant-reply-parts-model.js';
 import { composeCommandRequest } from '../../app/commands/command-dispatch.js';
 import { ASSISTANT_UNSAVED_REPLY, type AssistantHistory } from './assistant-history-model.js';
 import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from '../../../models/failures/error-catalog.js';
+import type { useToasts } from "../../ds/ui.js";
 
 type Binding = Readonly<{ authority: unknown; subjectRef?: string;
   commands?: Pick<DashboardCommandBinding, 'executor' | 'scope' | 'feedback'>;
+  toast?: ReturnType<typeof useToasts>["toast"];
   preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void;
 }>;
 const ACCOUNT_NOT_CONNECTED = 'Connect ChatGPT to use the assistant.';
@@ -94,12 +96,18 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     const request = { requestId, prompt, abort: new AbortController(), binding };
     outstanding = request;
     const current = () => !retired && outstanding === request && !request.abort.signal.aborted && binding === request.binding;
+    const notifyEdit = (message: AssistantMessage) => {
+      const edit = message.parts?.find(part => part.kind === "text" && part.editId !== undefined);
+      if (edit?.kind === "text" && edit.editId !== undefined) request.binding.toast?.({ tone: "success", title: "Edit applied", key: edit.editId });
+      if (message.code === "ASSISTANT_VALUE_NEEDS_SOURCE") request.binding.toast?.({ tone: "danger", title: "Value needs a source" });
+    };
     /** Presents the stored outcome of this send, never a Confirm and never another send; `fallback` when nothing stored can be read. */
     const readBack = async (fallback: AssistantAction) => {
       try {
         const stored = await history?.outcome(messageId);
         if (stored !== undefined && current()) {
           publish(assistantReducer(state, { type: 'settle', requestId, message: { ...stored, id: 'assistant-' + requestId } }));
+          notifyEdit(stored);
           if (stored.parts?.some(part => part.kind === 'session') === true) await refreshSessions();
           return;
         }
@@ -142,11 +150,12 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         return;
       }
       const message = presentResult(envelope.result, requestId);
+      notifyEdit(message);
       publish(assistantReducer(state, { type: "settle", requestId, message }));
       if (message.parts?.some(part => part.kind === 'session') === true) void refreshSessions();
     } catch {
       if (current()) {
-        // A chat turn only reads, proposes or starts a read-only session it reports in its reply, so a lost reply is read back, then a retryable failure; a model-preference save may have written, so it stays unknown.
+        // Recover the served result by message ID before offering to resend that same accepted message.
         await readBack(assistantSetupCommand(prompt) === undefined ? { type: "fail", requestId } : { type: "uncertain", requestId });
       }
     } finally {
@@ -206,7 +215,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     bind(next: Binding) {
       if (retired) return;
       if (next.authority === binding.authority && next.subjectRef === binding.subjectRef && next.commands?.scope === binding.commands?.scope && next.commands?.executor === binding.commands?.executor
-        && next.commands?.feedback === binding.commands?.feedback && next.preferenceChanged === binding.preferenceChanged) return;
+        && next.commands?.feedback === binding.commands?.feedback && next.toast === binding.toast && next.preferenceChanged === binding.preferenceChanged) return;
       binding = next; abort();
       publish(assistantReducer(state, { type: 'cancel' }));
     },
@@ -222,8 +231,8 @@ export function createAssistantController(client: AssistantQueries, initialBindi
   });
 }
 
-export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true, chatId = "default", commands?: DashboardCommandBinding, options?: { history?: AssistantHistory; preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void; readModels?: boolean }) {
-  const { history, preferenceChanged, readModels = true } = options ?? {};
+export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true, chatId = "default", commands?: DashboardCommandBinding, options?: { history?: AssistantHistory; preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void; readModels?: boolean; toast?: Binding["toast"] }) {
+  const { history, preferenceChanged, readModels = true, toast } = options ?? {};
   const accountPort = useContext(ChatGptAccountContext);
   const account = useChatGptAccount(accountPort);
   const readChecking = () => accountPort.getChecking?.() ?? false;
@@ -239,8 +248,8 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
     return current;
   }, [controllers, sessions, chatId, history]);
   useLayoutEffect(() => {
-    for (const current of controllers.values()) current.bind({ authority: bindingAuthority, ...(subjectRef === undefined ? {} : { subjectRef }), commands, preferenceChanged });
-  }, [controller, controllers, bindingAuthority, subjectRef, commands, accountPort, preferenceChanged]);
+    for (const current of controllers.values()) current.bind({ authority: bindingAuthority, ...(subjectRef === undefined ? {} : { subjectRef }), commands, preferenceChanged, toast });
+  }, [controller, controllers, bindingAuthority, subjectRef, commands, accountPort, preferenceChanged, toast]);
   useEffect(() => () => { if (controller.snapshot().turn.state === 'waiting') controller.action({ type: 'cancel' }); else controller.abort(); }, [controller]);
   useEffect(() => () => { for (const current of controllers.values()) current.abort(); }, [controllers]);
   const state = useSyncExternalStore(controller.subscribe, controller.snapshot);

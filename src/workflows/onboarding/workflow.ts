@@ -16,6 +16,7 @@ export const onboardingWorkflow = defineWorkflow({
   referenceCheck: defineReferenceCheck({ key: "email", input: { email: "email" }, outputs: {
     "crm-source": { email: "requestedEmail", fullName: ["recordFirstName", "recordLastName"], firstName: "recordFirstName", lastName: "recordLastName", dob: "fields.dob" },
     "hire-plan": { dob: "employee.dob" },
+    "ucpath-source": { eid: "confirmed[].emplId", fullName: "confirmed[].name" },
     "hire-subject": { eid: "person.emplId", fullName: "person.name" },
     "write-plan": { eid: "hire.emplId", fullName: "hire.expectedName" },
     "hire-receipt": { eid: "emplId", fullName: "displayedName", dob: "dob", email: "email" },

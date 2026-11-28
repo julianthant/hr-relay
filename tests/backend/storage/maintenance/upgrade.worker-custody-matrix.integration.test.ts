@@ -1,3 +1,4 @@
+import { ASSISTANT_APPLIED_EDITS_STATEMENTS } from "../../../../src/backend/storage/sqlite/assistant-applied-edits.js";
 import { CHANGE_LOG_OBJECTS, changeLogTriggers } from "../../../../src/backend/storage/sqlite/authority-change-log.js";
 import { ASSISTANT_PROPOSAL_STATEMENTS } from "../../../../src/backend/storage/sqlite/assistant-proposals.js";
 import assert from "node:assert/strict";
@@ -248,7 +249,7 @@ it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-
   // Schema 29 drops the empty grant table.
   const { assistant_grants: grants, ...keptBefore } = before.kept;
   assert.deepEqual(grants, []);
-  assert.deepEqual(kept, { ...keptBefore, workbook_payloads: [], debug_events: [] });
+  assert.deepEqual(kept, { ...keptBefore, workbook_payloads: [], debug_events: [], assistant_applied_edits: [] });
   assert.deepEqual(after.upgrades.slice(0, before.upgrades.length), before.upgrades);
   assert.ok(after.upgrades.length > before.upgrades.length);
   // Migration 21 rewrites this trigger; every other trigger comes through verbatim.
@@ -263,6 +264,8 @@ it.each([20, 21, 22, 23] as const)("deletes the schema %s digest-linked recover-
     ...ASSISTANT_PROPOSAL_STATEMENTS.filter(sql => sql.startsWith("CREATE TRIGGER ")),
     ...ASSISTANT_PHASE_ONE_TABLES.flatMap(changeLogTriggers),
     ...RUN_SEARCH_FTS_MIGRATION.statements.filter(sql => sql.startsWith("CREATE TRIGGER ")),
+    ...ASSISTANT_APPLIED_EDITS_STATEMENTS.filter(sql => sql.startsWith("CREATE TRIGGER ")),
+    ...changeLogTriggers("assistant_applied_edits"),
   ];
   const isAddedTrigger = (row: Record<string, unknown>) => addedTriggers.includes(String(row.sql));
   assert.deepEqual(after.triggers.filter(isAddedTrigger).map(row => String(row.sql)).sort(), addedTriggers.sort());

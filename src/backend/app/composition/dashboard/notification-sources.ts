@@ -4,6 +4,7 @@ import type { RunRecord } from "../../../../models/run/record.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../../models/trust/failure.js";
 import { RunEvidenceReceiptSchema } from "../../../../models/trust/evidence.js";
 import type { NotificationObservation, NotificationSourceRead } from "../../../runs/notifications/observation.js";
+import { notificationSourceId } from "../../../runs/notifications/inbox.js";
 import { z } from "zod";
 import { NotificationTriggerEventSchema } from "../../../../rules/notifications/notification-triggers.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
@@ -11,7 +12,7 @@ import { canonicalJsonStringify } from "../../../../rules/validation/canonical-j
 import { listCanonicalRuns } from "../../../runs/queries/canonical-runs.js";
 import { createTrustRunReader } from "../../../runs/trust/canonical-reader.js";
 import { defineLaneRead, type DashboardReadLanes } from "../../../storage/sqlite/dashboard-read-host.js";
-import { FingerprintSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
+import { FingerprintSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 
 function observation(event: z.input<typeof NotificationTriggerEventSchema>, identity: string, occurredAt: string): NotificationObservation {
   return { event: NotificationTriggerEventSchema.parse(event), source: { identity: sha256Hex(`notification-occurrence:${event.kind}:${identity}`), occurredAt } };
@@ -24,7 +25,7 @@ const NotificationSourceReadSchema = z.strictObject({
 });
 
 /** Private canonical evidence is narrowed here to closed events, never passed to the day wire. */
-function scanNotificationSources(database: AuthorityDatabase, reader: Pick<RunRecordService, "list">): NotificationSourceRead {
+function scanNotificationSources(database: AuthorityDatabase, reader: Pick<RunRecordService, "list">, unpublishedOnly = false): NotificationSourceRead {
   const live = listCanonicalRuns({ list(request) {
     const page = reader.list(request);
     if (page.state === "refused") throw new Error("notification-scan-cursor-stale");
@@ -72,14 +73,20 @@ function scanNotificationSources(database: AuthorityDatabase, reader: Pick<RunRe
     const count = (groups.get(fingerprint) ?? 0) + 1; groups.set(fingerprint, count);
     if (count >= 3 || repeated.has(failure.failureId)) result.push(observation(repeated.get(failure.failureId) ?? { kind: "repeating-failure", ...shared, failureFingerprint: fingerprint, occurrences: count, threshold: 3 }, failure.failureId, failure.occurredAt));
   }
-  return { observations: result, diagnostics };
+  if (!unpublishedOnly) return { observations: result, diagnostics };
+  const published = new Map(publications.map(record => [record.sourceId, record]));
+  const observations = result.filter(({ event, source }) => {
+    const prior = published.get(notificationSourceId(LOCAL_OPERATOR_ACTOR_ID, source.identity));
+    return prior === undefined || canonicalJsonStringify(prior.event) !== canonicalJsonStringify(event);
+  });
+  return { observations, diagnostics };
 }
 
 export const notificationSourceScan = defineLaneRead(import.meta.url, "notification-source-scan", {
   lane: "navigation", priority: "background", args: z.strictObject({}), tables: NOTIFICATION_SOURCE_TABLES,
   run({ native }) {
     // Publication and run membership belong to the native inbox, including on profile copies.
-    return scanNotificationSources(native, createTrustRunReader(native));
+    return scanNotificationSources(native, createTrustRunReader(native), true);
   },
 });
 

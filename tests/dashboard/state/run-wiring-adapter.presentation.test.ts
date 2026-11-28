@@ -42,10 +42,10 @@ describe("served Person Lookup Logs operator presentation", () => {
     const logs = projectRunLogs(snapshot(), client);
     assert.deepEqual(logs.steps.map(step => [step.title, step.system?.toLowerCase()]), [["Search for person", "ucpath"]]);
     const entries = logs.steps[0].entries;
-    assert.deepEqual(entries.map(entry => entry.kind), ["fields", "fields", "decision"]);
-    assert.equal(entries[0].kind === "fields" && entries[0].fields[0].kind, "fill");
-    assert.equal(entries[1].kind === "fields" && entries[1].fields[0].kind, "read");
-    const capture = entries[2]; assert.ok(capture.kind === "decision");
+    assert.deepEqual(entries.map(entry => entry.kind), ["note", "fields", "fields", "decision"]);
+    assert.equal(entries[1].kind === "fields" && entries[1].fields[0].kind, "fill");
+    assert.equal(entries[2].kind === "fields" && entries[2].fields[0].kind, "read");
+    const capture = entries[3]; assert.ok(capture.kind === "decision");
     assert.deepEqual(capture.decision.screenshots?.map(shot => [shot.src, shot.width, shot.height]), [[`/artifacts/${id(501)}`, 1280, 720]]);
   });
   it("retains distinct native observations with equal labels and values in chronological order", () => {

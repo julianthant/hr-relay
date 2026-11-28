@@ -4,7 +4,7 @@ import { Banner, Button, FailureNotice, FormGroup, PageHeading, Spinner, dsText,
 import { cn } from "../../../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { settingsSectionGroups, formatSetting } from "./settings-draft-model.js";
-import { SettingsValueControl } from "./settings-controls.js";
+import { SavingMark, SettingsValueControl } from "./settings-controls.js";
 import { timeoutReadableValue, timeoutSetting } from "../general/settings-timeouts-model.js";
 import { CompactSettingsSection } from "../general/ui-settings-records-general-paths.js";
 import { PerformanceSettingsSection } from "../general/ui-settings-records-performance.js";
@@ -49,6 +49,7 @@ export function EditableSettingsSection({ editor, sectionId, appearance }: { edi
               : formatSetting(leaf.defaultValue);
               return <div key={leaf.path} data-settings-path={leaf.path} className="settings-row">
                 <SettingsValueControl leaf={leaf} operation={operation} error={editor.errors[leaf.path]} disabled={editor.locked} update={(raw, immediate) => editor.update(leaf.path, raw, immediate)} />
+              <SavingMark editor={editor} path={leaf.path} />
               {leaf.validity === "unset" && <span className={cn(dsText.meta, "settings-row-hazard text-[color:var(--ds-status-waiting-fg)]")}>Not set</span>}
               {(custom || operation !== undefined) && <div className="settings-row-actions">
                 {custom && !requiredJobEndDate && operation?.kind !== "clear" && <Button size="sm" variant="ghost" title={`Standard value: ${shownDefault}`} onClick={() => editor.clear(leaf.path)} disabled={editor.locked}>Restore standard</Button>}

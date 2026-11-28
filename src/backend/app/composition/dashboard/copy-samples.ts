@@ -108,6 +108,7 @@ export function createCopySamples(input: Readonly<{ stored: StoredSamples; realS
   const refuseSource = (runId: RunId | undefined) => { if (runId !== undefined && runIds.has(runId)) throw new SampleRunRefusedError(); };
   const planSource = (input: unknown) => RerunPlanSourceSchema.safeParse(input).data?.rerunSource.runId;
   return Object.freeze({
+    dayFacts: (): readonly Pick<Sample, "slot" | "leases">[] => [...samples.values()].map(({ slot, leases }) => ({ slot, leases })),
     slots: (): readonly WorkerSlotRecord[] => [...samples.values()].map(sample => sample.slot),
     views: (): readonly WorkerMemberView[] => [...samples.values()].map(sample => sample.view),
     leases: (workerId: string) => samples.get(WorkerIdSchema.parse(workerId))?.leases,
@@ -116,6 +117,12 @@ export function createCopySamples(input: Readonly<{ stored: StoredSamples; realS
     /** A rerun from a sample run is refused before its Start plan runs preflight or reads credentials. */
     guardStartPlans: (service: StartPlanService): StartPlanService => Object.freeze({
       prepare: async (input: unknown, signal: AbortSignal) => { refuseSource(planSource(input)); await service.prepare?.(input, signal); },
+      prepareAndPlan: async (input: unknown, signal: AbortSignal) => {
+        refuseSource(planSource(input));
+        if (service.prepareAndPlan !== undefined) return service.prepareAndPlan(input, signal);
+        await service.prepare?.(input, signal);
+        return service.plan(input);
+      },
       plan: (input: unknown) => { refuseSource(planSource(input)); return service.plan(input); },
       previewWarnings: (input: unknown) => { refuseSource(WarningSourceSchema.safeParse(input).data?.source.runId); return service.previewWarnings(input); },
     }),

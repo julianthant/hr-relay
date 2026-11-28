@@ -2,15 +2,17 @@ import { isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.j
 import { Hono } from "hono";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createCalendarQuery } from "../../../../src/backend/runs/queries/calendar.js";
-import { createRunSummaries } from "../../../../src/backend/storage/sqlite/run-summaries.js";
+import * as runSummaries from "../../../../src/backend/storage/sqlite/run-summaries.js";
 import type { DashboardApp } from "../../../../src/backend/transports/http/routes/api-types.js";
 import type { ShellRouteDeps } from "../../../../src/backend/transports/http/routes/shell-types.js";
 import { registerShellRoutes } from "../../../../src/backend/transports/http/routes/shell.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { summaryFixture } from "../../../support/helpers/backend/served-database-surfaces-fixtures.js";
+import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { foundationFixture,id } from "../../../support/helpers/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -69,6 +71,26 @@ it("reads today as the Pacific day when the machine zone is not Pacific", async 
   } finally { if (prior === undefined) delete process.env.TZ; else process.env.TZ = prior; await f.dispose(); }
 });
 
+it("reuses Calendar across a preference save and stamps the current authority generation", async () => {
+  const world = createSettingsAuthorityTestWorld();
+  const build = vi.spyOn(runSummaries, "createRunSummaries");
+  try {
+    const f = await world.fixture();
+    build.mockClear();
+    const query = createCalendarQuery(f.database, f.clock), input = { month: "2026-09", day: "2026-09-05" };
+    const first = query.read(input);
+    const patch = { "preferences.notifications.sound": { set: "none" } };
+    assert.equal(f.execute({ family: "settings", type: "apply-settings", commandId: id(9920),
+      requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
+      target: { expectedRevision: 1 }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }).state, "applied");
+    const authorityGeneration = f.database.getMeta().authorityGeneration;
+    assert.ok(authorityGeneration > first.authorityGeneration);
+    assert.deepEqual(query.read(input), { ...first, authorityGeneration });
+    assert.equal(build.mock.calls.length, 1);
+  } finally { build.mockRestore(); await world.cleanup(); }
+});
+
 it("authenticates linked days that can change the month or bounds", async () => {
   const f = await summaryFixture();
   try {
@@ -94,7 +116,7 @@ it("authenticates linked days that can change the month or bounds", async () => 
     const raw = new DatabaseSync(f.path, { readOnly: true });
     try {
       const inspected: string[] = [];
-      const summary = createRunSummaries(raw, () => { throw new Error("calendar does not read wait state"); }, envelopes => {
+      const summary = runSummaries.createRunSummaries(raw, () => { throw new Error("calendar does not read wait state"); }, envelopes => {
         for (const envelope of envelopes) if (envelope.parent !== undefined) inspected.push(envelope.parent.runId);
         return f.db.authority.dependencies.parents(envelopes);
       });
@@ -117,6 +139,7 @@ it("refuses invalid queries and unavailable/corrupt publications instead of repo
     for (const input of [{ month: "2026-13", day: "2026-08-03" }, { month: "2026-08", day: "2026-02-30" }, { month: "2026-08", day: "2026-09-10" }]) {
       assert.throws(() => query.read(input));
     }
+    assert.ok(query.read({ month: "2026-08", day: "2026-08-03" }).firstDay);
     const raw = new DatabaseSync(f.path);
     try {
       raw.prepare("UPDATE runs SET version=version+1 WHERE id=?").run(f.run.envelope.runId);

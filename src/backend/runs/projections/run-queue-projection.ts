@@ -1787,7 +1787,8 @@ export class RunQueueProjection {
       const validUntil = this.#deps.authority.nextDuoLeaseExpiry?.(now) ?? Infinity;
       deepFreeze(wire);
       return { wire, cache: { wire, workerKey,
-        sources: { ...sources, through: revision.through }, reusable, builtAt: now, validUntil,
+        sources: { ...sources, through: revision.through, retryConfigFingerprint: revision.kind === "full"
+          ? revision.retryConfigFingerprint : previous?.sources.retryConfigFingerprint }, reusable, builtAt: now, validUntil,
         cursor: wire.snapshotCursor, refreshedRuns: new Set() } };
     };
     const { wire, cache } = summaries === undefined ? read() : summaries.withSnapshot(read);
@@ -1961,7 +1962,7 @@ export class RunQueueProjection {
   }
 
   #buildDashboardDayWire(parsedDay: string, patch?: QueueDayPatch): {
-    wire: DashboardDayWire; sources: Omit<QueueDaySources, "through">; reusable: ReadonlySet<string>;
+    wire: DashboardDayWire; sources: Omit<QueueDaySources, "through" | "retryConfigFingerprint">; reusable: ReadonlySet<string>;
   } {
     this.#dayBuilds += 1;
     const surfaces: QueueSurfaceWire[] = [];

@@ -19,6 +19,7 @@ export const AuthorityDatabaseOptionsSchema = z.strictObject({
   busyTimeoutMs: z.number().int().positive(),
   migrationOwner: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   openMode: AuthorityDatabaseOpenModeSchema.default("read-write"),
+  checkpointOwner: z.literal("dashboard-navigation").optional(),
 });
 
 export const AuthorityMetaSchema = z.strictObject({

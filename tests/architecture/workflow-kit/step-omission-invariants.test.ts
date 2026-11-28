@@ -30,6 +30,8 @@ import { ACTIVE_STATUS_MANUAL } from "../../../src/workflows/person-lookup/steps
 import { CRM_DATES_MANUAL } from "../../../src/workflows/person-lookup/steps/crm-dates/step.js";
 import { CROSS_VERIFY_MANUAL } from "../../../src/workflows/person-lookup/steps/cross-verify/step.js";
 import { SEARCHING_MANUAL } from "../../../src/workflows/person-lookup/steps/searching/step.js";
+import { TRANSACTION_STEP } from "../../../src/workflows/work-study/steps/transaction/step.js";
+import { UCPATH_AUTH_STEP } from "../../../src/workflows/work-study/steps/ucpath-auth/step.js";
 import { FixtureCommit, FixtureStage } from "../../support/fixtures/descriptor-fixtures.js";
 
 const FixtureInput = z.strictObject({ eid: EidSchema });
@@ -150,6 +152,7 @@ const VALID_OMISSION: StepManualDeclaration = {
 /** The descriptor ids this guard names explicitly: the registry's manual-entry authors, and the fixture's. */
 const SEPARATIONS_ID = "separations";
 const PERSON_LOOKUP_ID = "person-lookup";
+const WORK_STUDY_ID = "work-study";
 const FIXTURE_ID = "step-omission-guard-valid";
 
 /** The one legitimate fixture descriptor every positive check runs against too. */
@@ -217,6 +220,14 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
     descriptor: PERSON_LOOKUP_ID, step: "crm-dates", declaration: CRM_DATES_MANUAL,
     fieldKeys: ["employmentDate", "oathDate"], produces: ["crm-dates"],
   },
+  {
+    descriptor: WORK_STUDY_ID, step: "ucpath-auth", declaration: UCPATH_AUTH_STEP.manual,
+    fieldKeys: ["emplId", "displayedName", "positionNumber", "effectiveDate", "positionChangeReason", "positionPool"], produces: ["paypath-position"],
+  },
+  {
+    descriptor: WORK_STUDY_ID, step: "transaction", declaration: TRANSACTION_STEP.manual,
+    fieldKeys: [], produces: [],
+  },
 ];
 
 /** Every `<descriptor>::<step>` row a complete sweep MUST have visited — the production declarations plus the fixture's one. */
@@ -238,6 +249,8 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
   "person-lookup::cross-verify": { state: "omittable", forces: [] },
   "person-lookup::active-status": { state: "omittable", forces: [] },
   "person-lookup::crm-dates": { state: "omittable", forces: [] },
+  "work-study::ucpath-auth": { state: "omittable", forces: [] },
+  "work-study::transaction": { state: "omittable", forces: [] },
 };
 
 
@@ -253,6 +266,8 @@ const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly st
   "person-lookup::cross-verify": { asserted: ["crm-identity"], omitted: ["cross-verify"] },
   "person-lookup::active-status": { asserted: ["active-status"], omitted: ["crm-only-recovery"] },
   "person-lookup::crm-dates": { asserted: ["crm-dates"], omitted: [] },
+  "work-study::ucpath-auth": { asserted: ["paypath-position"], omitted: [] },
+  "work-study::transaction": { asserted: [], omitted: ["save-transaction", "transaction-plan"] },
 };
 
 /** The same pinning for the whole-descriptor plan: every omittable step of a descriptor omitted at once. */
@@ -265,6 +280,10 @@ const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asse
   [PERSON_LOOKUP_ID]: {
     asserted: ["active-status", "crm-dates", "crm-identity", "matching", "search-identity", "searching"],
     omitted: ["crm-only-recovery", "cross-verify"],
+  },
+  [WORK_STUDY_ID]: {
+    asserted: ["paypath-position"],
+    omitted: ["save-transaction", "transaction-plan"],
   },
 };
 
@@ -472,7 +491,7 @@ describe("step-omission invariants", () => {
       assert.deepEqual(sorted(whole.omitted.keys()), expectedWhole?.omitted, `${id}: whole-descriptor omitted nodes changed`);
     }
     assertSweptEveryDeclaration(audited, "planner sweep");
-    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, FIXTURE_ID]), "the whole-descriptor sweep visited the wrong descriptors");
-    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, FIXTURE_ID]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
+    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, WORK_STUDY_ID, FIXTURE_ID]), "the whole-descriptor sweep visited the wrong descriptors");
+    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, WORK_STUDY_ID, FIXTURE_ID]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
   });
 });

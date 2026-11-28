@@ -139,13 +139,13 @@ describe("Onboarding reference spreadsheet check", () => {
   it("matches a native worksheet DOB and reviews a differing confirmed Employee ID before hire review", async () => {
     const f = await fixture();
     const root = f.start([f.checkSheet("Reference roster", "Hires", ["email", "dob", "eid"],
-      [[f.key, new Date("2000-01-14T00:00:00.000Z"), "10800009"]])]);
+      [[f.key, new Date("2000-01-14T00:00:00.000Z"), "10000009"]])]);
     const parked = (await f.rawExecution.execute(root, signal())).run;
     assert.ok(parked?.lifecycle.state === "parked-gate");
-    assert.equal(parked.lifecycle.gateId, "reference-field-review-hire-subject");
+    assert.equal(parked.lifecycle.gateId, "reference-field-review-ucpath-source");
     assert.ok(f.checkLines(root).includes("Hires, row 2: Date of Birth matches"));
     assert.equal(f.commits(), 0);
-    assert.equal(f.card(root).context, `Hires, row 2 · Employee ID: spreadsheet “10800009”, workflow “${PERSON.emplId}”`);
+    assert.equal(f.card(root).context, `Hires, row 2 · Employee ID: spreadsheet “10000009”, workflow “${PERSON.emplId}”`);
     assert.equal(f.continueReference(root).state, "applied");
     const done = await f.reviewThenRun(f.current(root));
     assert.ok(done.lifecycle.state === "terminal" && done.lifecycle.outcome === "done");
@@ -154,13 +154,14 @@ describe("Onboarding reference spreadsheet check", () => {
 
   it("reviews the Employee ID first observed in the hire receipt and resumes without resubmitting", async () => {
     const f = await fixture({ mode: "new-hire", newHireReceiptEid: PERSON.emplId });
-    const root = f.start([f.checkSheet("Reference roster", "Hires", ["email", "eid"], [[f.key, "10800009"]])]);
+    const root = f.start([f.checkSheet("Reference roster", "Hires", ["email", "eid"], [[f.key, "10000009"]])]);
     const parked = await f.reviewThenRun(root);
     assert.ok(parked.lifecycle.state === "parked-gate");
     assert.equal(parked.lifecycle.gateId, "reference-field-review-hire-receipt");
-    assert.equal(f.card(root).context, `Hires, row 2 · Employee ID: spreadsheet “10800009”, workflow “${PERSON.emplId}”`);
+    assert.equal(f.card(root).context, `Hires, row 2 · Employee ID: spreadsheet “10000009”, workflow “${PERSON.emplId}”`);
     assert.deepEqual(f.repository.runOperations(root.envelope.runId), []);
     assert.equal(f.hire.events.filter(event => event === "commit:hire").length, 1);
+    f.clock.advanceWall(60_000);
     assert.equal(f.continueReference(root).state, "applied");
     const done = (await f.rawExecution.execute(f.current(root), signal())).run;
     assert.ok(done?.lifecycle.state === "terminal" && done.lifecycle.outcome === "done", JSON.stringify(f.database.authority.failures.listByRun(root.envelope.runId)));

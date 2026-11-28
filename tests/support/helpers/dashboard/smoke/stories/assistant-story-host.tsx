@@ -4,6 +4,7 @@ import { PersonPreferencesContext } from "../../../../../../src/dashboard/lib/pe
 import { createPersonPreferences } from "../../../../../../src/dashboard/state/person-preferences-model.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../../../../src/models/config/person-preferences.js";
 import { useAssistantController } from "../../../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js";
+import { useToasts } from "../../../../../../src/dashboard/ds/ui.js";
 import { DashboardClientProvider } from "../../../../../../src/dashboard/state/client-context.js";
 import { publishAssistantModelChoice } from "../../../../../../src/dashboard/surfaces/shell/assistant-approval-model.js";
 import { assistantOpen } from "../../../../../../src/dashboard/surfaces/shell/assistant-launcher-model.js";
@@ -37,7 +38,8 @@ export interface AssistantHostProps {
 
 function Panel({ props }: { props: AssistantHostProps }) {
   const client = useMemo(() => assistantStoryClient(props.client), [props.client]);
-  const served = useAssistantController(client, client, undefined, false, "story-chat");
+  const { toast } = useToasts();
+  const served = useAssistantController(client, client, undefined, false, "story-chat", undefined, { toast });
   const preference = props.modelPreference;
   useLayoutEffect(() => {
     if (!props.modelChoices || preference === undefined) return;
