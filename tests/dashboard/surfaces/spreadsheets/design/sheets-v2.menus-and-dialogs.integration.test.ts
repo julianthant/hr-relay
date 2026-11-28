@@ -6,7 +6,7 @@ import { afterEach, beforeEach, it, vi } from 'vitest';
 import { WorkbookLibraryEntrySchema } from '../../../../../src/models/dashboard/workbook-library.js';
 import { ToastProvider, TooltipProvider } from '../../../../../src/dashboard/ds/ui.js';
 
-const wiring = vi.hoisted(() => ({ adapter: {} as Record<string, ReturnType<typeof vi.fn>>, catalog: [] as unknown[] }));
+const wiring = vi.hoisted(() => ({ adapter: {} as Record<string, ReturnType<typeof vi.fn>>, catalog: [] as unknown[], pending: [] as string[] }));
 const LINK = 'https://contoso.sharepoint.com/sites/hr/roster.xlsx';
 const version = (id: string, n: number) => ({ id, name: `v${n}`, snapshotId: id, version: n, savedAt: `2026-11-0${n}T00:00:00Z`, source: 'operator' });
 const make = (libraryId: string, name: string, options: { pinned?: boolean; linked?: boolean; sync?: unknown } = {}) => WorkbookLibraryEntrySchema.parse({ libraryId, version: 2, name, updatedAt: '2026-11-02T00:00:00Z', rowCount: 1, ...(options.sync ? { sync: options.sync } : {}),
@@ -15,7 +15,7 @@ const make = (libraryId: string, name: string, options: { pinned?: boolean; link
   state: { libraryId, revision: 1, selectedVersionId: 'v2', removed: false, origin: { kind: 'local' }, pinned: options.pinned ?? false, tags: [], versions: [version('v1', 1), version('v2', 2)] } });
 vi.mock('../../../../../src/dashboard/state/spreadsheet-wiring-adapter.js', () => ({
   useSpreadsheetWiringAdapter: () => ({ adapter: wiring.adapter, catalog: wiring.catalog, compatibility: undefined, catalogLoading: false,
-    catalogError: undefined, openError: undefined, draft: undefined, pendingLibraries: [] }),
+    catalogError: undefined, openError: undefined, draft: undefined, pendingLibraries: wiring.pending }),
 }));
 const { SheetsV2 } = await import('../../../../../src/dashboard/surfaces/spreadsheets/design/sheets-v2.js');
 
@@ -25,6 +25,7 @@ let host: HTMLElement;
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   wiring.adapter = { changeLibrary: vi.fn(async () => ({ state: 'confirmed' })), cloneLibrary: vi.fn(async () => ({ state: 'confirmed' })), importSharePoint: vi.fn(async () => ({ state: 'confirmed' })) };
+  wiring.pending = [];
   wiring.catalog = [make('roster', 'Roster.xlsx', { pinned: true, linked: true }), make('keys', 'Keys.xlsx')];
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
@@ -119,15 +120,124 @@ it('sends a SharePoint import with the link and name', async () => {
   assert.deepEqual(wiring.adapter.importSharePoint?.mock.calls.at(-1), [{ source: 'sharepoint', url: LINK, name: 'Roster 2' }]);
 });
 
-it('titles the version dialog "Roll back" and confirms with "Roll back to v<n>?"', async () => {
-  await render();
-  await click(host.querySelector('button[aria-label="Versions of Keys.xlsx, now v2"]'));
-  const dialog = document.body.querySelector('[role="dialog"]'); assert.ok(dialog);
-  assert.equal(dialog.querySelector('h2, [data-slot="dialog-title"]')?.textContent?.trim(), 'Roll back');
-  assert.equal((byText('button', 'Roll back') as HTMLButtonElement).disabled, true);
+const openVersions = async () => { await render(); await click(host.querySelector('button[aria-label="Versions of Keys.xlsx, now v2"]')); return document.body.querySelector('[role="dialog"]')!; };
+const lastChange = (): unknown => wiring.adapter.changeLibrary?.mock.calls.at(-1)?.[1];
+
+it('lists versions by name and uses a chosen one after a confirm', async () => {
+  const dialog = await openVersions();
+  assert.equal(dialog.querySelector('h2, [data-slot="dialog-title"]')?.textContent?.trim(), 'Versions');
+  assert.equal((byText('button', 'Use version') as HTMLButtonElement).disabled, true);
   await click([...dialog.querySelectorAll('[role="radio"]')].find(node => node.textContent?.includes('v1')));
-  await click(byText('button', 'Roll back'));
-  assert.match(document.body.textContent ?? '', /Roll back to v1\?/u);
-  await click(byText('button', 'Roll back'));
-  assert.deepEqual(wiring.adapter.changeLibrary?.mock.calls.at(-1)?.[1], { kind: 'use-version', versionId: 'v1' });
+  await click(byText('button', 'Use version'));
+  assert.match(document.body.textContent ?? '', /Use v1\?/u);
+  await click(byText('button', 'Use version'));
+  assert.deepEqual(lastChange(), { kind: 'use-version', versionId: 'v1' });
+});
+
+it('creates a version from another version under a name', async () => {
+  await openVersions();
+  await click(byText('button', 'New version'));
+  assert.equal((byText('button', 'Create') as HTMLButtonElement).disabled, true);
+  await type(document.body.querySelector('input[aria-label="Name"]'), '  Before audit ');
+  await click(byText('button', 'Create'));
+  assert.deepEqual(lastChange(), { kind: 'create-version', name: 'Before audit', from: { kind: 'version', versionId: 'v2' }, useNow: false });
+});
+
+it('creates a version from a chosen non-current version', async () => {
+  await openVersions();
+  await click(byText('button', 'New version'));
+  await type(document.body.querySelector('input[aria-label="Name"]'), 'From the first');
+  await click(document.body.querySelector('button[aria-label="Start from"]'));
+  await click([...document.body.querySelectorAll('[role="option"]')].find(node => node.textContent?.trim() === 'v1'));
+  await click(byText('button', 'Create'));
+  assert.deepEqual(lastChange(), { kind: 'create-version', name: 'From the first', from: { kind: 'version', versionId: 'v1' }, useNow: false });
+});
+
+it('says an uncertain change is not confirmed, not that it failed', async () => {
+  wiring.adapter.changeLibrary = vi.fn(async () => ({ state: 'uncertain', message: 'Check the result.' }));
+  const dialog = await openVersions(); assert.ok(dialog);
+  await click(document.body.querySelector('button[aria-label="Delete v1"]'));
+  await click(byText('button', 'Delete version'));
+  const text = document.body.textContent ?? '';
+  assert.match(text, /Not confirmed yet/u); assert.doesNotMatch(text, /Couldn't delete/u);
+});
+
+it('shows a pending change and its Check result on the opened spreadsheet', async () => {
+  wiring.pending = ['keys'];
+  wiring.adapter.settleLibrary = vi.fn(async () => ({ state: 'confirmed' }));
+  wiring.adapter.snapshot = vi.fn(() => ({ pendingLibraries: ['keys'] }));
+  await render();
+  await click(host.querySelector('li[aria-label="Keys.xlsx"]'));
+  assert.match(host.textContent ?? '', /The change to Keys\.xlsx isn't confirmed yet\./u);
+  await click(byText('button', 'Check result'));
+  assert.deepEqual(wiring.adapter.settleLibrary?.mock.calls.at(-1), ['keys']);
+});
+
+const twin = (id: string, n: number) => ({ ...version(id, n), name: 'Reviewed', savedAt: '2026-11-02T00:00:00Z' });
+const twins = () => { wiring.catalog = [WorkbookLibraryEntrySchema.parse({ ...make('keys', 'Keys.xlsx'), state: { ...make('keys', 'Keys.xlsx').state, selectedVersionId: 'v2', versions: [twin('v1', 1), twin('v2', 2)] } })]; };
+
+it('tells same-named versions apart in the list, the sources and the confirms', async () => {
+  twins();
+  await render();
+  await click(host.querySelector('button[aria-label="Versions of Keys.xlsx, now Reviewed (v2)"]'));
+  const radios = [...document.body.querySelectorAll('[role="radio"]')].map(node => node.textContent ?? '');
+  assert.ok(radios[0].includes('Reviewed (v2)') && radios[1].includes('Reviewed (v1)'));
+  await click(byText('button', 'New version'));
+  await click(document.body.querySelector('button[aria-label="Start from"]'));
+  assert.deepEqual([...document.body.querySelectorAll('[role="option"]')].map(node => node.textContent?.trim()), ['Reviewed (v2)', 'Reviewed (v1)']);
+  await click(byText('button', 'Back'));
+  await click(document.body.querySelector('button[aria-label="Delete Reviewed (v1)"]'));
+  assert.match(document.body.textContent ?? '', /Delete Reviewed \(v1\)\?/u);
+});
+
+it('reports a recorded change from Check result as recorded and clears its sync marker', async () => {
+  wiring.pending = ['roster'];
+  wiring.adapter.settleLibrary = vi.fn(async () => ({ state: 'recorded', message: 'The library has changed again.' }));
+  wiring.adapter.snapshot = vi.fn(() => ({ pendingLibraries: ['roster'] }));
+  wiring.adapter.changeLibrary = vi.fn(async () => ({ state: 'uncertain', message: 'Check the result.' }));
+  await render();
+  await openMenu('Roster.xlsx'); await click(byText('[role="menuitem"]', 'Sync now'));
+  await render();
+  assert.match(host.textContent ?? '', /Syncing Roster\.xlsx isn't confirmed yet\./u);
+  await click(byText('button', 'Check result'));
+  const text = document.body.textContent ?? '';
+  assert.match(text, /The sync was recorded/u); assert.doesNotMatch(text, /The sync is not confirmed yet/u);
+  await render();
+  assert.match(host.textContent ?? '', /The change to Roster\.xlsx isn't confirmed yet\./u);
+});
+
+it('creates a version from SharePoint when the spreadsheet is linked', async () => {
+  await render();
+  await click(host.querySelector('button[aria-label="Versions of Roster.xlsx, now v2"]'));
+  await click(byText('button', 'New version'));
+  await type(document.body.querySelector('input[aria-label="Name"]'), 'Fresh pull');
+  await click(byText('button', 'Create'));
+  assert.deepEqual(lastChange(), { kind: 'create-version', name: 'Fresh pull', from: { kind: 'sharepoint' }, useNow: false });
+});
+
+it('renames a version', async () => {
+  await openVersions();
+  await click(document.body.querySelector('button[aria-label="Rename v1"]'));
+  const name = document.body.querySelector<HTMLInputElement>('input[aria-label="Name"]'); assert.equal(name?.value, 'v1');
+  await type(name, 'Original');
+  await click(byText('button', 'Rename'));
+  assert.deepEqual(lastChange(), { kind: 'rename-version', versionId: 'v1', name: 'Original' });
+});
+
+it('deletes a version after a confirm, and turns Delete off with the reason for the version in use', async () => {
+  await openVersions();
+  assert.equal((document.body.querySelector('button[aria-label="Delete v2"]') as HTMLButtonElement).disabled, true);
+  assert.match(document.body.textContent ?? '', /The version in use can't be deleted\./u);
+  await click(document.body.querySelector('button[aria-label="Delete v1"]'));
+  assert.match(document.body.textContent ?? '', /Delete v1\?/u);
+  await click(byText('button', 'Delete version'));
+  assert.deepEqual(lastChange(), { kind: 'delete-version', versionId: 'v1' });
+});
+
+it('ellipsizes a long version name in the list while the button keeps the full name', async () => {
+  const long = 'Before the fall audit of every department roster';
+  wiring.catalog = [WorkbookLibraryEntrySchema.parse({ ...make('keys', 'Keys.xlsx'), state: { ...make('keys', 'Keys.xlsx').state, versions: [version('v1', 1), { ...version('v2', 2), name: long }] } })];
+  await render();
+  const button = host.querySelector(`button[aria-label="Versions of Keys.xlsx, now ${long}"]`); assert.ok(button);
+  assert.ok(button.querySelector('span.truncate')?.textContent === long);
 });

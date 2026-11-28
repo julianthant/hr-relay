@@ -1,4 +1,4 @@
-import { ChatGptAccountStatusSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptEmptyRequestSchema,
+import { ChatGptAccountStatusSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptConnectionCheckRequestSchema, ChatGptEmptyRequestSchema,
   ChatGptOcrTestResultSchema, ChatGptSignInCompletionSchema, ChatGptSignInRequestSchema, ChatGptSignOutResultSchema, ChatGptSignInStartResultSchema,
   type ChatGptSignInRequest } from "../../../models/dashboard/chatgpt-account.js";
 import type { z } from "zod";
@@ -8,7 +8,7 @@ import { schemaError } from "../errors.js";
 
 export interface ChatGptAccountQueries {
   chatGptAccount(): Promise<z.infer<typeof ChatGptAccountStatusSchema>>;
-  checkChatGptAccount(signal?: AbortSignal): Promise<z.infer<typeof ChatGptAccountStatusSchema>>;
+  checkChatGptAccount(signal?: AbortSignal, options?: z.input<typeof ChatGptConnectionCheckRequestSchema>): Promise<z.infer<typeof ChatGptAccountStatusSchema>>;
   startChatGptSignIn(input: ChatGptSignInRequest): Promise<z.infer<typeof ChatGptSignInStartResultSchema>>;
   completeChatGptSignIn(attemptId: string, signal?: AbortSignal): Promise<z.infer<typeof ChatGptSignInCompletionSchema>>;
   cancelChatGptSignIn(attemptId: string, signal?: AbortSignal): Promise<z.infer<typeof ChatGptCancelResultSchema>>;
@@ -18,10 +18,10 @@ export interface ChatGptAccountQueries {
 export function createChatGptAccountQueries(transport: DashboardTransport): ChatGptAccountQueries {
   return Object.freeze({
     async chatGptAccount() { return parseOrThrow(ChatGptAccountStatusSchema, "GET /api/v1/settings/chatgpt-account", await transport.requestJson("/api/v1/settings/chatgpt-account")); },
-    async checkChatGptAccount(signal?: AbortSignal) {
+    async checkChatGptAccount(signal?: AbortSignal, options = {}) {
       const path = "/api/v1/settings/chatgpt-account/check";
       return parseOrThrow(ChatGptAccountStatusSchema, `POST ${path}`, await transport.requestJson(path,
-        { method: "POST", body: JSON.stringify(ChatGptEmptyRequestSchema.parse({})), ...(signal === undefined ? {} : { signal }) }));
+        { method: "POST", body: JSON.stringify(ChatGptConnectionCheckRequestSchema.parse(options)), ...(signal === undefined ? {} : { signal }) }));
     },
     async startChatGptSignIn(input: ChatGptSignInRequest) {
       const path = "/api/v1/settings/chatgpt-account/sign-in";
