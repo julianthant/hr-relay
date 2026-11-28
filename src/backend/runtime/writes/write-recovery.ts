@@ -13,15 +13,9 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
-import {
-  ActorIdSchema,
-  PositiveIntSchema,
-} from "../../../rules/identity/ids.js";
+import { PositiveIntSchema } from "../../../rules/identity/ids.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import {
-  WriteIntentRecordSchema,
-  type WriteIntentRecord,
-} from "../../../rules/write-safety/write-safety.js";
+import { WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import {
   rebuildCommitInput,
@@ -38,11 +32,9 @@ import type { WorkflowDescriptorResolver } from "../../runs/commands/run-command
 import {
   type ProbeReadDeps,
   type TransactionSessionHost,
-  type WriteSequencerAuthority,
   type WriteSequencerHooks,
 } from "./write-sequencer.js";
 import type { RunConfigFingerprintBinding } from "../workers/worker-sessions.js";
-import { applyWriteTransition, ResolvedParkedWriteAbsenceInputSchema } from "../../storage/sqlite/write-commit-contracts.js";
 
 /** Exact retained authority; this read never changes the run, attempt or intent. */
 export function requireParkedWriteCheckTarget(repositories: Pick<AuthorityRepositories, "runs" | "writeIntents" | "writeAttempts" | "runCheckpoints" | "gateResults">,
@@ -138,12 +130,6 @@ export async function checkParkedWrite(input: Readonly<{
 export interface WriteResolutionDependencies {
   readonly continuation: RunContinuationPort;
   readonly descriptors: WorkflowDescriptorResolver;
-  // Use the kernel's AuthorityDatabase connection so resolution composes inside its transaction as a savepoint.
-  readonly authority: Omit<WriteSequencerAuthority, "authority" | "withAuthorityTransaction"> & {
-    readonly authority: AuthorityRepositories;
-    withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
-    settleResolvedParkedAbsence(input: unknown): WriteIntentRecord;
-  };
   readonly ids: IdFactory;
   readonly hooks?: WriteSequencerHooks;
 }
@@ -178,20 +164,30 @@ function requireResolvableIntent(context: WriteResolutionContext): void {
   }
 }
 
-function resolutionBinding(context: WriteResolutionContext) {
-  const intent=context.intent;
-  if(intent.status !== "parked") throw new Error("parked-write-resolution-required");
-  return ResolvedParkedWriteAbsenceInputSchema.shape.resolution.parse({commandId:context.command.commandId,auditId:context.auditId,
-    writeIntentId:intent.writeIntentId,writeAttemptId:intent.currentAttemptId,generation:intent.generation,
-    bindingProofDigest:intent.bindingProofDigest,idempotencyKeyDigest:intent.idempotencyKeyDigest,
-    runId:intent.runId,runAttempt:intent.runAttempt,expectedRunVersion:context.run.version,decision:"absent",resolvedAt:context.now});
-}
-function plannedResolutionRun(context: WriteResolutionContext,startAt:string) {
-  return RunRecordSchema.parse({...context.run,envelope:{...context.run.envelope,startAt},lifecycle:{state:"queued"},
-    version:context.run.version+1,updatedAt:context.now});
-}
-
 export function createWriteResolutionExecutor(deps: WriteResolutionDependencies): WriteResolutionExecutor {
+  function requestRead(repositories: AuthorityRepositories, context: WriteResolutionContext, node: TransactionRuntimeNode) {
+    const intent = context.intent;
+    if (intent.status !== "parked") throw new Error("parked-write-resolution-required");
+    const transactionId = context.command.type === "recheck-write" ? context.command.payload.transactionId : undefined;
+    const recheck = { nodeId: String(node.id), commandId: context.command.commandId, auditId: context.auditId,
+      expectedRunVersion: context.run.version, requestedAt: context.now,
+      ...(transactionId === undefined ? {} : { transactionId }) };
+    const requested = WriteIntentRecordSchema.parse({ ...intent, recheck, version: intent.version + 1, updatedAt: context.now });
+    const run = RunRecordSchema.parse({ ...context.run, envelope: { ...context.run.envelope, startAt: node.id },
+      lifecycle: { state: "queued" }, version: context.run.version + 1, updatedAt: context.now });
+    return { outcome: { run, intent: requested }, applyAfterAudit: () => {
+      const actualIntent = repositories.writeIntents.requestRecheck({ writeIntentId: intent.writeIntentId,
+        generation: intent.generation, expectedVersion: intent.version, recheck });
+      const actual = deps.continuation.transition({ commandId: lifecycleCommandId("write-recheck", context.command.commandId),
+        runId: run.envelope.runId, expectedVersion: context.run.version, lifecycle: { state: "queued" }, startAt: node.id,
+        writeResolution: { kind: "recheck", commandId: context.command.commandId, writeIntentId: intent.writeIntentId,
+          generation: intent.generation, writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest } });
+      if (actual.state !== "applied") throw new Error("parked-write-resolution-continuation-failed");
+      deps.hooks?.afterSequencedStep?.("run-transition");
+      return { run: actual.run, intent: actualIntent };
+    } };
+  }
+
   return Object.freeze({
     recheck(repositories: AuthorityRepositories, context: WriteResolutionContext) {
       if (context.command.type !== "recheck-write") throw new Error("write-recheck-command-required");
@@ -202,24 +198,7 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
         && (completion.kind === "receipt" || completion.verify.taskId !== "ucpath/verify-termination")) {
         rejectCommandRequest(context.command, "invalid-value", "This write does not support checking one transaction ID");
       }
-      const intent = context.intent;
-      if (intent.status !== "parked") throw new Error("parked-write-resolution-required");
-      const recheck = { nodeId: String(node.id), commandId: context.command.commandId, auditId: context.auditId,
-        expectedRunVersion: context.run.version, requestedAt: context.now,
-        ...(context.command.payload.transactionId === undefined ? {} : { transactionId: context.command.payload.transactionId }) };
-      const requested = WriteIntentRecordSchema.parse({ ...intent, recheck, version: intent.version + 1, updatedAt: context.now });
-      const run = plannedResolutionRun(context, String(node.id));
-      return { outcome: { run, intent: requested }, applyAfterAudit: () => {
-        const actualIntent = repositories.writeIntents.requestRecheck({ writeIntentId: intent.writeIntentId,
-          generation: intent.generation, expectedVersion: intent.version, recheck });
-        const actual = deps.continuation.transition({ commandId: lifecycleCommandId("write-recheck", context.command.commandId),
-          runId: run.envelope.runId, expectedVersion: context.run.version, lifecycle: { state: "queued" }, startAt: node.id,
-          writeResolution: { kind: "recheck", commandId: context.command.commandId, writeIntentId: intent.writeIntentId,
-            generation: intent.generation, writeAttemptId: intent.currentAttemptId, bindingProofDigest: intent.bindingProofDigest } });
-        if (actual.state !== "applied") throw new Error("parked-write-resolution-continuation-failed");
-        deps.hooks?.afterSequencedStep?.("run-transition");
-        return { run: actual.run, intent: actualIntent };
-      } };
+      return requestRead(repositories, context, node);
     },
 
     resolveAbsent(repositories: AuthorityRepositories, context: WriteResolutionContext) {
@@ -231,28 +210,7 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
         rejectCommandRequest(context.command, "invalid-state", "Resolution must attest the exact new write occurrence");
       }
       const { node } = requireResolutionTarget(deps, repositories, context, "operator-confirmed-absent");
-      const intent=context.intent;
-      if(intent.status !== "parked") throw new Error("parked-write-resolution-required");
-      const resolution=resolutionBinding(context);
-      const next=applyWriteTransition(intent,repositories.writeAttempts.get(intent.currentAttemptId),{type:"resolve-absent",resolution});
-      const settlement={state:"operator-confirmed-absent" as const,writeIntentId:intent.writeIntentId,generation:intent.generation,
-        operator:ActorIdSchema.parse(context.command.requestedBy),confirmedAt:context.now};
-      const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,recheck:_recheck,...base}=intent;
-      const settled=WriteIntentRecordSchema.parse({...base,status:next.status,settlement,resolvedAt:context.now,
-        updatedAt:context.now,version:intent.version+1,resolution});
-      const run=plannedResolutionRun(context,String(node.id));
-      return {outcome:{run,intent:settled},applyAfterAudit:()=>{
-        const actualIntent=deps.authority.settleResolvedParkedAbsence({writeIntentId:intent.writeIntentId,generation:intent.generation,
-          expectedIntentVersion:intent.version,settlement,resolution});
-        deps.hooks?.afterSequencedStep?.("commit-write-attempt");
-        const actual=deps.continuation.transition({commandId:lifecycleCommandId("operator-absent",context.command.commandId),
-          runId:run.envelope.runId,expectedVersion:context.run.version,lifecycle:{state:"queued"},startAt:node.id,
-          writeResolution:{kind:"operator",binding:resolution}});
-        if(actual.state !== "applied") throw new Error("parked-write-resolution-continuation-failed");
-        deps.hooks?.afterSequencedStep?.("run-transition");
-        return {run:actual.run,intent:actualIntent};
-      }};
-
+      return requestRead(repositories, context, node);
     },
   });
 }

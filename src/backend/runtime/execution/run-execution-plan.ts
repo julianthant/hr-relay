@@ -19,7 +19,7 @@ import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks
 import { delegationEvidenceOutput, resolveDelegationEvidenceOutput } from "../../../models/run/result.js";
 import { lifecycleCommandId } from "../../runs/lifecycle/run-record-service.js";
 import type { ChildRunRuntimeNode, RunExecutionContext, RunExecutionState, TaskRuntimeNode } from "./run-execution-contract.js";
-import { requestedPayPathRecheck } from "./run-execution-write.js";
+import { requestedParkedWriteRecheck } from "./run-execution-write.js";
 
 function requireStoredCheckpoint(stored: RunCheckpointRecord | undefined, nodeId: string): RunCheckpointRecord {
   if (stored === undefined) {
@@ -119,8 +119,9 @@ export function prepareRunPlan(
   const startsAtPayPath = startNode?.kind === "transaction" && startNode.commit.uses.id === "ucpath/submit-paypath-work-study";
   // A Saved recheck needs the original fenced target. Fresh reads could bind it to another position.
   const payPathRecheckInputs = !startsAtPayPath ? undefined : deps.authority.withAuthorityTransaction?.(repositories => {
-    const intent = requestedPayPathRecheck(repositories, initial, startNode);
-    if (intent === undefined) return undefined;
+    const request = requestedParkedWriteRecheck(repositories, initial, startNode);
+    if (request?.command.type !== "recheck-write") return undefined;
+    const { intent } = request;
     const ancestors = new Set(nodes.slice(0, startIndex).filter(node => node.kind === "task").map(node => node.id));
     const checkpoints = new Map<string, RunCheckpointRecord>();
     const fencedAt = Date.parse(intent.fencedAt);
