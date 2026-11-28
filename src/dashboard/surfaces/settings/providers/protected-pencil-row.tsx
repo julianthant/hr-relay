@@ -25,8 +25,8 @@ export function ProtectedPencilRow({ editor, name, label, thing, description }: 
   const operation = credentials.draft[name];
   const typed = operation?.kind === "set" ? operation.raw.trim() : "";
   const changed = typed !== "" && !(name === "ucpathUserId" && stored !== undefined && typed === formatSetting(stored.value));
-  // A username waiting for a fresh revision, or being saved, shows what was typed; after a failed save the row shows the served value and the draft waits in the dialog.
-  const waiting = name === "ucpathUserId" && !open && typed !== "" && (credentials.save.state === "idle" || credentials.save.state === "saving") ? typed : undefined;
+  // A username waiting for a fresh revision, or being saved, shows what was typed; after this credential's save fails the row shows the served value and the draft waits for an explicit Save in the dialog.
+  const waiting = name === "ucpathUserId" && !open && typed !== "" && !credentials.failedNames.includes(name) ? typed : undefined;
   const shown = stored === undefined && waiting === undefined ? "Not set" : name === "ucpathUserId" ? waiting ?? formatSetting(stored?.value) : "••••••••";
   const close = (): void => { credentials.reset(name); setOpen(false); };
   return <div data-settings-path={`protected.${name}`}>

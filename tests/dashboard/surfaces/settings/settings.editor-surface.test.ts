@@ -445,6 +445,50 @@ it("keeps an explicit username Save visible and unsent until the held re-read la
   assert.match(host.querySelector('[data-settings-path="protected.ucpathUserId"]')?.textContent ?? "", /held-username/u);
 });
 
+it("keeps a refused username off the closed row and unsent when the Password editor is opened and canceled", async () => {
+  const authority = await syntheticSettingsAuthority(); authorities.push(authority);
+  const served = authority.read();
+  const stored = served.protectedSettings.state === "available" ? served.protectedSettings.entries.ucpathUserId?.value : undefined;
+  assert.equal(typeof stored, "string");
+  const writes: unknown[] = [];
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
+    if (url.endsWith("/settings/editable")) return new Response(JSON.stringify(served), { status: 200 });
+    if (url.endsWith("/commands") && typeof init?.body === "string") {
+      const request: { commandId: string } = JSON.parse(init.body);
+      writes.push(request);
+      return new Response(JSON.stringify({ state: "rejected", commandId: request.commandId, code: "not-editable", message: "This setting cannot be changed." }), { status: 422 });
+    }
+    throw new Error("unexpected-settings-editor-request");
+  } });
+  function TwoRows() {
+    const editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) });
+    return createElement("div", null,
+      createElement(ProtectedPencilRow, { editor, name: "ucpathUserId", label: "Username", thing: "UCPath username", description: "Login name." }),
+      createElement(ProtectedPencilRow, { editor, name: "ucpathPassword", label: "Password", thing: "UCPath password", description: "Secret." }));
+  }
+  const render = mountReopenable(client, () => createElement(TwoRows));
+  await render(true);
+  const row = () => host?.querySelector('[data-settings-path="protected.ucpathUserId"]')?.textContent ?? "";
+  const pencil = (label: string) => host?.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  await vi.waitFor(() => { assert.ok(pencil("Edit UCPath username")); });
+  await act(async () => pencil("Edit UCPath username")?.click());
+  const input = document.body.querySelector<HTMLInputElement>('[role="dialog"] input[name="ucpathUserId"]');
+  assert.ok(input);
+  await act(async () => { // eslint-disable-next-line @typescript-eslint/unbound-method
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (setter === undefined) throw new Error("input setter unavailable");
+    Reflect.apply(setter, input, ["refused-username"]); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => overlayButton("Save").click());
+  await vi.waitFor(() => { assert.equal(writes.length, 1); });
+  await vi.waitFor(() => { assert.match(row(), new RegExp(String(stored))); });
+  await act(async () => pencil("Edit UCPath password")?.click());
+  await act(async () => overlayButton("Cancel").click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 2000)); });
+  assert.equal(writes.length, 1, "canceling Password sends no command");
+  assert.doesNotMatch(row(), /refused-username/u);
+  assert.match(row(), new RegExp(String(stored)));
+});
+
 it("shows a spinner on the credential row whose entry is being saved, and no other row", async () => {
   const applied: unknown[] = [];
   const transport = await settingsClient(applied, "held");
