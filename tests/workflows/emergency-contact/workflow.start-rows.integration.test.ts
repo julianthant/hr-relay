@@ -30,8 +30,18 @@ describe("Emergency Contact Start run rows", () => {
     ]);
   });
 
-  it("offers the member's contact plan values only in the member's own Start", () => {
+  it("offers typed contact-plan values only on the member's own Start rows", () => {
     assert.equal(emergencyContactMemberModule.descriptor.stepOmissions.find(({ step }) => step === "contact-plan")?.ownStartOnly, true);
+    const memberRow = projectStartRows(emergencyContactMemberModule.descriptor).find(row => row.key === "contact-plan");
+    assert.ok(memberRow);
+    assert.equal(memberRow.kind, "switch");
+    assert.equal(memberRow.off, "values");
+    assert.ok(memberRow.manual);
+    const parentRow = projectStartRows(descriptor).find(row => row.key === "read-existing-contacts");
+    assert.ok(parentRow);
+    assert.equal(parentRow.kind, "locked");
+    assert.equal(parentRow.lockReason, "bound-read");
+    assert.equal(parentRow.manual, undefined);
   });
 
   it("offers typed fields only for OCR child steps", () => {

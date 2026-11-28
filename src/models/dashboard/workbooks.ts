@@ -61,21 +61,37 @@ export type SavedWorkbook = z.infer<typeof SavedWorkbookSchema>;
 export const SavedWorkbookWireSchema = z.strictObject({ libraryId: WorkbookIdSchema, version: z.number().int().positive(), createdAt: IsoInstantSchema, savedAt: IsoInstantSchema, workbook: EditableWorkbookWireSchema }).refine(record => record.workbook.libraryId === record.libraryId && Date.parse(record.savedAt) >= Date.parse(record.createdAt));
 export type SavedWorkbookWire = z.infer<typeof SavedWorkbookWireSchema>;
 
+function workbookToWire(workbook: EditableWorkbook) {
+  return { ...workbook, sheets: workbook.sheets.map(sheet => ({
+    ...sheet, rows: sheet.rows.map(row => ({
+      ...row, cells: row.cells.map(cell => ({
+        ...cell, value: cell.value instanceof Date ? { type: "date", value: cell.value.toISOString() } : cell.value,
+      })),
+    })),
+  })) };
+}
+function workbookFromWire(workbook: EditableWorkbookWire) {
+  return { ...workbook, sheets: workbook.sheets.map(sheet => ({
+    ...sheet, rows: sheet.rows.map(row => ({
+      ...row, cells: row.cells.map(cell => ({
+        ...cell, value: typeof cell.value === "object" && cell.value !== null ? new Date(cell.value.value) : cell.value,
+      })),
+    })),
+  })) };
+}
 export function encodeEditableWorkbook(value: unknown): EditableWorkbookWire {
-  const workbook = EditableWorkbookSchema.parse(value);
-  return EditableWorkbookWireSchema.parse({ ...workbook, sheets: workbook.sheets.map(sheet => ({ ...sheet, rows: sheet.rows.map(row => ({ ...row, cells: row.cells.map(cell => ({ ...cell, value: cell.value instanceof Date ? { type: "date", value: cell.value.toISOString() } : cell.value })) })) })) });
+  return EditableWorkbookWireSchema.parse(workbookToWire(EditableWorkbookSchema.parse(value)));
 }
 export function decodeEditableWorkbook(value: unknown): EditableWorkbook {
-  const workbook = EditableWorkbookWireSchema.parse(value);
-  return deepFreeze(EditableWorkbookSchema.parse({ ...workbook, sheets: workbook.sheets.map(sheet => ({ ...sheet, rows: sheet.rows.map(row => ({ ...row, cells: row.cells.map(cell => ({ ...cell, value: typeof cell.value === "object" && cell.value !== null ? new Date(cell.value.value) : cell.value })) })) })) }));
+  return deepFreeze(EditableWorkbookSchema.parse(workbookFromWire(EditableWorkbookWireSchema.parse(value))));
 }
 export function encodeSavedWorkbook(value: unknown): SavedWorkbookWire {
   const record = SavedWorkbookSchema.parse(value);
-  return SavedWorkbookWireSchema.parse({ ...record, workbook: encodeEditableWorkbook(record.workbook) });
+  return SavedWorkbookWireSchema.parse({ ...record, workbook: workbookToWire(record.workbook) });
 }
 export function decodeSavedWorkbook(value: unknown): SavedWorkbook {
   const record = SavedWorkbookWireSchema.parse(value);
-  return deepFreeze(SavedWorkbookSchema.parse({ ...record, workbook: decodeEditableWorkbook(record.workbook) }));
+  return deepFreeze(SavedWorkbookSchema.parse({ ...record, workbook: workbookFromWire(record.workbook) }));
 }
 export const WorkbookSummarySchema = z.strictObject({
   libraryId: WorkbookIdSchema, name: NameSchema, typeId: WorkbookIdSchema, version: WorkbookRevisionSchema,
