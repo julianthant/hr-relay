@@ -1,10 +1,25 @@
-import { I9LookupInputSchema, I9ReadSection2Signer, I9SignerOutputSchema } from "../../../../models/systems/i9/read-section2-signer.js";
+import { I9LookupInputSchema, I9ReadSection2Signer, I9SignerOutputSchema, manualI9Signer } from "../../../../models/systems/i9/read-section2-signer.js";
 import { ReadI9LookupResult } from "../../../../models/workflows/i9-lookup/read-result.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
+
+const lookupManual: StepManualDeclaration = {
+  off: "values",
+  form: { format: "i9-signer-result", fields: [
+    { key: "i9Status", label: "I-9 status", kind: "enum", values: ["signed", "unsigned", "historical", "not-found", "unable-to-access"] },
+    { key: "signerName", label: "Authorized official signer", kind: "text", optional: true },
+    { key: "profileId", label: "I-9 profile ID", kind: "text", optional: true, withheld: true, help: "Digits only. Required for Signed and Historical." },
+    { key: "i9Id", label: "I-9 record ID", kind: "text", optional: true, withheld: true, help: "Digits only. Required for Signed and Historical." },
+  ] },
+  keeps: ["lookup"],
+  produces: { "lookup-source": ({ facts }) => I9SignerOutputSchema.parse(manualI9Signer(facts)) },
+};
+
 export const I9_LOOKUP_STEP = Object.freeze({
   ...defineWorkflowStep({ key: "lookup", label: "Look up Section 2 signer" }),
+  manual: lookupManual,
   description: "Search I-9 Complete by name and read the electronic Section 2 audit signer.",
   system: "i9",
   operatorFields: [

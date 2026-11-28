@@ -39,7 +39,7 @@ import {
   type TerminalDependencyRecord,
 } from "../models/run/result.js";
 import { StartRowDeclarationSchema, StepLockReasonSchema, StepOmissionFormSchema, stepManualFieldFitsLeaf, stepManualFiniteFacts } from "../models/workflow/step-omission.js";
-import type { StartRowDeclaration, StepLockReason, StepManualDeclaration, StepOmissionSpec } from "../models/workflow/step-omission.js";
+import type { StartRowDeclaration, StepLockReason, StepManualDeclaration, StepOmissionSpec, StepOmissions } from "../models/workflow/step-omission.js";
 import { schemaAcceptsUnchanged, valueLeafSchemaForManual, valueLeafSchemas } from "../models/workflow/rerun-values.js";
 import { SecretNameSchema } from "../models/config/secret-names.js";
 import { deriveSchemaHash } from "../models/validation/schema-bound-value.js";
@@ -214,7 +214,7 @@ export interface WorkflowDescriptor<
   readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   readonly referenceKeys?: (input: z.output<InputSchema>) => readonly string[];
   readonly plannedOutputs?: (input: z.output<InputSchema>, references: readonly RunWorkbookReference[], omittedSteps?: readonly string[]) => readonly PlannedRunOutput[];
-  readonly requiresOcrProvider?: (input: z.output<InputSchema>) => boolean;
+  readonly requiresOcrProvider?: (input: z.output<InputSchema>, omissions?: StepOmissions) => boolean;
   readonly code: string;
   readonly label: string;
   readonly sessionLabel?: string;
@@ -591,7 +591,7 @@ export interface WorkflowPlanning {
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
   readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   readonly plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[], omittedSteps?: readonly string[]) => readonly PlannedRunOutput[];
-  readonly requiresOcrProvider: (parsed: unknown) => boolean;
+  readonly requiresOcrProvider: (parsed: unknown, omissions?: StepOmissions) => boolean;
   readonly parseInput: (raw: unknown) => Readonly<{ input: unknown; lookups: readonly WorkbookReferenceLookup[] }>;
   readonly parseCanonicalInput: (value: unknown) => unknown;
   readonly matchKey: (parsed: unknown) => string;
@@ -921,7 +921,11 @@ function deriveStepOmissions(
       }
     }
     const skips = manual.skips ?? [];
-    if (manual.off !== undefined && (manual.off === "manual") !== (form.fields.length === 0)) {
+    if (manual.stop !== undefined
+      && (manual.off !== "values" || manual.stop.trim() === "" || form.fields.length !== 0 || Object.keys(manual.produces).length !== 0 || skips.length === 0)) {
+      throw new Error(`${id}: ${owner} can only stop with no typed values and at least one skipped node`);
+    }
+    if (manual.stop === undefined && manual.off !== undefined && (manual.off === "manual") !== (form.fields.length === 0)) {
       throw new Error(`${id}: ${owner} requires fields exactly when off takes values`);
     }
     if (new Set(skips).size !== skips.length) throw new Error(`${id}: ${owner} skips a node twice`);
@@ -936,7 +940,7 @@ function deriveStepOmissions(
       if ((node.kind === "gate" || node.kind === "transaction") && manual.skipsGatesAndTransactions !== true) {
         throw new Error(`${id}: ${owner} skips ${node.kind} node "${skipped}"; a gate or transaction always runs`);
       }
-      if (node.kind === "task" && node.dryRun === "stop-before-publish") {
+      if (node.kind === "task" && node.dryRun === "stop-before-publish" && manual.off !== "manual") {
         throw new Error(`${id}: ${owner} skips publishing task "${skipped}"; a publishing task always runs`);
       }
       if (node.kind === "branch") {
@@ -1016,6 +1020,7 @@ function deriveStepOmissions(
     specs.push(Object.freeze({
       step: category.key, form, produces: Object.freeze({ ...manual.produces }),
       ...(manual.off === undefined ? {} : { off: manual.off }),
+      ...(manual.stop === undefined ? {} : { stop: manual.stop }),
       ...(manual.ownStartOnly === undefined ? {} : { ownStartOnly: manual.ownStartOnly }),
       ...(manual.skips === undefined ? {} : { skips: Object.freeze([...manual.skips]) }),
       ...(manual.refine === undefined ? {} : { refine: manual.refine }),
@@ -1038,6 +1043,7 @@ function deriveStartRows(
   timeline: readonly Readonly<{ key: string; label: string; nodes: readonly Readonly<{ id: string }>[] }>[],
   switchable: ReadonlySet<string>,
   declared: readonly StartRowDeclaration[] | undefined,
+  stopping: ReadonlySet<string>,
 ): readonly StartRowDeclaration[] {
   if (declared === undefined) {
     return Object.freeze(timeline.map((step): StartRowDeclaration => deepFreeze({
@@ -1084,13 +1090,19 @@ function deriveStartRows(
     if (row.target === undefined) continue;
     const { workflow, step: target } = row.target;
     if (workflow !== undefined) delegatedOrThrow(row.key, workflow, "targets");
-    if (!row.members.some((member) => member.workflow === workflow && member.step === target && member.nodes === undefined && member.phase === undefined)) {
+    const linkedStop = workflow === undefined && stopping.has(target);
+    const ownMember = row.members.some(member => member.workflow === workflow && member.step === target
+      && (linkedStop || member.nodes === undefined) && member.phase === undefined);
+    const childMember = linkedStop && nodes.some(node => node.kind === "child-run"
+      && stepByKey.get(target)?.nodes.some(member => member.id === node.id)
+      && row.members.some(member => member.workflow === node.target.id));
+    if (!ownMember && !childMember) {
       throw new Error(`${id}: start row "${row.key}" targets step "${target}", which is not one of its whole-step members`);
     }
     if (workflow === undefined && !switchable.has(target)) throw new Error(`${id}: start row "${row.key}" targets step "${target}", which declares neither a selection nor manual entry`);
     const unit = workflow === undefined ? `step "${target}"` : `step "${target}" of child workflow "${workflow}"`;
     const other = targeted.get(unit);
-    if (other !== undefined) throw new Error(`${id}: start rows "${other}" and "${row.key}" both target ${unit}`);
+    if (other !== undefined && !linkedStop) throw new Error(`${id}: start rows "${other}" and "${row.key}" both target ${unit}`);
     targeted.set(unit, row.key);
   }
   for (const step of timeline) {
@@ -1622,6 +1634,10 @@ export function defineWorkflowDescriptor<
     }
   }
   const stepOmissions = deriveStepOmissions(id, nodes, spec.timeline);
+  const ocrStep = spec.surfaces.uploadRun?.ocrStep;
+  if (ocrStep !== undefined && !stepOmissions.some(step => step.step === ocrStep)) {
+    throw new Error(`${id}: PDF OCR step "${ocrStep}" must name an omittable step`);
+  }
   const failureCorrections = spec.failureCorrections === undefined ? undefined : validateFailureCorrections(spec.flow.input, nodes, spec.failureCorrections);
   const gateCorrections = spec.gateCorrections === undefined ? undefined : validateGateCorrections(spec.flow.input, nodes, spec.gateCorrections);
   if (spec.rerunValues?.some((mapping) => mapping.targetStepKey !== undefined) === true) {
@@ -1675,7 +1691,7 @@ export function defineWorkflowDescriptor<
     startRows: deriveStartRows(id, nodes, timeline, new Set([
       ...stepOmissions.map(({ step }) => step),
       ...(spec.timeline ?? []).flatMap((step) => step.selection === undefined ? [] : [step.key]),
-    ]), spec.rows),
+    ]), spec.rows, new Set(stepOmissions.filter(({ stop }) => stop !== undefined).map(({ step }) => step))),
     ...(rerunValues === undefined ? {} : { rerunValues }),
     ...(failureCorrections === undefined ? {} : { failureCorrections }),
     ...(gateCorrections === undefined ? {} : { gateCorrections }),
@@ -1700,7 +1716,7 @@ export function defineWorkflowDescriptor<
     ...(workbookCheck === undefined ? {} : { workbookCheck }),
     plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[], omittedSteps?: readonly string[]) =>
       PlannedRunOutputSchema.array().parse(spec.plannedOutputs?.(spec.canonicalInput.parse(parsed), references, omittedSteps) ?? []),
-    requiresOcrProvider: (parsed: unknown) => spec.requiresOcrProvider?.(spec.canonicalInput.parse(parsed)) ?? false,
+    requiresOcrProvider: (parsed: unknown, omissions?: StepOmissions) => spec.requiresOcrProvider?.(spec.canonicalInput.parse(parsed), omissions) ?? false,
     parseInput: (raw: unknown) => {
       const input = spec.flow.input.parse(raw);
       const lookups = workbookReference === undefined ? [] : [workbookReference.mode === "all"
@@ -1905,7 +1921,7 @@ export function defineWorkflowDescriptor<
               + "an asserted node carries its output in the asserted evidence arm",
             );
           }
-          if (entry.reason === "step-omitted") {
+          if (entry.reason === "step-omitted" || entry.reason === "required-evidence-unavailable") {
             if (expected.omittable !== true) {
               throw new Error(`${purpose} dependency ${entry.nodeId} belongs to no omittable step and cannot be marked step-omitted`);
             }

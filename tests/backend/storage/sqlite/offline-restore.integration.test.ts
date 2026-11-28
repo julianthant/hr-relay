@@ -2,13 +2,16 @@ import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/p
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { AuthorityBackupService, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { AuthorityBackupService, backupLogPaths, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
@@ -31,6 +34,13 @@ describe("corruption → degraded → automatic restore → rebuild", () => {
       const event = { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: "a".repeat(64) };
       const report = await inbox.publish(event); inbox.markRead(report.notification.notificationId, 1);
       db.withAuthorityTransaction(repos => repos.notificationHealth.put({ concern: "disk-space", active: true, occurrence: 1, samples: [], observedAt: f.clock.now().toISOString(), createdAt: f.clock.now().toISOString() }));
+      createNoteTimelineWriter({ repository: db.authority.timelineEvents, clock }).emitNote({
+        workflow: "person-lookup", address: { workerId: "person-lookup-worker-1", spanPath: "worker" },
+        level: "step", message: "Present in the backup",
+      });
+      createDebugEventWriter({ repository: db.authority.timelineEvents, clock, build: "test" }).emit({
+        category: "worker", phase: "settled", area: "restore-test", correlationId: randomUUID(),
+      });
       const expected = { row: inbox.get(report.notification.notificationId), sources: db.authority.notificationPublications.list(), health: db.authority.notificationHealth.get("disk-space") };
       db.close();
       const backupDb = open();
@@ -42,8 +52,41 @@ describe("corruption → degraded → automatic restore → rebuild", () => {
 
       const operation = admission.acquireOfflineMaintenance();
       const manifest = backup.manifests[0]; expect(manifest).toBeDefined();
-      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot}, async (stagedPath, restoreAdmission) => { const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission); try { const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission, { path: stagedPath, busyTimeoutMs: 250, migrationOwner: "notification-projection-proof" }, f.clock); staged.close(); } finally { stagedAdmission.release(); } }, f.clock, undefined, boundProfileCredentials(admission));
-      await restore.restore({ manifestPath: join(f.root, "backups", "authority", `${manifest.backupFileName}.manifest.json`) }, operation);
+      assert.ok(manifest.manifestVersion === 4 && manifest.logFiles !== undefined);
+      const backupLogs = backupLogPaths(join(f.root, "backups", "authority", manifest.backupFileName));
+      let tamperDuringStaging = false;
+      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot}, async (stagedPath, restoreAdmission) => { const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission); try { const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission, { path: stagedPath, busyTimeoutMs: 250, migrationOwner: "notification-projection-proof" }, f.clock); staged.close(); } finally { stagedAdmission.release(); } }, f.clock, {
+        copyFile(source, target) {
+          copyFileSync(source, target);
+          if (tamperDuringStaging && target.endsWith(".sqlite.tmp")) writeFileSync(backupLogs[0], "damaged during staging");
+        },
+        atomicReplace: renameSync,
+      }, boundProfileCredentials(admission));
+      const manifestPath = join(root, "backups", "authority", `${manifest.backupFileName}.manifest.json`);
+      const originalAuthority = readFileSync(path);
+      const originalBackupLog = readFileSync(backupLogs[0]);
+      writeFileSync(backupLogs[0], "damaged backup");
+      await assert.rejects(restore.restore({ manifestPath }, operation), /backup-log-file-unverified/u);
+      assert.deepEqual(readFileSync(path), originalAuthority);
+      writeFileSync(backupLogs[0], originalBackupLog);
+      tamperDuringStaging = true;
+      await assert.rejects(restore.restore({ manifestPath }, admission.acquireOfflineMaintenance()), /backup-log-file-unverified/u);
+      assert.equal(existsSync(join(profile.workspace, ".tracker", "control", "journal.json")), false);
+      assert.deepEqual(readFileSync(path), originalAuthority);
+      tamperDuringStaging = false;
+      writeFileSync(backupLogs[0], originalBackupLog);
+      for (const name of ["timeline", "dashboard"]) {
+        writeFileSync(join(root, `${name}.db`), "damaged live log", { mode: 0o600 });
+        writeFileSync(join(root, `${name}.db-wal`), "stale live WAL", { mode: 0o600 });
+      }
+      await restore.restore({ manifestPath }, admission.acquireOfflineMaintenance());
+      for (const [name, table, index] of [["timeline", "timeline_events", 0], ["dashboard", "debug_events", 1]] as const) {
+        using restoredLog = new DatabaseSync(join(root, `${name}.db`), { readOnly: true });
+        using backedUpLog = new DatabaseSync(backupLogs[index], { readOnly: true });
+        const query = `SELECT id, payload_json FROM ${table} ORDER BY cursor`;
+        assert.ok(backedUpLog.prepare(query).all().length > 0);
+        assert.deepEqual(restoredLog.prepare(query).all(), backedUpLog.prepare(query).all());
+      }
       assert.throws(() => admission.assertProfileRuntime(), /profile-restore-context-expired/u);
       profile.renewAfterRestore();
       db = open();
@@ -106,7 +149,7 @@ describe("assistant history through backup and restore", () => {
       }
       assert.deepEqual(Object.values(phaseOneRows(profile.path, phaseOneChat)).map(rows => rows.length), [0, 0, 0, 0]);
       const manifest = backup.manifests[0]; assert.ok(manifest);
-      assert.equal(manifest.schemaVersion, 48);
+      assert.equal(manifest.schemaVersion, 49);
       const manifestPath = join(root, "backups", "authority", `${manifest.backupFileName}.manifest.json`);
       const verified = await verifyBackupManifestAtPath(admission, manifestPath);
       assert.deepEqual(phaseOneRows(verified.backupPath, phaseOneChat), expectedRows);

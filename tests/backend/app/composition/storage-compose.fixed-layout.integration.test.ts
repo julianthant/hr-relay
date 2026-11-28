@@ -27,7 +27,7 @@ import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admi
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { fixedLayoutEntries,fixedLayoutOutputPaths,readFixedLayoutIntent } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { AuthorityBackupService, backupLogPaths } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { SETTINGS_SCHEMA_HASH,derivePersistedSettingsFingerprint,deriveRawSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { SettingsCommandRequestSchema,deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
@@ -200,7 +200,8 @@ it("resumes configuring at the next startup using the recorded backup and transa
     assert.deepEqual(complete.profiles, pending.profiles);
     const plan = complete.profiles[0]; assert.ok(plan);
     const backupDirectory = join(target, ".tracker", "data", "profiles", plan.profileId, "backups", "authority");
-    assert.deepEqual(readdirSync(backupDirectory).sort(), [plan.backupFileName, `${plan.backupFileName}.manifest.json`].sort());
+    assert.deepEqual(readdirSync(backupDirectory).sort(),
+      [plan.backupFileName, `${plan.backupFileName}.manifest.json`, ...backupLogPaths(plan.backupFileName)].sort());
   } finally { publish.mockRestore(); await lifetime.close(); await f.profile.close(); rmSync(target, { recursive: true, force: true }); }
 });
 

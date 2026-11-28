@@ -476,7 +476,7 @@ function logRowOf(
   };
 }
 
-function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord) {
+function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord, row: RunFoldRecord | undefined) {
   if (!authority.envelope.dryRun) return undefined;
   if (deps.canonical === undefined) return DryRunPreviewWireSchema.parse({ state: "unavailable", reason: "preview-authority-unavailable" });
   const result = runResultCurrent(authority) ? deps.canonical.database.authority.runResults.get(authority.envelope.runId) : undefined;
@@ -488,13 +488,17 @@ function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord) {
     return DryRunPreviewWireSchema.parse(authority.lifecycle.state !== "terminal" ? { state: "pending" }
       : { state: "unavailable", reason: authority.lifecycle.outcome === "done" ? "preview-result-unreadable" : "preview-not-completed" });
   }
+  const stopped = new Set(row?.taskSpans.filter(span => span.attempt === result.attempt && span.notRunReason === "required-evidence-unavailable")
+    .map(span => nodeIdOfTaskSpanPath(span.spanPath)));
   return DryRunPreviewWireSchema.parse({ state: "available", coverage: preview.coverage.state, stages: preview.steps.map((step, index) => {
     const node = descriptor?.contractFingerprint === result.contractFingerprint ? descriptorRuntimeNodes(descriptor).find(node => node.id === step.nodeId) : undefined;
     const label = node?.kind === "task" ? node.label ?? node.uses.title : node?.kind === "transaction" ? node.label ?? node.prepare.uses.title : String(step.nodeId);
     const state = step.state === "not-run" ? "skipped" : step.state === "unavailable" || step.state === "transaction-preview" && step.preview.outcome.state !== "would-prepare" ? "unavailable" : "exercised";
     const samples = step.state === "transaction-preview" ? step.samples : [];
     const detail = step.state === "delegation-preview" ? "Previewed child changes without saving."
-      : step.state === "publication-preview" ? "Prepared and checked without saving." : step.state === "not-run" ? step.reason : step.state === "unavailable" ? "Requires an unsubmitted result; this stage was not exercised."
+      : step.state === "publication-preview" ? "Prepared and checked without saving."
+      : step.state === "not-run" ? stopped.has(step.nodeId) ? "required-evidence-unavailable" : step.reason
+      : step.state === "unavailable" ? "Requires an unsubmitted result; this stage was not exercised."
         : step.state === "transaction-preview" ? step.preview.outcome.state === "would-prepare" ? "Filled, verified and captured without submitting."
         : "Existing completion observed; the form was not staged." : "Completed from recorded workflow evidence.";
     return { id: step.nodeId, label, state,
@@ -540,12 +544,12 @@ export function buildRunLogsSection(
   const snapshots = logSnapshotsFor(deps, noteScanCache);
   if (cursorInput === undefined) {
     const snapshot = snapshots.start(runId, () => logLinesForRun(deps, row, authority, runId));
-    return logsPage(deps, runId, authority, snapshot, 0, LOGS_PAGE_SIZE);
+    return logsPage(deps, runId, authority, row, snapshot, 0, LOGS_PAGE_SIZE);
   }
   const cursor = LogPageCursorSchema.parse(cursorInput);
   const [, snapshotId, offsetText] = cursor.split(":");
   if (snapshotId === undefined || offsetText === undefined) throw new Error(`log cursor ${cursor} is incomplete`);
-  return logsPage(deps, runId, authority, snapshots.resume(runId, snapshotId), Number(offsetText), LOGS_PAGE_SIZE);
+  return logsPage(deps, runId, authority, row, snapshots.resume(runId, snapshotId), Number(offsetText), LOGS_PAGE_SIZE);
 }
 
 /** The whole log in one page, as every page of `buildRunLogsSection` joined; nothing is held for paging. */
@@ -556,13 +560,14 @@ export function buildRunLogsWhole(
   authority: RunRecord,
 ): RunLogsSection {
   const entries = logLinesForRun(deps, row, authority, runId);
-  return logsPage(deps, runId, authority, { id: "whole", entries }, 0, entries.length);
+  return logsPage(deps, runId, authority, row, { id: "whole", entries }, 0, entries.length);
 }
 
 function logsPage(
   deps: RunDetailQueryDeps,
   runId: string,
   authority: RunRecord,
+  row: RunFoldRecord | undefined,
   snapshot: RunLogSnapshot,
   offset: number,
   size: number,
@@ -581,7 +586,7 @@ function logsPage(
     section: "logs",
     payload: NotePageSchema.parse({
       runId,
-      ...(authority.envelope.dryRun ? { dryRunPreview: dryRunPreviewForLogs(deps, authority) } : {}),
+      ...(authority.envelope.dryRun ? { dryRunPreview: dryRunPreviewForLogs(deps, authority, row) } : {}),
       rows,
       notes: rows.flatMap((row) => row.kind === "note" ? [row.note] : []),
       nextCursor: offset + size < all.length

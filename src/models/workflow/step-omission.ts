@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { JsonObject, JsonValue } from "../../rules/validation/canonical-json.js";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { EID_PATTERN, type IsoInstant } from "../../rules/identity/ids.js";
+import { I9ReadSection2Signer, I9SignerOutputSchema, manualI9Signer } from "../systems/i9/read-section2-signer.js";
 import { CRM_MANUAL_RECORDS_EXAMPLE, crmManualRecordsIssue } from "../workflows/crm-doc-download/manual-records.js";
 import { OCR_MANUAL_DOCUMENT_EXAMPLE, OCR_MANUAL_PAGE_EXAMPLE, parseManualOcrDocumentValues, parseManualOcrPageValues } from "../workflows/ocr-page/input.js";
 import type { RuntimeScope } from "./graph.js";
@@ -40,6 +41,8 @@ export const StepOmissionFieldSchema = z.discriminatedUnion("kind", [
 export type StepOmissionField = z.infer<typeof StepOmissionFieldSchema>;
 
 export const StepOmissionFormSchema = z.strictObject({
+  format: z.literal("i9-signer-result").optional(),
+  allOrNone: z.literal(true).optional(),
   fields: z.array(StepOmissionFieldSchema).superRefine((fields, ctx) => {
     const seen = new Set<string>();
     for (const field of fields) {
@@ -53,7 +56,8 @@ export const StepOmissionFormSchema = z.strictObject({
       }
     }
   }),
-});
+}).refine(form => form.allOrNone !== true || form.fields.length >= 2 && form.fields.every(field => field.optional === true),
+  { path: ["allOrNone"], message: "An all-or-none form needs at least two fields, all optional." });
 export type StepOmissionForm = z.infer<typeof StepOmissionFormSchema>;
 
 const US_DATE_PATTERN = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/u;
@@ -100,14 +104,25 @@ export function stepOmissionFieldFactSchema(field: StepOmissionField, input?: St
 
 /** ONE strict facts schema per form — every key is present; absence is a refusal, not a default. */
 export function stepOmissionFactsSchema(form: StepOmissionForm, input?: StepOmissionInput): z.ZodObject<Record<string, z.ZodType<JsonValue>>> {
-  const { fields } = StepOmissionFormSchema.parse(form);
+  const { fields, format, allOrNone } = StepOmissionFormSchema.parse(form);
   const shape: Record<string, z.ZodType<JsonValue>> = {};
   for (const field of fields) shape[field.key] = stepOmissionFieldFactSchema(field, input);
   return z.strictObject(shape).superRefine((facts, ctx) => {
+    const requireAll = allOrNone === true && fields.some(field => facts[field.key] !== null);
     for (const field of fields) {
+      if (facts[field.key] !== null) continue;
       const condition = field.requiredWhen;
-      if (condition !== undefined && facts[condition.field] === condition.equals && facts[field.key] === null) {
+      if (requireAll) {
+        ctx.addIssue({ code: "custom", path: [field.key], message: "Enter all fields or leave them all blank." });
+      } else if (condition !== undefined && facts[condition.field] === condition.equals) {
         ctx.addIssue({ code: "custom", path: [field.key], message: "Enter a value for the selected choice." });
+      }
+    }
+    if (format === "i9-signer-result") {
+      const parsed = I9SignerOutputSchema.safeParse(manualI9Signer(facts));
+      if (!parsed.success) for (const issue of parsed.error.issues) {
+        const keys = issue.code === "unrecognized_keys" ? issue.keys : [issue.path[0] ?? "i9Status"];
+        for (const key of keys) ctx.addIssue({ code: "custom", path: [key], message: "Enter the values required for the selected I-9 status." });
       }
     }
   });
@@ -214,6 +229,8 @@ export interface StepManualIssue {
 /** A step folder's declaration; a producer returns a COMPLETE output the executor parses with the node's own contract output schema — never a partial object or a placeholder. */
 export interface StepManualDeclaration {
   readonly off?: StartRowOff;
+  /** The run cannot continue from this read without its original evidence. */
+  readonly stop?: string;
   /** The child offers this switch only on its own Start rows. */
   readonly ownStartOnly?: true;
   readonly form: StepOmissionForm;
@@ -342,6 +359,8 @@ export interface StepOmissionPlan {
   readonly omitted: ReadonlyMap<string, string>;
   /** node id → the step completed outside Relay; nothing runs or produces proof */
   readonly manual: ReadonlyMap<string, string>;
+  /** Skipped nodes in a stopped branch, including downstream form actions. */
+  readonly stopped: ReadonlySet<string>;
   readonly refusals: readonly StepOmissionRefusal[];
 }
 
@@ -424,7 +443,19 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
       });
     }
   }
-  return Object.freeze({ asserted, omitted, manual, refusals: Object.freeze(refusals) });
+  const stopped = new Set([...omitted].flatMap(([node, step]) => specByStep.get(step)?.stop === undefined ? [] : [node]));
+  for (;;) {
+    const before = stopped.size;
+    for (const node of graph.nodes) {
+      const step = manual.get(node.id);
+      if (step === undefined || !node.dependsOn.some(dependency => stopped.has(dependency))) continue;
+      manual.delete(node.id);
+      omitted.set(node.id, step);
+      stopped.add(node.id);
+    }
+    if (stopped.size === before) break;
+  }
+  return Object.freeze({ asserted, omitted, manual, stopped, refusals: Object.freeze(refusals) });
 }
 
 /** One step's cascade row: the other steps forced out with it, or the step that cannot be omitted and so blocks it. */
@@ -434,6 +465,7 @@ export type StepOmissionCascadeRow =
 
 /** Schema-valid probe facts establish shape only; cascade and guard share the same values. */
 export function stepOmissionPlaceholderFacts(form: StepOmissionForm): JsonObject {
+  if (form.format === "i9-signer-result") return JsonFactsSchema.parse(I9ReadSection2Signer.example);
   const placeholder = (field: StepOmissionField): JsonValue => {
     switch (field.kind) {
       case "boolean": return false;

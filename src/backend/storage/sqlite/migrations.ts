@@ -189,6 +189,8 @@ const SCHEMA_38_QUERY_INDEXES = deepFreeze({
 /** The current query indexes exercised by the store query plan test. */
 export const QUERY_INDEXES = deepFreeze({ ...SCHEMA_37_QUERY_INDEXES, ...SCHEMA_38_QUERY_INDEXES });
 
+export const ACTIVITY_CONFIRMATION_TIME_SQL = "julianday(json_extract(publication_json,'$.ledger.confirmedAt'))";
+
 /** Migration 40 indexes the lookups that scanned on an operator-sized store and the foreign keys whose parent rows are deleted. */
 export const LIST_INDEX_SCHEMA_VERSION = 40;
 export const LIST_INDEXES = deepFreeze({
@@ -1218,6 +1220,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     ...ASSISTANT_APPLIED_EDITS_STATEMENTS, ...changeLogTriggers(ASSISTANT_APPLIED_EDITS_TABLE),
   ] },
   WORKBOOK_VERSION_NAMES_MIGRATION,
+  { version: 49, statements: [`CREATE INDEX write_intents_activity_confirmed_idx ON write_intents(status,${ACTIVITY_CONFIRMATION_TIME_SQL})`] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,

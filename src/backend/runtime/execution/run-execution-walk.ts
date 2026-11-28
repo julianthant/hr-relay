@@ -1,3 +1,4 @@
+import { WorkerLogChannelError } from "../../storage/events/log-mutations.js";
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
 import { readRunCheckpoint, RunContinuationRefusedError, readContinuationGate } from "../../storage/sqlite/run-continuation.js";
 import { DryRunSampleSchema, type DryRunBinding } from "../../../models/workflow/dry-run.js";
@@ -77,10 +78,11 @@ export async function walkRunPlan(
   });
 
   // Commit terminal state and result in one authority transaction.
-  const settleSuccess = (
+  const settleSuccess = async (
     current: RunRecord,
     built: Readonly<{ record: RunResultRecord; authorization: object }>,
-  ): RunExecutionOutcome => {
+  ): Promise<RunExecutionOutcome> => {
+    if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
     checkCancellation();
     requireOriginalClaim(current);
     const authorization = buildTerminalAuthorization({
@@ -249,7 +251,7 @@ export async function walkRunPlan(
           scheduled: nodes.filter(candidate => plan.get(String(candidate.id))?.mode === "execute" && !retainedTransaction(candidate)).map(candidate => candidate.id),
           now: clock.now(), attempt: envelope.attempt, ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) });
         if (freshness.length > 0) {
-          transitionTo(runningLifecycle(node.id));
+          await transitionTo(runningLifecycle(node.id));
           return await failNode(node, node.uses.id, new TaskError(node.uses.id, "RESUME_VALIDATION_FAILED", freshness.join("\n")));
         }
         if (entry.patches !== undefined) {
@@ -258,9 +260,11 @@ export async function walkRunPlan(
             patched = applyCheckpointPatches({ replayed: entry.record, patches: entry.patches, outputSchema: node.uses.output,
               attempt: envelope.attempt, claimGeneration: claim.claimGeneration, runId, writtenAt: instant() });
           } catch (error) {
+            if (error instanceof WorkerLogChannelError) throw error;
             return await terminalizeAsFailure(buildEntryValidationFailureRecord({ run: getRun(), failureId: deps.ids.uuid(),
               problems: [`injected correction for node "${node.id}" was refused: ${error instanceof Error ? error.message : String(error)}`], occurredAt: instant() }));
           }
+          if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
           deps.authority.authority.runCheckpoints.insert(patched.record);
           entry = { mode: "replay", record: patched.record };
         }
@@ -309,8 +313,8 @@ export async function walkRunPlan(
       continue;
     }
     if (entry.mode === "omitted" || entry.mode === "manual") {
-
-      skippedReasons.set(String(node.id), "step-omitted");
+      const reason = omissionPlan.stopped.has(String(node.id)) ? "required-evidence-unavailable" : "step-omitted";
+      skippedReasons.set(String(node.id), reason);
       if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "step-omitted" });
       const spanPath = taskSpanPath(envelope.traceId, node.id, 1, claim.claimGeneration);
       emit({
@@ -322,7 +326,7 @@ export async function walkRunPlan(
         t: "span.ended", kind: "task",
         ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
         outcome: "skipped",
-        notRunReason: "step-omitted",
+        notRunReason: reason,
       });
       continue;
     }
@@ -333,7 +337,7 @@ export async function walkRunPlan(
       if (assertion === undefined || node.kind !== "task") {
         throw new Error(`node "${node.id}" was planned as asserted but the omission plan does not assert a task there`);
       }
-      transitionTo(runningLifecycle(node.id));
+      await transitionTo(runningLifecycle(node.id));
       if (entry.replay !== undefined) {
 
         const replayed = entry.replay;
@@ -367,6 +371,7 @@ export async function walkRunPlan(
       try {
         produced = assertion.produce({ facts: assertion.facts, scope, assertedAt });
       } catch (error) {
+        if (error instanceof WorkerLogChannelError) throw error;
         return await failNode(node, node.uses.id, error);
       }
       const parsed = node.uses.output.safeParse(produced);
@@ -402,6 +407,7 @@ export async function walkRunPlan(
         writtenAt: instant(),
         assertion: { step: assertion.step, assertedAt },
       });
+      if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
       deps.authority.authority.runCheckpoints.insert(assertedRecord);
       checkpointRecords.set(String(node.id), assertedRecord);
       outputs[String(node.id)] = value;
@@ -432,7 +438,7 @@ export async function walkRunPlan(
     }
     switch (node.kind) {
       case "task": {
-        transitionTo(runningLifecycle(node.id));
+        await transitionTo(runningLifecycle(node.id));
         const scope = scopeFor(node.dependsOn);
         if (node.when !== undefined) {
           const condition = evaluateNodeCondition(node.when, scope);
@@ -445,6 +451,7 @@ export async function walkRunPlan(
           try {
             node.uses.input.parse(node.bind(scope));
           } catch (error) {
+            if (error instanceof WorkerLogChannelError) throw error;
             return await failNode(node, node.uses.id, wrapUnhandledTaskError(node.uses.id, error));
           }
           previewOnly.add(String(node.id));
@@ -460,7 +467,7 @@ export async function walkRunPlan(
         continue;
       }
       case "branch": {
-        transitionTo(runningLifecycle(node.id));
+        await transitionTo(runningLifecycle(node.id));
         const scope = scopeFor(node.dependsOn);
         const selected = node.choose(scope);
         if (!Object.hasOwn(node.cases, selected)) {
@@ -477,7 +484,7 @@ export async function walkRunPlan(
         continue;
       }
       case "parallel": {
-        transitionTo(runningLifecycle(node.id));
+        await transitionTo(runningLifecycle(node.id));
         if (node.join !== "all") {
           return await failNode(node, undefined, new Error(
             `parallel "${node.id}" join "${node.join}" is not interpretable by this runtime; `
@@ -498,7 +505,7 @@ export async function walkRunPlan(
           recordConditionSkip(node);
           continue;
         }
-        transitionTo(runningLifecycle(node.id));
+        await transitionTo(runningLifecycle(node.id));
         await deps.sessions.closeAll("parked");
         // A new version can carry Cancel or change the version a source gate must bind.
         for (;;) {
@@ -520,12 +527,14 @@ export async function walkRunPlan(
                 parkedVersion: current.version + 1,
               });
             } catch (error) {
+              if (error instanceof WorkerLogChannelError) throw error;
               return await failNode(node, undefined, error instanceof Error
                 ? error
                 : new Error(`gate "${node.id}" source binding failed`, { cause: error }));
             }
           }
           const resumeAt = nodes[index + 1]?.id ?? node.id;
+          if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
           const outcome = workerTransition(current, RunLifecycleSchema.parse({
             state: "parked-gate",
             gateId: GateIdSchema.parse(String(node.id)),
@@ -539,7 +548,7 @@ export async function walkRunPlan(
         }
       }
       case "transaction": {
-        transitionTo(runningLifecycle(node.id));
+        await transitionTo(runningLifecycle(node.id));
         if (deps.writeSequencer === undefined) {
           return await failNode(node, node.commit.uses.id, new TaskError(
             node.commit.uses.id,
@@ -569,7 +578,7 @@ export async function walkRunPlan(
             previewBinding = node.previewBind?.(transactionScope);
             if (previewBinding !== undefined) previewBinding = { ...previewBinding, samples: previewBinding.samples.map(sample => DryRunSampleSchema.parse(sample)) };
           }
-          catch (error) { return await failNode(node, node.prepare.uses.id, error); }
+          catch (error) { if (error instanceof WorkerLogChannelError) throw error; return await failNode(node, node.prepare.uses.id, error); }
           if (node.dependsOn.some(id => previewOnly.has(String(id))) && previewBinding === undefined) {
             markUnavailable(node);
             continue;
@@ -603,6 +612,7 @@ export async function walkRunPlan(
               }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions.filter(action => action.kind !== "screenshot")),
                 action => { if (action.kind === "screenshot") drainBrowserActions(runSpanIdentity.spanPath, [action], node.commit.uses.id); }));
             } catch (error) {
+              if (error instanceof WorkerLogChannelError) throw error;
               if (error instanceof RunAbandonedError) throw error;
               interruptBeforeFence(node.id);
               return await failNode(node, node.commit.uses.id, error);
@@ -663,6 +673,7 @@ export async function walkRunPlan(
           }
           checkpointRecords.set(String(node.id), record);
         } catch (error) {
+          if (error instanceof WorkerLogChannelError) throw error;
           if (error instanceof RunAbandonedError) throw error;
           if (error instanceof WriteParkedError) {
 
@@ -701,12 +712,13 @@ export async function walkRunPlan(
         const parallel = nodes.find(candidate => candidate.kind === "parallel"
           && candidate.branches.some(branch => branch.nodes.includes(node.id)));
         const owner = parallel?.kind === "parallel" ? parallel : node;
-        transitionTo(runningLifecycle(owner.id));
+        await transitionTo(runningLifecycle(owner.id));
         const unresolved = deps.authority.withAuthorityTransaction?.(repositories =>
           repositories.writeIntents.listAttemptingByItem({ workflowId: envelope.workflow, itemId: envelope.itemId })[0]
             ?? repositories.writeIntents.listByRun(runId).find(intent => intent.status === "parked"));
         if (unresolved !== undefined) {
           const current = getRun();
+          if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
           const recovery = deps.lifecycle.requeue({ commandId: lifecycleCommandId("delegation-write-recovery", { runId, version: current.version }),
             runId, expectedVersion: current.version, claim, cause: "recovery" });
           if (recovery.state !== "recovery-required" || recovery.writeIntentId !== unresolved.writeIntentId
@@ -803,6 +815,7 @@ export async function walkRunPlan(
             emitSettledSpan(node, evidence.manifest.children.length === 0 ? CONDITION_SKIP : { outcome: "done" }, joinSpanPath);
           }
         } catch (error) {
+          if (error instanceof WorkerLogChannelError) throw error;
           if (error instanceof RunAbandonedError || error instanceof WorkerSessionClosureUnprovedError
             || error instanceof RunLifecycleRefusedError && error.outcome.state === "refused" && error.outcome.refusal.reason === "lost") throw error;
           if (runClaim(getRun())?.claimGeneration !== claim.claimGeneration) throw error;

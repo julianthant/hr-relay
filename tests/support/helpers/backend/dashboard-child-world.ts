@@ -52,10 +52,10 @@ export function createDashboardChildTestWorld(releaseAdmissionFixtures: () => vo
       prefixArgs: Object.freeze(["--import", testProcessImport(), STUB_CLI_PATH, String(lifetime.port), mode]), cwd: REPO_ROOT };
   }
 
-  function realStubSpawner(records: RealChildRecord[], lifetime: RuntimeLifetimeLock): WorkerProcessSpawner {
+  function realStubSpawner(records: RealChildRecord[], lifetime: RuntimeLifetimeLock) {
     const spawn = realWorkerProcessSpawner(lifetime, createNominatimGeocodeAdapter({ clock: systemClock }));
-    return request => {
-      const port = spawn(request);
+    return (request: Parameters<WorkerProcessSpawner>[0], productionSpawn = spawn) => {
+      const port = productionSpawn(request);
       const child = port.nativeProcess;
       if (child === undefined) throw new Error("the production spawner returned no native process");
       liveRealChildren.push(child);

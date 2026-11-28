@@ -10,8 +10,9 @@ import { systemClock } from "../../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { createDebugEventWriter } from "../../../logs/debug-events.js";
 import { composeLoopDelayMonitor } from "../../../logs/loop-delay.js";
-import { withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
+import { appendEmergencyFault, withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
 import { importLocalDebugLog } from "../../../storage/events/local-debug-log.js";
+import { startLogWriter } from "../../../storage/events/log-writer.js";
 import { runQueuedSpanEvent } from "../../../runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
@@ -139,6 +140,19 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     }
   })();
   startupCleanups.push(requiredClosure(() => readLanes.close()));
+  const statePath = join(stateRoot, "state.db");
+  admission.assertAuthorityDatabase(statePath);
+  const logWriter = startLogWriter({ statePath, root: stateRoot, onFault: error => {
+    try { appendEmergencyFault({ stateRoot, build: appVersion, now: clock.now(), error,
+      code: "LOG_WRITER_FAILED", area: "log-writer", reason: "database-unavailable" }); }
+    catch { input.workerProcess?.faultSink?.(JSON.stringify({ code: "LOG_WRITER_FAILED", reason: "boot-log-unavailable" })); }
+  } });
+  const unbindLogPublisher = database.bindLogPublisher(logWriter.publish);
+  const stopLogWriter = () => {
+    unbindLogPublisher();
+    return logWriter.close();
+  };
+  startupCleanups.push(stopLogWriter);
   importLocalDebugLog(stateRoot, database.authority.timelineEvents);
   importLocalDebugLog(machineAdmission.stateRoot, database.authority.timelineEvents);
   database.sweepOrdinaryDiagnostics(clock.now().toISOString());
@@ -257,5 +271,5 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
 
 
-  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, readLanes, settingsProcesses, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
+  return { requireProducerClosure, requiredClosure, env, clock, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, artifactRoot, appVersion, frontend, staticBundle, context, database, admission, readLanes, logWriter, stopLogWriter, settingsProcesses, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, loggingRepository, debugEvents, loopDelayMonitor, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, dashboardPreflightRunners, preflightAuthority };
 }

@@ -9,6 +9,7 @@ import { inventoryFileIdentity, enumerateProfileCredentialMembership, probeRetai
 import { assertRetainedProfileBrowserRoot, assertCredentialCopyResourcesClosed, assertLogoutResourcesClosed, assertShutdownResourcesClosed, retainedBrowserProfiles } from "../../storage/maintenance/profile-custody.js";
 import { migrationTableNames } from "../../storage/sqlite/migrations.js";
 import { readLocalDebugLog } from "../../storage/events/local-debug-log.js";
+import { PROFILE_LOG_FILES } from "../../storage/events/log-mutations.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { createHash } from "node:crypto";
@@ -18,8 +19,8 @@ import { closeSync, constants, lstatSync, openSync, readSync, type BigIntStats, 
 import { basename, dirname, join } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { countProfileCredentialLoginRows } from "../../profiles/credential-inventory.js";
-import { verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
-import { withAuthorityDatabaseReadOnly } from "../../storage/sqlite/readonly-authority-snapshot.js";
+import { verifiedBackupFiles, verifiedBackupLogs, verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
+import { withAuthorityDatabaseReadOnly, withReadonlyAuthoritySnapshot } from "../../storage/sqlite/readonly-authority-snapshot.js";
 import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
 import { requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "../../storage/admission/installation.js";
 import { RuntimeAdmission } from "../../storage/admission/admission.js";
@@ -101,6 +102,20 @@ export function scanProfileCredentialCopy(path: string, capturedSecrets: readonl
 /** Verdicts of one assessment's backup scans, reused only while a backup keeps the exact file identity it was scanned under. */
 type BackupCredentialScans = Map<string, Readonly<{ identity: string; digest: string; containsSecret: boolean }>>;
 
+function scanRows(fields: Readonly<{ capturedSecrets: readonly string[]; containsKey(value: unknown): boolean }>, tables: readonly string[]) {
+  return (database: Parameters<Parameters<typeof withReadonlyAuthoritySnapshot<boolean>>[1]>[0]) => {
+    const bytes = credentialSearchBytes(fields.capturedSecrets);
+    for (const table of tables) for (const row of database.prepare(`SELECT * FROM ${table}`).iterate()) {
+      for (const [column, value] of Object.entries(row)) {
+        if (fields.containsKey(value)) return true;
+        if (containsCredentialValue(typeof value === "string" && column.endsWith("_json") ? JSON.parse(value) : value, fields.capturedSecrets)) return true;
+        if (value instanceof Uint8Array && bytes.some(secret => secret.length > 0 && Buffer.from(value).includes(secret))) return true;
+      }
+    }
+    return false;
+  };
+}
+
 type CredentialMaintenancePurpose = Readonly<{ kind: "ordinary" }> | Readonly<{ kind: "stopped-control"; claim: StoppedControlProfileInventory }>;
 
 function assessProfileCredentialCopies(admission: RuntimeAdmission, before: ReturnType<typeof enumerateProfileCredentialMembership>,
@@ -112,19 +127,22 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
     const issued = requireStoppedControlProfileInventory(purpose.claim);
     if (issued.binding.profileId !== admission.profileBinding.profileId || issued.stateRoot !== root) throw new Error("profile-control-upgrade-inventory-owner-mismatch");
   }
+  const pairedLogs = new Map(backups.flatMap(verifiedBackupLogs).map(log => [log.path, log]));
       for (const path of [...before.copies, ...before.backupPaths]) {
         const backup = backups.find(value => value.backupPath === path);
-        const identity = canonicalJsonStringify(inventoryFileIdentity(path)), kept = backup === undefined ? undefined : backupScans.get(path);
+        const pairedLog = pairedLogs.get(path);
+        const digest = backup?.manifest.sha256 ?? pairedLog?.digest.sha256;
+        const identity = canonicalJsonStringify(inventoryFileIdentity(path)), kept = digest === undefined ? undefined : backupScans.get(path);
         const reused = kept?.identity === identity ? kept : undefined;
         const scanned = reused ?? scanProfileCredentialCopy(path, fields.capturedSecrets, fields);
         const suspect = before.suspects.find(value => value.path === path);
-        if (backup !== undefined && scanned.digest !== backup.manifest.sha256) throw new Error("profile-inventory-backup-changed");
+        if (digest !== undefined && scanned.digest !== digest) throw new Error("profile-inventory-backup-changed");
         if (suspect !== undefined && scanned.digest !== suspect.sha256) throw new Error("profile-inventory-suspect-changed");
         let containsSecret = scanned.containsSecret;
         const enginePath = join(root, "credentials", "duo-webauthn.json");
         const retainedEngine = purpose.kind === "stopped-control" && path === enginePath;
         if (purpose.kind === "ordinary" && path === enginePath) unknownFormats.push(path);
-        if (backup === undefined && suspect === undefined && basename(path) !== "Login Data" && !before.unsupported.includes(path)) {
+        if (digest === undefined && suspect === undefined && basename(path) !== "Login Data" && !before.unsupported.includes(path)) {
           try {
             const bootLog = path === join(root, "logs", "boot.jsonl");
             if (bootLog && readLocalDebugLog(root).state !== "present") throw new Error("profile-inventory-log-unavailable");
@@ -166,20 +184,14 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
           const copyAdmission = admission.verifiedReadOnlyCopy(path, digest);
           try {
             const schemaVersion = backup?.manifest.schemaVersion ?? AuthorityDatabase.inspectExistingReadOnly(copyAdmission, path).schemaVersion;
-            containsSecret ||= withAuthorityDatabaseReadOnly(copyAdmission, path, database => {
-              const bytes = credentialSearchBytes(fields.capturedSecrets);
-              for (const table of migrationTableNames(schemaVersion)) for (const row of database.prepare(`SELECT * FROM ${table}`).iterate()) {
-                for (const [column, value] of Object.entries(row)) {
-                  if (fields.containsKey(value)) return true;
-                  if (containsCredentialValue(typeof value === "string" && column.endsWith("_json") ? JSON.parse(value) : value, fields.capturedSecrets)) return true;
-                  if (value instanceof Uint8Array && bytes.some(secret => secret.length > 0 && Buffer.from(value).includes(secret))) return true;
-                }
-              }
-              return false;
-            });
+            containsSecret ||= withAuthorityDatabaseReadOnly(copyAdmission, path, scanRows(fields, migrationTableNames(schemaVersion)));
           } finally { copyAdmission.release(); }
         }
-        if (backup !== undefined) backupScans.set(path, { identity, digest: scanned.digest, containsSecret });
+        if (pairedLog !== undefined && reused === undefined) {
+          containsSecret ||= withReadonlyAuthoritySnapshot(path, scanRows(fields, [pairedLog.table]));
+          if (canonicalJsonStringify(inventoryFileIdentity(path)) !== identity) throw new Error("profile-inventory-backup-changed");
+        }
+        if (digest !== undefined) backupScans.set(path, { identity, digest: scanned.digest, containsSecret });
         if (containsSecret) backupPlaintext.push(path);
         if (!fields.capturedSecretsComplete && !retainedEngine) unknownFormats.push(path);
       }
@@ -268,7 +280,8 @@ export function composeStoppedControlCredentialInventory(input: Readonly<{ claim
         if (browserPlan.roots.some(row => row.profileId === source.binding.profileId && (row.launch.state !== "closed" || row.native?.phase !== "observed"))) throw new Error("profile-control-upgrade-browser-closure-unproved");
         const membership = enumerateProfileCredentialMembership(admission, facts, config.paths.browserProfileRoot, profileBrowserClosure, undefined, stages);
         const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path));
-        if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("credential-maintenance-backup-membership-unproved");
+        const expectedBackupFiles = new Set(backups.flatMap(verifiedBackupFiles));
+        if (membership.backupPaths.length !== expectedBackupFiles.size || membership.backupPaths.some(path => !expectedBackupFiles.has(path))) throw new Error("credential-maintenance-backup-membership-unproved");
         const currentRecord = join(admission.stateRoot, "credentials", "chatgpt-account.json");
         const assessment = assessProfileCredentialCopies(admission, { ...membership, copies: membership.copies.filter(path => path !== currentRecord) }, backups, copies,
           { kind: "stopped-control", claim: input.claim }, backupScans);
@@ -276,9 +289,15 @@ export function composeStoppedControlCredentialInventory(input: Readonly<{ claim
         const login = countProfileCredentialLoginRows(membership.loginDataPaths);
         if (login === "unreadable" || typeof login === "number" && login > 0) throw new Error("credential-maintenance-login-copy-present");
         const database = join(admission.stateRoot, "state.db");
-        for (const suffix of ["", "-wal", "-shm"]) {
-          const path = `${database}${suffix}`;
+        for (const name of ["state.db", "state.db-wal", "state.db-shm", ...PROFILE_LOG_FILES]) {
+          const path = join(admission.stateRoot, name);
           if (lstatSync(path, { throwIfNoEntry: false }) !== undefined && scanProfileCredentialCopy(path, copies.capturedSecrets, copies).containsSecret) throw new Error("credential-maintenance-live-authority-copy-present");
+        }
+        for (const [name, table] of [["timeline.db", "timeline_events"], ["dashboard.db", "debug_events"]] as const) {
+          const path = join(admission.stateRoot, name);
+          if (lstatSync(path, { throwIfNoEntry: false }) !== undefined && withReadonlyAuthoritySnapshot(path, scanRows(copies, [table]))) {
+            throw new Error("credential-maintenance-live-authority-copy-present");
+          }
         }
         withAuthorityDatabaseReadOnly(admission, database, db => {
           for (const table of migrationTableNames(source.schemaVersion)) for (const row of db.prepare(`SELECT * FROM ${table}`).iterate()) {

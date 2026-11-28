@@ -1,5 +1,6 @@
 import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { takeStoppedProfileBackupFixture } from "../../../support/helpers/storage/backup-fixtures.js";
+import { backupLogPaths } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { restoreNewestPersonBackup } from "../../../../src/backend/app/composition/storage-compose.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -431,7 +432,7 @@ afterEach(_afterEachFixture0);
     const result = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", flag], CLOCK, p.repoRoot);
     assert.equal(result.exitCode, 2); assert.ok(result.output.includes(flag)); assert.deepEqual(readdirSync(p.repoRoot), before);
   });
-  it("writes exactly one verified backup and manifest at the live generation", async () => {
+  it("writes exactly one verified backup set at the live generation", async () => {
     const p = await paths("ready");
     const generation = createAuthority(p);
     assert.equal(existsSync(p.backupDirectory), false, "fixture starts without a backup");
@@ -440,11 +441,11 @@ afterEach(_afterEachFixture0);
     assert.equal(outcome.state, "verified");
 
     const entries = readdirSync(p.backupDirectory).sort();
-    assert.equal(entries.length, 2, entries.join(", "));
     const manifestName = entries.find((name) => name.endsWith(".manifest.json"));
     const backupName = entries.find((name) => name.endsWith(".sqlite"));
     assert.ok(manifestName !== undefined && backupName !== undefined, entries.join(", "));
     assert.equal(manifestName, `${backupName}.manifest.json`);
+    assert.deepEqual(entries, [backupName, manifestName, ...backupLogPaths(backupName)].sort());
     assert.equal(outcome.manifests[0]?.backupFileName, backupName);
     const manifest = ManifestGenerationSchema.parse(
       JSON.parse(readFileSync(join_m0(p.backupDirectory, manifestName), "utf8")),

@@ -14,7 +14,7 @@ import type { NoteTimelineWriter } from "../../storage/events/note-timeline-writ
 import type { BrowserAction } from "../../systems/browser-shared/action-notes.js";
 import type { Fingerprint, IsoInstant, NodeId, TaskId } from "../../../rules/identity/ids.js";
 import type { RunLifecycle, RunRecord } from "../../../models/run/record.js";
-import type { RunPreviewStep, TerminalDependencyEvidence } from "../../../models/run/result.js";
+import type { RunPreviewStep, TerminalDependencyEvidence, TerminalNotRunReason } from "../../../models/run/result.js";
 import type { FailureRecord } from "../../../models/trust/failure.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { RuntimeFlowNode, RuntimeScope } from "../../../models/workflow/graph.js";
@@ -65,6 +65,7 @@ export interface RunArtifactProjector {
 }
 
 export interface RunExecutorDependencies {
+  readonly beforeConfirmedWrite?: () => Promise<void>;
   readonly debugEvents?: Pick<ReturnType<typeof import("../../logs/debug-events.js").createDebugEventWriter>, "emit">;
   readonly publishCheckpoint?: (repositories: AuthorityRepositories, checkpoint: RunCheckpointRecord) => void;
   readonly lifecycle: WorkerRunLifecyclePort;
@@ -118,7 +119,7 @@ export interface RunExecutionContext {
   readonly requireOriginalClaim: (current: RunRecord) => void;
   readonly pauseAtBoundary: () => void;
   readonly workerTransition: (current: RunRecord, lifecycle: RunLifecycle) => RunMutationOutcome;
-  readonly transitionTo: (lifecycle: RunLifecycle) => RunRecord;
+  readonly transitionTo: (lifecycle: RunLifecycle) => Promise<RunRecord>;
   readonly runningLifecycle: (currentNodeId?: NodeId) => RunLifecycle;
   readonly runSpanIdentity: Readonly<{
     runId: RunRecord["envelope"]["runId"];
@@ -143,7 +144,7 @@ export interface RunExecutionState {
   readonly checkpointRecords: Map<string, RunCheckpointRecord>;
   readonly childResultEvidence: Map<string, Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>>;
   readonly gateResultEvidence: Map<string, Extract<TerminalDependencyEvidence, { state: "gate-resolved" }>>;
-  readonly skippedReasons: Map<string, "condition-false" | "branch-not-selected" | "step-omitted">;
+  readonly skippedReasons: Map<string, Exclude<TerminalNotRunReason, "operator-asserted">>;
   readonly assertedRecords: Map<string, Readonly<{ step: string; assertedAt: IsoInstant; output: Readonly<{ schemaHash: Fingerprint; value: JsonValue }> }>>;
   readonly dryRunSteps: Map<string, RunPreviewStep>;
   readonly previewOnly: Set<string>;

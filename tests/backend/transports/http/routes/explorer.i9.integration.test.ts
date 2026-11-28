@@ -56,9 +56,13 @@ function walk(spec: ExplorerReviewSpec, chosen: Values = {}, decisions: Values =
 it("serves the PDF parent's current Start run options, sessions and starts for each attached PDF and approved person", async () => {
   const spec = await review("i9-check-start");
   assert.deepEqual(spec.options, [{ id: "dry-run", label: "Dry run", initial: "false",
-    choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }] }]);
+    choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }] },
+  ...[
+    ["documents", "Read and approve PDFs"], ["roster-reference", "Look up in roster"],
+    ["retention", "Check retention and collect results"], ["publication", "Save results and append to the tracker"],
+  ].map(([key, label]) => ({ id: `skip-${key}`, label, initial: "run", choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }] }))]);
   assert.deepEqual(spec.sessions.map(session => session.system).sort(), ["crm", "i9", "ucpath"]);
-  assert.deepEqual(spec.steps.map(step => step.title), ["Read and approve PDFs", "Look up in roster", "Check retention and save results"]);
+  assert.deepEqual(spec.steps.map(step => step.title), ["Read and approve PDFs", "Look up in roster", "Check retention and collect results", "Save results and append to the tracker"]);
   const starts = spec.steps.flatMap(step => step.blocks).filter(block => block.kind === "starts");
   assert.deepEqual(starts, [
     { kind: "starts", workflowId: "ocr", title: "OCR", each: "Each attached PDF" },
@@ -80,11 +84,11 @@ it("explains PDF record approval before any person check and previews publicatio
   assert.deepEqual(refused.steps.map(entry => entry.id), ["documents"]);
   const live = walk(spec);
   assert.equal(live.values["results-publication"], "saved");
-  assert.ok(visible(step(spec, "retention").description, live.values).some(line => /Save one results workbook/u.test(line.text)));
+  assert.ok(visible(step(spec, "publication").description, live.values).some(line => /Save one results workbook/u.test(line.text)));
   const dry = walk(spec, { "dry-run": "true" });
   assert.equal(dry.values["results-publication"], "dry-run");
-  assert.ok(!visible(step(spec, "retention").description, dry.values).some(line => /Save one results workbook/u.test(line.text)));
-  assert.ok(visible(step(spec, "retention").checks, dry.values).some(line => /without saving.*tracker/u.test(line.text)));
+  assert.ok(!visible(step(spec, "publication").description, dry.values).some(line => /Save one results workbook/u.test(line.text)));
+  assert.ok(visible(step(spec, "publication").checks, dry.values).some(line => /without saving.*tracker/u.test(line.text)));
   assert.deepEqual(dry.steps.map(entry => entry.id), live.steps.map(entry => entry.id));
 });
 
@@ -175,8 +179,10 @@ it("defaults the retention recommendation to Shred for nobody found and manual r
 
 it("serves the I-9 Lookup search and every Section 2 status without inventing a person-pick gate", async () => {
   const spec = await review("i9-lookup");
-  assert.deepEqual(spec.options, []);
-  assert.deepEqual(spec.sessions, [{ system: "i9" }]);
+  assert.deepEqual(spec.options, [{ id: "skip-lookup", label: "Look up Section 2 signer", initial: "run",
+    choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }] }]);
+  assert.deepEqual(spec.sessions, [{ system: "i9", when: [{ "skip-lookup": ["run"] }] }]);
+  assert.deepEqual(visible(spec.sessions, { "skip-lookup": "skip" }), []);
   assert.deepEqual(blocks(spec, "lookup", "click").map(click => click.target), ["Search Options", "Clear Search Filters & Results", "Search"]);
   const cards = blocks(spec, "lookup", "card");
   assert.deepEqual(cards[0]?.rows.map(row => [row.label, row.value]), [["Last name", "Morrow"], ["First name", "Bea"]]);
@@ -213,7 +219,7 @@ it("shows the extra name as Fill and hire-date evidence as Read, hiding identifi
 });
 
 const STEP_SYSTEMS: Readonly<Record<string, readonly (string | undefined)[]>> = {
-  "i9-check-start": [undefined, undefined, "ucpath"], "i9-check": ["local", "ucpath", "ucpath", undefined], "i9-lookup": ["i9"],
+  "i9-check-start": [undefined, undefined, "ucpath", undefined], "i9-check": ["local", "ucpath", "ucpath", undefined], "i9-lookup": ["i9"],
 };
 
 it("serves each step's Logs title, description, checks and complete fictional page rows with traceable sources", async () => {

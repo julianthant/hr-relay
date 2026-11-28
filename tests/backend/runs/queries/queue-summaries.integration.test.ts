@@ -373,23 +373,15 @@ it("maintains parent rollups and dependencies while batch grouping stays a bound
       return memo;
     });
     const waitState = vi.spyOn(delegationAuthority, "readDelegationWaitState");
+    const sharedSummaries = vi.spyOn(database, "queryRunSummaries").mockImplementation(() => { throw new Error("activity-used-shared-run-summaries"); });
     const waitedOn = () => waitState.mock.calls.map(([, run]) => typeof run === "string" ? run : run.envelope.runId).toSorted();
     try {
       await readPopulation();
       assert.equal(groupProofs, 1);
       assert.deepEqual(waitedOn(), [parent.envelope.runId]);
-
-      // The pre-filter query evaluates delegation wait for every inline member.
-      const querySummaries = database.queryRunSummaries.bind(database);
-      const unfiltered = vi.spyOn(database, "queryRunSummaries").mockImplementation(input => querySummaries({ ...input, topLevel: false }));
-      try {
-        groupProofs = 0;
-        waitState.mockClear();
-        await readPopulation();
-        assert.equal(groupProofs, 1);
-        assert.deepEqual(waitedOn(), [parent.envelope.runId, ...childIds].toSorted());
-      } finally { unfiltered.mockRestore(); }
+      assert.equal(sharedSummaries.mock.calls.length, 0);
     } finally {
+      sharedSummaries.mockRestore();
       waitState.mockRestore();
       observeProofs.mockRestore();
     }

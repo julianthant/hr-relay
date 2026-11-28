@@ -1,16 +1,29 @@
+import { z } from "zod";
 import { ReadApprovedOcrRecords } from "../../../../models/processing/ocr/read-approved-records.js";
 import { ReadI9CheckPeople } from "../../../../models/workflows/i9-check-start/read-people.js";
 import { I9CheckStartInput } from "../../../../models/workflows/i9-check/start.js";
 import { OcrInputSchema } from "../../../../models/workflows/ocr/input.js";
 import { OcrWorkflowResultSchema } from "../../../../models/workflows/ocr/result.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import { NodeIdSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 
-const step = Object.freeze({
+export function stopWithoutRead(stop: string, skips: readonly string[]): StepManualDeclaration {
+  return { off: "values", stop, form: { fields: [] }, produces: {}, skips };
+}
+
+export const i9CheckStoppedResult = z.strictObject({
+  state: z.literal("stopped"),
+  reason: z.enum(["approved-records-unavailable", "roster-reference-unavailable", "retention-results-unavailable"]),
+});
+const documentsResult = z.union([ReadI9CheckPeople.output, i9CheckStoppedResult]);
+
+export const DOCUMENTS_STEP = Object.freeze({
   ...defineWorkflowStep({ key: "documents", label: "Read and approve PDFs" }),
+  manual: stopWithoutRead("Stops without approved I-9 records from the attached PDFs.", ["read-documents", "read-approved-records", "read-people"]),
   review: {
     starts: [{ nodeId: "read-documents", each: "Each attached PDF" }],
     pages: [{
@@ -37,6 +50,7 @@ const step = Object.freeze({
       ] }],
   } as const
 });
+const step = DOCUMENTS_STEP;
 const entries = defineStepEntries(step);
 type Author = WorkflowAuthor<typeof I9CheckStartInput>;
 export function buildDocuments(author: Author) {
@@ -51,7 +65,8 @@ export function buildDocuments(author: Author) {
   }));
   const people = author.task(entries.task("read-people", ReadI9CheckPeople, { replay: "checkpoint" }), [approved], ({ input, outputs }) => ({ request: input, selection: outputs["read-approved-records"] }));
   return { documents, approved, people, steps: [[step, [documents, approved, people]]] as const,
-    result: author.result(ReadI9CheckPeople.output, [people], ({ outputs }) => outputs["read-people"]) };
+    result: author.result(documentsResult, [people], ({ outputs }): z.input<typeof documentsResult> =>
+      outputs["read-people"] ?? { state: "stopped", reason: "approved-records-unavailable" }) };
 }
 export const i9CheckStartDocumentsDefinition = defineStep({ group: step, build: buildDocuments,
   nodePurposes: [

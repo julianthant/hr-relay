@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CrossDateSearchStateFacetSchema, type CrossDateSearchResult } from "../../../../models/dashboard/search.js";
 import { QueueStatusSchema } from "../../../../models/dashboard/projection.js";
+import { SpanNotRunReasonSchema } from "../../../../models/events/types.js";
 import { operatorFailureSentence } from "../../../../models/failures/error-catalog.js";
 import { ErrorCodeSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
@@ -38,7 +39,7 @@ export function runsPlugin(deps: AssistantPluginDeps, workflowLabel: (id: string
   });
   const Logs = z.strictObject({ total: z.number().int().nonnegative(), steps: z.array(z.strictObject({
     at: z.iso.datetime(), label: z.string(), stepLabel: z.string(), state: z.enum(["pending", "active", "done", "failed", "blocked", "cancelled", "skipped"]),
-    skipped: z.enum(["condition-false", "branch-not-selected", "operator-asserted", "step-omitted"]).nullable() })) });
+    skipped: SpanNotRunReasonSchema.nullable() })) });
   /** A pinned reference (the selected run) refuses once its row has moved on, before any fact is read out. */
   const currentDetail = (token: string, context: AssistantToolContext) => {
     const entry = context.references.resolve(token, ["R"]), detail = deps.runDetail(entry.target);

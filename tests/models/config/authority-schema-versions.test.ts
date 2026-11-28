@@ -23,15 +23,15 @@ import {
 } from "../../../src/models/config/authority-schema-versions.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 
-const stopped = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47] as const;
-const upgradeable = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47] as const;
-const openable = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48] as const;
-const recognized = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48] as const;
-const baselineFrom = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48] as const;
-const bound = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48] as const;
+const stopped = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48] as const;
+const upgradeable = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48] as const;
+const openable = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49] as const;
+const recognized = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49] as const;
+const baselineFrom = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49] as const;
+const bound = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49] as const;
 const unbound = [1, 2, 3, 4, 5, 6] as const;
-const maintenance = [6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48] as const;
-const evidence = [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48] as const;
+const maintenance = [6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49] as const;
+const evidence = [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49] as const;
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type Expect<T extends true> = T;
@@ -57,15 +57,15 @@ const lists = [
   ["evidence", EVIDENCE_SCHEMA_UPGRADE_VERSIONS, evidence, undefined],
 ] as const;
 
-const probe = [-1, 6.5, 7.5, 31.5, 32.5, 33.5, 34.5, 35.5, 36.5, 37.5, 38.5, 39.5, 40.5, 41.5, 42.5, 43.5, 44.5, 45.5, 46.5, 47.5, 48.5, ...Array.from({ length: 50 }, (_, index) => index)];
+const probe = [-1, 6.5, 7.5, 31.5, 32.5, 33.5, 34.5, 35.5, 36.5, 37.5, 38.5, 39.5, 40.5, 41.5, 42.5, 43.5, 44.5, 45.5, 46.5, 47.5, 48.5, 49.5, ...Array.from({ length: 51 }, (_, index) => index)];
 
 describe("authority schema version lists", () => {
-  it("keeps one application id and the current schema at 48", () => {
+  it("keeps one application id and the current schema at 49", () => {
     assert.equal(AUTHORITY_APPLICATION_ID, 1_217_249_861);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 48);
-    assert.equal(isCurrentAuthoritySchemaVersion(48), true);
-    assert.equal(isCurrentAuthoritySchemaVersion(47), false);
-    assert.equal(isCurrentAuthoritySchemaVersion(49), false);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 49);
+    assert.equal(isCurrentAuthoritySchemaVersion(49), true);
+    assert.equal(isCurrentAuthoritySchemaVersion(48), false);
+    assert.equal(isCurrentAuthoritySchemaVersion(50), false);
   });
 
   it("matches the accepted version of every list, and refuses every other probe", () => {
@@ -97,12 +97,12 @@ describe("authority schema version lists", () => {
     assert.equal(AuthorityUpgradeRecordSchema.safeParse(baseline).success, true);
     assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 44 }).success, true);
     assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 0 }).success, false);
-    assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 49 }).success, false);
-    const report = { state: "planned" as const, fromSchemaVersion: 0, toSchemaVersion: 48, credentials: "unchanged" as const };
+    assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 50 }).success, false);
+    const report = { state: "planned" as const, fromSchemaVersion: 0, toSchemaVersion: 49, credentials: "unchanged" as const };
     assert.equal(StorageUpgradeReportSchema.safeParse(report).success, true);
     assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, fromSchemaVersion: 39 }).success, true);
-    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, state: "already-upgraded", fromSchemaVersion: 48 }).success, true);
-    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, fromSchemaVersion: 49 }).success, false);
+    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, state: "already-upgraded", fromSchemaVersion: 49 }).success, true);
+    assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, fromSchemaVersion: 50 }).success, false);
     assert.equal(StorageUpgradeReportSchema.safeParse({ ...report, toSchemaVersion: 39 }).success, false);
   });
 });

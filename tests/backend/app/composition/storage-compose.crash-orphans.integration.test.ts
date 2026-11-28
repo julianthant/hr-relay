@@ -11,7 +11,7 @@ import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/l
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { AuthorityBackupService, backupLogPaths } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
@@ -128,7 +128,7 @@ it.skipIf(process.platform === "win32").each(crashPoints)("restarts after a hard
     const backupPath = join(directories.backups, manifest.backupFileName), manifestPath = `${backupPath}.manifest.json`;
     const artifact = await createContentAddressedArtifactWriter({ admission: profile.admission })
       .put(new TextEncoder().encode("published artifact"), { mediaType: "text/plain" });
-    const publishedPaths = [backupPath, manifestPath, join(directories.artifacts, `${artifact.sha256}.artifact`), join(directories.credentials, "protected.json")];
+    const publishedPaths = [backupPath, manifestPath, join(directories.artifacts, `${artifact.sha256}.artifact`), join(directories.credentials, "protected.json"), ...backupLogPaths(backupPath)];
     await profile.closeController();
     const published = publishedPaths.map(path => ({ path, bytes: readFileSync(path) }));
     const retain = (path: string) => published.push({ path, bytes: readFileSync(path) });
@@ -148,8 +148,10 @@ it.skipIf(process.platform === "win32").each(crashPoints)("restarts after a hard
     if (stage === "backup complete") {
       const finished = entries.find(name => name.endsWith(".sqlite"));
       assert.ok(finished);
-      retain(join(directories.backups, finished));
-      retain(join(directories.backups, `${finished}.manifest.json`));
+      const finishedPath = join(directories.backups, finished);
+      retain(finishedPath);
+      retain(`${finishedPath}.manifest.json`);
+      for (const log of backupLogPaths(finishedPath)) retain(log);
     } else if (stage === "artifact publish") {
       const final = entries.find(name => name.endsWith(".artifact"));
       assert.ok(final);
@@ -175,6 +177,12 @@ it.skipIf(process.platform === "win32").each(crashPoints)("restarts after a hard
       restoreStage = join(profile.stateRoot, name);
       assert.equal(existsSync(restoreJournal), true);
     } else if (stage === "restore stage") {
+      const scratch = join(profile.stateRoot, "scratch");
+      const logStage = readdirSync(scratch).find(name => /^\.restore-.+\.logs$/u.test(name));
+      assert.ok(logStage);
+      assert.deepEqual(readdirSync(join(scratch, logStage)).sort(), ["dashboard.db", "timeline.db"]);
+      assert.equal(existsSync(restoreJournal), false);
+      stages.push(join(scratch, logStage));
       const unknown = join(profile.stateRoot, ".restore-unknown.sqlite.tmp");
       writeFileSync(unknown, "unproved restore stage", { mode: 0o600 }); retain(unknown);
     }

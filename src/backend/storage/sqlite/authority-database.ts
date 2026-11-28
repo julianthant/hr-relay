@@ -1,5 +1,6 @@
 import { readStartupFile, type StartupFile } from "./startup-file-proof.js";
 import { createDashboardSnapshotQuery } from "./authority-dashboard-snapshot.js";
+import type { LogMutation } from "../events/log-mutations.js";
 import type { FileIdentitySchema } from "../../../models/storage/file-identity.js";
 import { createWorkerSlotRepository } from "./worker-slots.js";
 import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
@@ -99,7 +100,7 @@ import { createRunSummaries, listRunWorkflows } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings } from "./settings-storage.js";
 import { TimelineRecordError, createTimelineRepository, timelineEventFromRow } from "./timeline-repository.js";
-import { selectTransactions } from "./transaction-selection.js";
+import { countActivityConfirmations, selectTransactions } from "./transaction-selection.js";
 import { createWorkbookLibraryRepository, hasOnlyInitialWorkbookType } from "./workbook-library-repository.js";
 import { DryRunScenarioResultSchema } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
@@ -317,6 +318,8 @@ export class AuthorityDatabase implements Disposable {
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
 
   #authorityCommitCallbacks: (() => void)[] = [];
+  #logWriteFailure: Error | undefined;
+  #logPublisher: ((mutation: LogMutation) => void) | undefined;
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
   #slowOperation: SlowOperationHook | undefined;
   /** Nonzero while an outermost operation is being timed, and again while its hook runs. */
@@ -1728,7 +1731,7 @@ export class AuthorityDatabase implements Disposable {
     if (this.#dashboardReadSources.size > 0) throw new Error("dashboard-background-reader-open");
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");
     let plannerFailure: { error: unknown } | undefined;
-    if (this.#optimizeOnClose && !this.#database.isTransaction) {
+    if (this.#logWriteFailure === undefined && this.#optimizeOnClose && !this.#database.isTransaction) {
       let admitted = false;
       try {
         this.#admitMutation();
@@ -2367,11 +2370,88 @@ export class AuthorityDatabase implements Disposable {
       envelopes => this.authority.dependencies.parents(envelopes)).query(this.getMeta().authorityGeneration,query) });
   }
 
+  readActivityRuns(from: string, to: string) {
+    return this.withAuthorityReadSnapshot(() => {
+      this.#validateExternalQuerySources();
+      const runs = this.#database.prepare(`SELECT * FROM runs ${runIndex(this.#database, "runs_day_idx")}
+        WHERE local_day BETWEEN ? AND ? ORDER BY workflow,local_day,id`).all(from, to)
+        .map(row => ({ run: runRecordFromRow(row), localDay: z.iso.date().parse(row.local_day) }));
+      const bindings = new Map<string, { traceId: string; manifests: readonly DelegationManifest[] }>();
+      const unresolved = runs.flatMap(({ run: { envelope } }) => {
+        const parent = envelope.parent;
+        if (parent === undefined) return [];
+        let binding = bindings.get(parent.runId);
+        if (binding === undefined) {
+          const owner = this.authority.runs.get(parent.runId);
+          if (owner === undefined) throw new Error("activity-run-parent-unavailable");
+          binding = { traceId: owner.envelope.traceId, manifests: retainedDelegationManifests(this.authority, parent.runId) };
+          bindings.set(parent.runId, binding);
+        }
+        if (binding.traceId !== parent.tracePrefix) throw new Error("activity-run-parent-trace-mismatch");
+        const edge = binding.manifests.filter(manifest => manifest.edgeId === parent.edgeId);
+        const admitted = edge.some(manifest => manifest.children.some(child => child.childRunId === envelope.runId && child.childItemId === envelope.itemId));
+        // Every retained policy for this directly admitted member agrees it belongs under its parent.
+        return admitted && edge.every(manifest => manifest.policy.visibility !== "linked") ? [] : [envelope];
+      });
+      const parents = this.authority.dependencies.parents(unresolved);
+      for (const { runId } of unresolved) if (!parents.has(runId)) throw new Error("activity-run-parent-unavailable");
+      return runs.map(({ run, localDay }) => {
+        const parent = parents.get(run.envelope.runId);
+        const topLevel = run.envelope.parent === undefined || (parent !== undefined && isQueueTopLevel({ parent }));
+        const delegationWait = run.lifecycle.state === "queued" && topLevel ? this.#readDelegationWaitState(run) : null;
+        return { run, localDay, topLevel, delegationWait };
+      });
+    });
+  }
+
+  readActivityEvidence(input: { terminal: readonly string[]; people: readonly string[]; failures: readonly string[]; untitled: readonly string[] }) {
+    return this.withAuthorityReadSnapshot(() => {
+      this.#validateExternalQuerySources();
+      const selectCurrent = (ids: readonly string[], receipts: boolean) => ids.length === 0 ? [] : this.#database.prepare(`
+        SELECT ${receipts ? "receipt" : "settlement"}.* FROM json_each(?) selected
+        CROSS JOIN runs run ON run.id=selected.value
+        CROSS JOIN run_results settlement ON settlement.run_id=run.id
+        ${receipts ? "CROSS JOIN run_receipts receipt ON receipt.run_id=run.id AND receipt.settlement_version=settlement.settlement_version" : ""}
+        WHERE ${CURRENT_RUN_SETTLEMENT_SQL}`).all(JSON.stringify(ids));
+      const unique = <Row>(rows: readonly Row[], key: (row: Row) => string) => {
+        const indexed = new Map(rows.map(row => [key(row), row]));
+        if (indexed.size !== rows.length) throw new Error("activity-run-evidence-ambiguous");
+        return indexed;
+      };
+      const failures = input.failures.length === 0 ? [] : this.#database.prepare(
+        "SELECT * FROM run_failures WHERE id IN (SELECT value FROM json_each(?))").all(JSON.stringify(input.failures));
+      const titles = new Map<string, string>();
+      if (input.untitled.length > 0) {
+        if (readSingletonImage(this.#database).search_state !== "ready") throw new Error("run-search-index-rebuild-required");
+        // The search index retains the original queue publication, including its display title.
+        const rows = this.#database.prepare(`SELECT source.run_id AS runId,
+          json_extract(entry.value,'$.event.payload.event.runId') AS owner,
+          json_extract(entry.value,'$.event.payload.event.title') AS title
+          FROM json_each(?) selected CROSS JOIN run_search source ON source.run_id=selected.value
+          CROSS JOIN json_each(source.actor_source_json) entry
+          WHERE json_extract(entry.value,'$.kind')='queued' AND json_type(entry.value,'$.event.payload.event.title') IS NOT NULL
+          ORDER BY source.run_id,entry.key`).all(JSON.stringify(input.untitled));
+        const titleRow = z.strictObject({ runId: RunIdSchema, owner: RunIdSchema, title: z.string().min(1) });
+        for (const row of rows) {
+          const { runId, owner, title } = titleRow.parse(row);
+          if (owner !== runId) throw new Error("activity-run-title-owner-mismatch");
+          if (!titles.has(runId)) titles.set(runId, title);
+        }
+      }
+      return {
+        receipts: unique(selectCurrent(input.terminal, true).map(row => this.#parseNativeRow("run_receipts", row, RunEvidenceReceiptSchema)), row => row.runId),
+        people: unique(selectCurrent(input.people, false).map(row => this.#parseNativeRow("run_results", row, RunResultRecordSchema)), row => row.runId),
+        failures: unique(failures.map(row => this.#parseNativeRow("run_failures", row, FailureRecordSchema)), row => row.failureId),
+        titles,
+      };
+    });
+  }
+
   /** A retained summary read still admits the current source, and never serves from a write transaction. */
   runSummaryReadPosition() {
     if (this.#transactionMode !== "read") return undefined;
     this.#validateExternalQuerySources();
-    return { authorityGeneration: this.getMeta().authorityGeneration, ...this.capturedChangeKey() };
+    return { authorityGeneration: this.getMeta().authorityGeneration, searchState: readSingletonImage(this.#database).search_state, ...this.capturedChangeKey() };
   }
 
   queryRunCalendar(query: Parameters<ReturnType<typeof createRunSummaries>["calendar"]>[1]) {
@@ -2463,6 +2543,20 @@ export class AuthorityDatabase implements Disposable {
     }
     if (this.#transactionMode !== "authority") throw new Error("authority publication requires an authority transaction");
     this.#authorityCommitCallbacks.push(publish);
+  }
+
+  bindLogPublisher(publish: (mutation: LogMutation) => void): () => void {
+    this.#assertOpen();
+    if (this.#logPublisher !== undefined) throw new Error("log-publisher-already-bound");
+    this.#logPublisher = publish;
+    return () => { if (this.#logPublisher === publish) this.#logPublisher = undefined; };
+  }
+
+  refuseWritesAfterLogFailure(error: Error): void { this.#logWriteFailure ??= error; }
+
+  #publishLogAfterCommit(mutation: LogMutation): void {
+    const publish = this.#logPublisher;
+    if (publish !== undefined) this.afterAuthorityCommit(() => { publish(mutation); });
   }
 
 
@@ -3443,6 +3537,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result, searchValidation: "all" | "progress" | "none" = "all"): Result {
+    if (this.#logWriteFailure !== undefined) throw this.#logWriteFailure;
     if (this.#historyOwner !== undefined) throw new Error("isolated-history-read-only");
     return withOperationProof(() => {
       if (this.#transactionDepth === 0) clearOperationProofSlots();
@@ -4112,6 +4207,7 @@ export class AuthorityDatabase implements Disposable {
         read: (work) => this.#withReadSnapshot(work),
         mutate: (work) => this.#authorityWrite("timeline_events", work),
         assertOwner: (record, appending) => assertTimelineOwner(this.#database, record, appending),
+        publishCommitted: mutation => this.#publishLogAfterCommit(mutation),
       }),
       runs: this.#buildRunRepository(),
       failures: Object.freeze({
@@ -4268,7 +4364,10 @@ export class AuthorityDatabase implements Disposable {
           this.#parseNativeRow("dryrun_results",row,DryRunScenarioResultSchema))),
       }),
       operatorXlsxExports: generated.exports,
-      confirmedTransactionSources: { select: input => this.withAuthorityReadSnapshot(() => {
+      confirmedTransactionSources: { countActivityConfirmations: (from, to) => this.withAuthorityReadSnapshot(() => {
+        this.#validateExternalQuerySources();
+        return countActivityConfirmations(this.#database, from, to);
+      }), select: input => this.withAuthorityReadSnapshot(() => {
         this.#validateExternalQuerySources();
         const selected = selectTransactions(this.#database,input);
         const events = selected.map(record => {
@@ -5679,6 +5778,7 @@ export class AuthorityDatabase implements Disposable {
           const record = executeNativeRunDeletion(this.#database,prepared,step => this.#lifecycleHooks?.afterDeleteStep?.({runId:request.runId,step}));
           // Debug entries are diagnostics, not run evidence: they leave with the run and stay out of its deletion receipt.
           this.#database.prepare("DELETE FROM debug_events WHERE run_id=?").run(request.runId);
+          this.#publishLogAfterCommit({ kind: "purge-runs", runIds: [request.runId] });
           return {result:record,changes:1 + record.removed.reduce((sum,entry) => sum + entry.rows,0)};
         });
       },

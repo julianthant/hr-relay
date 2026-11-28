@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { hash, inventory } from "./existing-data-backup-files.js";
 import { privatePathRejects } from "../private-path.js";
+import { PROFILE_LOG_FILES } from "../events/log-mutations.js";
 
 export function restoreRetainedFilesDigest(root: string): string {
   return hash(Buffer.from(canonicalJsonStringify(["credentials", "files", "artifacts", "logs"].flatMap(name => {
@@ -15,7 +16,8 @@ export function restoreRetainedFilesDigest(root: string): string {
 export function assertRestoreRootMembership(root: string, operationId: string): void {
   const directories = new Set(["browsers", "credentials", "backups", "artifacts", "logs", "scratch", "files"]);
   const stage = `.restore-${operationId}.sqlite.tmp`;
-  const files = new Set(["state.db", "state.db-wal", "state.db-shm", stage, `${stage}-wal.live-companion`, `${stage}-shm.live-companion`]);
+  const files = new Set(["state.db", "state.db-wal", "state.db-shm", stage, `${stage}-wal.live-companion`, `${stage}-shm.live-companion`,
+    ...PROFILE_LOG_FILES]);
   for (const name of readdirSync(root)) {
     const path = join(root, name), metadata = fileStatus(path);
     if (metadata.isSymbolicLink() || privatePathRejects(path, metadata, "group-write")

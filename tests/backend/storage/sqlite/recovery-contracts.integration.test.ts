@@ -1,7 +1,7 @@
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { doctorAuthorityStorage as doctorProfileAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
-import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { backupLogPaths, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { createBackupFixtures } from "../../../support/helpers/storage/backup-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
@@ -52,7 +52,7 @@ afterEach(_afterEachFixture0);
     assert.equal("files" in manifest, false);
     assert.equal("protectedSettings" in manifest, false);
     const entries = readdirSync(world.backupDirectory).sort();
-    assert.equal(entries.length, 2);
+    assert.deepEqual(entries, [manifest.backupFileName, `${manifest.backupFileName}.manifest.json`, ...backupLogPaths(manifest.backupFileName)].sort());
     assert.equal(
       entries.some((name) => readFileSync(join(world.backupDirectory, name)).includes(canary)),
       false,

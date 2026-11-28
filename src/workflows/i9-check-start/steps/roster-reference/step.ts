@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { ReadWorkbookReference } from "../../../../models/processing/workbooks/read-reference.js";
 import { ReadI9CheckRequests } from "../../../../models/workflows/i9-check-start/read-requests.js";
 import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../models/workflows/i9-check/start.js";
@@ -5,10 +6,11 @@ import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-l
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { buildDocuments } from "../documents/step.js";
+import { buildDocuments, i9CheckStoppedResult, stopWithoutRead } from "../documents/step.js";
 
-const step = Object.freeze({
+export const ROSTER_REFERENCE_STEP = Object.freeze({
   ...defineWorkflowStep({ key: "roster-reference", label: "Look up in roster" }),
+  manual: stopWithoutRead("Stops without the selected Action History evidence.", ["read-reference", "read-requests"]),
   review: {
     pages: [
       {
@@ -37,6 +39,8 @@ const step = Object.freeze({
     branchLabels: []
   } as const
 });
+const step = ROSTER_REFERENCE_STEP;
+const referenceResult = z.union([ReadI9CheckRequests.output, i9CheckStoppedResult]);
 const entries = defineStepEntries(step);
 type Author = WorkflowAuthor<typeof I9CheckStartInput>;
 export function buildRosterReference(author: Author, documents: ReturnType<typeof buildDocuments>) {
@@ -47,7 +51,8 @@ export function buildRosterReference(author: Author, documents: ReturnType<typeo
     request: input, people: outputs["read-people"], reference: outputs["read-reference"],
   }));
   return { prepared, reference, steps: [[step, [reference, prepared]]] as const,
-    result: author.result(ReadI9CheckRequests.output, [prepared], ({ outputs }) => outputs["read-requests"]) };
+    result: author.result(referenceResult, [prepared], ({ outputs }): z.input<typeof referenceResult> =>
+      outputs["read-requests"] ?? { state: "stopped", reason: "roster-reference-unavailable" }) };
 }
 export const i9CheckStartRosterReferenceDefinition = defineStep({ group: step, build: buildRosterReference,
   nodePurposes: [

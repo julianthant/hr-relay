@@ -15,8 +15,8 @@ import { createDurableChildRunExecutor } from "../../runtime/execution/durable-c
 import { runQueuedSpanEvent } from "../../runs/commands/run-queued-span.js";
 import { WorkerSessionClosureUnprovedError, withBoundRunConfigFingerprint } from "../../runtime/workers/worker-sessions.js";
 import { createIpcRouter, type IpcRouter } from "../../runtime/workers/worker-ipc-router.js";
-import { createWorkerChildChannel, type WorkerChildChannel } from "../../runtime/workers/worker-child-channel.js";
-import { WORKER_MESSAGE_PREFIX, type WorkerActivity, type WorkerChildMessage } from "../../runtime/workers/worker-messages.js";
+import { createWorkerChildChannel, createWorkerLogChannel, type WorkerChildChannel } from "../../runtime/workers/worker-child-channel.js";
+import { WORKER_LOG_PREFIX, WORKER_MESSAGE_PREFIX, WorkerLogEnableSchema, type WorkerActivity, type WorkerChildMessage } from "../../runtime/workers/worker-messages.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { readFileSync as readBuildFile } from "node:fs";
 import { appendEmergencyFault, withEmergencyTimelineWriter } from "../../logs/emergency-faults.js";
@@ -409,6 +409,15 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   let ocrAccount: ReturnType<typeof createChatGptAccountService> | undefined;
   let accountClosureProven = true;
   let removeStopListeners: (() => void) | undefined;
+  let router: IpcRouter | undefined;
+  const stopController = new AbortController();
+  let channelFailure: unknown, announcedWorkerReady = false, receivedProcessSignal = false;
+  const logChannel = launch === undefined ? undefined : createWorkerLogChannel(error => {
+    channelFailure = error;
+    database.refuseWritesAfterLogFailure(error);
+    stopController.abort(error);
+  });
+  const removeLogPublisher = logChannel === undefined ? undefined : database.bindLogPublisher(logChannel.publish);
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build });
   slowOperations.attach(debugEvents);
@@ -426,6 +435,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     },
   });
   const childRuns = createDurableChildRunExecutor({ authority: database,
+    ...(logChannel === undefined ? {} : { beforeConfirmedWrite: logChannel.flush }),
     admission: { admitAndRelease: (context, plan) => runRecordService.admitDelegation(context, plan) },
     resolveTarget: id => {
       const target = executionDescriptor(id);
@@ -522,8 +532,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     }
   })();
 
-  const stopController = new AbortController();
   const forwardStop = (reason: string) => (): void => {
+    receivedProcessSignal = true;
     stopController.abort(new Error(reason));
   };
   const onSigint = forwardStop(`worker ${workerId} received SIGINT`);
@@ -561,7 +571,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
 
     const paused = (): boolean => database.authority.workerSlots.get(workerId)?.paused === true;
     let stopRequested = false;
-    let channelFailure: unknown;
     let boundSessions: WorkerSessionManager | undefined;
     let current: WorkerActivity = { state: paused() ? "paused" : "idle" };
     const browserActivities = new Map<symbol, "acquiring" | "authenticating" | "closing">();
@@ -576,12 +585,11 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       current = next;
       channel?.activity(next);
     };
-    let router: IpcRouter | undefined;
     const send = process.send?.bind(process);
     if (launch !== undefined) {
       if (send === undefined || !process.connected || process.disconnect === undefined) throw new Error("runtime-parent-channel-required");
       const disconnect = process.disconnect.bind(process);
-      const fail = (error: unknown): void => { channelFailure ??= error; stopController.abort(error); };
+      const fail = (error: unknown): void => { channelFailure ??= error; logChannel?.fail(error); stopController.abort(error); };
       router = createIpcRouter({ on: (event, listener) => process.on(event, listener), off: (event, listener) => process.off(event, listener),
         disconnect }, fail);
       const routed = router;
@@ -606,7 +614,17 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         onStop: () => { stopRequested = true; } });
       channel = opened;
       routed.register(WORKER_MESSAGE_PREFIX, message => {
-        try { opened.receive(message); } catch (error) { fail(error); }
+        try {
+          if (message.kind === "worker-log-enabled") {
+            WorkerLogEnableSchema.parse(message);
+            logChannel?.attach(logMessage => {
+              try { send(logMessage, undefined, undefined, error => { if (error !== null) fail(error); }); }
+              catch (error) { fail(error); }
+            });
+          } else if (message.kind.startsWith(WORKER_LOG_PREFIX)) {
+            logChannel?.receive(message);
+          } else opened.receive(message);
+        } catch (error) { fail(error); }
       });
     }
 
@@ -641,6 +659,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         log,
         debugEvents,
         taskNotes,
+        ...(logChannel === undefined ? {} : { beforeConfirmedWrite: logChannel.flush }),
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll: () => stopRequested ? "stop" : paused() ? "pause" : "run",
@@ -648,6 +667,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         watchForWork: channel?.watchForWork,
         bindSessions: sessions => {
           boundSessions = sessions;
+          announcedWorkerReady = channel !== undefined;
           channel?.ready({ workerId, pid: process.pid, profileId: selected.profileId, sessionGeneration: launch?.sessionGeneration ?? 0,
             browserSystems: z.array(BrowserSystemIdSchema).parse([...systems]), activity: current });
         },
@@ -665,6 +685,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         claimNext: (request, sessions) => {
           assertCurrent();
           return claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
+          ...(logChannel === undefined ? {} : { beforeConfirmedWrite: logChannel.flush }),
           onObservationChanged: attempt => { log.warn("preflight observation changed during claim; re-preparing", { workerId, attempt }); },
           candidateCurrent: run => database.authority.runs.get(run.envelope.runId)?.version === run.version,
           prepareRun: async (run, signal) => {
@@ -706,6 +727,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         artifacts,
         artifactProjector,
         writeSequencerFor: (sessions, taskDeadlineMs) => createWriteSequencer({
+          ...(logChannel === undefined ? {} : { beforeConfirmedWrite: logChannel.flush }),
           stores,
           authority: database,
         lifecycle,
@@ -727,7 +749,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       throw error;
     } finally {
       try { await stopGateSources(); } catch (error) { cleanupErrors.push(error); }
-      router?.close();
     }
     if (channelFailure !== undefined) throw channelFailure instanceof Error ? channelFailure : new Error("worker-ipc-channel-failed", { cause: channelFailure });
     if (report.closure === "unproved") emitFaultWithCauses(debugEvents, undefined, closureFailure, { category: "worker",
@@ -758,6 +779,12 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       code: "WORKER_CLEANUP_FAILED", reason: "resource-closure-unproved" }, { kind: "worker", workerId }); }
     catch (loggingError) { cleanupErrors.push(loggingError); }
   }
+  // The parent reconciles from state on exit when startup has not announced readiness or a process signal may have reached the parent too.
+  if (announcedWorkerReady && !receivedProcessSignal) {
+    try { await logChannel?.drain(); } catch (error) { cleanupErrors.push(error); }
+  }
+  removeLogPublisher?.();
+  router?.close();
   let databaseClosureProven = false;
   try {
     if (!accountClosureProven) throw new RuntimeCustodyUncertainError(cleanupErrors);

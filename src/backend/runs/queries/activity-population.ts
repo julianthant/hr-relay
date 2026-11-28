@@ -5,8 +5,6 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { spreadsheetCsvRow } from "../exports/spreadsheet-csv.js";
-import { deriveRunStatus } from "../../../rules/runs/run-status.js";
-import { runResultCurrent } from "../../storage/sqlite/delegation-refresh.js";
 import { activityReportCsv, activityReportCsvFileName } from "./activity-export.js";
 import { ACTIVITY_SNAPSHOT_LIFETIME_MS, createActivitySelectionService, createActivitySnapshotSigner } from "./activity-selection.js";
 import { queryActivitySummaries } from "./activity-summaries.js";
@@ -76,6 +74,7 @@ export function createActivityPopulationService(input: {
     return database.withAuthorityReadSnapshot(() => {
       const position = database.runSummaryReadPosition();
       if (retainedPosition?.authorityGeneration !== position?.authorityGeneration
+        || retainedPosition?.searchState !== position?.searchState
         || retainedPosition?.schemaCookie !== position?.schemaCookie
         || retainedPosition?.changeLogSeq !== position?.changeLogSeq) {
         retainedPosition = position;
@@ -91,9 +90,7 @@ export function createActivityPopulationService(input: {
       const population: ActivityPopulationRun[] = [];
       const addToPopulation: VisitSummary = row => {
         if (row.shape === "operation-member") throw new ActivityPopulationError("ACTIVITY_POPULATION_SOURCE_MISMATCH");
-        population.push({ runId: row.runId, workflowId: row.workflow, title: row.title, attempt: row.attempt, day: row.localDay, parentRunId: row.parent?.runId ?? null, shape: row.shape,
-          status: deriveRunStatus(row), terminal: runResultCurrent(row), durationMs: row.durationMs,
-          receiptResult: row.receiptResult, warningCount: row.warningCount, readback: row.receiptResult === null ? null : row.receiptResult === "verified-done" });
+        population.push({ ...row, shape: row.shape });
       };
       const report = selected === undefined ? reports.read(from, to, addToPopulation)
         : reports.readSelected(from, to, selected.reportToken, addToPopulation);

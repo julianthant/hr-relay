@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it, vi } from "vitest";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
@@ -132,5 +132,8 @@ it("boots a person restored from a schema-21 backup through the startup upgrade,
   await dashboard.stop(); running = false;
   assert.equal(children.pidAlive(child.pid), false);
   assert.deepEqual([child.child.exitCode, child.child.signalCode], [0, null], "the stop is observed as the worker's own clean exit");
+  query(join(dirname(path), "timeline.db"), timeline => {
+    assert.ok(timeline.prepare("SELECT id FROM timeline_events WHERE run_id=? LIMIT 1").get(run.envelope.runId));
+  });
   for (const opened of [path, backups]) assert.ok(realpathSync(opened).startsWith(realpathSync(workspace)));
 });

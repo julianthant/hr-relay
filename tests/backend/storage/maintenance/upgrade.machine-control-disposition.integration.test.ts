@@ -1,6 +1,7 @@
 import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { AuthorityBackupService, backupLogPaths } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { ChatGptCredentialRecordSchema, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { RuntimeLifetimeLock, type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { BrowserRootsSchema, StoppedBrowserRootsV1Schema } from "../../../../src/backend/storage/browser-root-contract.js";
@@ -123,7 +124,8 @@ function assertCanonicalCredentialConversion(f: Awaited<ReturnType<typeof priorF
     `${id}.marker.before.json`, `${id}.receipt.json`, archived.directory].sort());
   assert.equal(existsSync(join(f.workspace, ".tracker", "control", "profile-control-upgrade.json")), false);
   const sqlDirectory = join(directory, archived.directory), manifest = archived.verifiedBackup.manifest;
-  assert.deepEqual(readdirSync(sqlDirectory).sort(), [manifest.backupFileName, `${manifest.backupFileName}.manifest.json`].sort());
+  assert.deepEqual(readdirSync(sqlDirectory).sort(),
+    [manifest.backupFileName, `${manifest.backupFileName}.manifest.json`, ...backupLogPaths(manifest.backupFileName)].sort());
   assert.equal(nativeFs.statSync(sqlDirectory).mode & 0o7777, 0o700);
   const manifestPath = join(sqlDirectory, `${manifest.backupFileName}.manifest.json`), sqlPath = join(sqlDirectory, manifest.backupFileName);
   const manifestBytes = readFileSync(manifestPath), sqlBytes = readFileSync(sqlPath);
@@ -306,6 +308,31 @@ for (const boundary of ["registry", "control", "marker"] as const) it(`retains t
   const machine = acquireEntrypointAdmission(f.workspace, "exclusive", coldLifetime);
   try { assert.throws(() => machine.admitProfile(f.profileId), /profile-storage-claim-unavailable/u); }
   finally { machine.release(); if (coldLifetime !== f.lifetime) await coldLifetime.close(); await f.close(); }
+});
+
+it("recovers a stopped machine-control upgrade after its complete backup set was written", async () => {
+  const f = await priorFormatFixture();
+  const backup = vi.spyOn(AuthorityBackupService.prototype, "request");
+  backup.mockImplementationOnce(async function (this: AuthorityBackupService, input) {
+    backup.mockRestore();
+    await this.request(input);
+    throw new Error("fixture stopped after backup publication");
+  });
+  try {
+    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+    try {
+      await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe),
+        /fixture stopped after backup publication/u);
+      const intent = join(f.workspace, ".tracker", "control", "profile-control-upgrade.json");
+      assert.equal(z.object({ phase: z.string() }).parse(JSON.parse(readFileSync(intent, "utf8"))).phase, "backing-up");
+    } finally { maintenance.release(); }
+    const cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+    try {
+      const recovered = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
+      assert.equal(recovered.state, "upgraded");
+      assertCanonicalCredentialConversion(f, recovered.receiptId, cold);
+    } finally { cold.release(); }
+  } finally { backup.mockRestore(); await f.close(); }
 });
 
 it("converts settled control3 and preserves exact completed historical upgrade artifacts", async () => {
@@ -594,7 +621,8 @@ async function offlineCanonicalPredecessor() {
   const backup = receipt.backups[0]; assert.ok(backup); assert.equal(backup.profileId, seed.profileId);
   assert.equal(backup.directory, `${operationId}.${seed.profileId}.authority`);
   const sqlDirectory = join(backupRoot, backup.directory), manifest = backup.verifiedBackup.manifest;
-  assert.deepEqual(readdirSync(sqlDirectory).sort(), [manifest.backupFileName, `${manifest.backupFileName}.manifest.json`].sort());
+  assert.deepEqual(readdirSync(sqlDirectory).sort(),
+    [manifest.backupFileName, `${manifest.backupFileName}.manifest.json`, ...backupLogPaths(manifest.backupFileName)].sort());
   assert.equal(createHash("sha256").update(readFileSync(join(sqlDirectory, manifest.backupFileName))).digest("hex"), manifest.sha256);
   assert.equal(createHash("sha256").update(readFileSync(join(sqlDirectory, `${manifest.backupFileName}.manifest.json`))).digest("hex"), backup.verifiedBackup.manifestSha256);
   write(receiptPath, { schemaVersion: 2, phase: "publishing", operationId, installationId: receipt.installationId, backups: receipt.backups });
