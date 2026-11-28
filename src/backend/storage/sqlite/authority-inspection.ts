@@ -220,8 +220,8 @@ export function commitVerifiedUpgrade(database: DatabaseSync, path: string, insp
   if (scope?.active && verified !== undefined) scope.images.set(path, { kind: "committed", ...verified });
 }
 
-function verifyNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas = false,
-  missingRunSearch = false, workbookPayloads = true) {
+function checkNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number, requireOperationalPragmas: boolean,
+  missingRunSearch: boolean, workbookPayloads: boolean, fingerprint?: ReturnType<typeof createAuthorityFingerprint>) {
   const applicationId = readIntPragma(database, "application_id");
   if (applicationId !== AUTHORITY_APPLICATION_ID) {
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
@@ -240,8 +240,6 @@ function verifyNativeAuthority(database: DatabaseSync, expectedSchemaVersion: nu
   if (meta.schema_version !== schemaVersion) {
     throw authorityIntegrityError(`authority schema metadata ${String(meta.schema_version)} disagrees with user_version ${String(schemaVersion)}`);
   }
-  const fingerprint = database.isTransaction && expectedSchemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION && !missingRunSearch
-    ? createAuthorityFingerprint() : undefined;
   inspectStoredData(() => validateAuthorityRecordSchemas(database, !missingRunSearch, expectedSchemaVersion, workbookPayloads, fingerprint));
   if (schemaVersion >= CHANGE_LOG_SCHEMA_VERSION) assertRunReferences(database);
   inspectStoredData(() => validateNotificationMetadata(database));
@@ -252,6 +250,20 @@ function verifyNativeAuthority(database: DatabaseSync, expectedSchemaVersion: nu
     if (schemaVersion >= RUN_SEARCH_FTS_SCHEMA_VERSION) assertRunSearchFts(database);
   });
   checkInspectionPragmas(database, requireOperationalPragmas);
+  return { applicationId, schemaVersion, meta, names };
+}
+
+/** Read-lane admission needs every integrity check, without compiling a backup inspection report. */
+export function assertReadLaneDatabase(database: DatabaseSync): void {
+  withoutNativeRecordReadMemo(() => checkNativeAuthority(database, CURRENT_AUTHORITY_SCHEMA_VERSION, false, false, true));
+}
+
+function verifyNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas = false,
+  missingRunSearch = false, workbookPayloads = true) {
+  const fingerprint = database.isTransaction && expectedSchemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION && !missingRunSearch
+    ? createAuthorityFingerprint() : undefined;
+  const { applicationId, schemaVersion, meta, names } = checkNativeAuthority(database, expectedSchemaVersion, requireOperationalPragmas,
+    missingRunSearch, workbookPayloads, fingerprint);
   const currentTables = AuthorityCopyInspectionSchema.shape.tables;
   const predecessorTables = [...(expectedSchemaVersion < 10 ? ["explorer_overrides" as const] : []),
     ...(expectedSchemaVersion >= 8 && expectedSchemaVersion < ASSISTANT_GRANT_RETIREMENT_VERSION ? [RETIRED_ASSISTANT_GRANT_TABLE] : []),

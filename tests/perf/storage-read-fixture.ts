@@ -4,7 +4,7 @@ import { createTimelineEmitter } from "../../src/backend/storage/events/timeline
 import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
 import { createBoundProfileFixture } from "../support/helpers/admission-fixture.js";
 import { CONFIG_SNAPSHOT } from "../support/fixtures/phase1c-contract-fixtures.js";
-import { enqueueRun, type SeedContext } from "./dashboard-fixture.js";
+import { enqueueRun, type RunSpec, type SeedContext } from "./dashboard-fixture.js";
 import { assertFakeKeychain } from "./fake-keychain-entry.js";
 
 export const STORAGE_READ_FIXTURE_DAYS = Object.freeze(["2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13", "2026-08-14"] as const);
@@ -26,7 +26,7 @@ export interface StorageReadFixture {
 }
 
 /** `runCount` queued runs (one in five a Separations run) spread over five days, each with a short note trail. */
-export async function seedStorageReadFixture(runCount: number): Promise<StorageReadFixture> {
+export async function seedStorageReadFixture(runCount: number, additionalRuns: readonly RunSpec[] = []): Promise<StorageReadFixture> {
   await assertFakeKeychain();
   const started = systemClock.monotonicMs();
   const profile = await createBoundProfileFixture();
@@ -56,6 +56,7 @@ export async function seedStorageReadFixture(runCount: number): Promise<StorageR
           });
         }
       }
+      for (const spec of additionalRuns) enqueueRun(context, spec);
     });
     const seedMs = systemClock.monotonicMs() - started;
     const writerContext: SeedContext = { workers: new Map(), path, database: writer, clock,
