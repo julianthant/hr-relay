@@ -38,10 +38,10 @@ describe("the original PDF input of a rerun", () => {
   });
 
   it("keeps a single PDF's reading and choices, adding no default the source left out", () => {
-    const { readingId, ...sent } = EmergencyContactInputSchema.parse(resubmit(contact, contactRun));
-    const { readingId: original, ...expected } = contactRun;
-    assert.deepEqual(sent, expected);
-    assert.notEqual(readingId, original);
+    const sent = resubmit(contact, contactRun);
+    const { readingId } = EmergencyContactInputSchema.parse(sent);
+    assert.deepEqual(sent, { ...contactRun, readingId });
+    assert.notEqual(readingId, contactRun.readingId);
   });
 
   it("sends a choice made on the Start page over the original one", () => {

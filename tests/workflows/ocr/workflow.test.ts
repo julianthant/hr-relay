@@ -189,7 +189,7 @@ describe("child-only OCR document graph", () => {
     }
     assert.equal(nodes.some(node => node.kind === "transaction"), false);
     assert.deepEqual(nodes.filter(node => node.kind === "gate").map(node => ({ id: node.id, resolvedBy: node.resolvedBy })),
-      [{ id: "approve-records", resolvedBy: "operator" }]);
+      [{ id: "worksheet-row-choice", resolvedBy: "operator" }, { id: "approve-records", resolvedBy: "operator" }]);
     const approval = nodes.find(node => node.id === "approve-records");
     assert.ok(approval?.kind === "gate" && approval.resolvedBy === "operator");
     assert.deepEqual(approval.when, { kind: "equals", of: { from: "input", path: "approval" }, value: "release" });
