@@ -65,6 +65,8 @@ export const ChatGptUsageStatusSchema = z.discriminatedUnion("state", [
 ]);
 export const ChatGptAccountStatusSchema = z.strictObject({
   account: ChatGptAccountViewSchema, connection: ChatGptConnectionStatusSchema, usage: ChatGptUsageStatusSchema,
+  /** Model evidence from a check that asked for OCR readiness. */
+  ocrModelAvailable: z.boolean().optional(),
 });
 export type ChatGptAccountStatus = z.infer<typeof ChatGptAccountStatusSchema>;
 export const chatGptOcrAvailable = ({ usage, connection }: ChatGptAccountStatus): boolean =>

@@ -104,7 +104,7 @@ export function useRunChecks(client: PreflightQueries & Pick<SettingsQueries, "e
     };
     const provider = requiresOcr
       ? readWithDeadline(signal => client.checkChatGptAccount(signal, { fresh: true }), "PROVIDER_UNAVAILABLE", CHATGPT_ACCOUNT_READ_DEADLINE_MS, controller.signal)
-        .then(chatGptOcrAvailable, () => false)
+        .then(status => chatGptOcrAvailable(status) && status.ocrModelAvailable === true, () => false)
       : Promise.resolve(true);
     void Promise.all([check(), provider]).then(
       ([wire, ready]) => { if (current && wire !== undefined) setState(runCheckRows(wire, ready)); },

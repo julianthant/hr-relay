@@ -12,7 +12,12 @@ import type { DashboardApp } from "./api-types.js";
 import type { ShellRouteDeps } from "./shell-types.js";
 import { wireError } from "./failure-status.js";
 
-export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "checkStatus" | "signIn" | "signOut" | "readStatus">; readonly chatGptOcrTest?: ChatGptOcrTestService }
+export interface ChatGptAccountRouteDeps {
+  readonly debugEvents?: ShellRouteDeps["debugEvents"];
+  readonly chatGptAccount?: Pick<ChatGptAccountService, "checkStatus" | "signIn" | "signOut" | "readStatus">;
+  readonly chatGptOcrModel?: string;
+  readonly chatGptOcrTest?: ChatGptOcrTestService;
+}
 function failure(error: unknown, dispatched = false, unknownCode: ErrorCatalogCode = "CHATGPT_AUTH_UNAVAILABLE") {
   const known = error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError;
   const code: ErrorCatalogCode = known ? error.code : unknownCode;
@@ -72,7 +77,8 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
       try { input = await c.req.json(); } catch { throw new ChatGptAccountError("CHATGPT_AUTH_INVALID"); }
       const parsed = ChatGptConnectionCheckRequestSchema.safeParse(input);
       if (!parsed.success) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
-      return service().checkStatus(c.req.raw.signal, parsed.data);
+      const ocrModel = parsed.data.fresh === true ? deps.chatGptOcrModel : undefined;
+      return service().checkStatus(c.req.raw.signal, { ...parsed.data, ...(ocrModel === undefined ? {} : { ocrModel }) });
     }));
   });
   app.post("/api/v1/settings/chatgpt-account/sign-in", async c => {

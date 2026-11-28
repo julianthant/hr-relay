@@ -396,6 +396,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     debugEvents,
     debugReportRunReader: lifecycle,
     assistant,
+    chatGptOcrModel: CHATGPT_OCR_MODEL,
     chatGptOcrTest,
     chatGptAccount: {
       readStatus: () => { assertCurrent(); return chatGptAccount.readStatus(); },
