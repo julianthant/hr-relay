@@ -66,6 +66,11 @@ describe("person-lookup full walk", () => {
     // Exact span sequence (ref workflow-model / ref dashboard-surfaces  identities).
     const trace = TraceIdSchema.parse(run.envelope.traceId);
     const node = (id: string) => NodeIdSchema.parse(id);
+    const skippedReferenceSpans = (stage: string) =>
+      [`reference-fields-${stage}`, `reference-field-review-${stage}`].flatMap(id => {
+        const path = taskSpanPath(trace, node(id), 1, 1);
+        return [["span.started", path, ""], ["span.ended", path, "skipped"]];
+      });
     const spans = harness.emitter.events().map((event) => [
       event.t,
       event.spanPath,
@@ -73,20 +78,24 @@ describe("person-lookup full walk", () => {
     ]);
 
     assert.deepEqual(spans, [
+      ...skippedReferenceSpans("start"),
       ["span.started", taskSpanPath(trace, node("searching"), 1, 1), ""],
       ["data.observed", taskSpanPath(trace, node("searching"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("searching"), 1, 1), "done"],
       ["span.started", taskSpanPath(trace, node("matching"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("matching"), 1, 1), "skipped"],
+      ...skippedReferenceSpans("matching"),
       ["span.started", taskSpanPath(trace, node("search-identity"), 1, 1), ""],
       ["data.observed", taskSpanPath(trace, node("search-identity"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("search-identity"), 1, 1), "done"],
+      ...skippedReferenceSpans("search-identity"),
       ["span.started", taskSpanPath(trace, node("cross-verify"), 1, 1), ""],
       ["data.observed", taskSpanPath(trace, node("cross-verify"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("cross-verify"), 1, 1), "done"],
       ["span.started", taskSpanPath(trace, node("crm-identity"), 1, 1), ""],
       ["data.observed", taskSpanPath(trace, node("crm-identity"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("crm-identity"), 1, 1), "done"],
+      ...skippedReferenceSpans("crm-identity"),
       ["span.started", taskSpanPath(trace, node("crm-selected-record"), 1, 1), ""],
       ["data.observed", taskSpanPath(trace, node("crm-selected-record"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("crm-selected-record"), 1, 1), "done"],
@@ -97,10 +106,9 @@ describe("person-lookup full walk", () => {
       ["span.started", taskSpanPath(trace, node("active-status"), 1, 1), ""],
       ["data.observed", taskSpanPath(trace, node("active-status"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("active-status"), 1, 1), "done"],
+      ...skippedReferenceSpans("active-status"),
       ["span.started", taskSpanPath(trace, node("crm-dates"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("crm-dates"), 1, 1), "skipped"],
-      ["span.started", taskSpanPath(trace, node("reference-check"), 1, 1), ""],
-      ["span.ended", taskSpanPath(trace, node("reference-check"), 1, 1), "skipped"],
       ["span.ended", trace, "done"],
     ]);
 
@@ -110,13 +118,10 @@ describe("person-lookup full walk", () => {
     assert.ok(crmResultsSpan?.t === "span.ended" && crmResultsSpan.kind === "task" && crmResultsSpan.outcome === "skipped");
     assert.equal(crmResultsSpan.notRunReason, crmResults.reason);
 
-    const skipSpan = harness.emitter.events().find((event) =>
-      event.t === "span.ended" && "outcome" in event && event.outcome === "skipped");
-    assert.ok(skipSpan);
-    assert.equal(
-      skipSpan.t === "span.ended" && "notRunReason" in skipSpan ? skipSpan.notRunReason : undefined,
-      crmDates.reason,
-    );
+    const crmDatesSpan = harness.emitter.events().find((event) =>
+      event.t === "span.ended" && event.spanPath === taskSpanPath(trace, node("crm-dates"), 1, 1));
+    assert.ok(crmDatesSpan?.t === "span.ended" && crmDatesSpan.kind === "task" && crmDatesSpan.outcome === "skipped");
+    assert.equal(crmDatesSpan.notRunReason, crmDates.reason);
   });
 });
 
