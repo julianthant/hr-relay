@@ -85,8 +85,14 @@ function applyEnvelope(
   return day;
 }
 
+function onWire(envelope: DashboardStreamEnvelope): DashboardStreamEnvelope {
+  const data = sseSerialize(envelope).split("\n").find(line => line.startsWith("data: "));
+  assert.ok(data);
+  return DashboardStreamEnvelopeSchema.parse(JSON.parse(data.slice(6)));
+}
+
 describe("Stream convergence: authoritative snapshots across create, delete, and terminalization", () => {
-  it.each(["one row", "multiple rows", "shared facts"] as const)("serves authoritative status counts when %s changes", async (scenario) => {
+  it.each(["one row", "multiple rows", "shared facts"] as const)("serves authoritative status counts after changes to %s", async (scenario) => {
     const w = await makeWorld();
     worlds.push(w);
     const target = queuedEventOf(w, { seed: 1 });
@@ -106,7 +112,7 @@ describe("Stream convergence: authoritative snapshots across create, delete, and
     const hub = createDashboardStreamHub({ projection, backfillGaps: VALIDATING_BACKFILL_GAPS });
     hubs.push(hub);
     const connection = await hub.connect({ day: DAY });
-    const initial = connection.initial.find(envelope => envelope.type === "snapshot");
+    const initial = connection.initial.map(onWire).find(envelope => envelope.type === "snapshot");
     assert.ok(initial);
     assert.deepEqual(initial.payload.statusCounts, [{ status: "queued", count: 2 }]);
 
@@ -127,7 +133,7 @@ describe("Stream convergence: authoritative snapshots across create, delete, and
     const [update] = updates;
     assert.ok(update);
     const freshConnection = await hub.connect({ day: DAY });
-    const fresh = freshConnection.initial.find(envelope => envelope.type === "snapshot");
+    const fresh = freshConnection.initial.map(onWire).find(envelope => envelope.type === "snapshot");
     freshConnection.close();
     assert.ok(fresh);
     if (scenario === "one row") {
@@ -147,9 +153,7 @@ describe("Stream convergence: authoritative snapshots across create, delete, and
     } else {
       assert.equal(update.type, "snapshot");
     }
-    const data = sseSerialize(update).split("\n").find(line => line.startsWith("data: "));
-    assert.ok(data);
-    const applied = applyEnvelope(initial.payload, DashboardStreamEnvelopeSchema.parse(JSON.parse(data.slice(6))));
+    const applied = applyEnvelope(initial.payload, onWire(update));
     assert.deepEqual({ ...applied, snapshotCursor: fresh.cursor }, fresh.payload);
   });
 
