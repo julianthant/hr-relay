@@ -433,6 +433,14 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
         : record.action.change.kind === 'merge' ? { state: 'retired', code: 'WORKBOOK_ACTION_RETIRED', message: ERROR_CATALOG.WORKBOOK_ACTION_RETIRED.text }
           : { state: 'recorded', record });
     },
+    /** Uses the library command's CAS and journal inside the caller's authority transaction. */
+    localLibraryAction(libraryId: string, value: unknown, at: string) {
+      const action = input(WorkbookLibraryActionSchema, value);
+      const { change } = action;
+      if (change.kind === "sync" || change.kind === "create-version" && change.from.kind === "sharepoint") throw new WorkbookLibraryError("WORKBOOK_INVALID");
+      const replay = deps.repository.libraryActionRecord(libraryId, action.operationId);
+      return deps.repository.libraryAction(libraryId, action, replay?.at ?? at);
+    },
     /** `assertCurrent` runs after any SharePoint download and import and immediately before the repository write. */
     async libraryAction(libraryId: string, value: unknown, signal: AbortSignal, assertCurrent: () => void = () => {}) {
       const action = input(WorkbookLibraryActionSchema, value);

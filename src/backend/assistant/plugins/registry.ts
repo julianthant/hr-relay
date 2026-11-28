@@ -4,6 +4,8 @@ import type { RunDetailWire } from "../../../models/dashboard/run-detail.js";
 import type { NotificationWire } from "../../../models/dashboard/projection.js";
 import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
 import { AssistantFunctionNamespaceSchema, type AssistantAttachmentRecord, type AssistantFunctionNamespace, type AssistantToolTier } from "../../../models/dashboard/assistant.js";
+import type { SettingsFileRecord } from "../../../models/config/settings.js";
+import type { AssistantEditOwner } from "../applied-edits.js";
 import type { AssistantPlugin, AssistantTool } from "./plugin.js";
 import type { AssistantWorkflowFacts } from "./workflows/facts.js";
 import { workflowsPlugin } from "./workflows/index.js";
@@ -25,14 +27,16 @@ export interface AssistantPluginDeps {
   /** An accepted attachment of the chat, with authenticated bytes. */
   attachment(conversationId: string, id: string): (AssistantAttachmentRecord & Readonly<{ bytes: Uint8Array }>) | undefined;
   settings(): unknown;
+  readonly edits?: AssistantEditOwner;
+  settingsRecord?(): SettingsFileRecord;
   facts(): AssistantWorkflowFacts;
 }
 
 export const ASSISTANT_TOOL_NAMESPACE = "relay";
-/** Every served tool: nine reads, one session start and three proposals. */
-const MAX_TOOLS = 13;
+/** Every served tool: nine reads, one session start, three proposals and three local edits. */
+const MAX_TOOLS = 16;
 const KIND_TIERS: Readonly<Record<AssistantTool["kind"], readonly AssistantToolTier[]>> = {
-  read: ["read"], session: ["session"], proposal: ["write-local", "leaves-machine"] };
+  read: ["read"], change: ["write-local"], session: ["session"], proposal: ["write-local", "leaves-machine"] };
 
 export function createAssistantPlugins(deps: AssistantPluginDeps): readonly AssistantPlugin[] {
   const workflowLabel = (id: string) => deps.facts().facts.find(entry => entry.id === id)?.label ?? id;
@@ -45,7 +49,7 @@ export function assistantToolRegistry(plugins: readonly AssistantPlugin[]): Read
   if (tools.length > MAX_TOOLS || new Set(tools.map(tool => tool.name)).size !== tools.length
     || tools.some(tool => !KIND_TIERS[tool.kind].includes(tool.tier))) throw new Error("assistant-tool-registry-invalid");
   const namespace = AssistantFunctionNamespaceSchema.parse({ type: "namespace", name: ASSISTANT_TOOL_NAMESPACE,
-    description: "Relay's local reads and proposals. Reads return opaque [[…]] references instead of names and IDs; proposals only take effect when the operator replies yes.",
+    description: "Relay reads local data, applies reversible edits, and proposes run actions. Reads use opaque [[…]] references; proposals need the operator's typed yes.",
     tools: tools.map(tool => ({ type: "function", name: tool.name, description: tool.description, strict: true, parameters: z.toJSONSchema(tool.parameters) })) });
   return Object.freeze({ tools, namespace });
 }
