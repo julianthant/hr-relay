@@ -252,13 +252,13 @@ afterEach(cleanupOriginalFixture);
   const FOREIGN_ORIGIN_CASES = foreignOriginCases();
 
   function observeStartPlanning(real: StartPlanService, onPlan: () => void): StartPlanService {
-    const { prepareAndPlan } = real;
+    const prepareAndPlan = real.prepareAndPlan?.bind(real);
     assert.ok(prepareAndPlan, "expected the real start-plan service to support prepareAndPlan");
     return {
       ...real,
       prepareAndPlan(input, signal) {
         onPlan();
-        return prepareAndPlan.call(real, input, signal);
+        return prepareAndPlan(input, signal);
       },
     };
   }
