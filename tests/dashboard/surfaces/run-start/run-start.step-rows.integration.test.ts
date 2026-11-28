@@ -111,6 +111,27 @@ describe("the Steps stage draws the served rows", () => {
     assert.deepEqual(request.stepOmissions, [{ step: "crm-dates", facts: { employmentDate: "2020-01-15", oathDate: "2020-02-20" } }]);
   });
 
+  it.each([
+    ["Review hire findings", "Hire review decision", "Existing person", "Reviewed employee ID"],
+    ["Match existing person", "UCPath match result", "Found", "Matched employee ID"],
+  ])("keeps Onboarding Start off when %s needs an employee ID", async (row, choice, value, idField) => {
+    const dialog = await openSteps({ ...served("onboarding"), inputRun: h.WORKFLOWS[0].inputRun }, h.TYPED);
+    await dialog.press(row);
+    for (const action of ["Create I-9 profile", "Submit hire", "Fill master results"]) await dialog.press(action);
+    if (value === "Found") {
+      await dialog.fill("I-9 lookup result", "Unresolved");
+      await dialog.fill("Hire review decision", "Undecided");
+    }
+    await dialog.fill("Reference spreadsheet result", "Not checked");
+    await dialog.fill(choice, value);
+    assert.equal(dialog.disabled("Start run"), true);
+    assert.equal(alerts().length, 1);
+    assert.match(alerts()[0], /employee ID/u);
+    await dialog.fill(idField, "10800001");
+    assert.deepEqual(alerts(), []);
+    assert.equal(dialog.disabled("Start run"), false);
+  });
+
   it("ties the failing field to its alert for assistive technology", async () => {
     const dialog = await openSteps(served("person-lookup"), h.TYPED);
     await dialog.press("Read CRM dates");

@@ -4,6 +4,7 @@ import { EidSchema, FingerprintSchema } from "../../../src/rules/identity/ids.js
 import assert from "node:assert/strict";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createOnboardingRunWorld } from "../../support/helpers/backend/onboarding-run-world.js";
+import { StartStepOmissionRefusedError } from "../../../src/backend/runs/start/step-selection.js";
 import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding/result.js";
 import { RunDryRunPreviewResultSchema } from "../../../src/models/run/result.js";
 import { DRY_RUN_I9_PROFILE_ID, containsDryRunSample } from "../../../src/models/workflow/dry-run.js";
@@ -46,6 +47,20 @@ async function logsFor(h: Awaited<ReturnType<typeof world.executionFixture>>, ru
 }
 
 describe("public onboarding write execution", () => {
+  it("refuses a manually entered CRM record for a different person before capturing the roster", async () => {
+    const h = await world.executionFixture(false, { selectedRow: true });
+    const { fields, department, recruitmentNumber, recordUrl } = CrmReadHireData.example;
+    assert.throws(() => h.plan({ ...h.request,
+      selectedStepKeys: h.descriptor.timeline.map(step => step.key).filter(step => step !== "crm-data"),
+      stepOmissions: [{ step: "crm-data", facts: {
+        ...fields, department, recruitmentNumber, recordUrl, email: "different@example.test", personalEmail: "different@example.test", workEmail: null,
+        middleName: null, ssn: null, addressLine2: null, phone: null,
+      } }],
+    }), (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "facts-invalid"
+      && error.message === "onboarding start step crm-data omission facts are invalid at: email");
+    assert.equal(h.snapshots(), 0);
+  });
+
   it("skips the delegated lookup and every dependent write when there is no observed I-9 result", async () => {
     const h = await world.executionFixture(false, { selectedRow: true });
     const root = h.start({ ...h.request, selectedStepKeys: ["crm-data", "ucpath-search"], stepOmissions: [

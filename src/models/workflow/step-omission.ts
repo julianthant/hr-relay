@@ -15,6 +15,7 @@ const FieldBase = {
   help: z.string().min(1).optional(),
   /** Blank is stored as null. */
   optional: z.literal(true).optional(),
+  requiredWhen: z.strictObject({ field: FieldKeySchema, equals: z.string().min(1) }).optional(),
   withheld: z.literal(true).optional(),
   /** The produced value this field stands for; its accepted facts parse unchanged under that leaf's schema. */
   replaces: z.strictObject({ nodeId: z.string().min(1), path: ValueFieldPathSchema }).optional(),
@@ -42,6 +43,12 @@ export const StepOmissionFormSchema = z.strictObject({
     for (const field of fields) {
       if (seen.has(field.key)) ctx.addIssue({ code: "custom", message: `omission field "${field.key}" is declared twice` });
       seen.add(field.key);
+      const condition = field.requiredWhen;
+      if (condition === undefined) continue;
+      const choice = fields.find(candidate => candidate.key === condition.field);
+      if (field.optional !== true || choice?.kind !== "enum" || choice.key === field.key || !choice.values.includes(condition.equals)) {
+        ctx.addIssue({ code: "custom", message: `omission field "${field.key}" needs an optional field and an existing choice in another field` });
+      }
     }
   }),
 });
@@ -52,7 +59,7 @@ export const UsDateFactSchema = z.string().regex(US_DATE_PATTERN, "a date fact m
 export const IsoDateFactSchema = z.iso.date();
 export const EidFactSchema = z.string().regex(EID_PATTERN, "an employee id fact must be eight digits beginning with 10");
 
-function fieldSchema(field: StepOmissionField): z.ZodType {
+function fieldSchema(field: StepOmissionField): z.ZodType<JsonValue> {
   switch (field.kind) {
     case "text": return z.string().trim().min(1);
     case "us-date": return UsDateFactSchema;
@@ -66,15 +73,23 @@ function fieldSchema(field: StepOmissionField): z.ZodType {
 }
 
 /** The schema of one field's stored fact; an optional field also accepts null. */
-export function stepOmissionFieldFactSchema(field: StepOmissionField): z.ZodType {
+export function stepOmissionFieldFactSchema(field: StepOmissionField): z.ZodType<JsonValue> {
   return field.optional === true ? fieldSchema(field).nullable() : fieldSchema(field);
 }
 
 /** ONE strict facts schema per form — every key is present; absence is a refusal, not a default. */
-export function stepOmissionFactsSchema(form: StepOmissionForm): z.ZodObject<Record<string, z.ZodType>> {
-  const shape: Record<string, z.ZodType> = {};
-  for (const field of StepOmissionFormSchema.parse(form).fields) shape[field.key] = stepOmissionFieldFactSchema(field);
-  return z.strictObject(shape);
+export function stepOmissionFactsSchema(form: StepOmissionForm): z.ZodObject<Record<string, z.ZodType<JsonValue>>> {
+  const { fields } = StepOmissionFormSchema.parse(form);
+  const shape: Record<string, z.ZodType<JsonValue>> = {};
+  for (const field of fields) shape[field.key] = stepOmissionFieldFactSchema(field);
+  return z.strictObject(shape).superRefine((facts, ctx) => {
+    for (const field of fields) {
+      const condition = field.requiredWhen;
+      if (condition !== undefined && facts[condition.field] === condition.equals && facts[field.key] === null) {
+        ctx.addIssue({ code: "custom", path: [field.key], message: "Enter a value for the selected choice." });
+      }
+    }
+  });
 }
 
 /** The finite set a field accepts, when it has one; the representation check parses each value. */
@@ -183,7 +198,7 @@ export interface StepManualDeclaration {
   /** Reading nodes that do not run when the values are typed; every node neither produced nor skipped runs. */
   readonly skips?: readonly string[];
   /** Cross-field rules checked by the server at plan time, after the form parses. */
-  readonly refine?: (facts: JsonObject) => readonly StepManualIssue[];
+  readonly refine?: (facts: JsonObject, submission: JsonValue | undefined) => readonly StepManualIssue[];
   /** Allows `skips` to name the step's gates and transactions: the typed values stand for their decision or write. */
   readonly skipsGatesAndTransactions?: true;
   /** Nodes in other steps that depend on a skipped member only to run after it and read none of its output. */

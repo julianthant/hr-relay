@@ -28,9 +28,8 @@ export const HIRE_REVIEW_MANUAL: StepManualDeclaration = {
   off: "values",
   form: { fields: [
     { key: "decision", label: "Hire review decision", kind: "enum", values: ["New hire", "Existing person", "Undecided"] },
-    { key: "emplId", label: "Reviewed employee ID", kind: "eid", optional: true, withheld: true },
+    { key: "emplId", label: "Reviewed employee ID", kind: "eid", optional: true, withheld: true, requiredWhen: { field: "decision", equals: "Existing person" } },
   ] },
-  refine: facts => facts.decision === "Existing person" && facts.emplId === null ? [{ field: "emplId", message: "Enter the reviewed employee ID." }] : [],
   produces: {},
   skips: ["hire-findings", ONBOARDING_WRITE_REVIEW_GATE],
   skipsGatesAndTransactions: true,

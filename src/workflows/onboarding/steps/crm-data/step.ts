@@ -61,9 +61,10 @@ export const CRM_DATA_MANUAL: StepManualDeclaration = {
     { key: "effectiveDate", label: "Effective date", kind: "us-date" },
     { key: "expectedJobEndDate", label: "Expected job end date", kind: "us-date", optional: true, help: "Leave blank to use the configured job end date." },
   ] },
-  refine: facts => {
-    const value = enteredCrmData(facts, typeof facts.email === "string" ? facts.email : "");
-    const parsed = CrmReadHireData.output.safeParse(value);
+  refine: (facts, submission) => {
+    const subject = OnboardingInput.safeParse(submission);
+    if (!subject.success) return [{ field: "email", message: "A run subject email is required." }];
+    const parsed = CrmReadHireData.output.safeParse(enteredCrmData(facts, subject.data.email));
     return parsed.success ? [] : parsed.error.issues.map(issue => ({
       field: issue.path[0] === "recordUrl" || issue.path[0] === "recordId" ? "recordUrl" : "email",
       message: issue.message,

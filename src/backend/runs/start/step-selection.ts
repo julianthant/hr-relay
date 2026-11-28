@@ -174,6 +174,7 @@ export function resolveStartStepOmissions(
   descriptor: AnyWorkflowDescriptor,
   selectedStepKeys: readonly string[] | undefined,
   stepOmissions: StepOmissions | undefined,
+  submission?: JsonValue,
 ): StepOmissions | undefined {
   if (selectedStepKeys === undefined) {
     if (stepOmissions !== undefined) {
@@ -243,7 +244,7 @@ export function resolveStartStepOmissions(
       }
       continue;
     }
-    resolved.push(checkedEntry(descriptor, step.key, spec, facts));
+    resolved.push(checkedEntry(descriptor, step.key, spec, facts, submission));
   }
   const own = resolved.length;
   // A child entry is checked in the child's descriptor; the parent plans nothing for it.
@@ -266,11 +267,11 @@ export function resolveStartStepOmissions(
 }
 
 /** One step's typed facts, checked against its form and refine rule and stamped with each field's label. */
-function checkedEntry(descriptor: AnyWorkflowDescriptor, step: string, spec: StepOmissionSpec, facts: Record<string, unknown>) {
+function checkedEntry(descriptor: AnyWorkflowDescriptor, step: string, spec: StepOmissionSpec, facts: Record<string, unknown>, submission?: JsonValue) {
   const parsed = stepOmissionFactsSchema(spec.form).safeParse(facts);
   // Field KEYS only: the values are the operator's typed HR facts.
   const issues = parsed.success
-    ? (spec.refine?.(parsed.data as Record<string, never>) ?? []).map(({ field }) => field)
+    ? (spec.refine?.(parsed.data, submission) ?? []).map(({ field }) => field)
     : parsed.error.issues.map((issue) => issue.path.map(String).join(".") || "(form)");
   if (issues.length > 0) {
     throw new StartStepOmissionRefusedError(

@@ -11,9 +11,8 @@ export const UCPATH_SEARCH_MANUAL: StepManualDeclaration = {
   off: "values",
   form: { fields: [
     { key: "match", label: "UCPath match result", kind: "enum", values: ["Found", "No match", "Unresolved"] },
-    { key: "emplId", label: "Matched employee ID", kind: "eid", optional: true, withheld: true },
+    { key: "emplId", label: "Matched employee ID", kind: "eid", optional: true, withheld: true, requiredWhen: { field: "match", equals: "Found" } },
   ] },
-  refine: facts => facts.match === "Found" && facts.emplId === null ? [{ field: "emplId", message: "Enter the matched employee ID." }] : [],
   produces: {},
   skips: ["ucpath-source", "hire-subject"],
 };
