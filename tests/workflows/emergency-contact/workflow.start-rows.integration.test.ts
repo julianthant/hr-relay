@@ -32,6 +32,7 @@ describe("Emergency Contact Start run rows", () => {
     assert.ok(memberRow);
     assert.equal(memberRow.kind, "switch");
     assert.equal(memberRow.off, "values");
+    assert.ok(memberRow.manual);
     const parentRow = projectStartRows(descriptor).find(row => row.key === "read-existing-contacts");
     assert.ok(parentRow);
     assert.equal(parentRow.kind, "locked");
