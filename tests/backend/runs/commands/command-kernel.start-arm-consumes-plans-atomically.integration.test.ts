@@ -1,4 +1,7 @@
 import { captureBuildId, computeBuildId, currentBuildId } from "../../../../src/backend/runtime/build-id.js";
+import { replay } from "../../../../src/backend/runs/commands/command-replay.js";
+import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
@@ -8,7 +11,7 @@ import { resolve } from "node:path";
 import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 import { appliedRunIds, singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
-import { HASH_A, NOW, UUID_4, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, HASH_B, NOW, UUID_4, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -23,6 +26,32 @@ afterEach(async () => {
 });
 
 describe("start arm consumes plans atomically", () => {
+  it("refuses a missing plan, a plan for another workflow, and a drifted descriptor", async () => {
+    const descriptors = [rejectActiveDescriptor, parallelDescriptor];
+    const harness = await createHarness(undefined, { descriptors });
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+
+    const missing = startCommand(plan);
+    const missingResult = await harness.kernel.executeStart({ ...missing, target: { ...missing.target, startPlanId: UUID_7 } });
+    assert.ok(missingResult.state === "rejected", JSON.stringify(missingResult));
+    assert.equal(missingResult.code, "target-not-found");
+
+    const wrongWorkflow = startCommand(plan);
+    const mismatch = await harness.kernel.executeStart({ ...wrongWorkflow, target: { ...wrongWorkflow.target, workflowId: parallelDescriptor.id } });
+    assert.ok(mismatch.state === "rejected", JSON.stringify(mismatch));
+    assert.equal(mismatch.code, "invalid-state");
+
+    descriptors[0] = { ...rejectActiveDescriptor, contractFingerprint: FingerprintSchema.parse(HASH_B) };
+    const drifted = await harness.kernel.executeStart(startCommand(plan));
+    assert.ok(drifted.state === "rejected", JSON.stringify(drifted));
+    assert.equal(drifted.code, "schema-mismatch");
+
+    assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+    assert.deepEqual(harness.database.authority.runs.listByWorkflow(plan.workflowId), []);
+    assert.deepEqual(harness.database.authority.runs.listByWorkflow(parallelDescriptor.id), []);
+    assert.deepEqual(harness.database.authority.runSessions.list(), []);
+  });
+
   it("requires a restart before consuming a plan or enqueueing from a stale build", async () => {
     const harness = await createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
@@ -149,7 +178,7 @@ describe("start arm consumes plans atomically", () => {
     assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
     assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId), undefined);
     assert.equal(harness.database.getMeta().authorityGeneration, generationBefore + 1);
-
+    assert.throws(() => replay({}, harness.database.authority, CommandRequestSchema.parse(command), NOW), /journaled but has no recorded outcome/);
 
     const retried = harness.kernel.execute(command);
     assert.equal(retried.state, "applied");

@@ -13,7 +13,8 @@ const range = z.strictObject({ start: position, end: position });
 const branchPosition = position.partial();
 const branchRange = z.strictObject({ start: branchPosition, end: branchPosition });
 const counts = z.record(z.string(), z.number().nonnegative());
-const branchCounts = z.record(z.string(), z.array(z.number().nonnegative()));
+// ast-v8-to-istanbul can subtract a larger taken-arm count from the enclosing V8 count for an implicit else.
+const branchCounts = z.record(z.string(), z.array(z.number().transform(hits => Math.max(0, hits))));
 const reportSchema = z.record(z.string(), z.strictObject({
   path: z.string(),
   statementMap: z.record(z.string(), range),

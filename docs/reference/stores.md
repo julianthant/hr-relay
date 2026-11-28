@@ -253,7 +253,7 @@ _No tasks registered — this store is a declaration-only placeholder._
 |---|---|---|---|---|---|---|---|---|---|
 | `workbooks/read-result` | Save workflow workbook | read | read | — (sessionless) | `workbooks.library` | [`name`, `table`] / [`kind`, `writeId`, `typeId`, `key`, `values`] | `state="saved"` + `operationId`, `libraryId`, `version` / `state="recorded"` + `operationId`, `libraryId`, `version`, `receiptState` / `state="refused"` + `code`, `message` | ∞ | bound |
 | `workbooks/read-reference` | Read retained workbook reference | read | read | — (sessionless) | `workbooks.library` | `typeId`, `keys` | `state`, `referenceDigest`, `reference` | ∞ | bound |
-| `workbooks/verify-person` | Check person in reference spreadsheets | read | verify | — (sessionless) | `workbooks.library` | `typeId`, `eid`, `name` | `state`, `result`, `checks` | ∞ | bound |
+| `workbooks/read-reference-fields` | Compare reference fields | read | read | — (sessionless) | `workbooks.library` | `read`, `sheets`, `fields`, `approved`, `last` | `captured`, `matches`, `mismatches`, `review` | ∞ | bound |
 
 ### `workflow:crm-doc-download`
 

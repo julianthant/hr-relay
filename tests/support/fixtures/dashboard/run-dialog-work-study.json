@@ -4,7 +4,7 @@
   "label": "Work-Study",
   "icon": "ClipboardCheck",
   "categoryId": "operations",
-  "descriptorFingerprint": "b145fb755f6f16a4eb7e25d82f5308e4ffb004edd11bdbfaa73059d81fe5594f",
+  "descriptorFingerprint": "404cfa9b8ddd99bd2c0c3eca85b89fc92239fec59c998a61c7d3131da5fa3e95",
   "availability": {
     "state": "available"
   },
@@ -113,6 +113,16 @@
     },
     "steps": [
       {
+        "key": "reference-check",
+        "label": "Reference spreadsheets",
+        "includedByDefault": true,
+        "systems": [],
+        "control": {
+          "state": "required",
+          "reason": "This workflow requires every node in this step."
+        }
+      },
+      {
         "key": "ucpath-auth",
         "label": "Sign in to UCPath",
         "includedByDefault": true,
@@ -167,16 +177,6 @@
             ]
           },
           "forces": []
-        }
-      },
-      {
-        "key": "reference-check",
-        "label": "Check reference spreadsheets",
-        "includedByDefault": true,
-        "systems": [],
-        "control": {
-          "state": "required",
-          "reason": "This workflow requires every node in this step."
         }
       },
       {

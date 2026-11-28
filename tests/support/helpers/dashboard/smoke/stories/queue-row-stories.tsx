@@ -59,7 +59,9 @@ const ROW = {
     title: "Alexandria Montgomery-Rivera — rehire eligibility and prior employment verification",
     dryRun: true,
   })),
+  "assistant-started": row("A run the assistant started, read only", queueStoryRow("done", 16, { startedBy: { kind: "assistant", readOnly: true } })),
+  "assistant-started-live": row("A run the assistant started that writes", queueStoryRow("running", 17, { startedBy: { kind: "assistant", readOnly: false } })),
   paused: row("A paused run, its current step still", queueStoryRow("running", 15, { pauseControl: { state: "paused", expectedVersion: 1 } })),
-} satisfies Record<"group" | "member" | "long-title-dry-run" | "paused", Story>;
+} satisfies Record<"group" | "member" | "long-title-dry-run" | "paused" | "assistant-started" | "assistant-started-live", Story>;
 
 export const QUEUE_ROW_STORIES = defineSurface("queue", { status: STATUS, outcome: OUTCOME, row: ROW });

@@ -8,6 +8,7 @@ import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import type { NodeId } from "../../../rules/identity/ids.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { TerminalDependencyEvidence } from "../../../models/run/result.js";
+import { CompareReferenceFields, REFERENCE_CHECK_ID, REFERENCE_LOOKUP_NODE, referenceComparisonForGate } from "../../../models/processing/workbooks/reference-fields.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, RunCheckpointRecordSchema, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "../checkpoints/checkpoint-patch.js";
@@ -20,6 +21,7 @@ import { delegationEvidenceOutput, resolveDelegationEvidenceOutput } from "../..
 import { lifecycleCommandId } from "../../runs/lifecycle/run-record-service.js";
 import type { ChildRunRuntimeNode, RunExecutionContext, RunExecutionState, TaskRuntimeNode } from "./run-execution-contract.js";
 import { requestedParkedWriteRecheck } from "./run-execution-write.js";
+import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 
 function requireStoredCheckpoint(stored: RunCheckpointRecord | undefined, nodeId: string): RunCheckpointRecord {
   if (stored === undefined) {
@@ -32,6 +34,7 @@ type PlanEntry =
   | Readonly<{ mode: "execute" }>
   | Readonly<{ mode: "replay"; record: RunCheckpointRecord; deferred?: true; patches?: readonly CheckpointPatch[] }>
   | Readonly<{ mode: "skipped-condition" }>
+  | Readonly<{ mode: "skipped-branch" }>
 
   | Readonly<{ mode: "asserted"; replay?: RunCheckpointRecord }>
 
@@ -157,6 +160,14 @@ export function prepareRunPlan(
       ?? (previousNode?.kind === "gate" ? readContinuationGate(deps.authority.authority, envelope, String(previousNode.id)) : undefined)
     : undefined;
   const ownGateResume = resolvedResumeGate?.runId === runId;
+  const reviewComparison = ownGateResume && resolvedResumeGate !== undefined ? referenceComparisonForGate(resolvedResumeGate.nodeId) : undefined;
+  // A review after filing resumes from checkpoints bound to the claim that observed the difference.
+  const postWriteReview = reviewComparison !== undefined && !envelope.dryRun
+    && nodes.slice(0, startIndex).some(node => node.kind === "transaction")
+    ? originalCheckpoint(deps.authority.authority, initial, reviewComparison, Number(claim.claimGeneration) - 1) : undefined;
+  const reviewCheckpoint = (node: RuntimeFlowNode) => postWriteReview === undefined ? undefined
+    : originalCheckpoint(deps.authority.authority, initial, node.id, postWriteReview.claimGeneration);
+  const reviewSkippedBranches = new Set<string>();
   const completedOwnDelegation = (node: ChildRunRuntimeNode) => {
     const evidence = deps.authority.withAuthorityTransaction?.(repositories =>
       AuthenticatedRunContinuation.authenticate(repositories, envelope).dependency(String(node.id), String(node.edgeId)));
@@ -181,6 +192,7 @@ export function prepareRunPlan(
 
   const retainedTransaction = (node: RuntimeFlowNode) => node.kind === "transaction"
     && (payPathRecheckInputs !== undefined && node === startNode
+      || postWriteReview !== undefined && nodes.indexOf(node) < (startIndex ?? 0)
       || envelope.continuation?.checkpoints.some(row => row.nodeId === node.id) === true);
   const pendingCommits = nodes.filter(node => node.kind === "transaction" && !retainedTransaction(node)
     && !omissionPlan.omitted.has(String(node.id)) && !omissionPlan.manual.has(String(node.id)) && !omissionPlan.asserted.has(String(node.id))).map(node => node.id);
@@ -198,6 +210,11 @@ export function prepareRunPlan(
     }
     if (omissionPlan.omitted.has(String(node.id))) {
       plan.set(String(node.id), { mode: "omitted" });
+      continue;
+    }
+    if (node.kind === "child-run" && node.id === REFERENCE_LOOKUP_NODE && descriptor.workbookCheck?.id === REFERENCE_CHECK_ID
+      && !runWorkbookReferenceTypeIds(initial.input.workbookReferences).includes(REFERENCE_CHECK_ID)) {
+      plan.set(String(node.id), { mode: "skipped-condition" });
       continue;
     }
     if (omissionPlan.asserted.has(String(node.id))) {
@@ -236,13 +253,18 @@ export function prepareRunPlan(
     const explicit = startIndex !== undefined && envelope.continuation === undefined;
     const inAncestorRegion = retainedAccounting || envelope.continuation !== undefined || (explicit
       ? index < (startIndex ?? 0) || ownGateResume && index === startIndex && node.id === resolvedResumeGate?.nodeId : ancestorRegionOpen);
+    if (postWriteReview !== undefined && (reviewSkippedBranches.has(node.id) || node.dependsOn.some(id => reviewSkippedBranches.has(id)))) {
+      reviewSkippedBranches.add(node.id);
+      plan.set(String(node.id), { mode: "skipped-branch" });
+      continue;
+    }
     if (!inAncestorRegion) {
       plan.set(String(node.id), { mode: "execute" });
       continue;
     }
     const recheckAncestor = payPathRecheckInputs !== undefined && index < (startIndex ?? 0);
     if (node.kind === "task") {
-      if (!recheckAncestor && node.replay === "always-rerun" && (envelope.continuation === undefined || retainedAccounting || memberRetry !== undefined)) {
+      if (!recheckAncestor && postWriteReview === undefined && node.replay === "always-rerun" && (envelope.continuation === undefined || retainedAccounting || memberRetry !== undefined)) {
         // NEVER consult loadCheckpoint for an always-rerun node (§5.3).
         plan.set(String(node.id), { mode: "execute" });
         continue;
@@ -250,14 +272,14 @@ export function prepareRunPlan(
       let conditionKnown = true;
       for (const dependency of node.dependsOn) {
         const dependencyEntry = plan.get(String(dependency));
-        if (recheckAncestor && dependencyEntry?.mode === "skipped-condition") continue;
+        if (dependencyEntry?.mode === "skipped-condition") continue;
         if (dependencyEntry === undefined || dependencyEntry.mode === "execute"
           || dependencyEntry.mode === "asserted" && dependencyEntry.replay === undefined
           || !Object.hasOwn(outputs, String(dependency))) {
           conditionKnown = false;
         }
       }
-      if (node.when !== undefined && conditionKnown) {
+      if (node.when !== undefined && (conditionKnown || node.when.of.from !== "node")) {
 
         const condition = evaluateNodeCondition(node.when, scopeFor(node.dependsOn));
         if (!condition) {
@@ -265,7 +287,9 @@ export function prepareRunPlan(
           continue;
         }
       }
-      const stored = recheckAncestor ? payPathRecheckInputs.get(node.id) : retainedAccounting
+      const stored = postWriteReview !== undefined ? reviewCheckpoint(node)
+        : recheckAncestor ? payPathRecheckInputs.get(node.id)
+        : retainedAccounting || node.uses === CompareReferenceFields && envelope.continuation === undefined
         ? deps.authority.authority.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, node.id, envelope.attempt)
           .filter(record => record.runId === runId).at(-1)
         : readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true,
@@ -310,7 +334,8 @@ export function prepareRunPlan(
         // A stale always-rerun fact is read again, and so is a stale ancestor of a plain Start;
         // only an explicit start node or a continuation refuses a stale checkpoint.
         const implicitAncestor = !explicit && envelope.continuation === undefined && !retainedAccounting;
-        if (!recheckAncestor && (node.replay === "always-rerun" || implicitAncestor) && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
+        // A receipt review must resolve the filed branch before checking freshness for any remaining commits.
+        if (!recheckAncestor && postWriteReview === undefined && (node.replay === "always-rerun" || implicitAncestor) && auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
           replayed: [{ nodeId: node.id, taskId: node.uses.id, freshness: node.uses.freshness, provenance: record.provenance }],
           scheduled: pendingCommits, now: clock.now(), attempt: envelope.attempt,
           ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) }).length > 0) {
@@ -319,7 +344,7 @@ export function prepareRunPlan(
           continue;
         }
         const deferred = node.dependsOn.some(dependency => !Object.hasOwn(outputs, String(dependency))
-          && !(recheckAncestor && plan.get(String(dependency))?.mode === "skipped-condition"));
+          && plan.get(String(dependency))?.mode !== "skipped-condition");
         if (!deferred && envelope.continuation !== undefined) {
           const original = node.uses.input.parse(node.bind(sourceScopeFor(record.runId, node.dependsOn, boundAt(record))));
           const continued = node.uses.input.parse(node.bind(scopeFor(node.dependsOn)));
@@ -378,10 +403,18 @@ export function prepareRunPlan(
       continue;
     }
     if (node.kind === "gate") {
+      const comparison = referenceComparisonForGate(node.id);
+      const deferredComparison = comparison === undefined ? undefined : plan.get(comparison);
+      const conditionApplies = () => {
+        const scope = scopeFor(node.dependsOn);
+        const evidence = deferredComparison?.mode === "replay" && comparison !== undefined
+          ? { ...scope, outputs: { ...scope.outputs, [comparison]: deferredComparison.record.output.value } } : scope;
+        return node.resolvedBy === "operator" && node.when !== undefined && evaluateNodeCondition(node.when, evidence);
+      };
       if (node.resolvedBy === "operator" && node.when !== undefined
-        && node.dependsOn.every((dependency) => outputs[String(dependency)] !== undefined
-          || (recheckAncestor && plan.get(String(dependency))?.mode === "skipped-condition"))
-        && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
+        && node.dependsOn.every(dependency => outputs[String(dependency)] !== undefined
+          || plan.get(String(dependency))?.mode === "skipped-condition" || (dependency === comparison && deferredComparison?.mode === "replay"))
+        && !conditionApplies()) {
         if (readContinuationGate(deps.authority.authority, envelope, String(node.id)) !== undefined) {
           problems.push(`inapplicable gate "${node.id}" carries a stored operator result; evidence changed`);
           continue;
@@ -412,12 +445,43 @@ export function prepareRunPlan(
       continue;
     }
     if (node.kind === "branch" || node.kind === "parallel") {
+      if (postWriteReview !== undefined && node.kind === "branch") {
+        if (node.dependsOn.some(id => !Object.hasOwn(outputs, id) && plan.get(id)?.mode !== "skipped-condition")) {
+          problems.push(`missing settled context for branch "${node.id}" before the reference review`);
+          continue;
+        }
+        const selected = node.choose(scopeFor(node.dependsOn));
+        if (!Object.hasOwn(node.cases, selected)) throw new RunContinuationRefusedError("run-gate-resume-branch-unavailable");
+        for (const [key, targets] of Object.entries(node.cases)) {
+          if (key !== selected) for (const target of targets) reviewSkippedBranches.add(target);
+        }
+      }
       // Pure control nodes re-derive deterministically from validated data.
       plan.set(String(node.id), { mode: "execute" });
       continue;
     }
     if (explicit && ownGateResume && node.kind === "child-run" && node.await === "terminal") {
-      plan.set(String(node.id), { mode: "replay-child", evidence: completedOwnDelegation(node) });
+      const evidence = completedOwnDelegation(node);
+      if (postWriteReview !== undefined) outputs[String(node.id)] = JsonValueSchema.parse(delegationEvidenceOutput(
+        evidence, node.target.result, deps.authority.evidenceSchemaHash?.bind(deps.authority)));
+      plan.set(String(node.id), { mode: "replay-child", evidence });
+      continue;
+    }
+    if (node.kind === "transaction" && postWriteReview !== undefined) {
+      const checkpoint = reviewCheckpoint(node);
+      const loaded = loadCheckpoint(checkpoint, CheckpointExpectationSchema.parse({
+        descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
+        implFingerprint: taskImplFingerprint(node.commit.uses), outputSchemaHash: deriveSchemaHash(TransactionOutcomeSchema, "output"),
+      }), TransactionOutcomeSchema);
+      if (!loaded.found) {
+        problems.push(`missing settled write "${node.id}" before the reference review: ${loaded.detail}`);
+        continue;
+      }
+      const record = requireStoredCheckpoint(checkpoint, String(node.id));
+      outputs[String(node.id)] = JsonValueSchema.parse(projectTransactionOutcome(node.commit.uses, loaded.output, "Reference review resume",
+        { checkpoint: record, schemaReader: deps.authority.evidenceSchemaHash?.bind(deps.authority) }));
+      checkpointRecords.set(String(node.id), record);
+      plan.set(String(node.id), { mode: "replay", record });
       continue;
     }
     if (explicit) {

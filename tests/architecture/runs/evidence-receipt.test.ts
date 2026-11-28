@@ -160,7 +160,7 @@ describe("evidence receipt — declared classification coverage", () => {
       );
       // The terminal dependency set must be real, or an obligation could name
       // a node the graph does not have.
-      assert.ok(workflowTerminalResultExecution(descriptor).dependsOn.length > 0);
+      assert.ok(workflowTerminalResultExecution(descriptor).dependsOn.length > 0, descriptor.id);
     }
   });
 

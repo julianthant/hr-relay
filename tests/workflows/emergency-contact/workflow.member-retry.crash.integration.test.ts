@@ -20,12 +20,14 @@ const world = createEmergencyContactRetryWorld();
 let singleFailure: string;
 let twoFailures: string;
 beforeAll(async () => {
-  const [one, two] = await Promise.allSettled([world.prepareTemplate({ failures: 1 }), world.prepareTemplate({ failures: 2 })]);
-  if (one.status === "rejected") throw one.reason;
-  if (two.status === "rejected") throw two.reason;
-  singleFailure = JSON.stringify(one.value);
-  twoFailures = JSON.stringify(two.value);
+  const started = performance.now();
+  const template = await world.prepareTemplate({ failures: 2 });
+  assert.equal(template.seed.failuresRemaining, 1);
+  // The seed budget only changes the next retry. Each owner reopens its own copy of the same profile.
+  singleFailure = JSON.stringify({ ...template, seed: { ...template.seed, failuresRemaining: 0 } });
+  twoFailures = JSON.stringify(template);
   await world.cleanup();
+  console.info("EC member-retry crash template setup", { milliseconds: Math.round(performance.now() - started) });
 });
 afterAll(() => world.releaseSources());
 

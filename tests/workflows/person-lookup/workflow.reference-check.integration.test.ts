@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRunWorkbookSection } from "../../../src/backend/runs/workbooks.js";
-import { VerifyWorkbookPerson } from "../../../src/models/processing/workbooks/verify-person.js";
+import { referenceCheckLines } from "../../support/helpers/backend/reference-check-lines.js";
 import { PersonLookupResultSchema } from "../../../src/models/workflows/person-lookup/result.js";
 import { createPersonLookupReferenceWorld, REFERENCE_PERSON } from "../../support/helpers/backend/person-lookup-reference-world.js";
 
-const CheckWorkbookPersonChecks = VerifyWorkbookPerson.output.shape.checks;
 const world = createPersonLookupReferenceWorld();
 afterEach(world.cleanup);
 
@@ -17,21 +16,9 @@ const ROW_ONLY_NAME = "Zebedee Quillfeather";
 
 function checkSpans(settled: Settled) {
   return settled.events.flatMap(event => event.payload.kind === "span" && event.payload.event.t === "span.ended" && event.payload.event.kind === "task"
-    && event.payload.event.spanPath.includes("/reference-check#") ? [[event.payload.event.outcome, event.payload.event.notRunReason]] : []);
+    && event.payload.event.spanPath.includes("/reference-fields-start#") ? [[event.payload.event.outcome, event.payload.event.notRunReason]] : []);
 }
-/** The check's observed Logs values, in the order the run recorded them. */
-function checkLines(settled: Settled): readonly (readonly (string | undefined)[])[] {
-  const lines: (string | undefined)[][] = [];
-  for (const event of settled.events) {
-    if (event.payload.kind !== "span" || event.payload.event.t !== "data.observed" || event.payload.event.nodeId !== "reference-check") continue;
-    for (const point of event.payload.event.points) for (const value of point.values) {
-      if (point.field !== "checks") continue;
-      if (value.state !== "allowed") lines.push([value.state, undefined]);
-      else for (const check of CheckWorkbookPersonChecks.parse(value.value)) lines.push([value.state, check.line]);
-    }
-  }
-  return lines;
-}
+const checkLines = (settled: Settled) => referenceCheckLines(settled.events);
 function outcome(f: Fixture, settled: Settled) {
   assert.equal(settled.run.lifecycle.state, "terminal");
   assert.deepEqual(f.database.authority.failures.listByRun(settled.run.envelope.runId).map(failure => `${failure.code}: ${failure.summary}`), []);
@@ -53,7 +40,7 @@ describe("Person Lookup reference spreadsheet check", () => {
     const settled = await f.run(SEARCH, [f.spreadsheet("Fall roster", "Hires", ["eid", "fullName"], [["10000009", "Blair Example"], [REFERENCE_PERSON.emplId, "Avery Example"]])]);
     assert.equal(outcome(f, settled).state, "active");
     assert.deepEqual(checkSpans(settled), [["done", undefined]]);
-    assert.deepEqual(checkLines(settled), [["allowed", "Fall roster · Hires: found in row 3"]]);
+    assert.deepEqual(checkLines(settled), ["Hires, row 3: Employee ID matches", "Hires, row 3: Legal name matches"]);
     const served = buildRunWorkbookSection(f.database.authority, settled.run);
     assert.deepEqual([served.operations, served.referenceChoices ?? []], [[], []]);
   });
@@ -62,16 +49,15 @@ describe("Person Lookup reference spreadsheet check", () => {
     const f = await world.fixture();
     const settled = await f.run(SEARCH, [f.spreadsheet("Badge list", "Issued", ["eid"], [["10000009"]])]);
     assert.equal(outcome(f, settled).state, "active");
-    assert.deepEqual(checkLines(settled), [["allowed", "Badge list · Issued: not found"]]);
+    assert.deepEqual(checkLines(settled), ["Not in Issued"]);
   });
 
-  it("reports a different name on the person's row without recording any value from that row", async () => {
+  it("parks at the later name mismatch and keeps the row value out of the timeline", async () => {
     const f = await world.fixture();
     const settled = await f.run(SEARCH, [f.spreadsheet("Fall roster", "Hires", ["fullName", "eid"], [[ROW_ONLY_NAME, REFERENCE_PERSON.emplId]])]);
-    assert.equal(outcome(f, settled).state, "active");
-    assert.deepEqual(checkLines(settled), [["allowed", "Fall roster · Hires: name differs in row 2"]]);
+    assert.ok(settled.run.lifecycle.state === "parked-gate" && settled.run.lifecycle.gateId === "reference-field-review-search-identity");
+    assert.deepEqual(checkLines(settled), ["Hires, row 2: Employee ID matches", "Hires, row 2: Legal name differs"]);
     assert.equal(JSON.stringify(settled.events).includes(ROW_ONLY_NAME), false);
-    assert.equal(JSON.stringify(f.database.authority.runCheckpoints.listByItem(f.descriptor.id, settled.run.envelope.itemId)).includes(ROW_ONLY_NAME), false);
   });
 
   it("reports a name difference when the name column's cell is blank or not text", async () => {
@@ -80,17 +66,17 @@ describe("Person Lookup reference spreadsheet check", () => {
       f.spreadsheet("Fall roster", "Hires", ["eid", "fullName"], [[REFERENCE_PERSON.emplId, ""]]),
       f.spreadsheet("Spring roster", "Hires", ["eid", "fullName"], [["10000009", "Blair Example"], [REFERENCE_PERSON.emplId, 20260101]]),
     ]);
-    assert.equal(outcome(f, settled).state, "active");
-    assert.deepEqual(checkLines(settled), [["allowed", "Fall roster · Hires: name differs in row 2"], ["allowed", "Spring roster · Hires: name differs in row 3"]]);
+    assert.equal(settled.run.lifecycle.state, "parked-gate");
+    assert.deepEqual(checkLines(settled), ["Hires, row 2: Employee ID matches", "Hires, row 3: Employee ID matches", "Hires, row 2: Legal name differs", "Hires, row 3: Legal name differs"]);
   });
 
-  it("writes one line per picked spreadsheet, in pick order", async () => {
+  it("compares both picks and logs the missing sheet once", async () => {
     const f = await world.fixture();
     const settled = await f.run(SEARCH, [
       f.spreadsheet("Badge list", "Issued", ["eid"], [["10000009"], ["10000003"]]),
       f.spreadsheet("Fall roster", "Hires", ["eid", "fullName"], [[Number(REFERENCE_PERSON.emplId), "Example, Avery"]]),
     ]);
-    assert.deepEqual(checkLines(settled), [["allowed", "Badge list · Issued: not found"], ["allowed", "Fall roster · Hires: found in row 2"]]);
+    assert.deepEqual(checkLines(settled), ["Not in Issued", "Hires, row 2: Employee ID matches", "Hires, row 2: Legal name matches"]);
   });
 
   it("checks the person a Match run confirmed", async () => {
@@ -99,14 +85,25 @@ describe("Person Lookup reference spreadsheet check", () => {
       [f.spreadsheet("Fall roster", "Hires", ["eid", "fullName"], [[REFERENCE_PERSON.emplId, "Avery Example"]])],
       ["searching", "active-status", "reference-check"]);
     assert.equal(outcome(f, settled).state, "found");
-    assert.deepEqual(checkLines(settled), [["allowed", "Fall roster · Hires: found in row 2"]]);
+    assert.deepEqual(checkLines(settled), ["Hires, row 2: Employee ID matches", "Hires, row 2: Legal name matches"]);
   });
 
-  it("has nothing to look up when the run found no person", async () => {
+  it("does not use a matching name as a workbook key", async () => {
     const f = await world.fixture();
-    const settled = await f.run({ emplId: "10000077" }, [f.spreadsheet("Fall roster", "Hires", ["eid"], [[REFERENCE_PERSON.emplId]])]);
+    const settled = await f.run({ name: "Example, Unresolved" }, [
+      f.spreadsheet("Fall roster", "Hires", ["eid", "fullName"], [[REFERENCE_PERSON.emplId, "Example, Unresolved"]]),
+    ]);
     assert.equal(outcome(f, settled).state, "not-found");
     assert.deepEqual(checkSpans(settled), [["done", undefined]]);
-    assert.deepEqual(checkLines(settled), []);
+    assert.deepEqual(checkLines(settled), ["Reference not checked: no Employee ID"]);
+  });
+
+  it("resolves an Employee ID from a name-first search and compares both fields once", async () => {
+    const f = await world.fixture();
+    const settled = await f.run({ name: REFERENCE_PERSON.name }, [
+      f.spreadsheet("Fall roster", "Hires", ["eid", "fullName"], [[REFERENCE_PERSON.emplId, "Avery Example"]]),
+    ]);
+    assert.equal(outcome(f, settled).state, "active");
+    assert.deepEqual(checkLines(settled), ["Hires, row 2: Legal name matches", "Hires, row 2: Employee ID matches"]);
   });
 });
