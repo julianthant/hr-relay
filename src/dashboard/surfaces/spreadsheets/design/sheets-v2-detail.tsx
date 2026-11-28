@@ -17,7 +17,7 @@ export function SheetDetail({ sheet, onBack, onVersion, onMenu, children }: { sh
       {(sheet.workflow || sheet.tags.length > 0) && <><SheetChips sheet={sheet} /><span aria-hidden>·</span></>}
       {sheet.sharePoint ? <a href={sheet.sharePoint} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:underline">SharePoint<ExternalLink aria-hidden className={dsIcon.sm} /></a> : <span>{sheet.run ? 'Run output' : 'Imported'}</span>}
       <span aria-hidden>·</span><span className="truncate">Updated {stamp(sheet.updatedAt)}</span></span>}
-      actions={<><V2Button look="plain" className="tabular-nums" aria-label={`Versions, now v${sheet.version}`} onClick={onVersion}>v{sheet.version}</V2Button><PinButton sheet={sheet} onClick={() => onMenu('pin')} /><SheetMenu sheet={sheet} label={sheet.name} onAction={onMenu} /></>} />
+      actions={<><V2Button look="plain" className="max-w-48 tabular-nums" aria-label={`Versions, now ${sheet.versionName}`} onClick={onVersion}><span className="min-w-0 truncate">{sheet.versionName}</span></V2Button><PinButton sheet={sheet} onClick={() => onMenu('pin')} /><SheetMenu sheet={sheet} label={sheet.name} onAction={onMenu} /></>} />
     {children}
   </div>;
 }
