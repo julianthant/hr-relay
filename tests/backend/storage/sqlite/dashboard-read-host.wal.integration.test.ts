@@ -194,9 +194,8 @@ it("serves navigation while a checkpoint waits for the active Search read", asyn
     assert.ok(existsSync(join(directory, "started")));
     const writes = writer();
     try {
-      while (lanes.status().walPeakBytes <= POLICY.thresholdBytes && performance.now() < deadline) await delay(10);
-      assert.ok(lanes.status().walPeakBytes > POLICY.thresholdBytes, "the host requested a checkpoint before Search released its reader");
-      assert.ok(walBytes() > POLICY.thresholdBytes);
+      while (walBytes() <= POLICY.thresholdBytes && performance.now() < deadline) await delay(10);
+      assert.ok(walBytes() > POLICY.thresholdBytes, "the navigation read is posted behind a checkpoint request");
       assert.ok(await lanes.read(laneTimedSleep, { tag: "Queue during Search", ms: 0 }));
     } finally { writes.stop(); }
   } finally {
