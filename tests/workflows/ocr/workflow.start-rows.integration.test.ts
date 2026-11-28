@@ -22,8 +22,9 @@ it("starts with operator readings for each original page and withholds release",
   const sample = sourceFixture(1).inputs[0];
   const original = submittedPage(sample, "Example, Avery", "emergency-contact");
   assert.ok(original.record);
-  const record = { answers: { ...original.record.answers, "employee.name": { state: "absent", reason: "blank" },
-    "contact.name": { state: "read", raw: "Omission Evidence Example", confidence: 1 } } };
+  const answers = { ...original.record.answers, "employee.name": { state: "absent", reason: "blank" },
+    "contact.name": { state: "read", raw: "Omission Evidence Example", confidence: 1 } };
+  const record = { answers: Object.entries(answers).map(([path, answer]) => ({ path, answer })) };
   const readings = [JSON.stringify({ sourcePage: 1, pageKind: "emergency-contact", readAt: READ_AT, record }),
     JSON.stringify({ sourcePage: 2, pageKind: "unrelated", readAt: READ_AT, record: null })];
   const startOptions = { dryRun: false, selectedStepKeys: ["review-records", "identity-lookups", "signer-lookups"],
@@ -61,7 +62,9 @@ it("starts with operator readings for each original page and withholds release",
   assert.ok(result);
   assert.equal(OcrWorkflowResultSchema.parse(result.result.value).approvedSnapshot, null);
   const { receipt } = deriveRunEvidenceReceipt({ descriptor, run: settled, result,
-    checkpoints: authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId) });
+    checkpoints: authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId),
+    delegations: result.dependencies.flatMap(dependency => dependency.state === "delegation-resolved"
+      ? [authority.dependencies.evidence(run.envelope.runId, dependency.nodeId)] : []) });
   const typed = projectTypedSteps(settled, descriptor).get("page-readings")?.typedValues;
   assert.partialDeepStrictEqual(typed, { fields: [{ key: "readings", withheld: true }] });
   const rerun = readRerunValues({ database: f.database, reader: f.canonical.lifecycle, descriptors: { resolve: f.resolve } },
@@ -96,7 +99,9 @@ it("settles with an omitted review when grouping and its dependent rows are off"
   assert.equal(authority.ocrReviews.latest(run.envelope.runId), undefined);
   assert.deepEqual(authority.gateResults.listByRun(run.envelope.runId), []);
   const { receipt } = deriveRunEvidenceReceipt({ descriptor, run: settled, result,
-    checkpoints: authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId) });
+    checkpoints: authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId),
+    delegations: result.dependencies.flatMap(dependency => dependency.state === "delegation-resolved"
+      ? [authority.dependencies.evidence(run.envelope.runId, dependency.nodeId)] : []) });
   assert.partialDeepStrictEqual(receipt.output.find(entry => entry.id === deriveEvidenceEntryId(receipt.receiptId, "output", "review.step")),
     { value: { value: "review-records" } });
 });

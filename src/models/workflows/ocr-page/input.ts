@@ -1,9 +1,14 @@
 import { z } from "zod";
-import { AdmittedExtractionSchema, SubmittedExtractionSchema } from "../../ocr/extraction.js";
+import { AdmittedExtractionSchema, SubmittedAnswerSchema, SubmittedExtractionSchema } from "../../ocr/extraction.js";
+import { OcrFieldPathSchema } from "../../ocr/form-registry.js";
 import { bindManualOcrPageReading } from "../ocr/page-accounting.js";
 import { OcrPageInputSchema, type OcrPageInput } from "../ocr/source-manifest.js";
 
-export const ManualOcrPageValuesSchema = SubmittedExtractionSchema.pick({ pageKind: true, readAt: true, record: true });
+const ManualAnswersSchema = z.array(z.strictObject({ path: OcrFieldPathSchema, answer: SubmittedAnswerSchema }))
+  .refine(answers => new Set(answers.map(({ path }) => path)).size === answers.length, "Each field can appear once.");
+export const ManualOcrPageValuesSchema = SubmittedExtractionSchema.pick({ pageKind: true, readAt: true }).extend({
+  record: z.strictObject({ answers: ManualAnswersSchema }).nullable(),
+});
 const SourcePageSchema = OcrPageInputSchema.shape.sourcePage;
 export const ManualOcrDocumentPageValuesSchema = ManualOcrPageValuesSchema.extend({ sourcePage: SourcePageSchema });
 export const ManualOcrAssertionSchema = z.union([
@@ -12,8 +17,9 @@ export const ManualOcrAssertionSchema = z.union([
 ]);
 
 export function manualOcrPageInput(page: OcrPageInput, actorId: string, values: z.output<typeof ManualOcrPageValuesSchema>) {
+  const record = values.record === null ? null : { answers: Object.fromEntries(values.record.answers.map(({ path, answer }) => [path, answer])) };
   const { extraction } = bindManualOcrPageReading(page, actorId, { ...values, formType: page.formType,
-    sourcePage: page.sourcePage, sourceSha256: page.image.sha256, source: { kind: "operator", actorId } });
+    record, sourcePage: page.sourcePage, sourceSha256: page.image.sha256, source: { kind: "operator", actorId } });
   return { page, reading: { kind: "manual" as const, actorId, extraction } };
 }
 export const OcrPageWorkflowInputSchema = z.strictObject({

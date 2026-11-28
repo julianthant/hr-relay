@@ -17,7 +17,7 @@ function pageValues(value: unknown) {
 const MANUAL_PAGE: StepManualDeclaration = {
   off: "values",
   form: { fields: [{ key: "reading", label: "Page reading", kind: "text", withheld: true,
-    help: "Enter JSON with pageKind, readAt (ISO time) and record (answers, or null for a non-form page)." }] },
+    help: "Enter JSON with pageKind, readAt (ISO time) and record. Use an answers list of path and answer pairs, or null for a non-form page." }] },
   produces: {}, skips: ["extract", "read-page-reading"], keeps: ["manual-reading"],
   refine: ({ reading }, submission) => {
     try {

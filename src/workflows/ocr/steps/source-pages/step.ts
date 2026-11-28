@@ -55,7 +55,7 @@ function documentPageValues(value: unknown) {
 const MANUAL_PAGE_READINGS: StepManualDeclaration = {
   ...DOCUMENT_VALUES,
   form: { fields: [{ key: "readings", label: "Original page readings", kind: "text-list", withheld: true,
-    help: "Enter one JSON reading per line in page order. Include sourcePage, pageKind, readAt (ISO time) and record (answers, or null for a non-form page)." }] },
+    help: "Enter one JSON reading per line with sourcePage, pageKind, readAt (ISO time) and record. Use an answers list of path and answer pairs, or null for a non-form page." }] },
   produces: {}, keeps: ["read-pages"],
   refine: ({ readings }) => {
     try { documentPageValues(readings); return []; }
@@ -207,7 +207,7 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
           outcomes: [{ nodeId: "approve-records", value: "waits", then: "Waits for you to review, correct, select and approve the records in Logs when release is requested. Only the approved selection is released to the parent." }],
         } as const,
       }, { manual: WITHHOLD_RELEASE }), [approval]],
-    ] as const, result: result(OcrWorkflowResultSchema, [completed, approval, review], ({ outputs }) => {
+    ] as const, result: result(OcrWorkflowResultSchema, [completed, approval, review], ({ outputs }): z.input<typeof OcrWorkflowResultSchema> => {
       const readResult = outputs["read-result"], seed = outputs["build-review"];
       if (readResult === undefined) return { review: { state: "omitted", step: seed === undefined ? "review-records" : "signer-lookups" },
         identities: [], approvedSnapshot: null };
@@ -257,10 +257,11 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
   }, [ocr, approved], { bind: ({ input, outputs }) => {
     const reference = outputs["read-document"];
     if (reference.state !== "done" || reference.output.approvedSnapshot === null) throw new TaskError(ReadApprovedOcrSnapshot.id, "OCR_REVIEW_REFUSED", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    const reviewed = OcrReviewedResultSchema.parse(reference.output);
     const records = outputs["approved-records"].snapshot.records.filter(options.filter);
     options.validate(records);
     return records.map(record =>
-      options.memberInput(input, ApprovedOcrRecordInputSchema.parse({ approval: reference.output.approvedSnapshot, record }), reference.output, records));
+      options.memberInput(input, ApprovedOcrRecordInputSchema.parse({ approval: reference.output.approvedSnapshot, record }), reviewed, records));
   }, sourceRecordIds: ({ outputs }) => outputs["approved-records"].snapshot.records.filter(options.filter).map(record => [record.recordId]),
   deriveChildItemId: (_input, context) => context.canonicalItemId });
   return { ocr, approved, members, steps: [
