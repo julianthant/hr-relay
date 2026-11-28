@@ -1,4 +1,4 @@
-import { i9CheckModule } from "../../support/helpers/registered-workflows.js";
+import { i9CheckModule, personLookupModule } from "../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { afterEach, expect, it } from "vitest";
 import { CHILD_ONLY_WORKFLOW_MODULES, createWorkflowRegistry, workflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
@@ -32,9 +32,13 @@ it("i9-check/person — admits I-9 only as a declared child and limits it to rea
   expect(() => workflowModuleOf("i9-check")).toThrow(/not registered/u);
   expect(descriptor.surfaces).toEqual({});
   expect(workflowProjections(descriptor).systems).toEqual(["ucpath"]);
-  expect(descriptorRuntimeNodes(descriptor).every(node => node.kind === "task")).toBe(true);
+  expect(descriptorRuntimeNodes(descriptor).filter(node => node.kind !== "task").map(node => [node.id, node.kind])).toEqual([
+    ["reference-field-review-start", "gate"], ["reference-person-lookup", "child-run"],
+    ["reference-field-review-reference-person-lookup", "gate"], ["reference-field-review-match-outcome", "gate"],
+    ["reference-field-review-retention-row", "gate"],
+  ]);
   expect(workflowProjections(descriptor).contracts.every(contract => contract.effect === "read")).toBe(true);
-  expect(descriptor.timeline.map(step => step.key)).toEqual(["person-match", "person-lookup", "roster-match", "reference-check"]);
+  expect(descriptor.timeline.map(step => step.key)).toEqual(["reference-check", "person-match", "person-lookup", "roster-match"]);
   const { fixtureWorkflow } = createSearchWorkflowDefinitionFixtures();
   const parent = composeWorkflowModule(compileFixtureWorkflow(fixtureWorkflow("i9-fixture-parent", ({ delegate, result }) => {
     const child = delegate({ id: "check", target: { id: WorkflowIdSchema.parse("i9-check"), input: I9CheckInput, result: ReadRetentionRow.output },
@@ -43,8 +47,9 @@ it("i9-check/person — admits I-9 only as a declared child and limits it to rea
     }, [], { bind: () => i9CheckInput, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
     return { steps: [[{ key: "work", label: "Work" }, [child]]], result: result(I9CheckCanonicalInput, [], () => i9CheckInput) };
   })), []);
-  const registry = createWorkflowRegistry([parent], [i9CheckModule]);
+  const registry = createWorkflowRegistry([parent, personLookupModule], [i9CheckModule]);
   expect(registry.childModuleOf("i9-fixture-parent", "i9-check")).toBe(i9CheckModule);
+  expect(registry.childModuleOf("i9-check", "person-lookup")).toBe(personLookupModule);
   expect(() => registry.childModuleOf("person-lookup", "i9-check")).toThrow(/does not declare/u);
 });
 

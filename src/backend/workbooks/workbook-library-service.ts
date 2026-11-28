@@ -194,7 +194,8 @@ export function readRetainedWorkbookReference(repository: WorkbookLibraryReposit
 }
 
 export function verifyRetainedNamedWorkbookReference(repository: WorkbookLibraryRepository,
-  reference: z.infer<typeof RunWorkbookSnapshotReferenceSchema>, mode: "current" | "retained" = "current") {
+  reference: z.infer<typeof RunWorkbookSnapshotReferenceSchema>, mode: "current" | "retained" = "current",
+  normalizeKey = (key: string) => key) {
   const { request, snapshot } = reference;
   if ("mode" in request || !("versionId" in snapshot) || snapshot.versionId === undefined
     || snapshot.type.keyFieldId === null) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
@@ -228,9 +229,10 @@ export function verifyRetainedNamedWorkbookReference(repository: WorkbookLibrary
       byId.set(row.id, match);
       for (const key of new Set(keyColumns.map(column => workbookKey(row.cells[column]?.value)))) {
         if (key === undefined) continue;
-        const matches = rowsByKey.get(key);
-        if (matches === undefined) rowsByKey.set(key, [match]);
-        else matches.push(match);
+        const normalized = normalizeKey(key);
+        const matches = rowsByKey.get(normalized);
+        if (matches === undefined) rowsByKey.set(normalized, [match]);
+        else if (!matches.includes(match)) matches.push(match);
       }
     }
   }
@@ -242,7 +244,7 @@ export function verifyRetainedNamedWorkbookReference(repository: WorkbookLibrary
       return [field, cell.value];
     })),
   });
-  const matchesFor = (key: string): readonly Match[] => rowsByKey.get(key) ?? [];
+  const matchesFor = (key: string): readonly Match[] => rowsByKey.get(normalizeKey(key)) ?? [];
   const captured = new Map<string, SnapshotRow>();
   const readRows = (keys: readonly string[]): SnapshotRow[] => keys.map(key => {
     const saved = captured.get(key);

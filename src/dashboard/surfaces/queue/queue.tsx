@@ -33,6 +33,7 @@ import {
 import { dayLabel, plural, runTiming } from "../shared/status/format.js";
 import { formatDuration, formatTime } from "../../lib/date-format.js";
 import { testInstanceHazardTitle, testInstanceSystems } from "../shared/status/test-instance-hazard.js";
+import { StartedByLine } from "../run-detail/run-state-chips.js";
 import { runDisplayId } from "../shared/status/run-display-model.js";
 import { StatusBadge } from "../shared/status/status.js";
 import {
@@ -420,6 +421,7 @@ function MemberLine({ line, workflowLabel, selectedRunId, selected, onSelect, on
         {view.native !== undefined && view.native.item.attempts.length > 1 && <QueueAttemptSelector title={view.title}
           surface={view.native.surface} item={view.native.item} selectedRunId={String(view.native.surface.runId)} onSelect={onSelectRun} />}
       </div>
+      {view.native !== undefined && <StartedByLine surface={view.native.surface} className="block" />}
     </td>
     <td className={cn(dsText.meta, "w-px whitespace-nowrap border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-right", view.paused ? spec.soloTone : status === "waiting" || status === "running" ? "text-ui-info" : status === "failed" ? "text-ui-danger" : spec.soloTone)}>
       <span aria-label={view.statusAccessibleLabel}>{view.statusLabel}</span>
@@ -884,6 +886,8 @@ export function QueueRow({
                 />
               </div>
             )}
+
+            {batch === undefined && <StartedByLine surface={surface} />}
 
             {/* Render only served links and receipt facts; never infer an extracted-person count from arbitrary output arrays. */}
             {batch === undefined && (parent !== undefined || surface.linkedRuns.length > 0 || surface.facts.state === "present") && (

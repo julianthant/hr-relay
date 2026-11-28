@@ -8,7 +8,7 @@ import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-regist
 import { CONTACT_PLAN_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/contact-plan/step.js";
 import { CONTACT_PREVIEW_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/contact-preview/step.js";
 import { ONBASE_FILING_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/onbase-filing/step.js";
-import { REFERENCE_CHECK_MANUAL as MEMBER_REFERENCE_CHECK_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/reference-check/step.js";
+import { manualReferenceReview, REFERENCE_RESULT_FORM } from "../../../src/workflow-kit/reference-check.js";
 import { emergencyContactMemberModule } from "../../support/helpers/registered-workflows.js";
 import { defineTaskContract } from "../../../src/models/task/task-contract.js";
 import { EidSchema, FingerprintSchema, ScenarioIdSchema, TaskIdSchema } from "../../../src/rules/identity/ids.js";
@@ -46,7 +46,6 @@ import { CRM_DATA_MANUAL } from "../../../src/workflows/onboarding/steps/crm-dat
 import { UCPATH_SEARCH_MANUAL } from "../../../src/workflows/onboarding/steps/ucpath-search/step.js";
 import { I9_SEARCH_MANUAL } from "../../../src/workflows/onboarding/steps/i9-search/step.js";
 import { HIRE_REVIEW_MANUAL, I9_CREATION_MANUAL, UCPATH_HIRE_MANUAL, MASTER_RESULTS_MANUAL } from "../../../src/workflows/onboarding/steps/hire-review/step.js";
-import { REFERENCE_CHECK_MANUAL } from "../../../src/workflows/onboarding/steps/reference-check/step.js";
 
 const FixtureInput = z.strictObject({ eid: EidSchema });
 const FixtureCanonicalInput = defineCanonicalInput(
@@ -260,7 +259,7 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
   { descriptor: ONBOARDING_ID, step: "ucpath-search", declaration: UCPATH_SEARCH_MANUAL, fieldKeys: ["match", "emplId"], produces: [] },
   { descriptor: ONBOARDING_ID, step: "i9-search", declaration: I9_SEARCH_MANUAL, fieldKeys: ["i9Status", "profileId"], produces: [] },
   { descriptor: ONBOARDING_ID, step: "hire-review", declaration: HIRE_REVIEW_MANUAL, fieldKeys: ["decision", "emplId"], produces: [] },
-  { descriptor: ONBOARDING_ID, step: "reference-check", declaration: REFERENCE_CHECK_MANUAL, fieldKeys: ["referenceResult"], produces: [] },
+  { descriptor: ONBOARDING_ID, step: "reference-check", declaration: { form: REFERENCE_RESULT_FORM, produces: {} }, fieldKeys: ["referenceResult"], produces: [] },
   { descriptor: ONBOARDING_ID, step: "i9-creation", declaration: I9_CREATION_MANUAL, fieldKeys: [], produces: [] },
   { descriptor: ONBOARDING_ID, step: "ucpath-hire", declaration: UCPATH_HIRE_MANUAL, fieldKeys: [], produces: [] },
   { descriptor: ONBOARDING_ID, step: "master-results", declaration: MASTER_RESULTS_MANUAL, fieldKeys: [], produces: [] },
@@ -273,7 +272,8 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
     fieldKeys: [], produces: [],
   },
   { descriptor: EC_MEMBER_ID, step: "contact-plan", declaration: CONTACT_PLAN_MANUAL, fieldKeys: ["emplId"], produces: ["map-contact"] },
-  { descriptor: EC_MEMBER_ID, step: "reference-check", declaration: MEMBER_REFERENCE_CHECK_MANUAL, fieldKeys: ["referenceResult"], produces: ["reference-stop"] },
+  { descriptor: EC_MEMBER_ID, step: "reference-check", declaration: { form: REFERENCE_RESULT_FORM, produces: { "reference-fields-read-contacts": manualReferenceReview } },
+    fieldKeys: ["referenceResult"], produces: ["reference-fields-read-contacts"] },
   { descriptor: EC_MEMBER_ID, step: "contact-preview", declaration: CONTACT_PREVIEW_MANUAL, fieldKeys: [], produces: [] },
   { descriptor: EC_MEMBER_ID, step: "onbase-filing", declaration: ONBASE_FILING_MANUAL, fieldKeys: [], produces: [] },
 ];
@@ -302,10 +302,10 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
   "person-lookup::active-status": { state: "omittable", forces: [] },
   "person-lookup::crm-dates": { state: "omittable", forces: [] },
   "onboarding::crm-data": { state: "omittable", forces: [] },
-  "onboarding::ucpath-search": { state: "omittable", forces: ["i9-search", "hire-review", "reference-check", "i9-creation", "ucpath-hire", "master-results"] },
-  "onboarding::i9-search": { state: "omittable", forces: ["hire-review", "i9-creation", "reference-check", "ucpath-hire", "master-results"] },
-  "onboarding::hire-review": { state: "omittable", forces: ["reference-check", "i9-creation", "ucpath-hire", "master-results"] },
-  "onboarding::reference-check": { state: "omittable", forces: ["i9-creation", "ucpath-hire", "master-results"] },
+  "onboarding::ucpath-search": { state: "omittable", forces: ["i9-search", "hire-review", "i9-creation", "ucpath-hire", "master-results"] },
+  "onboarding::i9-search": { state: "omittable", forces: ["hire-review", "i9-creation", "ucpath-hire", "master-results"] },
+  "onboarding::hire-review": { state: "omittable", forces: ["i9-creation", "ucpath-hire", "master-results"] },
+  "onboarding::reference-check": { state: "omittable", forces: [] },
   "onboarding::i9-creation": { state: "omittable", forces: ["ucpath-hire", "master-results"] },
   "onboarding::ucpath-hire": { state: "omittable", forces: ["master-results"] },
   "onboarding::master-results": { state: "omittable", forces: [] },
@@ -317,6 +317,12 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
   "emergency-contact-member::onbase-filing": { state: "omittable", forces: [] },
 };
 
+
+const ONBOARDING_REFERENCE_NODES = sorted([
+  "start", "crm-source", "hire-plan", "ucpath-source", "hire-subject", "write-plan", "hire-receipt", "concurrent-hire-receipt",
+].flatMap(stage => [`reference-fields-${stage}`, `reference-field-review-${stage}`]));
+const EC_SKIPPED_REFERENCE_NODES = sorted(["start", "map-contact"]
+  .flatMap(stage => [`reference-fields-${stage}`, `reference-field-review-${stage}`]));
 
 const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[]; manual?: readonly string[] }>>> = {
   "crm-doc-download::search-records": { asserted: ["document-records"], omitted: [] },
@@ -338,14 +344,14 @@ const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly st
   "onboarding::ucpath-search": { asserted: [], omitted: ["hire-subject", "ucpath-source"] },
   "onboarding::i9-search": { asserted: [], omitted: ["i9-lookup", "i9-lookup-child"] },
   "onboarding::hire-review": { asserted: [], omitted: ["hire-findings", "hire-review"] },
-  "onboarding::reference-check": { asserted: [], omitted: ["reference-check", "reference-check-review", "reference-stop"] },
+  "onboarding::reference-check": { asserted: [], omitted: ONBOARDING_REFERENCE_NODES },
   "onboarding::i9-creation": { asserted: [], omitted: [], manual: ["i9-profile-plan", "i9-profile-save", "i9-remote-create", "i9-route", "write-plan"] },
   "onboarding::ucpath-hire": { asserted: [], omitted: [], manual: ["concurrent-hire-create", "concurrent-hire-receipt", "hire-create", "hire-receipt"] },
   "onboarding::master-results": { asserted: [], omitted: [], manual: ["concurrent-master-results", "master-results"] },
   "work-study::ucpath-auth": { asserted: ["paypath-position"], omitted: [] },
   "work-study::transaction": { asserted: [], omitted: ["save-transaction", "transaction-plan"] },
   "emergency-contact-member::contact-plan": { asserted: ["map-contact"], omitted: ["contact-plan", "read-contacts"] },
-  "emergency-contact-member::reference-check": { asserted: ["reference-stop"], omitted: ["reference-check"] },
+  "emergency-contact-member::reference-check": { asserted: ["reference-fields-read-contacts"], omitted: EC_SKIPPED_REFERENCE_NODES },
   "emergency-contact-member::contact-preview": { asserted: [], omitted: [], manual: ["contact-preview"] },
   "emergency-contact-member::onbase-filing": { asserted: [], omitted: [], manual: ["onbase-filing"] },
 };
@@ -367,7 +373,7 @@ const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asse
   },
   [ONBOARDING_ID]: {
     asserted: ["crm-source"],
-    omitted: ["hire-findings", "hire-review", "hire-subject", "i9-lookup", "i9-lookup-child", "reference-check", "reference-check-review", "reference-stop", "ucpath-source"],
+    omitted: sorted(["hire-findings", "hire-review", "hire-subject", "i9-lookup", "i9-lookup-child", ...ONBOARDING_REFERENCE_NODES, "ucpath-source"]),
     manual: ["concurrent-hire-create", "concurrent-hire-receipt", "concurrent-master-results", "hire-create", "hire-receipt", "i9-profile-plan",
       "i9-profile-save", "i9-remote-create", "i9-route", "master-results", "write-plan"],
   },
@@ -376,8 +382,8 @@ const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asse
     omitted: ["save-transaction", "transaction-plan"],
   },
   [EC_MEMBER_ID]: {
-    asserted: ["map-contact", "reference-stop"],
-    omitted: ["contact-plan", "read-contacts", "reference-check"],
+    asserted: ["map-contact", "reference-fields-read-contacts"],
+    omitted: sorted(["contact-plan", "read-contacts", ...EC_SKIPPED_REFERENCE_NODES]),
     manual: ["contact-preview", "onbase-filing"],
   },
 };
@@ -588,8 +594,8 @@ describe("step-omission invariants", () => {
       assert.deepEqual(sorted(whole.manual.keys()), expectedWhole.manual ?? [], `${id}: whole-descriptor nodes done by hand changed`);
     }
     assertSweptEveryDeclaration(audited, "planner sweep");
-    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, ONBOARDING_ID, WORK_STUDY_ID, EC_MEMBER_ID, FIXTURE_ID, "crm-doc-download"]), "the whole-descriptor sweep visited the wrong descriptors");
-    // Person Lookup has no gate; the ALWAYS-GATE sweep stays non-vacuous through these gated descriptors.
-    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, ONBOARDING_ID, WORK_STUDY_ID, EC_MEMBER_ID, FIXTURE_ID, "crm-doc-download"]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
+    const expected = sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, ONBOARDING_ID, WORK_STUDY_ID, EC_MEMBER_ID, FIXTURE_ID, "crm-doc-download"]);
+    assert.deepEqual(sorted(wholeDescriptorsAudited), expected, "the whole-descriptor sweep visited the wrong descriptors");
+    assert.deepEqual(sorted(gatedDescriptors), expected, "the gated descriptors the ALWAYS-GATE sweep covers changed");
   });
 });

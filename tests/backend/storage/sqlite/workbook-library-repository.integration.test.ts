@@ -396,8 +396,11 @@ it("checks duplicate person matches in physical row order with one worksheet sca
     } });
     const readVersion = vi.spyOn(repository, "libraryVersion").mockReturnValue({ ...selected, workbook: { ...selected.workbook, sheets: [{ ...sheet, rows }] } });
     try {
-      const result = createRunWorkbookService({ database: f.database, clock }).verifyPerson(running, { typeId, eid, name });
-      expect(result).toMatchObject({ result: "confirmed", checks: [{ row: 65, outcome: "found", line: "People.xlsx · People: found in row 65" }] });
+      const result = createRunWorkbookService({ database: f.database, clock }).readReferenceFields(running, { typeId, key: eid, columns: ["fullName"] });
+      expect(result.state).toBe("read-fields");
+      expect(result.sheets.map(({ sheet, rows: found }) => [sheet, found])).toEqual([["People",
+        Array.from({ length: 64 }, (_, index) => ({ row: index + 2, values: [{ field: "fullName", value: index === 63 ? name : "Other Person" }] })),
+      ]]);
       expect(rowReads).toBeLessThanOrEqual(rows.length);
     } finally {
       readVersion.mockRestore();

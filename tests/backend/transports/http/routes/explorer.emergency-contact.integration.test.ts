@@ -83,11 +83,11 @@ it("explains locked approved contacts, an unconfirmed Save and filing-only retry
     assert.equal(rejected.stops, true);
     assert.match(rejected.then, /before Save.*locked for this run.*operator.*retrying this person cannot change the approved record/u);
   }
-  assert.deepEqual(walk(member, { "contact-plan-result": "CONTACT_APPROVED_FIELDS_INVALID", onbaseFiling: "file" }).steps, ["contact-plan"]);
+  assert.deepEqual(walk(member, { "contact-plan-result": "CONTACT_APPROVED_FIELDS_INVALID", onbaseFiling: "file" }).steps, ["reference-check", "contact-plan"]);
   const mismatch = outcome(member, "contact-preview", "saved-effect-mismatch");
   assert.equal(mismatch.stops, true);
   assert.match(mismatch.then, /does not retry.*Save/u);
-  assert.deepEqual(walk(member, { "contact-preview": "unconfirmed", onbaseFiling: "file" }).steps, ["contact-plan", "reference-check", "contact-preview"]);
+  assert.deepEqual(walk(member, { "contact-preview": "unconfirmed", onbaseFiling: "file" }).steps, ["reference-check", "contact-plan", "contact-preview"]);
   const held = outcome(member, "onbase-filing", "child-failed");
   assert.equal(held.stops, true);
   assert.match(held.then, /Retry.*filing alone.*without another Save/u);
@@ -99,26 +99,25 @@ it("explains locked approved contacts, an unconfirmed Save and filing-only retry
   assert.equal(walk(onbase, { "dry-run": "true" }).values["import-document"], "dry-run");
 });
 
-it("asks for unconfirmed reference spreadsheets only before a live Save, with Continue anyway and Cancel run", async () => {
+it("offers Continue anyway and Cancel run for a difference before the member's Save", async () => {
   const member = await review("emergency-contact-member");
-  const gate = blocks(member, "reference-check", "decision").find(decision => decision.id === "reference-review"); assert.ok(gate);
-  assert.equal(applies(gate, { "dry-run": "false", "reference-result": "unconfirmed" }), true);
-  assert.equal(applies(gate, { "dry-run": "true", "reference-result": "unconfirmed" }), false);
-  assert.equal(applies(gate, { "dry-run": "false", "reference-result": "confirmed" }), false);
-  assert.deepEqual(gate.outcomes.filter(outcome => ["continue", "cancelled"].includes(outcome.value)).map(outcome => [outcome.label, outcome.stops]), [["Continue anyway", false], ["Cancel run", true]]);
-  const cancelled = walk(member, { "reference-result": "unconfirmed", "reference-review": "cancelled", onbaseFiling: "file" });
-  assert.deepEqual(cancelled.steps, ["contact-plan", "reference-check"]);
-  assert.equal(walk(member, { "reference-result": "unconfirmed", "reference-review": "continue", onbaseFiling: "file" }).stop, undefined);
+  const gate = blocks(member, "reference-check", "decision").find(decision => decision.id === "reference-check-review"); assert.ok(gate);
+  for (const dryRun of ["false", "true"]) assert.equal(applies(gate, { "dry-run": dryRun, "reference-result": "true" }), true);
+  assert.equal(applies(gate, { "dry-run": "false", "reference-result": "false" }), false);
+  assert.deepEqual(gate.outcomes.map(outcome => [outcome.label, outcome.stops]), [["Continue anyway", false], ["Cancel run", true]]);
+  const cancelled = walk(member, { "reference-result": "true", "reference-check-review": "cancelled", onbaseFiling: "file" });
+  assert.deepEqual(cancelled.steps, ["reference-check"]);
+  assert.equal(walk(member, { "reference-result": "true", "reference-check-review": "continue", onbaseFiling: "file" }).stop, undefined);
 });
 
 it("serves all four member skip choices and prevents either write on the skipped-plan path", async () => {
   const member = await review("emergency-contact-member");
   assert.deepEqual(member.options.filter(({ id }) => id.startsWith("skip-")).map(({ id, initial }) => [id, initial]), [
-    ["skip-contact-plan", "run"], ["skip-reference-check", "run"], ["skip-contact-preview", "run"], ["skip-onbase-filing", "run"],
+    ["skip-reference-check", "run"], ["skip-contact-plan", "run"], ["skip-contact-preview", "run"], ["skip-onbase-filing", "run"],
   ]);
   assert.deepEqual(walk(member, { onbaseFiling: "file", "skip-contact-plan": "skip" }).steps, ["reference-check"]);
-  assert.deepEqual(walk(member, { onbaseFiling: "file", "skip-contact-preview": "skip" }).steps, ["contact-plan", "reference-check", "onbase-filing"]);
-  assert.deepEqual(walk(member, { onbaseFiling: "file", "skip-onbase-filing": "skip" }).steps, ["contact-plan", "reference-check", "contact-preview"]);
+  assert.deepEqual(walk(member, { onbaseFiling: "file", "skip-contact-preview": "skip" }).steps, ["reference-check", "contact-plan", "onbase-filing"]);
+  assert.deepEqual(walk(member, { onbaseFiling: "file", "skip-onbase-filing": "skip" }).steps, ["reference-check", "contact-plan", "contact-preview"]);
 });
 
 it("names every delegated workflow and its document, person or page scope, with filing sessions following the parent's declared choice", async () => {
@@ -129,8 +128,8 @@ it("names every delegated workflow and its document, person or page scope, with 
   assert.deepEqual(parent.sessions.filter(session => applies(session, { onbaseFiling: "file" })).map(session => session.system), ["ucpath", "crm", "i9", "onbase"]);
   const member = await review("emergency-contact-member");
   assert.deepEqual(member.options.find(option => option.id === "onbaseFiling"), parent.options.find(option => option.id === "onbaseFiling"));
-  assert.deepEqual(walk(member, { onbaseFiling: "skip" }).steps, ["contact-plan", "reference-check", "contact-preview"]);
-  assert.deepEqual(walk(member, { onbaseFiling: "file" }).steps, ["contact-plan", "reference-check", "contact-preview", "onbase-filing"]);
+  assert.deepEqual(walk(member, { onbaseFiling: "skip" }).steps, ["reference-check", "contact-plan", "contact-preview"]);
+  assert.deepEqual(walk(member, { onbaseFiling: "file" }).steps, ["reference-check", "contact-plan", "contact-preview", "onbase-filing"]);
   assert.deepEqual(blocks(member, "onbase-filing", "starts").map(block => [block.workflowId, block.title, block.each]), [["onbase", "OnBase Emergency Contact", "This person's first source page, unless already filed"]]);
   const ocr = await review("ocr");
   assert.deepEqual(blocks(ocr, "page-readings", "starts").map(block => [block.workflowId, block.title, block.each]), [["ocr-page", "OCR Page", "Each original page"]]);

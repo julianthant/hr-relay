@@ -13,7 +13,8 @@ import { Badge, Banner, FailureNotice } from "../../../../../../src/dashboard/ds
 import { LogPanel } from "../../../../../../src/dashboard/surfaces/run-detail/log-panel.js";
 import { LogActionButton, LogHeaderButton } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-action-button.js";
 import type { LinkedRunEntry } from "../../../../../../src/dashboard/surfaces/run-detail/linked-runs-model.js";
-import { RunStateChips } from "../../../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
+import { OperatorLabelContext } from "../../../../../../src/dashboard/state/operator-label.js";
+import { RunStateChips, StartedByLine } from "../../../../../../src/dashboard/surfaces/run-detail/run-state-chips.js";
 import { LogFeedPadding, LogSkeleton } from "../../../../../../src/dashboard/surfaces/shared/loading/loading.js";
 import { FullDryRunPreview } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
 import type { DryRunPreviewStage } from "../../../../../../src/dashboard/surfaces/run-detail/logs/dry-run-preview-model.js";
@@ -56,6 +57,8 @@ interface PanelProps {
   steps: readonly LogStep[];
   timeline: readonly LogTimelineStage[];
   status?: ReactNode;
+  subtitle?: ReactNode;
+  operator?: string;
   toolbar?: ReactNode;
   headerActions?: ReactNode;
   linkedRuns?: readonly LinkedRunEntry[];
@@ -67,11 +70,12 @@ interface PanelProps {
 }
 
 /** The Logs column as the dashboard lays it out, beside an empty queue column. */
-function PanelStory({ steps, timeline, ...rest }: PanelProps) {
+function PanelStory({ steps, timeline, operator, ...rest }: PanelProps) {
   return <StoryFrame><main className="flex min-h-0 flex-1 flex-col"><div className="dashboard-panel-columns">
     <div className="dashboard-queue-column" />
     <div className="dashboard-log-column">
-      <LogPanel title="Alex Morgan" steps={withInlineCaptures(steps)} timeline={timeline} onDecision={noop} onCancelRun={noop} {...rest} />
+      {operator === undefined ? <LogPanel title="Alex Morgan" steps={withInlineCaptures(steps)} timeline={timeline} onDecision={noop} onCancelRun={noop} {...rest} />
+        : <OperatorLabelContext.Provider value={operator}><LogPanel title="Alex Morgan" steps={withInlineCaptures(steps)} timeline={timeline} onDecision={noop} onCancelRun={noop} {...rest} /></OperatorLabelContext.Provider>}
     </div>
   </div></main></StoryFrame>;
 }
@@ -111,6 +115,15 @@ const LOG_HEADER = {
     headerActions: <><LogHeaderButton label="Pause Alex Morgan" icon={<Pause aria-hidden className="size-4" />} onClick={noop} /><LogHeaderButton label="Stop Alex Morgan" icon={<Square aria-hidden className="size-4" />} onClick={noop} /></>,
     linkedRuns: [{ relation: "Parent", name: "Emergency Contact batch", workflow: "Emergency Contact", status: "Running", target: QueueMemberTargetSchema.parse({ section: "logs", runId: "00000000-0000-4000-8000-000000000001", partitionDay: "2026-08-03", workflowId: "emergency-contact", label: "Emergency Contact", panelKind: "run", status: "running" }) }] }),
     play: search("employment"), ready: "text=/\\d+ of \\d+/" },
+  "assistant-started": panel("The run header of a run the assistant started", { steps: readingSteps, timeline: reading,
+    status: <RunStateChips row={queueStoryRow("done", 42, { startedBy: { kind: "assistant", readOnly: true } })} />,
+    subtitle: <StartedByLine surface={{ startedBy: { kind: "assistant", readOnly: true } }} wrap className="mt-0.5" />, rerun: { label: "Rerun", run: noop } }),
+  "assistant-started-long": { ...panel("The run header of an assistant-started dry run for an operator with a long name", { steps: readingSteps, timeline: reading,
+    status: <RunStateChips row={queueStoryRow("running", 43, { dryRun: true, resolvedInstances: [{ system: "ucpath", instance: "test" }], startedBy: { kind: "assistant", readOnly: true } })} />,
+    subtitle: <StartedByLine surface={{ startedBy: { kind: "assistant", readOnly: true } }} wrap className="mt-0.5" />,
+    toolbar: <LogActionButton variant="ghost" label="Back to Emergency Contact batch" aria-label="Back to Emergency Contact batch" className="max-w-48" icon={<ArrowLeft aria-hidden className="size-4 shrink-0" />} text={<span className="min-w-0 truncate">Emergency Contact batch</span>} />,
+    headerActions: <><LogHeaderButton label="Pause Alex Morgan" icon={<Pause aria-hidden className="size-4" />} onClick={noop} /><LogHeaderButton label="Stop Alex Morgan" icon={<Square aria-hidden className="size-4" />} onClick={noop} /></>,
+    rerun: { label: "Rerun", run: noop }, operator: "Alexandria Montgomery-Rivera of the Office of Academic Personnel Operations" }) },
   "menu-open": headerRun("The ⋯ menu open", async page => { await page.getByRole("button", { name: "More actions" }).press("Enter"); }, "[role='menu']"),
 } satisfies Record<string, Story>;
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { referenceCheckLines, referenceGateId } from "./reference-check-lines.js";
 import { randomUUID } from "node:crypto";
 import { childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
@@ -6,8 +7,6 @@ import { buildRunGate, resolveGateArmAnswer } from "../../../../src/backend/runs
 import { createDeterministicContactPersistence } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { GateDecisionWireSchema } from "../../../../src/models/dashboard/run-detail.js";
-import { REFERENCE_CHECK_REVIEW_GATE } from "../../../../src/models/processing/workbooks/reference-check-stop.js";
-import { VerifyWorkbookPerson } from "../../../../src/models/processing/workbooks/verify-person.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { UCPATH_CONTACT_DISPLAYED_NAME, UcpathContactPageSnapshotSchema } from "../../../../src/models/ui/ucpath-emergency-contact.js";
@@ -18,7 +17,6 @@ import { healthyCrmDriver, sessionFactoryHarness } from "../phase1f-executor-har
 import { createOcrReviewWorld } from "./ocr-review-world.js";
 import { CANCEL_ROW_ACTION } from "./reference-check-write-world.js";
 
-const CheckLines = VerifyWorkbookPerson.output.shape.checks;
 /** Two approved records on two pages: Avery is 10800000, Blake is 10800001. */
 export const EMERGENCY_CONTACT_PEOPLE = ["Example, Avery", "Example, Blake"].map((employeeName, index) => ({ employeeName, emplId: String(10800000 + index),
   contactName: `Original Contact ${String(index)}`, correctedContactName: `Released Contact ${String(index)}` }));
@@ -75,9 +73,7 @@ export function createEmergencyContactReferenceWorld() {
     const member = (emplId: string) => { const run = members().get(emplId); assert.ok(run, emplId); return current(run); };
     const execute = async () => (await f.canonical.execute(f.parentRun, signal())).run;
     const events = (run: RunRecord) => f.database.authority.timelineEvents.page({}).filter(event => event.scope.kind === "run" && event.scope.runId === run.envelope.runId);
-    const checkLines = (run: RunRecord) => events(run).flatMap(event => event.payload.kind === "span" && event.payload.event.t === "data.observed" && event.payload.event.nodeId === "reference-check"
-      ? event.payload.event.points.flatMap(point => point.field !== "checks" ? [] : point.values.flatMap(value => value.state === "allowed" ? CheckLines.parse(value.value).map(check => check.line) : [value.state]))
-      : []);
+    const checkLines = (run: RunRecord) => referenceCheckLines(events(run));
     const nodeSpans = (run: RunRecord, nodeId: string) => events(run).flatMap(event => event.payload.kind === "span" && event.payload.event.t === "span.ended"
       && event.payload.event.spanPath.includes(`/${nodeId}#`) ? [[event.payload.event.outcome, "notRunReason" in event.payload.event ? event.payload.event.notRunReason : undefined]] : []);
     /** UCPath contact Saves submitted for one employee. */
@@ -94,7 +90,7 @@ export function createEmergencyContactReferenceWorld() {
     };
     const continueAnyway = (run: RunRecord) => {
       const answer = GateArmAnswerRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
-        family: "gate", type: "answer-gate-arm", target: { runId: run.envelope.runId, gateId: REFERENCE_CHECK_REVIEW_GATE, expectedVersion: current(run).version }, payload: { arm: "continue" } });
+        family: "gate", type: "answer-gate-arm", target: { runId: run.envelope.runId, gateId: referenceGateId(current(run)), expectedVersion: current(run).version }, payload: { arm: "continue" } });
       const resolution = resolveGateArmAnswer(gateDeps, answer, undefined);
       assert.ok(resolution.state === "accepted", JSON.stringify(resolution));
       return f.canonical.kernel.execute(resolution.request);

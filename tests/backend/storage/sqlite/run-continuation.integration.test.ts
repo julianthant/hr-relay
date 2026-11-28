@@ -14,7 +14,7 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { bindRunWorkbookReference } from "../../../../src/models/dashboard/workbooks.js";
-import { VerifyWorkbookPerson } from "../../../../src/models/processing/workbooks/verify-person.js";
+import { CompareReferenceFields } from "../../../../src/models/processing/workbooks/reference-fields.js";
 import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 
@@ -35,14 +35,14 @@ it("offers the dry run's reference checkpoint only for the same captured workboo
   const dry = start(1, true);
   const { runId, workflow, itemId, attempt, descriptorVersion, contractFingerprint } = dry.envelope;
   const row = RunCheckpointRecordSchema.parse({ runId, workflowId: workflow, itemId, attempt, descriptorVersion, contractFingerprint,
-    nodeId: "reference-check", claimGeneration: 1, implFingerprint: taskImplFingerprint(VerifyWorkbookPerson),
-    output: { schemaHash: deriveSchemaHash(VerifyWorkbookPerson.output, "output"), value: VerifyWorkbookPerson.example },
+    nodeId: "reference-fields-start", claimGeneration: 1, implFingerprint: taskImplFingerprint(CompareReferenceFields),
+    output: { schemaHash: deriveSchemaHash(CompareReferenceFields.output, "output"), value: CompareReferenceFields.example },
     provenance: [], writtenAt: dry.createdAt });
   const authority = f.database.authority;
   authority.runCheckpoints.insert(row);
-  assert.deepEqual(authority.runCheckpoints.latest(workflow, itemId, "reference-check"), row);
-  assert.deepEqual(readRunCheckpoint(authority, start(1, false).envelope, "reference-check", true, typeId), row);
-  assert.equal(readRunCheckpoint(authority, start(2, false).envelope, "reference-check", true, typeId), undefined);
+  assert.deepEqual(authority.runCheckpoints.latest(workflow, itemId, "reference-fields-start"), row);
+  assert.deepEqual(readRunCheckpoint(authority, start(1, false).envelope, "reference-fields-start", true, typeId), row);
+  assert.equal(readRunCheckpoint(authority, start(2, false).envelope, "reference-fields-start", true, typeId), undefined);
 });
 
 function recover(h: Awaited<ReturnType<typeof sourceBoundHarness>>, source: ReturnType<typeof h.fresh>) {

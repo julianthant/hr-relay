@@ -271,7 +271,7 @@ it("rechecks a parked PayPath Save after a compatible build change without click
   const paypath = deterministicPayPathOperations({ read, submit: "answer-lost" });
   const sessions = sessionFactoryHarness({ ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(), ...paypath }) });
   const f = await referenceWorld.fixture(compiled.descriptor, sessions);
-  const reference = f.spreadsheet("Fall roster", "Awards", ["eid"], [["10000009"]]);
+  const reference = f.spreadsheet("Fall roster", "Awards", ["eid", "fullName"], [[INPUT.emplId, "Other, Person"]]);
   const review = await f.execute(f.start(INPUT, [reference]));
   assert.equal(review.lifecycle.state, "parked-gate");
   assert.equal(f.continueAnyway(review).state, "applied");
@@ -314,7 +314,7 @@ it("refuses a new PayPath Save approved under an earlier build", async () => {
   assert.deepEqual(f.database.authority.writeIntents.listByRun(started.envelope.runId), []);
 });
 
-it("rechecks a parked PayPath Save after the run reused an earlier workbook reference check", async () => {
+it("rechecks a parked PayPath Save using the workbook capture held by the fenced run", async () => {
   const paypath = deterministicPayPathOperations({ read, submit: "answer-lost" });
   const sessions = sessionFactoryHarness({ ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(), ...paypath }) });
   const f = await referenceWorld.fixture(compiled.descriptor, sessions);
@@ -324,9 +324,9 @@ it("rechecks a parked PayPath Save after the run reused an earlier workbook refe
   const parked = await f.execute(f.start(INPUT, [reference]));
   assert.equal(parked.lifecycle.state, "parked-write");
   assert.equal(paypath.events.filter(event => event.startsWith("commit:")).length, 1);
-  const initialReplay = f.events(parked).find(event => event.payload.kind === "checkpoint-replayed"
-    && event.payload.checkpoint.nodeId === "reference-check" && event.payload.checkpoint.runId === preview.envelope.runId);
-  assert.ok(initialReplay?.payload.kind === "checkpoint-replayed");
+  const capture = f.events(parked).find(event => event.payload.kind === "checkpoint-recorded"
+    && event.payload.checkpoint.nodeId === "reference-fields-start" && event.payload.checkpoint.runId === parked.envelope.runId);
+  assert.ok(capture?.payload.kind === "checkpoint-recorded");
   requestPayPathRecheck(f.database, f.clock, parked);
   const before = paypath.events.length;
   const checked = await f.execute(parked);
@@ -335,9 +335,9 @@ it("rechecks a parked PayPath Save after the run reused an earlier workbook refe
   assert.equal(checked.lifecycle.state, "parked-write");
   const checkedClaimGeneration: number = checked.claimGeneration;
   const recheckReplay = f.events(checked).find(event => event.payload.kind === "checkpoint-replayed"
-    && event.payload.checkpoint.nodeId === "reference-check" && event.payload.claimGeneration === checkedClaimGeneration);
+    && event.payload.checkpoint.nodeId === "reference-fields-start" && event.payload.claimGeneration === checkedClaimGeneration);
   assert.ok(recheckReplay?.payload.kind === "checkpoint-replayed");
-  assert.deepEqual(recheckReplay.payload.checkpoint, initialReplay.payload.checkpoint);
+  assert.deepEqual(recheckReplay.payload.checkpoint, capture.payload.checkpoint);
   const intent = f.database.authority.writeIntents.get(parked.lifecycle.writeIntentId);
   assert.ok(intent?.status === "parked" && intent.recheck === undefined);
   assert.equal(f.database.authority.runResults.get(parked.envelope.runId), undefined);
