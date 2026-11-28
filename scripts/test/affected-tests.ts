@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import ts from "typescript";
 import { z } from "zod";
-import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./ci-files.js";
+import { LINUX_NATIVE_FILES, NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./ci-files.js";
 import { isDirectExecution } from "./scope-files.js";
 
 const shardSeconds = 300;
@@ -195,7 +195,8 @@ export function createAffectedTestsPlanner(root: string): (base: string, head: s
       || globalInputs.some(file => distances.has(file));
     const ordered = [...files.keys()].filter(file =>
       file.startsWith("tests/") && !file.startsWith("tests/perf/") && file.endsWith(".integration.test.ts")
-      && !excludedTests.has(file) && (global || distances.has(file)))
+      && (!excludedTests.has(file) || changed.includes(file) && LINUX_NATIVE_FILES.includes(file))
+      && (global || distances.has(file)))
       .sort((a, b) => (distances.get(a) ?? Infinity) - (distances.get(b) ?? Infinity) || a.localeCompare(b));
     const shards = pack(ordered, durations);
     return { core: global || shards.length > limit, shardCount: shards.length, shards: shards.slice(0, limit) };

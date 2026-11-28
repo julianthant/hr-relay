@@ -86,6 +86,7 @@ describe("development task push", () => {
     expect(tests).toContain("if: matrix.files == null");
     expect(affected).toContain("if: matrix.files != null");
     expect(affected).toContain("FILES: ${{ toJSON(matrix.files) }}");
+    expect(affected).toContain('RELAY_TEST_NATIVE: "1"');
     expect(affected).toContain('npm run test:integration -- "${files[@]}" --reporter=verbose --maxWorkers=3');
   });
 
