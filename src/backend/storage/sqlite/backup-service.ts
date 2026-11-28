@@ -617,6 +617,7 @@ export class AuthorityBackupService {
           return { byteSize, sha256 };
         };
         logFiles = { timeline: await publish("timeline"), dashboard: await publish("dashboard") };
+        removeBackupLogStage(temporaryLogRoot, () => this.#admission.assertAuthorityBackupWrite(this.#directory));
       }
       const stats = statSync(finalBackupPath);
       this.#admission.assertAuthorityBackupWrite(this.#directory);
