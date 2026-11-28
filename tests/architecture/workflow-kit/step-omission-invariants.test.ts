@@ -311,7 +311,7 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
   "onboarding::master-results": { state: "omittable", forces: [] },
   "work-study::ucpath-auth": { state: "omittable", forces: [] },
   "work-study::transaction": { state: "omittable", forces: [] },
-  "emergency-contact-member::contact-plan": { state: "omittable", forces: ["contact-preview", "onbase-filing"] },
+  "emergency-contact-member::contact-plan": { state: "omittable", forces: ["onbase-filing", "contact-preview"] },
   "emergency-contact-member::reference-check": { state: "omittable", forces: [] },
   "emergency-contact-member::contact-preview": { state: "omittable", forces: [] },
   "emergency-contact-member::onbase-filing": { state: "omittable", forces: [] },
