@@ -3,13 +3,13 @@ import { defineLaneRead, type DashboardReadLanes } from "../../../storage/sqlite
 import { createSettingsApplicationExecutor } from "../../../runs/commands/settings-service.js";
 import type { SettingsApplicationExecutor } from "../../../runs/commands/settings-command.js";
 import { selectActiveRunSettings } from "../../../runs/settings/run-settings.js";
-import { activeSettingsRuntimeIdentity, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings, settingsRuntimeStatusOf, type ProtectedSettingsRuntimeSnapshot } from "../../../runtime/settings/settings-runtime.js";
+import { activeSettingsRuntimeIdentity, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings, settingsRuntimeStatusOf } from "../../../runtime/settings/settings-runtime.js";
 import type { createCredentialStore } from "../../../storage/configuration/credential-store.js";
 import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { createNativePathPicker } from "../../../transports/http/native-path-picker.js";
 import type { SettingsRouteDeps } from "../../../transports/http/routes/settings-types.js";
 import { resolveConfigWithProvenance, ResolvedConfigSchema } from "../../config/resolve.js";
-import { buildSettingsEditor } from "../../../runs/queries/settings-editor.js";
+import { buildSettingsEditor, type ProtectedSettingsEditorFacts } from "../../../runs/queries/settings-editor.js";
 import { SettingsFileRecordSchema, SettingsRuntimeIdentitySchema } from "../../../../models/config/settings.js";
 import { StoredConfigSchema } from "../../../../models/config/snapshot.js";
 import { PersonPreferencesSchema } from "../../../../models/config/person-preferences.js";
@@ -47,10 +47,10 @@ const settingsStorePartRead = defineLaneRead(import.meta.url, "settings-store-pa
   },
 });
 
-/** Read once per editor read, so the same facts key the reuse and build the document. */
-function readProtectedFacts(reader: Readonly<{ read(): ProtectedSettingsRuntimeSnapshot }>):
-  Readonly<{ state: "read"; facts: ProtectedSettingsRuntimeSnapshot }> | Readonly<{ state: "unreadable"; error: unknown }> {
-  try { return { state: "read", facts: reader.read() }; }
+/** The same facts key the reuse and build the document. */
+async function readProtectedFacts(read: () => ProtectedSettingsEditorFacts | Promise<ProtectedSettingsEditorFacts>):
+  Promise<Readonly<{ state: "read"; facts: ProtectedSettingsEditorFacts }> | Readonly<{ state: "unreadable"; error: unknown }>> {
+  try { return { state: "read", facts: await read() }; }
   catch (error) { return { state: "unreadable", error }; }
 }
 
@@ -64,6 +64,7 @@ export function composeProfileSettings(input: Parameters<typeof createSettingsRu
 export function composeSettings(input: Parameters<typeof createSettingsRuntimeReader>[0] & {
   database: Pick<AuthorityDatabase, "withAuthorityReadSnapshot" | "authority">;
   environment: Readonly<Record<string, string | undefined>>; credentials: ReturnType<typeof createCredentialStore>;
+  readProtectedSettings?: () => Promise<ProtectedSettingsEditorFacts>;
   assertCurrent?: () => void;
   resolveSettings?: Parameters<typeof createSettingsApplicationExecutor>[0];
   /** Seam for the settings store-part lane read and the stream row. */
@@ -128,13 +129,15 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   }
   // Reused while the store part, the protected facts and the fiscal year are unchanged; any of them changing builds again.
   let last: { key: string; browserRoots: readonly string[]; document: EditableSettingsWire } | undefined;
+  const readProtected = input.readProtectedSettings ?? (() => routes.settingsEditor.protectedSettings.read());
   // The root on disk can stop qualifying after startup, so a reused document is checked again.
   const assertBrowserRoots = (roots: readonly string[]) => { for (const root of roots) input.assertBrowserRoot?.(root); };
   const editable = async (): Promise<EditableSettingsWire> => {
     input.assertCurrent?.();
     const { body } = await lanes.read(settingsStorePartRead, { hostFacts, ...(input.runtimeStoragePair === undefined ? {} : { runtimeStoragePair: input.runtimeStoragePair }) });
     input.assertCurrent?.();
-    const protectedFacts = readProtectedFacts(routes.settingsEditor.protectedSettings);
+    const protectedFacts = await readProtectedFacts(readProtected);
+    input.assertCurrent?.();
     const key = canonicalJsonStringify({ body, protectedFacts: protectedFacts.state === "read" ? protectedFacts.facts : null, fiscalYear: clock.fiscalYear() });
     if (last?.key === key) {
       assertBrowserRoots(last.browserRoots);

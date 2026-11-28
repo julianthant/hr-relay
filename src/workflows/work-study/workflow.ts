@@ -23,8 +23,8 @@ export const workStudyWorkflow = defineWorkflow({
   ],
   verdicts: [],
   rows: [
-    { key: "ucpath-auth", label: "Sign in to UCPath", members: [{ step: "ucpath-auth" }, { step: "reference-check" }] },
-    { key: "transaction", label: "Submit work-study transaction", members: [{ step: "transaction" }] },
+    { key: "ucpath-auth", label: "Sign in to UCPath", members: [{ step: "ucpath-auth" }, { step: "reference-check" }], target: { step: "ucpath-auth" } },
+    { key: "transaction", label: "Submit work-study transaction", members: [{ step: "transaction" }], target: { step: "transaction" } },
   ],
   steps: author => {
     const read = workStudyUcpathAuthDefinition.build(author), reference = workStudyReferenceCheckDefinition.build(author, read);
