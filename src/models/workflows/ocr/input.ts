@@ -26,3 +26,6 @@ export const OCR_INPUT_EXAMPLE = OcrInputSchema.parse({
   document: OCR_PAGE_EXAMPLE.page.document, readingId: OCR_PAGE_EXAMPLE.page.readingId,
   formType: "emergency-contact", roster: null, reading: { kind: "subscription" } });
 export const OcrCanonicalInput = defineCanonicalInput(OcrInputSchema, OcrCanonicalInputSchema, [OCR_INPUT_EXAMPLE]);
+
+export const usesOcrProvider = (input: Pick<z.output<typeof OcrInputSchema>, "reading" | "extractWithOcr">): boolean =>
+  input.extractWithOcr !== false && input.reading.kind === "subscription";

@@ -111,6 +111,8 @@ export const ERROR_CATALOG = Object.freeze({
   OCR_UPLOAD_FAILED: catalogEntry("The PDF did not upload. Check your connection and choose it again.", EmptyParametersSchema),
   OCR_REVIEW_REFUSED: catalogEntry("The saved review changed or could not be checked. Reload it.", EmptyParametersSchema),
   OCR_APPROVAL_UNAVAILABLE: catalogEntry("The approved OCR record is unavailable. Reload the run.", EmptyParametersSchema),
+  OCR_NO_REVIEWABLE_RECORDS: catalogEntry("No reviewable records were found in the PDF.", EmptyParametersSchema),
+  OCR_PAGE_CANCELLED: catalogEntry("An OCR page was cancelled.", EmptyParametersSchema),
   OCR_PUBLICATION_REFUSED: catalogEntry("The OCR reading could not be tied to its run. Review it.", EmptyParametersSchema),
   ONBOARDING_CRM_READ_FAILED: catalogEntry("CRM hire data could not be verified. Review the record first.", EmptyParametersSchema),
   ONBOARDING_WRITE_REVIEW_REFUSED: catalogEntry("The hire review is missing matching person or transaction details.", EmptyParametersSchema),

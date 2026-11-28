@@ -479,7 +479,7 @@ it("keeps imported timeline folds through background polling and recovery", asyn
 it.each([41, 44])("loads every imported dashboard day with delegated runs and failed Lookup start evidence from a schema-%s archive", async version => {
   const sourceWorld = createOcrReviewWorld();
   cleanups.push(() => sourceWorld.cleanup());
-  const source = await sourceWorld.fixture({ coordinator: true, sessions: sessionFactoryHarness({
+  const source = await sourceWorld.fixture({ coordinator: true, record: true, sessions: sessionFactoryHarness({
     ucpath: () => ({ ...healthyUcpathDriver(), async searchPersonOrg() { throw new Error("synthetic-lookup-failure"); } }),
   }) });
   const { database, admission, parentRun, clock: sourceClock } = source;

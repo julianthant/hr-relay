@@ -6,6 +6,7 @@ import { z } from "zod";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
 import { AssistantModelPreferenceSchema } from "../../../../models/config/assistant-model-preference.js";
 import type { ClearRunHistoryRequest } from "../../../../models/dashboard/run-history.js";
+import { createOcrStartReadiness } from "../../../runs/start/ocr-readiness.js";
 import { admitOcrExtraction } from "../../../../models/ocr/extraction.js";
 import { buildExtractionInstruction } from "../../../../models/ocr/instruction.js";
 import { WorkerPoolMemberSchema } from "../../../../models/run/worker-slot.js";
@@ -212,6 +213,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   // The kernel is made before the hub, so its ordinary settings commits reach the hub through this source.
   const settingsChanges = new Set<() => void>();
   const publishSettingsChanged = () => { for (const listener of [...settingsChanges]) listener(); };
+  const ocrReadiness = createOcrStartReadiness(chatGptAccount, CHATGPT_OCR_MODEL);
   const nativeKernel = createCommandKernel({
     commandNotices: notificationInbox,
     ensureReceipt: runId => trustReads.trust.ensureReceipt(runId),
@@ -220,6 +222,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
       resolveDescriptor: workflowId => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor }),
     applicationQuitAvailable: true,
     preflight: runtimePreflight.admission,
+    ...ocrReadiness,
     assistantSurface: () => { if (assistantSurface === undefined) throw new Error("assistant-surface-unavailable"); return assistantSurface; },
     workflowSources,
     assistantFactsSha256: () => factsSha256,
@@ -287,6 +290,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const nativeStartPlans = createStartPlanService({
     workbooks: { createReferenceCapture: () => workbookLibrary.createReferenceCapture() },
     preflight: runtimePreflight.admission,
+    ...ocrReadiness,
     protectedSecrets,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },
     authorityRead: database,
@@ -403,10 +407,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     debugEvents,
     debugReportRunReader: lifecycle,
     assistant,
+    chatGptOcrModel: CHATGPT_OCR_MODEL,
     chatGptOcrTest,
     chatGptAccount: {
       readStatus: () => { assertCurrent(); return chatGptAccount.readStatus(); },
-      checkStatus: async signal => { assertCurrent(); const result = await chatGptAccount.checkStatus(signal); assertCurrent(); return result; },
+      checkStatus: async (signal, options) => { assertCurrent(); const result = await chatGptAccount.checkStatus(signal, options); assertCurrent(); return result; },
       signIn: async fields => { assertCurrent(); const result = await chatGptAccount.signIn(fields); assertCurrent(); return result; },
       signOut: async () => { assertCurrent(); const result = await chatGptAccount.signOut(); assertCurrent(); return result; },
     },
