@@ -310,6 +310,7 @@ export function primaryButtonAccent({ page }: StateRuleContext): Promise<readonl
     const same = (first: readonly number[], second: readonly number[]) => first.every((channel, index) => Math.abs(channel - (second[index] ?? 0)) <= 2);
     const found: string[] = [];
     for (const button of document.querySelectorAll<HTMLElement>('body :is(button, [role="button"], a[data-slot="button"])')) {
+      if (button.getAttribute("role") === "checkbox") continue;
       const box = button.getBoundingClientRect();
       if (box.width <= 1 || box.height <= 1) continue;
       const fill = rgba(getComputedStyle(button).backgroundColor);

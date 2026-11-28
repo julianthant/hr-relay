@@ -1,7 +1,7 @@
 /** Planted violations that prove each state rule bites, on the dashboard's real primitives. Never part of the catalogue. */
 import { useEffect, useState } from "react";
 import {
-  Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, PageHeading, SegmentedChoice, Skeleton, Switch, Tab, TabList, TabPanel, Tabs, useToasts,
+  Button, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, PageHeading, SegmentedChoice, Skeleton, Switch, Tab, TabList, TabPanel, Tabs, useToasts,
 } from "../../../../../../src/dashboard/ds/ui.js";
 import { SessionsView } from "../../../../../../src/dashboard/surfaces/sessions/sessions-view.js";
 import type { StateRuleName } from "../state-rule-limits.js";
@@ -100,6 +100,14 @@ export const RULE_PROBES = {
       </StoryFrame>,
     },
     finds: { "primary-button-accent": [/the button "Run" has no solid fill/u, /the button "Start" is filled rgb\(40, 40, 44\)/u] },
+  },
+  "checkbox-accents": {
+    story: {
+      title: "Checkbox state uses the form palette",
+      render: () => <StoryFrame><Checkbox label="People" checked /><Checkbox label="Archive" checked={false} /></StoryFrame>,
+    },
+    finds: {},
+    clean: ["primary-button-accent"],
   },
   "unreachable-controls": {
     story: {
