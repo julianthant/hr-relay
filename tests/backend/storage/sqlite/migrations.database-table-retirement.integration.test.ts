@@ -9,6 +9,7 @@ import { foundationFixture } from "../../../support/helpers/database-foundation/
 const CURRENT_TABLES = [
   "artifacts",
   "assistant_actions",
+  "assistant_applied_edits",
   "assistant_attachments",
   "assistant_chats",
   "assistant_conversations",
@@ -68,7 +69,7 @@ it("fresh native authority has the exact current physical inventory", async () =
     const raw = new DatabaseSync(f.path, { readOnly: true });
     try {
       const actual = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => String(row.name));
-      assert.equal(CURRENT_TABLES.length, 54);
+      assert.equal(CURRENT_TABLES.length, 55);
       assert.deepEqual(actual, [...CURRENT_TABLES, ...AUTHORITY_DERIVED_TABLES].sort());
       assert.deepEqual(AUTHORITY_TABLE_REGISTRY.map(row => row.name).sort(), CURRENT_TABLES);
       assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);

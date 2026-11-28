@@ -569,7 +569,7 @@ Fresh workbook storage contains one General type seed. Incomplete-profile invent
 The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29 and 30. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/models/config/authority-schema-versions.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 46` and
+`src/models/config/authority-schema-versions.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 48` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
@@ -586,6 +586,8 @@ The v42 migration removes the unused panel mode from saved settings and native a
 The v45 migration adds Full access to native and imported settings snapshots with an off default and advances the settings-initialization schema hash. Sparse saved settings and their authenticated command history retain their values. The assistant reads the owning store's saved permission at each start boundary.
 
 The v46 migration builds the run-search FTS5 trigram index from the existing search projection in the person database and imported history. Projection triggers update the index in the same transaction. The index uses the projection's OCR digests and enables FTS5 secure deletion.
+
+The v48 migration assigns the first available numeric suffix to repeated version names in each workbook catalogue. It preserves version identities, the version in use, immutable snapshots and recorded action receipts.
 
 The v25 migration adds `workflow_workbook_selections`, one ordered last-used source selection per workflow in the owning person database. An absent row means no selection has been recorded; no default or historical run seeds it. Sources retain library and worksheet identities without foreign keys, so removed sources stay stale and history clearing preserves selections. Its repository records the accepted command, used time and revision; confirmed Start integration is separate. Before adding the table, the migration refuses unreceipted operator workbook operations whose identity begins with the exact `library:` prefix, using `workflow_workbook_selection_pending_library_operation`. It preserves pending ordinary run operations, completed library actions, workbook mappings and all write evidence without replaying them. A registered schema 25 marker binds the captured `run-reference` workbook-write source grammar into its plan digest. That source retains immutable version, worksheet, key, required fields and explicit writable fields; only selected-row patches with exact version CAS are admitted. Its storage apply and replay use the captured key and writable fields, while predecessor operations retain historical type semantics. Producing this source from accepted runs is separate work. The existing stopped exclusive transaction, verified pre-upgrade backup and strict current readback own this upgrade.
 
