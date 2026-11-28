@@ -1,7 +1,15 @@
 import { OnbaseInputSchema, OnbaseTargetSchema } from "../../../../models/systems/onbase/import-document.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { defineStep, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { readOnbaseSourcePage } from "../../tasks/read-source-page.js";
+
+// Typed page numbers cannot supply the verified PDF bytes that Import needs.
+export const ONBASE_SOURCE_PAGE_MANUAL: StepManualDeclaration = {
+  form: { fields: [{ key: "sourcePage", label: "PDF page", kind: "integer", min: 1 }] },
+  produces: {},
+  skips: ["source-page"],
+};
 
 export const ONBASE_SOURCE_STEP = Object.freeze({ ...defineWorkflowStep({ key: "source-page", label: "Prepare this person's PDF page" }), system: "onbase" as const,
   review: {

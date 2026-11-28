@@ -4,7 +4,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
-import { onbaseSourcePageDefinition } from "./steps/source-page/step.js";
+import { ONBASE_SOURCE_PAGE_MANUAL, onbaseSourcePageDefinition } from "./steps/source-page/step.js";
 import { onbaseImportDocumentDefinition } from "./steps/import-document/step.js";
 
 export const OnbaseCanonicalInput = defineCanonicalInput(OnbaseInputSchema, OnbaseInputSchema, [ONBASE_EXAMPLE_INPUT]);
@@ -24,6 +24,7 @@ export const onbaseWorkflow = defineWorkflow({
   ],
   steps: author => {
     const source = onbaseSourcePageDefinition.build(author), imported = onbaseImportDocumentDefinition.build(author, source);
-    return { steps: [...source.steps, ...imported.steps], result: imported.result };
+    const [[step, members]] = source.steps;
+    return { steps: [[author.group(step, { manual: ONBASE_SOURCE_PAGE_MANUAL }), members], ...imported.steps], result: imported.result };
   },
 });
