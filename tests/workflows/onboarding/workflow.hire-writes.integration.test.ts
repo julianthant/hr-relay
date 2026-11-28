@@ -172,6 +172,46 @@ describe("public onboarding write execution", () => {
     assert.equal(h.repository.list().length, 1);
   });
 
+  it("files one hire and fills every agreeing worksheet row in the same workbook", async () => {
+    const h = await world.executionFixture(false, { match: "unique", second: "worksheet", mode: "new-hire", newHireReceiptEid: EidSchema.parse("10800000") });
+    const root = h.start();
+    const review = await h.rawExecution.execute(root, signal());
+    assert.ok(review.run?.lifecycle.state === "parked-gate" && review.run.lifecycle.gateId === ONBOARDING_WRITE_REVIEW_GATE);
+    assert.equal(h.approve(root, { decision: "new-hire", ruledOut: [] }).state, "applied");
+    terminal(await h.rawExecution.execute(root, signal()));
+    const stored = h.database.authority.runResults.get(root.envelope.runId); assert.ok(stored);
+    const output = OnboardingResultSchema.parse(stored.result.value);
+    assert.equal(output.state, "filed");
+    assert.ok(output.rosterAccess.state === "batch-recorded");
+    assert.deepEqual(output.rosterAccess.rows.map(row => [row.sheetId, row.state === "recorded" ? row.receiptState : row.code]),
+      [["people", "applied"], ["archive", "applied"]]);
+    assert.deepEqual(h.library.read(h.id).workbook.sheets.map(sheet => sheet.rows[1].cells.slice(3).map(cell => cell.value)),
+      [["10800000", "T009000001"], ["10800000", "T009000001"]]);
+    assert.equal(h.hire.events.filter(event => event === "commit:hire").length, 1);
+    assert.equal(h.repository.runOperations(root.envelope.runId).length, 2);
+  });
+
+  it("reports the workbook row that conflicts and keeps the verified fill for the other copy", async () => {
+    const h = await world.executionFixture(false, { match: "unique", second: "same" });
+    assert.ok(h.secondId);
+    const root = h.start();
+    await h.rawExecution.execute(root, signal());
+    const before = h.library.read(h.secondId), edited = structuredClone(before.workbook);
+    edited.sheets[0].rows[1].cells[4].value = "T009000007";
+    h.library.save(h.secondId, before.version, edited);
+    assert.equal(h.approve(root, { decision: "new-hire", ruledOut: [] }).state, "applied");
+    terminal(await h.rawExecution.execute(root, signal()));
+    const stored = h.database.authority.runResults.get(root.envelope.runId); assert.ok(stored);
+    const output = OnboardingResultSchema.parse(stored.result.value);
+    assert.equal(output.state, "master-review-required");
+    assert.ok(output.rosterAccess.state === "batch-recorded");
+    assert.deepEqual(output.rosterAccess.rows.map(row => [row.libraryId, row.state === "recorded" ? row.receiptState : row.code]),
+      [[h.id, "applied"], [h.secondId, "resolve-required"]]);
+    assert.equal(h.library.read(h.id).workbook.sheets[0].rows[1].cells[4].value, "T009000001");
+    assert.equal(h.library.read(h.secondId).workbook.sheets[0].rows[1].cells[4].value, "T009000007");
+    assert.equal(h.hire.events.filter(event => event === "commit:hire").length, 1);
+  });
+
   it("previews Rerun of a run cancelled after it filed a hire, warning on the filed hire only", async () => {
     const h = await world.executionFixture(false, { match: "unique", selectedRow: true, cancelAfterFiling: true }), root = h.start();
     await h.execution.execute(root, signal());

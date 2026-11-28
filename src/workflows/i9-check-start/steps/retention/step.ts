@@ -75,7 +75,7 @@ export const i9CheckStartRetentionDefinition = defineStep({ group: step, build: 
     { nodeId: "publish-results", purpose: "Require the workbook receipt and project the retained rows to the configured tracker." },
   ],
   proof: { id: "i9-check-start-retention", order: 27, build: (parent: WorkflowDefinition<typeof I9CheckStartInput>) => ({
-    ...inheritStepProof(parent), artifactProjections: parent.artifactProjections,
+    ...inheritStepProof(parent), version: 2, artifactProjections: parent.artifactProjections,
     code: "icsp", label: "I-9 retention publication", summary: "Proves person checks and one complete results publication with source review and reference prerequisites.",
     steps: (author: Author) => {
       const documents = buildDocuments(author), reference = buildRosterReference(author, documents), retained = buildRetention(author, reference);

@@ -15,7 +15,7 @@ describe("Emergency Contact Start run rows", () => {
     const member = "emergency-contact-member";
     assert.deepEqual(projectStartRows(descriptor).map(({ key, label, kind, lockReason, members }) => ({ key, label, kind, lockReason: lockReason ?? null, members })), [
       { key: "ocr-source-pages", label: "Prepare source pages", kind: "switch", lockReason: null, members: [{ workflow: "ocr", step: "source-pages" }] },
-      { key: "read-emergency-contact", label: "Read emergency contact", kind: "switch", lockReason: null, members: [{ step: "read-document", nodes: ["read-document"] },
+      { key: "read-emergency-contact", label: "Read emergency contact", kind: "switch", lockReason: null, members: [{ step: "read-document", nodes: ["worksheet-row-choice", "read-document"] },
         { workflow: "ocr", step: "page-readings" }] },
       { key: "ocr-group-records", label: "Group records for review", kind: "switch", lockReason: null, members: [{ workflow: "ocr", step: "review-records" }] },
       { key: "match-extracted-people", label: "Match extracted people", kind: "switch", lockReason: null, members: [{ step: "read-document", nodes: ["approved-records"] },
@@ -60,10 +60,13 @@ describe("Emergency Contact Start run rows", () => {
     }
   });
 
-  it("plans nothing new and keeps today's node lists of the run and its member run", () => {
+  it("keeps the roster decision ahead of the OCR child and preserves the member graph", () => {
     assert.equal(resolveStartStepOmissions(descriptor, projectStartSteps(descriptor).map(({ key }) => key), undefined), undefined);
-    // Today's 4 and 9 nodes with their kinds, dependencies and dry-run stops.
-    assert.equal(nodeDigest(descriptorRuntimeNodes(descriptor)), "6297f780d9c773cb801aa754b71a57d97da4fa443124f9df35466e3fab9458a7");
+    assert.deepEqual(descriptorRuntimeNodes(descriptor).map(node => [node.id, node.kind, node.dependsOn]), [
+      ["worksheet-row-choice", "gate", []], ["read-document", "child-run", ["worksheet-row-choice"]],
+      ["approved-records", "task", ["read-document"]], ["members", "child-run", ["read-document", "approved-records"]],
+      ["read-result", "task", ["read-document", "members"]],
+    ]);
     assert.equal(nodeDigest(descriptorRuntimeNodes(emergencyContactMemberModule.descriptor)), "4c30231da6ab1cacfe255d2e7dadec1d6187e7f486c9cb9060a33ead9aebc489");
   });
 });

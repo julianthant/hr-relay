@@ -560,7 +560,7 @@ function contactPlannedOutputLeaves(scope: EvidenceValueScope): unknown[] {
 }
 
 function i9ReferenceLeaves(scope: EvidenceValueScope): unknown[] {
-  return ocrPrivateLeaves(scope,
+  return ocrPrivateLeaves(scope, "referenceSources",
     ...["typeId", "libraryId", "versionId", "keys", "fields"].map(path => `reference.request.${path}`),
     ...["libraryId", "version", "versionId", "versionName", "worksheets", "rows", "type.id", "type.name", "type.keyFieldId", "type.fields", "type.defaultWorkbookId"]
       .map(path => `reference.snapshot.${path}`));
@@ -631,12 +631,16 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...["emergency-contact-member-contact-plan", "emergency-contact-member-reference-check"].flatMap(id => contactPlannedOutputLeaves(workflowResult(id))),
   ...["emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."), ...ocrRosterLeaves(workflowInput(id), "roster."),
-    ...open(workflowInput(id), "reading.kind", "onbaseFiling", "extractWithOcr"), ...ocrPrivateLeaves(workflowInput(id), "fileName", "readingId", "reading.actorId", "reading.assertions"),
+    ...open(workflowInput(id), "reading.kind", "onbaseFiling", "extractWithOcr", "rosterChoice"), ...ocrPrivateLeaves(workflowInput(id), "fileName", "readingId", "reading.actorId", "reading.assertions"),
   ]),
   ...[workflowResult("emergency-contact"), workflowResult("emergency-contact-members"), taskOutput("workflow:emergency-contact/read-result")].flatMap(scope => [
     ...approvedOcrReferenceLeaves(scope, "approval."), ...ocrPrivateLeaves(scope, "members"),
   ]),
   ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-people"), "people"),
+  ...open(taskOutput("workflow:i9-check-start/read-reference-conflicts"), "needsChoice"),
+  ...["i9-check-start", "i9-check-start-roster-reference", "i9-check-start-retention", "ocr", "ocr-source-pages", "emergency-contact", "emergency-contact-read-document"].flatMap(id => [
+    ...open(gateResult(id, "worksheet-row-choice"), "decision"), ...ocrPrivateLeaves(gateResult(id, "worksheet-row-choice"), "referenceDigest", "rows"),
+  ]),
   ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-requests"), "people", "children"),
   ...i9ReferenceLeaves(taskOutput("workflow:i9-check-start/read-requests")),
   ...[taskOutput("workflow:i9-check-start/read-rows"), taskOutput("workflow:i9-check-start/read-publication"),
@@ -692,7 +696,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...["ocr", "ocr-source-pages"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."),
     ...ocrRosterLeaves(workflowInput(id), "roster."),
-    ...open(workflowInput(id), "approval", "formType", "reading.kind", "extractWithOcr", "assertedPageCount"),
+    ...open(workflowInput(id), "approval", "formType", "reading.kind", "extractWithOcr", "assertedPageCount", "rosterChoice"),
     ...ocrPrivateLeaves(workflowInput(id), "sourceRunId", "fileName", "readingId", "reading.actorId", "reading.assertions"),
   ]),
   ...["ocr-page", "ocr-page-reading"].flatMap(id => [
@@ -740,7 +744,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
       "rosterAccess.state", "rosterAccess.step", "rosterAccess.version", "rosterAccess.receiptState", "rosterAccess.code", "rosterAccess.message"),
     ...i9CreationProofLeaves(workflowResult(id), "i9.", true),
     ...hireProofLeaves(workflowResult(id), "hireWrite.receipt."),
-    ...onboardingPrivateLeaves(workflowResult(id), "rosterAccess.operationId", "rosterAccess.libraryId"),
+    ...onboardingPrivateLeaves(workflowResult(id), "rosterAccess.operationId", "rosterAccess.libraryId", "rosterAccess.rows"),
   ]),
   ...[false, true].flatMap(remote => {
     const suffix = remote ? "remote-record" : "profile";
@@ -821,6 +825,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...open(scope, "person.hireDate", "person.sourcePages", "roster.seed.separationDate", "asOf", "person.useMatch"),
   ]),
   ...open(taskOutput("workbooks/read-result"), "state", "version", "receiptState", "code", "message"),
+  ...ocrPrivateLeaves(taskOutput("workbooks/read-result"), "rows"),
   ...["operationId", "libraryId"].map(path => ({ scope: taskOutput("workbooks/read-result"), path, classification: "direct-identifier", transform: "digest" })),
   ...["i9-lookup", "i9-lookup-lookup"].flatMap(id => [
     ...person(workflowInput(id), "lastName", "firstName"),

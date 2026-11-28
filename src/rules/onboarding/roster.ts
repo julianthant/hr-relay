@@ -6,6 +6,7 @@ import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterRe
   OnboardingRosterReferenceBindingSchema, OnboardingRosterSnapshotRowSchema } from "../../models/workflows/onboarding/roster.js";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { sha256Hex } from "../validation/sha256.js";
+import { resolveWorksheetRows } from "../spreadsheets/reference-rows.js";
 
 type Reference = z.infer<typeof RunWorkbookReferenceSchema>;
 type Match = Reference["snapshot"]["rows"][number]["matches"][number];
@@ -24,7 +25,7 @@ export function onboardingRosterRow(binding: z.input<typeof OnboardingRosterRefe
   });
 }
 
-export function bindOnboardingRoster(bound: SchemaBoundCanonicalValue, email: string, capturedAt: string) {
+function captureOnboardingRoster(bound: SchemaBoundCanonicalValue, email: string, capturedAt: string) {
   const reference = parseRunWorkbookReference(bound);
   if ("mode" in reference.request) throw new Error("onboarding-roster-reference-invalid");
   const { request, snapshot } = reference;
@@ -40,46 +41,28 @@ export function bindOnboardingRoster(bound: SchemaBoundCanonicalValue, email: st
     referenceDigest: sha256Hex(canonicalJsonStringify(bound)), capturedAt, rowKey: { email },
   });
   const row = snapshot.rows[0];
-  if (row === undefined) throw new Error("onboarding-roster-row-unavailable");
+  if (row === undefined || row.key !== email) throw new Error("onboarding-roster-row-unavailable");
   if (new Set(row.matches.map(match => JSON.stringify([match.sheetId, match.rowId]))).size !== row.matches.length) {
     throw new Error("onboarding-roster-membership-invalid");
   }
-  const matches = row.matches.map(match => onboardingRosterRow(binding, match));
-  if (selection !== undefined) {
-    const selected = matches.find(match => match.binding.sheetId === selection.sheetId && match.binding.rowId === selection.rowId);
-    if (selected === undefined) throw new Error("onboarding-roster-row-unavailable");
-    return OnboardingRosterReadOutputSchema.parse({ state: "resolved", row: selected });
-  }
-  if (row.state === "matched") return OnboardingRosterReadOutputSchema.parse({ state: "resolved", row: matches[0] });
-  return OnboardingRosterReadOutputSchema.parse({ state: "resolve-required", binding,
-    reason: row.state === "missing" ? "row-missing" : "row-ambiguous" });
+  return { binding, selection, matches: row.matches.map(match => ({ match, row: onboardingRosterRow(binding, match) })) };
 }
 
-/** Union complete captured sources. One match resolves; two or more stay unresolved even when their values agree. */
 export function bindOnboardingRosterSources(bounds: readonly SchemaBoundCanonicalValue[], email: string, capturedAt: string) {
-  if (bounds.length === 0) throw new Error("onboarding-roster-reference-invalid");
-  const located = bounds.flatMap(bound => {
-    const reference = parseRunWorkbookReference(bound);
-    if ("mode" in reference.request) throw new Error("onboarding-roster-reference-invalid");
-    const { request, snapshot } = reference;
-    if (request.typeId !== ONBOARDING_ROSTER_TYPE_ID || snapshot.type.keyFieldId !== "email"
-      || request.keys.length !== 1 || request.keys[0] !== email
-      || request.fields.length !== ONBOARDING_ROSTER_FIELDS.length
-      || ONBOARDING_ROSTER_FIELDS.some(field => !request.fields.includes(field) || !snapshot.type.fields.includes(field))) {
-      throw new Error("onboarding-roster-reference-invalid");
-    }
-    const row = snapshot.rows[0];
-    if (row === undefined || row.key !== email) throw new Error("onboarding-roster-row-unavailable");
-    if (new Set(row.matches.map(match => JSON.stringify([match.sheetId, match.rowId]))).size !== row.matches.length) {
-      throw new Error("onboarding-roster-membership-invalid");
-    }
-    return row.matches.map(match => ({ bound, match }));
-  });
-  if (bounds.length === 1 || located.length <= 1) return bindOnboardingRoster(located[0]?.bound ?? bounds[0], email, capturedAt);
-  const anchor = parseRunWorkbookReference(bounds[0]);
-  return OnboardingRosterReadOutputSchema.parse({ state: "resolve-required", reason: "row-ambiguous",
-    binding: OnboardingRosterReferenceBindingSchema.parse({
-      workbookType: anchor.snapshot.type.id, workbookId: anchor.snapshot.libraryId, workbookVersion: anchor.snapshot.version,
-      referenceDigest: sha256Hex(canonicalJsonStringify(bounds[0])), capturedAt, rowKey: { email },
-    }) });
+  const sources = bounds.map(bound => captureOnboardingRoster(bound, email, capturedAt));
+  const first = sources[0];
+  if (first === undefined) throw new Error("onboarding-roster-reference-invalid");
+  if (first.selection !== undefined) {
+    const { sheetId, rowId } = first.selection;
+    const selected = first.matches.find(({ match }) => match.sheetId === sheetId && match.rowId === rowId);
+    if (sources.length !== 1 || selected === undefined) throw new Error("onboarding-roster-row-unavailable");
+    return { roster: OnboardingRosterReadOutputSchema.parse({ state: "resolved", row: selected.row }), copies: [], anchor: first.binding };
+  }
+  if (sources.some(source => source.selection !== undefined)) throw new Error("onboarding-roster-reference-invalid");
+  const matches = sources.flatMap(source => source.matches);
+  const resolution = resolveWorksheetRows(matches, item => item.match.values);
+  if (resolution.state === "resolved") return { roster: OnboardingRosterReadOutputSchema.parse({ state: "resolved", row: resolution.row.row }),
+    copies: matches.slice(1).map(match => match.row.binding), anchor: first.binding };
+  return { roster: OnboardingRosterReadOutputSchema.parse({ state: "resolve-required", binding: first.binding,
+    reason: resolution.state === "missing" ? "row-missing" : "row-ambiguous" }), copies: [], anchor: first.binding };
 }

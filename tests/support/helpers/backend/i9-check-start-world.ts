@@ -52,7 +52,7 @@ import type { z } from "zod";
 export function createI9CheckStartWorld() {
   const world = createRunExecutorTestWorld();
   return { cleanup: world.cleanup, /** `checks` are extra library spreadsheets picked as the second check; `rows` follow the header row, so the first data row is sheet row 2. */
-  async fixture(options: Readonly<{ dryRun?: boolean; nameSearch?: "none" | "multiple"; checks?: readonly Readonly<{ name: string; sheet: string; fields: readonly string[]; rows: readonly (readonly string[])[] }>[] }> = {}) {
+  async fixture(options: Readonly<{ dryRun?: boolean; multiSheet?: true | "conflicting"; nameSearch?: "none" | "multiple"; checks?: readonly Readonly<{ name: string; sheet: string; fields: readonly string[]; rows: readonly (readonly string[])[] }>[] }> = {}) {
     const publishCalls: string[] = [], fieldReads: { runId: string; key: string }[] = [], projections: (readonly string[])[] = [];
     const pages = new Map<string, z.output<typeof ExtractPdfPagesOutputSchema>>();
     const renderer = defineTask(ExtractPdfPages, { sessions: [], async run({ input, ctx }) {
@@ -93,10 +93,14 @@ export function createI9CheckStartWorld() {
     const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
     const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
     const columns = [...I9_CHECK_REFERENCE.fields];
-    const saved = library.create({ name: "Action History", themes: [], hasFormulas: false, sheets: [{ id: "history", name: "Action History", width: 4, hidden: [], headerRow: 1,
-      columnBindings: columns.map((fieldId, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" })),
-      rows: [{ id: "header", cells: columns.map(value => ({ value })) }, ...candidates.map((candidate, index) => ({ id: `person-${index}`,
-        cells: [candidate.emplId, "000012345", "2024-01-01", "TER"].map(value => ({ value })) }))] }] });
+    const rosterSheet = (id: string, name: string, indices: readonly number[]) => ({ id, name, width: 4, hidden: [], headerRow: 1,
+      columnBindings: columns.map((fieldId, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+      rows: [{ id: "header", cells: columns.map(value => ({ value })) }, ...indices.map(index => ({ id: `person-${index}`,
+        cells: [candidates[index].emplId, id === "archive" && options.multiSheet === "conflicting" && index === 0 ? "000067890" : "000012345",
+          "2024-01-01", "TER"].map(value => ({ value })) }))] });
+    const saved = library.create({ name: "Action History", themes: [], hasFormulas: false, sheets: options.multiSheet !== undefined
+      ? [rosterSheet("history", "Action History", [0]), rosterSheet("archive", "Archive", [0, 1])]
+      : [rosterSheet("history", "Action History", [0, 1])] });
     database.authority.workbooks.putType({ id: I9_CHECK_REFERENCE.typeId, name: "Action History", keyFieldId: "eid", fields: columns, defaultWorkbookId: null });
     library.operatorOperation(saved.libraryId, "reference-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: I9_CHECK_REFERENCE.typeId, sharePoint: null } });
     const referenceChange = async (change: z.infer<typeof WorkbookLibraryChangeSchema>) => {
@@ -173,9 +177,9 @@ export function createI9CheckStartWorld() {
       return { entry: 1, typeId: REFERENCE_CHECK_ID, libraryId: extra.libraryId, versionId: library.libraryVersion(extra.libraryId).version.id,
         sheetId: "sheet", expectedVersion: library.read(extra.libraryId).version };
     });
-    const run = canonical.start(root.descriptor, input, { dryRun: options.dryRun ?? false, workbookReferences: [{ entry: 1,
-      libraryId: saved.libraryId, versionId: selectedReference.versionId, sheetId: "history",
-      expectedVersion: library.read(saved.libraryId).version }, ...checks] });
+    const run = canonical.start(root.descriptor, input, { dryRun: options.dryRun ?? false, workbookReferences: [
+      ...saved.workbook.sheets.map(({ id: sheetId }) => ({ entry: 1, libraryId: saved.libraryId, versionId: selectedReference.versionId,
+        sheetId, expectedVersion: library.read(saved.libraryId).version })), ...checks] });
     const changeReference = async () => {
       const current = library.read(saved.libraryId), workbook = structuredClone(current.workbook);
       for (const row of workbook.sheets[0].rows.slice(1)) row.cells[1].value = "999999999";

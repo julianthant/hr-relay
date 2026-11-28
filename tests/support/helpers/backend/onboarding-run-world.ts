@@ -51,7 +51,7 @@ export function createOnboardingRunWorld() {
   const managers: Awaited<ReturnType<typeof sessionManagerFor>>[] = [];
   const fixtureProfiles = createProfileFixtureSet();
   const world = createCommandKernelTestWorld(fixtureProfiles.create);
-  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; general?: boolean; legalName?: string; livedName?: string } = {}) {
+  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other" | "conflicting" | "worksheet"; general?: boolean; legalName?: string; livedName?: string } = {}) {
     const h = await world.createHarness(undefined, { descriptors: [descriptor], publishQueued: (run, publication) => {
       assert.ok(publication);
       createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -61,22 +61,23 @@ export function createOnboardingRunWorld() {
     const repository = h.database.authority.workbooks;
     const library = createWorkbookLibraryService({ repository, clock: h.clock, sync: unexpectedWorkbookSync });
     const key = "hire@example.test";
-    function sheet(id: string, email: string) {
+    function sheet(id: string, email: string, legalName = options.legalName ?? "Fixture Hire") {
       return { id, name: id, width: ONBOARDING_ROSTER_FIELDS.length, hidden: [], headerRow: 1,
         columnBindings: ONBOARDING_ROSTER_FIELDS.map((fieldId, index) => ({ id: `${id}-${index}`, sourceColumn: index,
           sourceHeader: fieldId, fieldId, basis: "manual" })),
         rows: [{ id: `${id}-header`, cells: ONBOARDING_ROSTER_FIELDS.map(value => ({ value })) },
-          { id: `${id}-person`, cells: [email, options.legalName ?? "Fixture Hire", options.livedName ?? null, null, null].map(value => ({ value })) },
+          { id: `${id}-person`, cells: [email, legalName, options.livedName ?? null, null, null].map(value => ({ value })) },
           ...(match === "duplicate" && id === "people" ? [{ id: "people-second",
             cells: [email, "Second Hire", null, null, null].map(value => ({ value })) }] : [])] };
     }
     const saved = library.create({ name: "Synthetic.xlsx", themes: [], hasFormulas: false,
-      sheets: [sheet("people", match === "missing" ? "other@example.test" : key), sheet("archive", "other@example.test")] });
+      sheets: [sheet("people", match === "missing" ? "other@example.test" : key), sheet("archive", options.second === "worksheet" ? key : "other@example.test")] });
     repository.putType({ id: "onboarding-roster", name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
     if (options.general !== true) library.operatorOperation(saved.libraryId, "declare-type", { kind: "metadata", expectedVersion: 1,
       metadata: { typeId: "onboarding-roster", sharePoint: null } });
-    const second = options.second === undefined ? undefined : library.create({ name: "Other roster.xlsx", themes: [], hasFormulas: false,
-      sheets: [sheet("people", options.second === "same" ? (match === "missing" ? "other@example.test" : key) : "elsewhere@example.test"), sheet("archive", "other@example.test")] });
+    const second = options.second === undefined || options.second === "worksheet" ? undefined : library.create({ name: "Other roster.xlsx", themes: [], hasFormulas: false,
+      sheets: [sheet("people", options.second === "other" ? "elsewhere@example.test" : match === "missing" ? "other@example.test" : key,
+        options.second === "conflicting" ? "Other Hire" : undefined), sheet("archive", "other@example.test")] });
     if (second !== undefined && options.general !== true) library.operatorOperation(second.libraryId, "declare-type", { kind: "metadata", expectedVersion: 1,
       metadata: { typeId: "onboarding-roster", sharePoint: null } });
     const config = h.database.authority.runtimeConfig.get(); assert.ok(config);
@@ -90,7 +91,7 @@ export function createOnboardingRunWorld() {
       versionId: library.libraryVersion(saved.libraryId).version.id, sheetId: "people", expectedVersion: version,
       ...(options.selectedRow ? { selectedRow: { sheetId: "people", rowId: "people-person" } } : {}) };
     const request = { workflowId: descriptor.id, submissions: [{ email: key, mode: options.mode ?? "new-hire", configuredJobEndDate: "06/30/2027" }],
-      dryRun: options.dryRun ?? false, workbookReferences: second === undefined ? [selection]
+      dryRun: options.dryRun ?? false, workbookReferences: options.second === "worksheet" ? [selection, { ...selection, sheetId: "archive" }] : second === undefined ? [selection]
         : [selection, { entry: 1, libraryId: second.libraryId, versionId: library.libraryVersion(second.libraryId).version.id, sheetId: "people",
           expectedVersion: library.read(second.libraryId).version }] };
     const plan = (value: unknown = request) => {
@@ -155,7 +156,7 @@ export function createOnboardingRunWorld() {
   type ExecutionFault = "gate-missing" | "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
 
   async function executionFixture(corruptAssertedSubject = false, options: {
-    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other"; legalName?: string; livedName?: string; crmReadFails?: boolean;
+    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other" | "conflicting" | "worksheet"; legalName?: string; livedName?: string; crmReadFails?: boolean;
     personMatch?: z.output<typeof SearchPersonMatchOutputSchema>; ssn?: string;
     /** The operator cancels when the library patch starts after filing, so the run ends cancelled with its receipts committed. */
     cancelAfterFiling?: boolean;
@@ -212,7 +213,8 @@ export function createOnboardingRunWorld() {
         throw new Error("fixture: the cancel stops the library patch");
       }
       return createWorkbookLibraryAdapter({ runId: run.envelope.runId, repository: f.repository, clock: f.clock,
-        references: { runId: run.envelope.runId, write: command => workbooks.write(run, command), readFields: command => workbooks.readReferenceFields(run, command) } }).invoke(request, invocation);
+        references: { runId: run.envelope.runId, write: command => workbooks.write(run, command), writeCopies: command => workbooks.writeCopies(run, command),
+          readFields: command => workbooks.readReferenceFields(run, command) } }).invoke(request, invocation);
     } };
     const rawExecution = canonicalChildExecution({ descriptor, stores: taskStoreRegistry, authority: f.database,
       lifecycle, sessions: manager, emitter, writeSequencer,

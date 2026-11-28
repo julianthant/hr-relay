@@ -18,6 +18,7 @@ export const OcrParentInputSchema = z.strictObject({
   readingId: ItemIdSchema,
   formType: OcrFormTypeSchema,
   roster: OcrWorkbookRosterEvidenceSchema.nullable(),
+  rosterChoice: z.literal("required").optional(),
   extractWithOcr: z.boolean().optional(),
   reading: z.discriminatedUnion("kind", [Subscription, Manual]),
 });

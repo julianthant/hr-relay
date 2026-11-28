@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { WorkbookIdSchema, WorkbookCellValuesSchema } from "../../dashboard/workbooks.js";
+import { WorkbookIdSchema, WorkbookCellValuesSchema, WorkbookOperationReceiptSchema } from "../../dashboard/workbooks.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 import { FingerprintSchema, taskId } from "../../../rules/identity/ids.js";
 
@@ -19,11 +19,18 @@ export const WorkbookReferenceWriteSchema = z.strictObject({ kind: z.literal("pa
 export const WorkflowWorkbookCommandSchema = z.union([z.strictObject({ name: text, table: WorkbookTableSchema }), WorkbookReferenceWriteSchema]);
 export type WorkflowWorkbookCommand = z.output<typeof WorkflowWorkbookCommandSchema>;
 export const WorkbookRefusalSchema = z.strictObject({ state: z.literal("refused"), code: z.enum(["WORKBOOK_INVALID", "WORKBOOK_NOT_FOUND", "WORKBOOK_VERSION_CONFLICT", "WORKBOOK_STORAGE_CORRUPT", "WORKBOOK_STORAGE_FAILED", "WORKBOOK_OPERATION_CONFLICT", "WORKBOOK_METADATA_UNSUPPORTED", "WORKBOOK_REVISION_UNAVAILABLE", "WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE"]), message: text });
+const rowAddress = { libraryId: WorkbookIdSchema, sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema };
+export const WorkbookBatchResultSchema = z.strictObject({ state: z.literal("batch-recorded"), rows: z.discriminatedUnion("state", [
+  z.strictObject({ ...rowAddress, state: z.literal("recorded"), operationId: WorkbookIdSchema,
+    receiptState: WorkbookOperationReceiptSchema.shape.state, reason: WorkbookOperationReceiptSchema.shape.reason }),
+  WorkbookRefusalSchema.extend(rowAddress),
+]).array().min(2) });
 export const WorkflowWorkbookResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("saved"), operationId: text, libraryId: WorkbookIdSchema, version: z.number().int().positive() }),
   z.strictObject({ state: z.literal("recorded"), operationId: text, libraryId: WorkbookIdSchema, version: z.number().int().positive(),
     receiptState: z.enum(["applied", "resolve-required", "refused"]) }),
   WorkbookRefusalSchema,
+  WorkbookBatchResultSchema,
 ]);
 export const ReadWorkbookResult = defineTaskContract({
   id: taskId("workbooks/read-result"), title: "Save workflow workbook", effect: "read",

@@ -8,12 +8,13 @@ import { PositiveIntSchema } from "../../rules/identity/ids.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { EMERGENCY_CONTACT_SCENARIOS } from "../emergency-contact-member/workflow.js";
 import { EMPLOYEE_REFERENCE_CHECK } from "../../models/processing/workbooks/reference-fields.js";
+import { WORKSHEET_ROW_CHOICE_GATE } from "../../models/processing/workbooks/reference-choice.js";
 import { usesOcrProvider } from "../../models/workflows/ocr/input.js";
 
 const UNNAMED_PDF_TITLE = "Emergency Contact PDF";
 
 export const emergencyContactWorkflow = defineWorkflow({
-  id: "emergency-contact", version: 1, code: "ec", label: "Emergency Contact", icon: "Users", category: "documents",
+  id: "emergency-contact", version: 2, code: "ec", label: "Emergency Contact", icon: "Users", category: "documents",
   summary: "Reads and releases a PDF, then delegates exactly its approved records for primary contact previews.",
   requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] }, workbookCheck: EMPLOYEE_REFERENCE_CHECK, input: EmergencyContactInputSchema, canonicalInput: EmergencyContactCanonicalInput,
   inputSubject: "document", surface: { shape: "operation" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
@@ -29,6 +30,7 @@ export const emergencyContactWorkflow = defineWorkflow({
   presentation: { title: input => input.fileName ?? UNNAMED_PDF_TITLE, subtitle: () => "Approved PDF records" },
   scenarios: EMERGENCY_CONTACT_SCENARIOS,
   nodePurposes: [
+    { nodeId: WORKSHEET_ROW_CHOICE_GATE, purpose: "Wait for the operator to select a retained row for each conflicting roster employee." },
     { nodeId: "read-document", purpose: "Await the direct OCR child and its operator release before any contact acquisition." },
     { nodeId: "approved-records", purpose: "Read the immutable current approved snapshot through authenticated child lineage." },
     { nodeId: "read-result", purpose: "Retain the exact released reference and settled member outcomes in a schema-owned result." },
@@ -36,7 +38,7 @@ export const emergencyContactWorkflow = defineWorkflow({
   ],
   rows: [
     { key: "ocr-source-pages", label: "Prepare source pages", members: [{ workflow: "ocr", step: "source-pages" }], target: { workflow: "ocr", step: "source-pages" } },
-    { key: "read-emergency-contact", label: "Read emergency contact", members: [{ step: "read-document", nodes: ["read-document"] },
+    { key: "read-emergency-contact", label: "Read emergency contact", members: [{ step: "read-document", nodes: [WORKSHEET_ROW_CHOICE_GATE, "read-document"] },
       { workflow: "ocr", step: "page-readings" }], target: { workflow: "ocr", step: "page-readings" } },
     { key: "ocr-group-records", label: "Group records for review", members: [{ workflow: "ocr", step: "review-records" }], target: { workflow: "ocr", step: "review-records" } },
     { key: "match-extracted-people", label: "Match extracted people", members: [{ step: "read-document", nodes: ["approved-records"] },

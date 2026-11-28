@@ -12,6 +12,7 @@ import { createTimelineEmitter } from "../../../../src/backend/storage/events/ti
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
+import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/execution/durable-child-executor.js";
@@ -41,7 +42,9 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
       emitter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
     } });
   const unused = (): never => { throw new Error("unrequested canonical fixture effect"); };
+  const workbookRows = createRunWorkbookService({ database, clock, resolveDescriptor: resolve });
   const kernel = createCommandKernel({ authority: database, lifecycle, clock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
+    workbookRows,
     ...(options?.ocrProviderAvailable === undefined ? {} : { ocrProviderAvailable: options.ocrProviderAvailable }),
     ensureReceipt: runId => {
       const run = database.authority.runs.get(runId); assert.ok(run);

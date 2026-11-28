@@ -9,6 +9,10 @@ import { deriveItemId } from "../identity/logical-item.js";
 import { deriveStableUuid } from "../identity/stable-uuid.js";
 import { parseUsOrIsoDate } from "../../models/fields/cell-coercion.js";
 import { ocrRecordSourcePages } from "../../models/ocr/review-record.js";
+import { decodeWorkbookReference, WorkbookReferenceReadSchema } from "../../models/processing/workbooks/read-reference.js";
+import type { WorkbookCellValuesSchema } from "../../models/dashboard/workbooks.js";
+import { canonicalJsonStringify } from "../validation/canonical-json.js";
+import { resolveWorksheetRows } from "../spreadsheets/reference-rows.js";
 
 type Person = z.output<typeof I9CheckPeopleSchema>["people"][number];
 const mergeFields = ["firstName", "lastName", "dob", "ssn", "hireDate"] as const;
@@ -58,35 +62,58 @@ export function i9CheckApprovedPeople({ request, selection }: z.output<typeof Re
   return I9CheckPeopleSchema.parse({ people: [...people.values()] });
 }
 
-export function i9CheckPersonRequests({ request, people, reference }: z.output<typeof ReadI9CheckRequests.input>) {
-  if (reference.reference.request.typeId !== I9_CHECK_REFERENCE.typeId || reference.reference.snapshot.type.keyFieldId !== "eid") {
-    throw new Error("i9-check-reference-unavailable");
+export function resolveI9WorksheetRows(read: z.output<typeof WorkbookReferenceReadSchema>) {
+  const keys = read.reference.request.keys;
+  const sources = read.sources.map(source => ({ referenceDigest: source.referenceDigest, ...decodeWorkbookReference(source.reference) }));
+  const first = read.sources[0];
+  if (first === undefined || first.referenceDigest !== read.referenceDigest
+    || canonicalJsonStringify(first.reference) !== canonicalJsonStringify(read.reference)
+    || new Set(sources.map(source => source.referenceDigest)).size !== sources.length
+    || sources.some(({ request, snapshot }) => request.typeId !== I9_CHECK_REFERENCE.typeId || snapshot.type.keyFieldId !== "eid"
+      || snapshot.rows.length !== keys.length || snapshot.rows.some((row, index) => row.key !== keys[index])
+      || canonicalJsonStringify(request.fields) !== canonicalJsonStringify(I9_CHECK_REFERENCE.fields))) {
+    throw new Error("i9-check-reference-membership-mismatch");
   }
-  const facts = reference.reference, snapshot = facts.snapshot;
-  if (snapshot.rows.length !== people.people.length || snapshot.rows.some((row, index) => row.key !== people.people[index]?.eid)) throw new Error("i9-check-reference-membership-mismatch");
+  return keys.map((key, index) => ({ key, resolution: resolveWorksheetRows(sources.flatMap(({ referenceDigest, snapshot }) =>
+    snapshot.rows[index].matches.map(match => ({ ...match, referenceDigest }))), row => row.values) }));
+}
+
+function retentionRosterRow(values: z.output<typeof WorkbookCellValuesSchema>, asOf: string) {
+  const cell = (field: string) => {
+    const value = values[field];
+    if (value === undefined) throw new Error("i9-check-reference-field-unavailable");
+    return typeof value === "object" && value !== null ? value.value.slice(0, 10) : value;
+  };
+  const date = cell("separationDate");
+  const separationDate = date === null || date === "" ? null : typeof date === "string" ? parseUsOrIsoDate(date, `${asOf}T00:00:00.000Z`) : null;
+  if (date !== null && date !== "" && separationDate === null) throw new Error("i9-check-roster-date-invalid");
+  const identifier = (field: string) => {
+    const value = cell(field);
+    return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? String(value) : value;
+  };
+  return I9RosterRowSchema.parse({ eid: identifier("eid"), ppsEid: identifier("ppsEid"), separationDate, action: cell("roster.action") });
+}
+
+export function i9CheckPersonRequests({ request, people, reference, choice }: z.output<typeof ReadI9CheckRequests.input>) {
+  const resolved = resolveI9WorksheetRows(reference);
+  const conflicts = resolved.filter(({ resolution }) => resolution.state === "ambiguous");
+  if (conflicts.length !== (choice?.rows.length ?? 0) || choice !== undefined && choice.referenceDigest !== reference.referenceDigest
+    || resolved.length !== people.people.length || resolved.some(({ key }, index) => key !== people.people[index]?.eid)) {
+    throw new Error("i9-check-reference-membership-mismatch");
+  }
   const children = people.people.map((person, index) => {
-    const matches = snapshot.rows[index].matches;
-    const rows = matches.map(match => {
-      const cell = (field: string) => {
-        const found = match.values.filter(cell => cell.fieldId === field);
-        if (found.length !== 1) throw new Error("i9-check-reference-field-unavailable");
-        const value = found[0].value;
-        return typeof value === "object" && value !== null ? value.value.slice(0, 10) : value;
-      };
-      const date = cell("separationDate");
-      const separationDate = date === null || date === "" ? null : typeof date === "string" ? parseUsOrIsoDate(date, `${request.asOf}T00:00:00.000Z`) : null;
-      if (date !== null && date !== "" && separationDate === null) throw new Error("i9-check-roster-date-invalid");
-      const identifier = (field: string) => {
-        const value = cell(field);
-        return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? String(value) : value;
-      };
-      return I9RosterRowSchema.parse({ eid: identifier("eid"), ppsEid: identifier("ppsEid"), separationDate, action: cell("roster.action") });
-    });
+    const { resolution } = resolved[index];
+    const selected = choice?.rows.find(row => row.key === person.eid);
+    const match = resolution.state === "resolved" ? resolution.row : resolution.state === "missing" ? undefined
+      : resolution.rows.find(row => selected?.referenceDigest === row.referenceDigest && selected.sheetId === row.sheetId && selected.rowId === row.rowId);
+    if (resolution.state === "ambiguous" && match === undefined) throw new Error("i9-check-reference-choice-invalid");
+    const rows = match === undefined ? [] : [retentionRosterRow(match.values, request.asOf)];
     if (rows.some(row => row.eid !== person.eid)) throw new Error("i9-check-reference-person-mismatch");
     return I9CheckInput.parse({ ocrRunId: person.ocrRunId, recordId: person.recordId, person: person.person,
       asOf: request.asOf, reviewerName: request.reviewerName, roster: { rows } });
   });
-  return ReadI9CheckRequests.output.parse({ people: people.people, children, reference: facts });
+  return ReadI9CheckRequests.output.parse({ people: people.people, children, reference: reference.reference,
+    ...(reference.sources.length > 1 ? { referenceSources: reference.sources } : {}) });
 }
 
 export function i9CheckBatchRows({ batchKey, prepared, outcomes }: z.output<typeof ReadI9CheckRows.input>) {
@@ -99,5 +126,6 @@ export function i9CheckBatchRows({ batchKey, prepared, outcomes }: z.output<type
     return { eid: person.eid, sources: person.sources, result: outcome.output };
   });
   return I9CheckBatchRowsSchema.parse({ batchKey, personCount: people.length, reference: prepared.reference,
+    ...(prepared.referenceSources === undefined ? {} : { referenceSources: prepared.referenceSources }),
     people, tracker: { rows: people.map(person => person.result.row) } });
 }

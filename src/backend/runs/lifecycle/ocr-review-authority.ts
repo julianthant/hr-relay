@@ -9,6 +9,7 @@ import type { OperatorGateResultRecord } from "../../../models/workflow/gates.js
 import { childRunOutcomeSchema } from "../../../models/workflow/graph.js";
 import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
 import { OcrInputSchema } from "../../../models/workflows/ocr/input.js";
+import { WorksheetRowChoiceSchema } from "../../../models/processing/workbooks/reference-choice.js";
 import { ReadOcrResult } from "../../../models/workflows/ocr/read-result.js";
 import { ReadOcrReviewSeed } from "../../../models/workflows/ocr/read-review-seed.js";
 import { hydrateOcrReviewSeed, compactOcrReviewSeed, type OcrReviewSeed } from "../../../models/workflows/ocr/review-seed.js";
@@ -19,6 +20,8 @@ import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/ide
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { chooseOcrRoster } from "../../../rules/spreadsheets/ocr-roster.js";
+import { authenticateWorkbookReferenceExecution } from "../workbooks.js";
 import { authorizeWorkflowDelegationRefresh, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
@@ -122,12 +125,15 @@ export function assertOcrReviewChildrenCurrent(repositories: AuthorityRepositori
 
 export function readOcrReviewCheckpointSeed(repositories: AuthorityRepositories, ocrRun: RunRecord, checkpointValue: unknown): OcrReviewSeed {
   try {
+    const input = OcrInputSchema.parse(ocrRun.input.parsed.value);
+    const choice = input.rosterChoice === undefined ? undefined
+      : WorksheetRowChoiceSchema.parse(authenticateWorkbookReferenceExecution(repositories, ocrRun)?.gate.result.value);
     return hydrateOcrReviewSeed(ReadOcrReviewSeed.output.parse(checkpointValue), extractionId => {
       const stored = repositories.ocrExtractions.get(extractionId);
       if (stored?.binding !== "source-bound") return undefined;
       const { binding: _binding, ...reading } = stored;
       return reading;
-    }, OcrInputSchema.parse(ocrRun.input.parsed.value).roster, "retained");
+    }, chooseOcrRoster(input, choice), "retained");
   } catch (cause) { throw new OcrReviewRefusedError({ cause }); }
 }
 

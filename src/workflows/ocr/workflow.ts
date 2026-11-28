@@ -8,7 +8,7 @@ export const ocrWorkflow = defineWorkflow({
   id: "ocr",
   requiredWorkbookFields: [...OCR_ROSTER_FIELDS],
   workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] },
-  version: 1,
+  version: 2,
   code: "oc",
   label: "OCR",
   summary: "Reads every original page, groups records and retains identity lookup outcomes for review.",

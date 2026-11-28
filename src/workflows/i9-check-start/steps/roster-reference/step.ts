@@ -1,5 +1,6 @@
 import { ReadWorkbookReference } from "../../../../models/processing/workbooks/read-reference.js";
-import { ReadI9CheckRequests } from "../../../../models/workflows/i9-check-start/read-requests.js";
+import { ReadI9CheckReferenceConflicts, ReadI9CheckRequests } from "../../../../models/workflows/i9-check-start/read-requests.js";
+import { WORKSHEET_ROW_CHOICE_GATE, WorksheetRowChoiceSchema } from "../../../../models/processing/workbooks/reference-choice.js";
 import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../models/workflows/i9-check/start.js";
 import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
@@ -15,7 +16,7 @@ const step = Object.freeze({
         id: "retention-roster",
         title: "Retention roster",
         mode: "Read only",
-        nodeIds: ["read-reference", "read-requests"],
+        nodeIds: ["read-reference", "read-reference-conflicts", WORKSHEET_ROW_CHOICE_GATE, "read-requests"],
         lines: [
           { id: "reference", kind: "read", text: "Read the captured roster version for the approved people.", nodeIds: ["read-reference"] },
           { id: "captured", kind: "check", text: "Keep the captured spreadsheet version and worksheet rows selected when the run started.", nodeIds: ["read-reference"] },
@@ -43,19 +44,25 @@ export function buildRosterReference(author: Author, documents: ReturnType<typeo
   const reference = author.task(entries.task("read-reference", ReadWorkbookReference, { replay: "checkpoint" }), [documents.people], ({ outputs }) => ({
     typeId: I9_CHECK_REFERENCE.typeId, keys: outputs["read-people"].people.map(person => person.eid),
   }));
-  const prepared = author.task(entries.task("read-requests", ReadI9CheckRequests, { replay: "checkpoint" }), [documents.people, reference], ({ input, outputs }) => ({
-    request: input, people: outputs["read-people"], reference: outputs["read-reference"],
+  const conflicts = author.task(entries.task("read-reference-conflicts", ReadI9CheckReferenceConflicts, { replay: "checkpoint" }), [reference],
+    ({ outputs }) => outputs["read-reference"]);
+  const choice = author.gate({ ...entries.operatorGate(WORKSHEET_ROW_CHOICE_GATE, { label: "Choose roster rows", result: WorksheetRowChoiceSchema }),
+    when: { kind: "is-true", of: { from: "node", nodeId: "read-reference-conflicts", path: "needsChoice" } } }, [reference, conflicts]);
+  const prepared = author.task(entries.task("read-requests", ReadI9CheckRequests, { replay: "checkpoint" }), [documents.people, reference, choice], ({ input, outputs }) => ({
+    request: input, people: outputs["read-people"], reference: outputs["read-reference"], ...(outputs[WORKSHEET_ROW_CHOICE_GATE] === undefined ? {} : { choice: outputs[WORKSHEET_ROW_CHOICE_GATE] }),
   }));
-  return { prepared, reference, steps: [[step, [reference, prepared]]] as const,
+  return { prepared, reference, steps: [[step, [reference, conflicts, choice, prepared]]] as const,
     result: author.result(ReadI9CheckRequests.output, [prepared], ({ outputs }) => outputs["read-requests"]) };
 }
 export const i9CheckStartRosterReferenceDefinition = defineStep({ group: step, build: buildRosterReference,
   nodePurposes: [
     { nodeId: "read-reference", purpose: "Read discovered people from the immutable roster version captured for this Start." },
+    { nodeId: "read-reference-conflicts", purpose: "Find selected roster rows that disagree for an approved person." },
+    { nodeId: WORKSHEET_ROW_CHOICE_GATE, purpose: "Wait for the operator to choose one captured row for each conflicting employee." },
     { nodeId: "read-requests", purpose: "Bind exact worksheet rows and retention evidence to each approved person." },
   ],
   proof: { id: "i9-check-start-roster-reference", order: 26, build: (parent: WorkflowDefinition<typeof I9CheckStartInput>) => ({
-    ...inheritStepProof(parent), code: "icsr", label: "I-9 reference lookup", summary: "Proves exact selected-version membership after PDF review.",
+    ...inheritStepProof(parent), version: 2, code: "icsr", label: "I-9 reference lookup", summary: "Proves exact selected-version membership after PDF review.",
     steps: (author: Author) => {
       const documents = buildDocuments(author), reference = buildRosterReference(author, documents);
       return { steps: [...documents.steps, ...reference.steps], result: reference.result };

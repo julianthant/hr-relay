@@ -1,4 +1,4 @@
-import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
+import { buildRunWorkbookSection, createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
 import { createWorkbookLibraryAdapter } from "../../../../src/backend/processing/providers/workbook-library-adapter.js";
 import { REFERENCE_CHECK_ID } from "../../../../src/models/processing/workbooks/reference-fields.js";
 import { ocrModule } from "../registered-workflows.js";
@@ -81,6 +81,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       onSpan?: (event: Parameters<SpanEmitter["emit"]>[0]) => void;
       onTransactionSettled?: (run: RunRecord) => void;
       adoptExisting?: boolean; ids?: { readonly uuid: () => string }; documentBytes?: Uint8Array;
+      rosterSheets?: "agreeing" | "conflicting";
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void;
       /** Extra library spreadsheets the Emergency Contact parent picks as the second check; `rows` follow the header row, so the first data row is sheet row 2. */
       checks?: readonly Readonly<{ name: string; sheet: string; fields: readonly string[]; rows: readonly (readonly string[])[] }>[] }> = {}) {
@@ -154,11 +155,18 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       const { database, path, clock } = harness.authority;
       const workbooks = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
       const runWorkbooks = createRunWorkbookService({ database, clock });
-      const roster = options.adoptExisting === true ? undefined : workbooks.create({ name: "OCR roster", themes: [], hasFormulas: false, sheets: [{
-        id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
-        columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" })),
-        rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }],
-      }] });
+      const rosterSheet = (id: string, data: readonly (readonly [string, string])[]) => ({
+        id, name: id === "people" ? "People" : "Archive", width: 2, hidden: [], headerRow: 1,
+        columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+        rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }, ...data.map(([eid, name], index) => ({
+          id: `person-${index}`, cells: [{ value: eid }, { value: name }],
+        }))],
+      });
+      const roster = options.adoptExisting === true ? undefined : workbooks.create({ name: "OCR roster", themes: [], hasFormulas: false,
+        sheets: options.rosterSheets === undefined ? [rosterSheet("people", [])] : [
+          rosterSheet("people", [["10000001", "Example, Alex"]]),
+          rosterSheet("archive", [["10000001", options.rosterSheets === "agreeing" ? "Example, Alex" : "Example, Alexander"], ["10000002", "Example, Jamie"]]),
+        ] });
       if (roster !== undefined) {
         database.authority.workbooks.putType({ id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null });
         workbooks.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
@@ -284,9 +292,9 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         reading: options.extractWithOcr === false || options.ocrProviderAvailable !== undefined ? { kind: "subscription" }
           : { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
       assert.ok(roster);
-      const workbookReferences = options.retainedProducer === true || root.descriptor.workbookReference?.id !== "ocr-roster" ? undefined : [{ entry: 1, libraryId: roster.libraryId,
+      const workbookReferences = options.retainedProducer === true || root.descriptor.workbookReference?.id !== "ocr-roster" ? undefined : [...roster.workbook.sheets.map(({ id: sheetId }) => ({ entry: 1, libraryId: roster.libraryId,
               versionId: database.authority.workbooks.libraryState(roster.libraryId).selectedVersionId,
-              sheetId: "people", expectedVersion: workbooks.read(roster.libraryId).version }, ...(options.checks ?? []).map(check => {
+              sheetId, expectedVersion: workbooks.read(roster.libraryId).version })), ...(options.checks ?? []).map(check => {
                 const extra = workbooks.create({ name: check.name, themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: check.sheet, width: check.fields.length, hidden: [], headerRow: 1,
                   columnBindings: check.fields.map((fieldId, index) => ({ id: `check-${String(index)}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
                   rows: [{ id: "header", cells: check.fields.map(value => ({ value })) }, ...check.rows.map((cells, index) => ({ id: `row-${String(index)}`, cells: cells.map(value => ({ value })) }))] }] });
@@ -330,6 +338,23 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
         return { run: database.authority.runs.get(parentRun.envelope.runId), outcomes };
       };
       let result = options.holdPages === true ? await executeToPages() : options.pauseAtLookup === true ? await executeToLookup() : await canonical.execute(parentRun, signal);
+      if (options.rosterSheets === "conflicting") {
+        const parked = result.run;
+        assert.ok(parked?.lifecycle.state === "parked-gate" && parked.lifecycle.gateId === "worksheet-row-choice");
+        assert.deepEqual(database.authority.runs.listChildren(parked.envelope.runId), []);
+        const choice = buildRunWorkbookSection(database.authority, parked).referenceChoices?.[0];
+        assert.ok(choice?.resolution.state === "available");
+        assert.deepEqual(choice.resolution.candidates.map(row => row.sheetId), ["people", "archive"]);
+        const row = choice.resolution.candidates.find(row => row.sheetId === "archive");
+        assert.ok(row?.referenceDigest !== undefined && row.workbookVersion !== undefined);
+        const command = { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "run-detail",
+          family: "run", type: "resolve-workbook-reference-row", target: choice.resolution.target,
+          payload: { referenceDigest: row.referenceDigest, workbookVersion: row.workbookVersion, sheetId: row.sheetId, rowId: row.rowId } } as const;
+        assert.equal(canonical.kernel.execute({ ...command, commandId: randomUUID(), payload: { ...command.payload, rowId: "person-1" } }).state, "rejected");
+        const applied = canonical.kernel.execute(command);
+        assert.equal(applied.state, "applied", JSON.stringify(applied));
+        result = await canonical.execute(parentRun, signal);
+      }
       if ((failedPage || failedSigner) && options.stopAfterPageFailure !== true && result.run?.lifecycle.state === "queued") {
         const continued = await canonical.execute(parentRun, new AbortController().signal);
         result = { ...continued, outcomes: [...result.outcomes, ...continued.outcomes] };

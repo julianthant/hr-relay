@@ -776,7 +776,9 @@ export function buildHireWrites(author: WorkflowAuthor<typeof OnboardingInput>, 
       hireWrite,
     };
     if (filled === undefined) return { ...result, state: "completed-with-manual-steps" as const, rosterAccess: omitted(masterGroup.key) };
-    return { ...result, state: filled.state === "recorded" && filled.receiptState === "applied" ? "filed" as const : "master-review-required" as const, rosterAccess: filled };
+    const applied = filled.state === "recorded" && filled.receiptState === "applied"
+      || filled.state === "batch-recorded" && filled.rows.every(row => row.state === "recorded" && row.receiptState === "applied");
+    return { ...result, state: applied ? "filed" as const : "master-review-required" as const, rosterAccess: filled };
   }) };
 }
 

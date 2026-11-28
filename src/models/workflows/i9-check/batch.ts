@@ -42,9 +42,11 @@ export const I9_CHECK_BATCH_TASK_POLICY = {
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: [],
 } as const;
 
+export const I9CheckReferenceSourcesSchema = WorkbookReferenceReadSchema.shape.sources.min(2).optional();
+
 export const I9CheckBatchRowsSchema = z.strictObject({
   batchKey: FingerprintSchema, personCount: z.number().int().positive(), tracker: I9CheckRowsSchema,
-  reference: WorkbookReferenceReadSchema.shape.reference,
+  reference: WorkbookReferenceReadSchema.shape.reference, referenceSources: I9CheckReferenceSourcesSchema,
   people: z.array(z.strictObject({ eid: EidSchema, sources: z.array(I9CheckSourceSchema).min(1), result: ReadRetentionRow.output })).min(1),
 }).refine(value => value.personCount === value.people.length && value.personCount === value.tracker.rows.length
   && new Set(value.people.map(person => person.eid)).size === value.personCount

@@ -10,7 +10,7 @@ import { onboardingHireWritesDefinition, buildHireReview } from "./steps/hire-re
 import { defineReferenceCheck } from "../../workflow-kit/reference-check.js";
 
 export const onboardingWorkflow = defineWorkflow({
-  id: "onboarding", version: 3, code: "on", label: "Onboarding", icon: "UserPlus", category: "onboarding",
+  id: "onboarding", version: 4, code: "on", label: "Onboarding", icon: "UserPlus", category: "onboarding",
   requiredWorkbookFields: [...ONBOARDING_ROSTER_FIELDS],
   workbookReference: { id: ONBOARDING_ROSTER_TYPE_ID, keyFieldId: "email", mode: "keys", writableFields: [...ONBOARDING_ROSTER_OUTPUT_FIELDS] },
   referenceCheck: defineReferenceCheck({ key: "email", input: { email: "email" }, manual: "values", outputs: {

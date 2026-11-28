@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { SavedWorkbookSchema, EditableWorkbookSchema, type WorkbookOperationReceipt } from "../../models/dashboard/workbooks.js";
-import { WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema, type WorkbookReferenceWriteSchema } from "../../models/processing/workbooks/read-result.js";
+import { WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema, WorkbookBatchResultSchema, type WorkbookReferenceWriteSchema } from "../../models/processing/workbooks/read-result.js";
 import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema } from "../../models/processing/workbooks/read-reference.js";
 import { ReadReferenceFieldsRequestSchema, ReadReferenceFieldsResultSchema } from "../../models/processing/workbooks/reference-fields.js";
 import { RunIdSchema, WorkflowIdSchema, DateOnlySchema } from "../../rules/identity/ids.js";
@@ -13,6 +13,7 @@ import { type WorkbookLibraryRepository } from "./workbook-library-service.js";
 export function createWorkflowWorkbookService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock;
   publicationSource?: () => Readonly<{ workflowId: string; workflowLabel: string; partitionDay: string }>;
   references?: Readonly<{ runId: string; write(command: z.infer<typeof WorkbookReferenceWriteSchema>): WorkbookOperationReceipt;
+    writeCopies?(command: z.infer<typeof WorkbookReferenceWriteSchema>): z.infer<typeof WorkbookBatchResultSchema> | undefined;
     read?(command: z.infer<typeof WorkbookReferenceReadRequestSchema>): z.infer<typeof WorkbookReferenceReadSchema>;
     readFields?(command: z.infer<typeof ReadReferenceFieldsRequestSchema>): z.infer<typeof ReadReferenceFieldsResultSchema> }>;
 }>) {
@@ -38,6 +39,8 @@ export function createWorkflowWorkbookService(deps: Readonly<{ repository: Workb
       if ("kind" in command) {
         signal.throwIfAborted();
         if (deps.references === undefined || deps.references.runId !== runId) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const copies = deps.references.writeCopies?.(command);
+        if (copies !== undefined) return WorkbookBatchResultSchema.parse(copies);
         const result = deps.references.write(command);
         return WorkflowWorkbookResultSchema.parse({ state: "recorded", operationId: result.operationId,
           libraryId: result.libraryId, version: result.version, receiptState: result.state });

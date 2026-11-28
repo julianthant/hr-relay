@@ -108,7 +108,7 @@ export function createRunResourcesFactory(input:Readonly<{
       return {workflowId:module.descriptor.id,workflowLabel:module.descriptor.label,partitionDay:searchPartitionDay(new Date(run.envelope.enqueuedAt))};
      },
       references:{runId:run.envelope.runId,read:command=>runWorkbooks.read(run,command),readFields:command=>runWorkbooks.readReferenceFields(run,command),
-        write:command=>runWorkbooks.write(run,command)}}),
+        write:command=>runWorkbooks.write(run,command),writeCopies:command=>runWorkbooks.writeCopies(run,command)}}),
     "ocr.approved-snapshot":createOcrApprovedSnapshotAdapter({clock:input.clock,...(approvedOcr===undefined?{}:{reader:approvedOcr})}),
    })},...(input.runReader===undefined?{}:{publishCheckpoint:createOcrCheckpointPublication(input.runReader,run,resolveDescriptor)})});
    if(["ocr","ocr-page"].includes(run.envelope.workflow)&&resources.publishCheckpoint===undefined)throw new OcrPublicationRefusedError();

@@ -1,6 +1,7 @@
 /** Declared gate decisions: how a stored `gate_results` row becomes the receipt's decision-evidence row, with each gate decision scoped by its own workflow and gate. */
 import { z } from "zod";
 import { referenceComparisonForGate } from "../processing/workbooks/reference-fields.js";
+import { WORKSHEET_ROW_CHOICE_GATE } from "../processing/workbooks/reference-choice.js";
 import { GateIdSchema, WorkflowIdSchema, NodeIdSchema } from "../../rules/identity/ids.js";
 import { EvidenceLeafPathSchema } from "./evidence-classification.js";
 import { OcrApprovalReferenceSchema } from "../workflows/ocr/result.js";
@@ -66,6 +67,16 @@ export const GateDecisionDeclarationSchema = z.strictObject({
 export type GateDecisionDeclaration = z.infer<typeof GateDecisionDeclarationSchema>;
 
 export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze([
+  ...["i9-check-start", "i9-check-start-roster-reference", "i9-check-start-retention"].map(workflowId => ({
+    workflowId, gateId: WORKSHEET_ROW_CHOICE_GATE, decisionPath: "decision", boundEvidencePath: "referenceDigest",
+    resolution: { source: "workbook-reference", boundNodeId: "read-reference", boundOutputPath: "referenceDigest" },
+    arms: [{ value: "selected", outcome: "taken", summary: "an operator selected retained worksheet rows for the retention review", label: "Use the selected rows" }],
+  })),
+  ...["ocr", "ocr-source-pages", "emergency-contact", "emergency-contact-read-document"].map(workflowId => ({
+    workflowId, gateId: WORKSHEET_ROW_CHOICE_GATE, decisionPath: "decision", boundEvidencePath: "referenceDigest",
+    resolution: { source: "workbook-reference", boundInputPath: "roster.referenceDigest", inputCondition: { path: "rosterChoice", equals: "required" } },
+    arms: [{ value: "selected", outcome: "taken", summary: "an operator selected retained worksheet rows for the employee roster", label: "Use the selected rows" }],
+  })),
   ...["crm-doc-download", "crm-doc-download-reference", "crm-doc-download-package-worksheets"].map(workflowId => ({
     workflowId, gateId: "document-row-choice", decisionPath: "decision", boundEvidencePath: "referenceDigest",
     resolution: { source: "workbook-reference", boundNodeId: "document-rows", boundOutputPath: "referenceDigest" },

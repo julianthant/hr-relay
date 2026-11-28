@@ -251,7 +251,7 @@ _No tasks registered — this store is a declaration-only placeholder._
 
 | Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| `workbooks/read-result` | Save workflow workbook | read | read | — (sessionless) | `workbooks.library` | [`name`, `table`] / [`kind`, `writeId`, `typeId`, `key`, `values`] | `state="saved"` + `operationId`, `libraryId`, `version` / `state="recorded"` + `operationId`, `libraryId`, `version`, `receiptState` / `state="refused"` + `code`, `message` | ∞ | bound |
+| `workbooks/read-result` | Save workflow workbook | read | read | — (sessionless) | `workbooks.library` | [`name`, `table`] / [`kind`, `writeId`, `typeId`, `key`, `values`] | `state="saved"` + `operationId`, `libraryId`, `version` / `state="recorded"` + `operationId`, `libraryId`, `version`, `receiptState` / `state="batch-recorded"` + per-row outcomes / `state="refused"` + `code`, `message` | ∞ | bound |
 | `workbooks/read-reference` | Read retained workbook reference | read | read | — (sessionless) | `workbooks.library` | `typeId`, `keys` | `state`, `referenceDigest`, `reference` | ∞ | bound |
 | `workbooks/read-reference-fields` | Compare reference fields | read | read | — (sessionless) | `workbooks.library` | `read`, `sheets`, `fields`, `approved`, `last` | `captured`, `matches`, `mismatches`, `review` | ∞ | bound |
 
@@ -292,12 +292,13 @@ _No tasks registered — this store is a declaration-only placeholder._
 
 ### `workflow:i9-check-start`
 
-**Kind:** workflow mini-store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 4 (4 read · 0 prepare · 0 commit)
+**Kind:** workflow mini-store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 5 (5 read · 0 prepare · 0 commit)
 
 | Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
 |---|---|---|---|---|---|---|---|---|---|
 | `workflow:i9-check-start/read-people` | Group approved I-9 sections by person | read | read | — (sessionless) | — | `request`, `selection` | `people` | ∞ | bound |
-| `workflow:i9-check-start/read-requests` | Bind the selected roster rows | read | read | — (sessionless) | — | `request`, `people`, `reference` | `people`, `children`, `reference` | ∞ | bound |
+| `workflow:i9-check-start/read-reference-conflicts` | Check for conflicting worksheet rows | read | read | — (sessionless) | — | `state`, `referenceDigest`, `reference`, `sources` | `needsChoice` | ∞ | bound |
+| `workflow:i9-check-start/read-requests` | Bind the selected roster rows | read | read | — (sessionless) | — | `request`, `people`, `reference`, `choice` | `people`, `children`, `reference`, `referenceSources` | ∞ | bound |
 | `workflow:i9-check-start/read-rows` | Collect one retention row per person | read | read | — (sessionless) | — | `batchKey`, `prepared`, `outcomes` | `batchKey`, `personCount`, `tracker`, `reference`, `people` | ∞ | bound |
 | `workflow:i9-check-start/read-publication` | Verify the results workbook and fill the tracker | read | read | — (sessionless) | — | `rows`, `workbook` | `batchKey`, `personCount`, `tracker`, `reference`, `people`, `workbook` | ∞ | bound |
 

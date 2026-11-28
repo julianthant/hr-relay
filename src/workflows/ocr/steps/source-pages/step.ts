@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ReadApprovedOcrSnapshot } from "../../../../models/processing/ocr/read-approved-snapshot.js";
+import { WORKSHEET_ROW_CHOICE_GATE, WorksheetRowChoiceSchema, type WorksheetRowChoice } from "../../../../models/processing/workbooks/reference-choice.js";
 import { ApprovedOcrRecordInputSchema } from "../../../../models/workflows/ocr/approved-record.js";
 import type { OcrApprovedSnapshot } from "../../../../models/ocr/review.js";
 import type { WorkflowRef } from "../../../../models/workflow/graph.js";
@@ -7,6 +8,7 @@ import type { StepManualDeclaration } from "../../../../models/workflow/step-omi
 import { EidSchema, type BrowserSystemId } from "../../../../rules/identity/ids.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
+import { chooseOcrRoster } from "../../../../rules/spreadsheets/ocr-roster.js";
 import { TaskError } from "../../../../workflow-kit/errors.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { ExtractPdfPages, PDF_PAGE_LIMIT } from "../../../../models/processing/extraction/extract-pdf-pages.js";
@@ -37,7 +39,7 @@ const SOURCE_COUNT: StepManualDeclaration = {
   ...DOCUMENT_VALUES,
   form: { fields: [{ key: "pageCount", label: "Original page count", kind: "integer", min: 1,
     help: "Relay renders the PDF to verify the count and bind the original pages." }] },
-  produces: {}, keeps: ["render-pages", "read-source-pages"],
+  produces: {}, keeps: [WORKSHEET_ROW_CHOICE_GATE, "render-pages", "read-source-pages"],
   refine: ({ pageCount }) => typeof pageCount === "number" && pageCount <= PDF_PAGE_LIMIT ? []
     : [{ field: "pageCount", message: `Enter a page count from 1 through ${PDF_PAGE_LIMIT}.` }],
   bindInput: (input, { pageCount }) => JsonValueSchema.parse(OcrInputSchema.parse({ ...OcrInputSchema.parse(input), assertedPageCount: pageCount })),
@@ -80,10 +82,14 @@ const UNGROUPED_RECORDS = leaveUnread("Record grouping", ["build-review"]);
 const UNVERIFIED_IDENTITIES = leaveUnread("Identity verification", ["lookup-identities"]);
 const UNVERIFIED_SIGNERS = leaveUnread("Signer verification", ["lookup-signers", "read-result"]);
 function reviewSeed(input: z.output<typeof OcrInputSchema>,
-  outputs: Readonly<{ "build-review": OcrReviewCheckpoint; "read-pages": readonly OcrPageOutcome[] }>) {
+  outputs: Readonly<{ "build-review": OcrReviewCheckpoint; "read-pages": readonly OcrPageOutcome[]; [WORKSHEET_ROW_CHOICE_GATE]?: WorksheetRowChoice }>) {
   const readings = new Map<string, OcrPageReading>(outputs["read-pages"].flatMap(page => page.state === "done" ? [[page.output.extractionId, page.output] as const] : []));
-  return hydrateOcrReviewSeed(outputs["build-review"], extractionId => readings.get(extractionId), input.roster);
+  return hydrateOcrReviewSeed(outputs["build-review"], extractionId => readings.get(extractionId), chooseOcrRoster(input, outputs[WORKSHEET_ROW_CHOICE_GATE]));
 }
+const rosterChoiceGate = {
+  id: WORKSHEET_ROW_CHOICE_GATE, label: "Choose roster rows", resolvedBy: "operator", result: WorksheetRowChoiceSchema,
+  when: { kind: "equals", of: { from: "input", path: "rosterChoice" }, value: "required" },
+} as const;
 export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key: "source-pages", label: "Prepare source pages" }), system: "local" as const,
   description: "Render every original PDF page and bind each page's form type and reading method to the source manifest.",
   review: {
@@ -92,7 +98,7 @@ export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key
         id: "source-pdf",
         title: "Source PDF",
         mode: "Read only",
-        nodeIds: ["render-pages", "read-source-pages"],
+        nodeIds: [WORKSHEET_ROW_CHOICE_GATE, "render-pages", "read-source-pages"],
         lines: [
           { id: "render", kind: "action", text: "Render every original PDF page.", nodeIds: ["render-pages"] },
           { id: "source", kind: "check", text: "Check each original page’s form type and reading method.", nodeIds: ["read-source-pages"] }
@@ -108,19 +114,20 @@ export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key
     branchLabels: []
   } as const,
 });
-export function buildSourcePages({ group, task, result }: WorkflowAuthor<typeof OcrInputSchema>) {
-  const rendered = task({ id: "render-pages", contract: ExtractPdfPages, replay: "checkpoint" }, [], ({ input }) => ({ document: input.document }));
+export function buildSourcePages({ gate, group, task, result }: WorkflowAuthor<typeof OcrInputSchema>) {
+  const rosterChoice = gate(rosterChoiceGate, []);
+  const rendered = task({ id: "render-pages", contract: ExtractPdfPages, replay: "checkpoint" }, [rosterChoice], ({ input }) => ({ document: input.document }));
   const source = task({ id: "read-source-pages", contract: ReadOcrSourcePages, replay: "checkpoint" }, [rendered],
     ({ input, outputs }) => ({ request: input, rendered: outputs["render-pages"] }));
   return {
-    rendered, source, steps: [[group(OCR_SOURCE_PAGES_STEP, { manual: SOURCE_COUNT }), [rendered, source]]] as const,
+    rendered, source, rosterChoice, steps: [[group(OCR_SOURCE_PAGES_STEP, { manual: SOURCE_COUNT }), [rosterChoice, rendered, source]]] as const,
     result: result(ReadOcrSourcePages.output, [source], ({ outputs }) => ReadOcrSourcePages.output.parse(outputs["read-source-pages"]))
   };
 }
 export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
   const { task, delegate, gate, group, result } = author;
   const sourcePages = buildSourcePages(author);
-  const { rendered, source } = sourcePages;
+  const { rendered, source, rosterChoice } = sourcePages;
   const pages = delegate({
     id: "read-pages", label: "Read every original page",
     target: { id: WorkflowIdSchema.parse("ocr-page"), input: OcrPageWorkflowInputSchema, result: OcrPageReadingSchema },
@@ -134,9 +141,9 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
     },
     deriveChildItemId: (_input, context) => context.canonicalItemId,
   });
-  const review = task({ id: "build-review", contract: ReadOcrReviewSeed, replay: "always-rerun" }, [rendered, source, pages],
+  const review = task({ id: "build-review", contract: ReadOcrReviewSeed, replay: "always-rerun" }, [rendered, source, pages, rosterChoice],
     ({ input, outputs }) => ({
-      ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: input.roster, formType: input.formType,
+      ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: chooseOcrRoster(input, outputs[WORKSHEET_ROW_CHOICE_GATE]), formType: input.formType,
       ...(input.extractWithOcr === undefined ? {} : { extractWithOcr: input.extractWithOcr }),
       manifest: buildOcrSourceManifest(input.document, outputs["render-pages"]), readingId: input.readingId, outcomes: [...outputs["read-pages"]]
     }));
@@ -144,7 +151,7 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
     id: "lookup-identities", label: "Verify proposed identities",
     target: { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: PersonLookupResultSchema },
     edgeId: "ocr-identities", cardinality: "many", await: "terminal", join: "all-settled", policy: childPolicy
-  }, [review, pages], {
+  }, [review, pages, rosterChoice], {
     bind: ({ input, outputs }) => ocrPersonLookupRequests(reviewSeed(input, outputs)).map(request => request.input),
     sourceRecordIds: ({ input, outputs }) => ocrPersonLookupRequests(reviewSeed(input, outputs)).map(request => request.recordIds),
     deriveChildItemId: (_input, context) => context.canonicalItemId,
@@ -153,12 +160,12 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
     id: "lookup-signers", label: "Look up official signers",
     target: { id: WorkflowIdSchema.parse("i9-lookup"), input: I9LookupInputSchema, result: I9SignerOutputSchema },
     edgeId: "ocr-signers", cardinality: "many", await: "terminal", join: "all-settled", policy: childPolicy
-  }, [review, pages], {
+  }, [review, pages, rosterChoice], {
     bind: ({ input, outputs }) => ocrSignerLookupRequests(reviewSeed(input, outputs)).map(request => request.input),
     sourceRecordIds: ({ input, outputs }) => ocrSignerLookupRequests(reviewSeed(input, outputs)).map(request => request.recordIds),
     deriveChildItemId: (_input, context) => context.canonicalItemId,
   });
-  const completed = task({ id: "read-result", contract: ReadOcrResult, replay: "always-rerun" }, [review, pages, identities, signers],
+  const completed = task({ id: "read-result", contract: ReadOcrResult, replay: "always-rerun" }, [review, pages, identities, signers, rosterChoice],
     ({ input, outputs }) => ({ review: reviewSeed(input, outputs), outcomes: [...outputs["lookup-identities"], ...outputs["lookup-signers"]] }));
   const approval = gate({ id: "approve-records", label: "Approve selected records", resolvedBy: "operator",
     result: OcrApprovalReferenceSchema, when: { kind: "equals", of: { from: "input", path: "approval" }, value: "release" } }, [completed]);
@@ -229,8 +236,8 @@ export const ocrSourcePagesDefinition = defineStep({
 });
 
 export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput extends z.ZodType, MemberResult extends z.ZodType>(
-  { delegate, task }: WorkflowAuthor<Input>, options: Readonly<{
-    ocrInput(input: z.output<Input>): z.input<typeof OcrInputSchema>;
+  { delegate, gate, task }: WorkflowAuthor<Input>, options: Readonly<{
+    ocrInput(input: z.output<Input>, choice: WorksheetRowChoice | undefined): z.input<typeof OcrInputSchema>;
     target: WorkflowRef<MemberInput, MemberResult>;
     memberSystem: BrowserSystemId;
     memberLabel: string;
@@ -240,11 +247,13 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
       records: readonly OcrApprovedSnapshot["records"][number][]): z.input<MemberInput>;
   }>,
 ) {
+  const rosterChoice = gate(rosterChoiceGate, []);
   const ocr = delegate({ id: "read-document", label: "Read and approve PDF",
     target: { id: WorkflowIdSchema.parse("ocr"), input: OcrInputSchema, result: OcrWorkflowResultSchema },
     edgeId: "document-ocr", cardinality: "one", await: "terminal", join: "one",
     policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "manual-parent-resume", visibility: "hidden-unless-failed" },
-  }, [], { bind: ({ input }) => ({ ...options.ocrInput(input), approval: "release" as const }), deriveChildItemId: (_input, context) => context.canonicalItemId });
+  }, [rosterChoice], { bind: ({ input, outputs }) => ({ ...options.ocrInput(input, outputs[WORKSHEET_ROW_CHOICE_GATE]), approval: "release" as const }),
+    deriveChildItemId: (_input, context) => context.canonicalItemId });
   const approved = task({ id: "approved-records", label: "Read approved records", contract: ReadApprovedOcrSnapshot, replay: "always-rerun" }, [ocr], ({ outputs }) => {
     const child = outputs["read-document"];
     if (child.state !== "done" || child.output.approvedSnapshot === null) throw new TaskError(ReadApprovedOcrSnapshot.id, "OCR_REVIEW_REFUSED", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
@@ -264,7 +273,7 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
   }, sourceRecordIds: ({ outputs }) => outputs["approved-records"].snapshot.records.filter(options.filter).map(record => [record.recordId]),
   deriveChildItemId: (_input, context) => context.canonicalItemId });
   return { ocr, approved, members, steps: [
-    [{ key: "read-document", label: "Read and approve PDF", system: "local" }, [ocr, approved]],
+    [{ key: "read-document", label: "Read and approve PDF", system: "local" }, [rosterChoice, ocr, approved]],
     [{ key: "members", label: options.memberLabel, system: options.memberSystem }, [members]],
   ] as const };
 }

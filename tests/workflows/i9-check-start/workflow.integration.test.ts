@@ -8,8 +8,41 @@ import { I9CheckStartResultSchema } from "../../../src/models/workflows/i9-check
 import { I9CheckRowSchema } from "../../../src/models/workflows/i9-check/check.js";
 import { I9CheckCanonicalInput } from "../../../src/models/workflows/i9-check/input.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
+import { buildRunWorkbookSection } from "../../../src/backend/runs/workbooks.js";
 import { OcrPageWorkflowInputSchema } from "../../../src/models/workflows/ocr-page/input.js";
 import { READ_AT } from "../../support/fixtures/ocr/source-pages.js";
+
+describe("I-9 Start worksheet choices", () => {
+  const world = createI9CheckStartWorld();
+  afterAll(world.cleanup);
+
+  it("parks on conflicting retained rows and takes the selected second-sheet values", async () => {
+    const f = await world.fixture({ multiSheet: "conflicting" });
+    const signal = new AbortController().signal;
+    for (let index = 0; index < 2; index++) {
+      await f.canonical.execute(f.run, signal);
+      f.approveNext();
+    }
+    const { run: parked } = await f.canonical.execute(f.run, signal);
+    assert.ok(parked?.lifecycle.state === "parked-gate" && parked.lifecycle.gateId === "worksheet-row-choice");
+    const authority = f.database.authority;
+    assert.equal(authority.runs.listChildren(parked.envelope.runId).filter(child => child.envelope.workflow === "i9-check").length, 0);
+    const choice = buildRunWorkbookSection(authority, parked).referenceChoices?.[0];
+    assert.ok(choice?.resolution.state === "available");
+    assert.equal(choice.key, "10000001");
+    const row = choice.resolution.candidates.find(row => row.sheetId === "archive");
+    assert.ok(row?.referenceDigest !== undefined && row.workbookVersion !== undefined);
+    const result = f.canonical.kernel.execute({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator",
+      family: "run", type: "resolve-workbook-reference-row", source: "run-detail", target: choice.resolution.target,
+      payload: { referenceDigest: row.referenceDigest, workbookVersion: row.workbookVersion, sheetId: row.sheetId, rowId: row.rowId } });
+    assert.equal(result.state, "applied", JSON.stringify(result));
+    const settled = await f.canonical.execute(f.run, signal);
+    assert.ok(settled.run?.lifecycle.state === "terminal" && settled.run.lifecycle.outcome === "done");
+    const stored = authority.runResults.get(parked.envelope.runId); assert.ok(stored);
+    const output = I9CheckStartResultSchema.parse(stored.result.value);
+    expect(output.tracker.rows.map(row => row.ppsEid)).toEqual(["000067890", "000012345"]);
+  });
+});
 
 describe("I-9 Start with typed OCR values", () => {
   const world = createI9CheckStartWorld();
@@ -53,7 +86,7 @@ describe("I-9 Start with typed OCR values", () => {
 describe("one I-9 PDF Start through admitted children", () => {
   const world = createI9CheckStartWorld();
   let f: Awaited<ReturnType<typeof world.fixture>>;
-  beforeAll(async () => { f = await world.fixture(); });
+  beforeAll(async () => { f = await world.fixture({ multiSheet: true }); });
   afterAll(world.cleanup);
 
   it("i9-check-start/pdfs — admits two original PDFs as children of one parent", async () => {
@@ -111,7 +144,8 @@ describe("one I-9 PDF Start through admitted children", () => {
     expect(output.tracker.rows.map(row => row.ppsEid)).toEqual(["000012345", "000012345"]);
     expect(output.reference.snapshot).toMatchObject({ libraryId: f.referenceId, version: f.selectedReference.version,
       versionId: f.selectedReference.versionId, versionName: "Fall review", worksheets: [{ sheetId: "history", name: "Action History" }] });
-    expect(output.reference.snapshot.rows.map(row => row.matches.map(match => [match.sheetId, match.rowId]))).toEqual([[["history", "person-0"]], [["history", "person-1"]]]);
+    expect(output.reference.snapshot.rows.map(row => row.matches.map(match => [match.sheetId, match.rowId]))).toEqual([[["history", "person-0"]], []]);
+    expect(output.referenceSources?.map(source => source.reference.snapshot.worksheets[0]?.sheetId)).toEqual(["history", "archive"]);
     expect(f.readRefusals).toEqual(new Set(["missing run", "foreign claim", "altered input", "foreign type", "altered fields"]));
     expect(output.people.map(person => person.sources.length)).toEqual([2, 2]);
     for (const document of f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "ocr")) {
@@ -140,6 +174,7 @@ describe("one I-9 PDF Start through admitted children", () => {
     expect(f.database.readProfileResourceCustody().writeIntents).toHaveLength(0);
     const people = f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "i9-check");
     expect(people).toHaveLength(2);
+    expect(people.map(child => I9CheckCanonicalInput.parse(child.input.parsed.value).roster.rows.map(row => row.eid))).toEqual([["10000001"], ["10000002"]]);
     expect(people.map(child => I9CheckCanonicalInput.parse(child.input.parsed.value).person.dob)).toEqual(["2001-02-03", "2001-02-03"]);
     expect(f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId)).toHaveLength(2);
   });

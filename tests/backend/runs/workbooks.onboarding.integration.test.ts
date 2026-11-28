@@ -46,7 +46,7 @@ function foreignNative(record: TimelineEventRecord, runId: string) {
 
 describe("Onboarding captured roster admission and row choice", () => {
   it("chooses one of two complete sources with the same row identity and never repeats that choice as a write", async () => {
-    const f = await fixture("unique", { second: "same" });
+    const f = await fixture("unique", { second: "conflicting" });
     assert.equal(f.repository.lastUsed("onboarding"), undefined);
     const started = f.start();
     assert.deepEqual(f.repository.lastUsed("onboarding")?.sources, [
@@ -109,7 +109,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(absent.state, "resolve-required");
     if (absent.state !== "resolve-required") throw new Error("expected a missing person");
     assert.equal(absent.reason, "row-missing");
-    const dry = await fixture("unique", { second: "same", dryRun: true });
+    const dry = await fixture("unique", { second: "conflicting", dryRun: true });
     const parked = dry.park(dry.start());
     assert.equal(dry.kernel.execute(dry.choice(parked, 0)).state, "applied");
     const queued = dry.database.authority.runs.get(parked.envelope.runId); assert.ok(queued);

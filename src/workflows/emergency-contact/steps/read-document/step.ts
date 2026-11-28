@@ -7,13 +7,15 @@ import { ReadEmergencyContactResult } from "../../../../models/workflows/emergen
 import { EmergencyContactMemberResultSchema } from "../../../../models/workflows/emergency-contact/result.js";
 import { WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import { approvedEmergencyContact,contactEffect } from "../../../../rules/ucpath/emergency-contact.js";
+import { chooseOcrRoster } from "../../../../rules/spreadsheets/ocr-roster.js";
+import { WORKSHEET_ROW_CHOICE_GATE } from "../../../../models/processing/workbooks/reference-choice.js";
 import { TaskError } from "../../../../workflow-kit/errors.js";
 import { approvedRecordHasEid,buildApprovedOcrRecords } from "../../../ocr/steps/source-pages/step.js";
 
 import { ReadApprovedOcrSnapshot } from "../../../../models/processing/ocr/read-approved-snapshot.js";
 import { defineStep,inheritStepProof,type WorkflowAuthor,type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 export const READ_DOCUMENT_STEP = Object.freeze({ key: "read-document", label: "Read and approve PDF", system: "local" as const,
-  review: { pages: [{ id: "approved-pdf", title: "Emergency Contact PDF", mode: "Read only", nodeIds: ["read-document", "approved-records"],
+  review: { pages: [{ id: "approved-pdf", title: "Emergency Contact PDF", mode: "Read only", nodeIds: [WORKSHEET_ROW_CHOICE_GATE, "read-document", "approved-records"],
     lines: [
       { id: "read-and-approve", kind: "read", text: "Read the uploaded PDF and wait for you to review and approve its records in Logs.", nodeIds: ["read-document"] },
       { id: "approved-selection", kind: "check", text: "Use only the current approved records and their original PDF pages.", nodeIds: ["approved-records"] },
@@ -22,7 +24,8 @@ export const READ_DOCUMENT_STEP = Object.freeze({ key: "read-document", label: "
   }], branchLabels: [], starts: [{ nodeId: "read-document", each: "This PDF" }] } as const,
 });
 export function buildEmergencyContactRecords(author: WorkflowAuthor<typeof EmergencyContactInputSchema>) {
-  const graph = buildApprovedOcrRecords(author, { ocrInput: ({ onbaseFiling: _onbaseFiling, ...input }) => ({ ...input, formType: "emergency-contact" }),
+  const graph = buildApprovedOcrRecords(author, { ocrInput: ({ onbaseFiling: _onbaseFiling, rosterChoice, ...input }, choice) => ({
+      ...input, roster: chooseOcrRoster({ ...input, rosterChoice }, choice), formType: "emergency-contact" }),
       target: { id: WorkflowIdSchema.parse("emergency-contact-member"), input: EmergencyContactMemberInputSchema, result: EmergencyContactMemberResultSchema },
       memberSystem: "ucpath", memberLabel: "Preview approved Emergency Contacts", filter: approvedRecordHasEid,
       validate: records => {
