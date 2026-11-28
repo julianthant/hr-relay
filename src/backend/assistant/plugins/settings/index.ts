@@ -8,7 +8,9 @@ import { observeEdit, operatorEditSource, requireEditRead, requireOperatorSource
 import { AssistantChangeOutput, AssistantToolRefusal, type AssistantPlugin } from "../plugin.js";
 import type { AssistantPluginDeps } from "../registry.js";
 
-const KEYS = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && row.sensitivity === "ordinary" && row.editability === "operator" && !isRetiredSettingsPath(row.key)).map(row => row.key);
+// An assistant edit cannot grant the assistant permission to start a dry run.
+const KEYS = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && row.sensitivity === "ordinary"
+  && row.editability === "operator" && row.key !== "preferences.assistantFullAccess" && !isRetiredSettingsPath(row.key)).map(row => row.key);
 const matchesKey = (key: string) => KEYS.some(candidate => candidate === key
   || candidate === key.replace(/^annualDates\.FY\d{4}\./u, "annualDates.*."));
 const EditInput = z.strictObject({ key: z.string().min(1).max(160),
