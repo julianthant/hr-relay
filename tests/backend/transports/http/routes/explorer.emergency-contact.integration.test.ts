@@ -83,7 +83,7 @@ it("explains locked approved contacts, an unconfirmed Save and filing-only retry
     assert.equal(rejected.stops, true);
     assert.match(rejected.then, /before Save.*locked for this run.*operator.*retrying this person cannot change the approved record/u);
   }
-  assert.deepEqual(walk(member, { "contact-plan-result": "CONTACT_APPROVED_FIELDS_INVALID", onbaseFiling: "file" }).steps, ["contact-plan"]);
+  assert.deepEqual(walk(member, { "contact-plan-result": "CONTACT_APPROVED_FIELDS_INVALID", onbaseFiling: "file" }).steps, ["reference-check", "contact-plan"]);
   const mismatch = outcome(member, "contact-preview", "saved-effect-mismatch");
   assert.equal(mismatch.stops, true);
   assert.match(mismatch.then, /does not retry.*Save/u);

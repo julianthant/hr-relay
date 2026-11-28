@@ -10,6 +10,7 @@ import { auditWorkflowModuleRoles } from "../../../../src/workflow-kit/validatio
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 import { descriptorRuntimeNodes, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { personLookupWorkflow } from "../../../../src/workflows/person-lookup/workflow.js";
+import { REFERENCE_CHECK_STEP } from "../../../../src/workflow-kit/workflow-definition.js";
 
 function observeBind(bind: () => unknown) {
   try {
@@ -37,15 +38,14 @@ describe("Person Lookup step proofs", () => {
 
   it("retains exact step objects, task contracts, order, conditions and binds with prerequisite groups", () => {
     const originalNodes = descriptorRuntimeNodes(personLookupModule.descriptor);
-    const outputs = Object.fromEntries(originalNodes.map(node => {
-      assert.ok(node.kind === "task");
-      return [node.id, JsonValueSchema.parse(node.uses.example)];
-    }));
+    const outputs = Object.fromEntries(originalNodes.flatMap(node => node.kind === "task"
+      ? [[node.id, JsonValueSchema.parse(node.uses.example)] as const] : []));
     for (const [index, proof] of proofs.entries()) {
       assert.equal(proof.definition.input, personLookupWorkflow.input);
       assert.equal(proof.definition.canonicalInput, personLookupWorkflow.canonicalInput);
       assert.deepEqual(workflowProjections(proof.descriptor).dryRun, workflowProjections(personLookupModule.descriptor).dryRun);
-      const expectedGroups = personLookupWorkflow.steps.slice(0, index + 1);
+      const expectedGroups = index === proofs.length - 1 ? personLookupWorkflow.steps
+        : personLookupWorkflow.steps.filter(([group]) => group.key !== REFERENCE_CHECK_STEP.key).slice(0, index + 1);
       assert.deepEqual(proof.definition.steps.map(([group]) => group.key), expectedGroups.map(([group]) => group.key));
       for (const [groupIndex, [group, entries]] of proof.definition.steps.entries()) {
         const [originalGroup, originals] = expectedGroups[groupIndex];
@@ -53,12 +53,18 @@ describe("Person Lookup step proofs", () => {
         assert.deepEqual(entries.map(entry => entry.id), originals.map(entry => entry.id));
         for (const [entryIndex, entry] of entries.entries()) {
           const original = originals[entryIndex];
-          assert.equal(entry.step, original.step);
+          if (group.key === REFERENCE_CHECK_STEP.key) assert.deepEqual(entry.step, original.step);
+          else assert.equal(entry.step, original.step);
           assert.deepEqual(entry.contracts, original.contracts);
           assert.deepEqual(entry.references.map(ref => ref.id), original.references.map(ref => ref.id));
           const node = descriptorRuntimeNodes(proof.descriptor).find(candidate => candidate.id === entry.id);
           const originalNode = originalNodes.find(candidate => candidate.id === entry.id);
-          assert.ok(node?.kind === "task" && originalNode?.kind === "task");
+          assert.ok(node !== undefined && originalNode !== undefined);
+          if (originalNode.kind === "gate") {
+            assert.deepEqual(node, originalNode);
+            continue;
+          }
+          assert.ok(node.kind === "task" && originalNode.kind === "task");
           assert.equal(node.uses, originalNode.uses);
           assert.equal(node.label, originalNode.label);
           assert.equal(node.replay, originalNode.replay);
@@ -73,10 +79,8 @@ describe("Person Lookup step proofs", () => {
   });
 
   it("classifies each proof's complete schema-valid result", () => {
-    const outputs = Object.fromEntries(descriptorRuntimeNodes(personLookupModule.descriptor).map(node => {
-      assert.ok(node.kind === "task");
-      return [node.id, node.uses.example];
-    }));
+    const outputs = Object.fromEntries(descriptorRuntimeNodes(personLookupModule.descriptor).flatMap(node =>
+      node.kind === "task" ? [[node.id, node.uses.example] as const] : []));
     for (const proof of proofs) {
       const input = personLookupWorkflow.input.parse({ emplId: "10000001" });
       const result = proof.definition.result.schema.parse(proof.definition.result.derive({ input, outputs }));
@@ -89,8 +93,9 @@ describe("Person Lookup step proofs", () => {
   it("omits skipped CRM reads from the cross-verify result", () => {
     const proof = stepProofModuleOf("person-lookup-cross-verify");
     assert.ok(proof !== undefined);
-    const identityContract = personLookupWorkflow.steps[0][1][2].contracts[0];
-    const identity = identityContract.example;
+    const identityNode = descriptorRuntimeNodes(personLookupModule.descriptor).find(node => node.id === "search-identity");
+    assert.ok(identityNode?.kind === "task");
+    const identity = identityNode.uses.example;
     const input = personLookupWorkflow.input.parse({ emplId: "10000001", crmCheck: false });
     const result = proof.definition.result.derive({ input, outputs: { "search-identity": identity } });
     assert.deepEqual(proof.definition.result.schema.parse(result), { identity });

@@ -522,7 +522,7 @@ describe("the workflow explorer projection", () => {
           )
           .map(({ id }) => `${String(workflow.id)}:${String(id)}`),
       ),
-      ["onboarding:i9-lookup-child", "onboarding:i9-route", "i9-check-start:read-documents", "i9-check-start:check-people", "emergency-contact:read-document", "emergency-contact:members",
+      ["onboarding:i9-lookup-child", "onboarding:i9-route", "i9-check-start:read-documents", "i9-check-start:check-people", "i9-check:reference-person-lookup", "emergency-contact:read-document", "emergency-contact:members",
         "emergency-contact-member:onbase-filing", "ocr:read-pages", "ocr:lookup-identities", "ocr:lookup-signers"],
 
     );

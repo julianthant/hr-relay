@@ -10,7 +10,7 @@ const ProofInputShape = { emplId: EidSchema, employeeName: z.string().min(1) } a
 const SeparationsReferenceCheckInput = z.strictObject(ProofInputShape);
 const SeparationsReferenceCheckCanonicalInput = defineCanonicalInput(SeparationsReferenceCheckInput, z.strictObject(ProofInputShape),
   [{ emplId: PERSON_LOOKUP_EXAMPLE_EID, employeeName: "Lee, Jordan" }]);
-const SeparationsReferenceCheckResultSchema = z.strictObject({});
+const SeparationsReferenceCheckResultSchema = z.strictObject({ emplId: EidSchema });
 
 export const separationsReferenceCheckDefinition = defineStep({
   group: REFERENCE_CHECK_STEP,
@@ -27,7 +27,7 @@ export const separationsReferenceCheckDefinition = defineStep({
       input: SeparationsReferenceCheckInput,
       steps: (author: WorkflowAuthor<typeof SeparationsReferenceCheckInput>) => ({
         steps: [],
-        result: author.result(SeparationsReferenceCheckResultSchema, [], () => ({})),
+        result: author.result(SeparationsReferenceCheckResultSchema, [], ({ input }) => ({ emplId: input.emplId })),
       }),
     }),
   },

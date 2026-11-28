@@ -347,7 +347,7 @@ export function createScriptedExecutor(deps: Readonly<{
       columnBindings: [{ id: "column-0", sourceColumn: 0, sourceHeader: "eid", fieldId: "eid", basis: "manual" },
         { id: "column-1", sourceColumn: 1, sourceHeader: "fullName", fieldId: "fullName", basis: "manual" }],
       rows: [{ id: "header", cells: [{ value: "eid" }, { value: "fullName" }] },
-        { id: "row-0", cells: [{ value: "10000001" }, { value: "Fictional Different Person" }] }] }] }).libraryId;
+        { id: "row-0", cells: [{ value: "10812345" }, { value: "Fictional Different Person" }] }] }] }).libraryId;
     return { entry: 1, typeId: REFERENCE_CHECK_ID, libraryId: referenceLibraryId, versionId: library.libraryVersion(referenceLibraryId).version.id,
       sheetId: "sheet", expectedVersion: library.read(referenceLibraryId).version };
   };

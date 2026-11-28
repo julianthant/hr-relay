@@ -79,7 +79,7 @@ it("serves Person Lookup's Start run options with their labelled choices and def
   ]);
   assert.deepEqual(walk(spec).values, { mode: "search", "search-by": "name", crmCheck: "true", includeCrmDates: "true",
     "skip-searching": "run", "skip-cross-verify": "run", "skip-active-status": "run", "skip-crm-dates": "run",
-    "search-result": "resolved", "crm-result": "Found", "employment-status": "active", "crm-dates-result": "succeeded" });
+    "reference-result": "null", "search-result": "resolved", "crm-result": "Found", "employment-status": "active", "crm-dates-result": "succeeded" });
 });
 
 it("derives the steps and session chips of every option value", async () => {
@@ -150,7 +150,7 @@ it("serves each decision's outcomes with the sentence of what the run does and w
   assert.ok(search.outcomes.every(candidate => candidate.label !== "Anything else"));
   const stopped = walk(spec, {}, { "search-result": "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" });
   assert.equal(stopped.stop?.value, "PERSON_LOOKUP_UCPATH_SEARCH_FAILED");
-  assert.deepEqual(stopped.steps.map(entry => entry.id), ["searching"]);
+  assert.deepEqual(stopped.steps.map(entry => entry.id), ["reference-check", "searching"]);
 
   const [crm] = blocks(spec, "cross-verify", "decision"); assert.ok(crm);
   assert.deepEqual([crm.label, crm.initial], ["CRM cross-check result", "Found"]);
@@ -226,7 +226,7 @@ it("lists main workflows in the picker and serves delegated workflows on the ste
     block.kind === "starts" ? [`${workflow.id} > ${block.workflowId}`] : [])));
   assert.deepEqual([...new Set(pairs)].sort(), [
     "emergency-contact > emergency-contact-member", "emergency-contact > ocr", "emergency-contact-member > onbase",
-    "i9-check-start > i9-check", "i9-check-start > ocr", "ocr > i9-lookup", "ocr > ocr-page", "ocr > person-lookup", "onboarding > i9-lookup",
+    "i9-check > person-lookup", "i9-check-start > i9-check", "i9-check-start > ocr", "ocr > i9-lookup", "ocr > ocr-page", "ocr > person-lookup", "onboarding > i9-lookup",
   ]);
   const titles = workflows.map(workflow => workflow.label);
   assert.deepEqual(titles.filter((title, index) => titles.indexOf(title) !== index), []);

@@ -88,6 +88,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/preflight/served-runtime.ts` | served runtime |
 | `fixtures/preflight-seams.ts` | preflight seams |
 | `fixtures/receipt-run-fixtures.ts` | receipt run fixtures |
+| `fixtures/reference-check-graph.ts` | shared expected reference comparison and review nodes in pinned workflow graphs |
 | `fixtures/rerun-values-fixtures.ts` | rerun values fixtures |
 | `fixtures/run-launch-fixtures.ts` | run launch fixtures |
 | `fixtures/run-lifecycle-fixtures.ts` | run lifecycle fixtures |

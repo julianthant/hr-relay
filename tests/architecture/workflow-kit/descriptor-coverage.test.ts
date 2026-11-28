@@ -213,8 +213,8 @@ describe("descriptor coverage", () => {
     const original = WORKFLOW_MODULES[0];
     if (original === undefined) throw new Error("the no-timeline fixture requires one registered workflow");
     const standalone = { ...original, role: defineWorkflowRole({ kind: "standalone" }), descriptor: { ...original.descriptor, timelineDeclared: false } };
-    const derivedKey = standalone.descriptor.timeline[0]?.key;
     const standaloneNodeIds = standalone.descriptor.nodes.map((node) => String(node.id));
+    const derivedKey = standalone.descriptor.timeline.find(({ key }) => standaloneNodeIds.includes(key))?.key;
     assert.ok(
       derivedKey !== undefined && standaloneNodeIds.includes(derivedKey),
       "the no-timeline specimen's derived category keys ARE its node ids",

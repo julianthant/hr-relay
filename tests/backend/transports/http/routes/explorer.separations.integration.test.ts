@@ -183,7 +183,7 @@ it("serves the default run and every Start run step choice with matching labels 
   const byHand = walk(spec, { "skip-identity-check": "skip", "skip-pending-termination": "skip", "skip-ucpath-transaction": "skip", "skip-kuali-finalization": "skip" });
   assert.deepEqual(systems(byHand.values), ["kuali", "new-kronos"]);
   assert.deepEqual(spec.steps.map(entry => [entry.id, entry.title, entry.system]), workflow.timeline.map(group => [group.key, group.label, group.system]));
-  assert.deepEqual(spec.steps.map(entry => entry.title), ["Kuali extraction", "Identity check", "Kronos timecard", "Identity approval", "Check reference spreadsheets", "Pending terminations", "UCPath transaction", "Kuali finalization"]);
+  assert.deepEqual(spec.steps.map(entry => entry.title), ["Reference spreadsheets", "Kuali extraction", "Identity check", "Kronos timecard", "Identity approval", "Pending terminations", "UCPath transaction", "Kuali finalization"]);
   for (const entry of spec.steps) {
     assert.ok(entry.description.some(line => line.text.trim().length > 0), entry.title);
     assert.ok(entry.checks.length > 0, entry.title);
@@ -224,7 +224,7 @@ it("lists every declared task failure explicitly; the unlisted rule is reserved 
   const extraction = blocks(spec, "kuali-extraction", "decision")[0]; assert.ok(extraction);
   const missing = walk(spec, {}, { [extraction.id]: "document-not-in-action-list" });
   assert.equal(missing.stop?.value, "document-not-in-action-list");
-  assert.deepEqual(missing.steps.map(entry => entry.id), ["kuali-extraction"]);
+  assert.deepEqual(missing.steps.map(entry => entry.id), ["reference-check", "kuali-extraction"]);
 });
 
 it("serves fictional examples and operator wording without task identifiers or failure-code text", async () => {

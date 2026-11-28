@@ -93,7 +93,7 @@ it("follows the person's identifier result through the conditional hire-date sea
   assert.deepEqual(spec.options, [["skip-person-match", "Match person"], ["skip-person-lookup", "Check hire date"]].map(([id, label]) => ({
     id, label, initial: "run", choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }],
   })));
-  assert.deepEqual(spec.sessions, [{ system: "ucpath", when: [{ "skip-person-lookup": ["run"] }, { "skip-person-match": ["run"] }] }]);
+  assert.deepEqual(spec.sessions, [{ system: "ucpath" }, { system: "crm" }]);
   assert.deepEqual(walk(spec).steps.map(entry => entry.id), ["reference-check", "person-match", "roster-match"]);
   for (const identity of ["ambiguous", "not-found"]) {
     const lookup = walk(spec, {}, { "identifier-result": identity, "hire-date-needed": "true" });
@@ -113,7 +113,7 @@ it("follows the person's identifier result through the conditional hire-date sea
     const selected = walk(spec, {}, { "retention-identity": value });
     assert.equal(selected.values["retention-identity"], value);
     assert.equal(selected.stop, undefined);
-    assert.equal(selected.steps.at(-1)?.id, "reference-check");
+    assert.equal(selected.steps.at(-1)?.id, "roster-match");
   }
   for (const value of ["", "Keep", "Shred"]) {
     const outcome = retention.find(decision => decision.id === "retention-action")?.outcomes.find(candidate => candidate.value === value);
@@ -122,8 +122,8 @@ it("follows the person's identifier result through the conditional hire-date sea
     assert.equal(outcome.stops, false);
   }
   const checks = blocks(spec, "reference-check", "decision")[0]; assert.ok(checks);
-  assert.deepEqual(checks.outcomes.filter(outcome => ["false", "true"].includes(outcome.value)).map(outcome => [outcome.value, outcome.stops]),
-    [["false", false], ["true", false]]);
+  assert.deepEqual(checks.outcomes.filter(outcome => ["null", "true"].includes(outcome.value)).map(outcome => [outcome.value, outcome.stops]),
+    [["null", false], ["true", false]]);
 });
 
 it("shows confirmed identity rows only for an identifier match and the name search's own results on the name-only path", async () => {
@@ -151,7 +151,7 @@ it("only offers a reference review when a resolved field differs", async () => {
   const [comparison, approval] = blocks(spec, "reference-check", "decision"); assert.ok(comparison); assert.ok(approval);
   for (const identity of ["not-found", "ambiguous", "found"]) {
     const selected = walk(spec, {}, { "retention-identity": identity });
-    assert.equal(selected.values["reference-result"], "false");
+    assert.equal(selected.values["reference-result"], "null");
     assert.equal(selected.values["reference-check-review"], undefined);
   }
   const mismatch = walk(spec, {}, { "reference-result": "true", "reference-check-review": "cancelled" });
@@ -213,7 +213,7 @@ it("shows the extra name as Fill and hire-date evidence as Read, hiding identifi
 });
 
 const STEP_SYSTEMS: Readonly<Record<string, readonly (string | undefined)[]>> = {
-  "i9-check-start": [undefined, undefined, "ucpath"], "i9-check": ["ucpath", "ucpath", undefined, "local"], "i9-lookup": ["i9"],
+  "i9-check-start": [undefined, undefined, "ucpath"], "i9-check": ["local", "ucpath", "ucpath", undefined], "i9-lookup": ["i9"],
 };
 
 it("serves each step's Logs title, description, checks and complete fictional page rows with traceable sources", async () => {

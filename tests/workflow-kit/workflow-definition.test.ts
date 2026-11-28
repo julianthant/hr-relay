@@ -201,26 +201,31 @@ describe("workflow definition compiler", () => {
 
   it("derives execution order and edges from entry references while preserving tuple presentation order", () => {
     const graph = descriptorRuntimeNodes(personLookupDescriptor);
+    const [start, search, crm, active] = expectedReferenceStages(["start", "search-identity", "crm-identity", "active-status"])
+      .map(stage => stage.graph.map(({ id, dependsOn }) => ({ id, dependsOn })));
 
     expect(graph.map((node) => ({ id: String(node.id), dependsOn: node.dependsOn.map(String) }))).toEqual([
+      ...start,
       {id: "searching", dependsOn: []},
       {id: "matching", dependsOn: ["searching"]},
       {id: "search-identity", dependsOn: ["searching", "matching"]},
+      ...search,
       {id: "cross-verify", dependsOn: ["search-identity", "searching", "matching"]},
       {id: "crm-identity", dependsOn: ["search-identity", "cross-verify", "searching", "matching"]},
+      ...crm,
       {id: "crm-selected-record", dependsOn: ["crm-identity"]},
       {id: "crm-results", dependsOn: ["search-identity", "crm-identity", "searching", "matching"]},
       {id: "crm-only-recovery", dependsOn: ["crm-identity", "crm-selected-record", "crm-results"]},
       {id: "active-status", dependsOn: ["search-identity", "crm-identity", "crm-only-recovery", "crm-selected-record", "crm-results"]},
+      ...active,
       {id: "crm-dates", dependsOn: ["active-status"]},
-      {id: "reference-check", dependsOn: ["search-identity", "crm-identity", "matching", "crm-selected-record", "crm-results", "active-status"]},
     ]);
     expect(personLookupWorkflow.steps.map(([group]) => group.key)).toEqual([
+      "reference-check",
       "searching",
       "cross-verify",
       "active-status",
       "crm-dates",
-      "reference-check",
     ]);
     expect(workflowDefinitionOf(personLookupDescriptor)).toBe(personLookupWorkflow);
     expect(compileWorkflow(personLookupWorkflow).descriptor).toBe(personLookupDescriptor);
@@ -289,7 +294,7 @@ describe("workflow definition compiler", () => {
     )).toThrow(/workflow person-lookup cannot resolve exact contract crm\/search-onboarding-records/u);
 
     const module = composeWorkflowModule(compiled, taskStoreRegistry.stores);
-    expect(module.stores.map(({ namespace }) => String(namespace))).toEqual(["ucpath", "crm", "workflow:person-lookup", "workbooks"]);
+    expect(module.stores.map(({ namespace }) => String(namespace))).toEqual(["ucpath", "crm", "workbooks", "workflow:person-lookup"]);
     expect(module.role).toEqual({ kind: "composition" });
     expect(module.definition).toBe(personLookupWorkflow);
 

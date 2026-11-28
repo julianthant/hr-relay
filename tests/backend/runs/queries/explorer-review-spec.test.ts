@@ -99,8 +99,8 @@ it("derives sample values from contract examples and follows a decision's outcom
 it("rejects forged gates, values, initial outcomes and missing failures without throwing", () => {
   const entry = workflow("person-lookup");
   const spec = entry.reviewSpec;
-  const [first, ...rest] = spec.steps; assert.ok(first);
-  const withFirst = (step: typeof first) => ({ ...spec, steps: [step, ...rest] });
+  const first = spec.steps.find(step => step.id === "searching"); assert.ok(first);
+  const withFirst = (step: typeof first) => ({ ...spec, steps: spec.steps.map(candidate => candidate === first ? step : candidate) });
   assert.equal(ExplorerReviewSpecSchema.safeParse(spec).success, true);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: [{ unknown: ["x"] }] })).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: [{ mode: ["sideways"] }] })).success, false);

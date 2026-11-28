@@ -45,7 +45,7 @@ import type {
   WorkflowDescriptorSpec,
 } from "./workflow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes, parseWorkbookRequirement } from "./workflow.js";
-import { CompareReferenceFields, ReferenceReviewSchema, referenceComparisonForGate, referenceReviewId } from "../models/processing/workbooks/reference-fields.js";
+import { CompareReferenceFields, ReferenceReviewSchema, referenceReviewId } from "../models/processing/workbooks/reference-fields.js";
 import { defineReferenceCheck, referenceFieldsAt } from "./reference-check.js";
 import { PersonLookupInput } from "../models/workflows/person-lookup/input.js";
 import { PersonLookupResultSchema } from "../models/workflows/person-lookup/result.js";
@@ -793,6 +793,7 @@ function referenceStages<Input extends z.ZodType>(
   const finalGate = referenceReviewId(finalStage);
   const group: WorkflowTimelineGroup = {
     ...REFERENCE_CHECK_STEP, system: "local" as const,
+    description: "Read the selected worksheets when the employee key resolves and compare resolved fields against their reference values.",
     review: {
       pages: [{
         id: "reference-spreadsheets", title: REFERENCE_CHECK_STEP.label, mode: "Read only" as const,
@@ -801,13 +802,22 @@ function referenceStages<Input extends z.ZodType>(
           { id: "read-selection", kind: "read" as const, text: "Read the selected worksheets once when the run resolves the employee key.", nodeIds: stageIds.map(checkId) },
           { id: "compare-fields", kind: "check" as const, text: "Compare each resolved field and review any differences.", nodeIds: stageIds.map(referenceReviewId) },
         ],
-        fields: [],
+        fields: [
+          { id: "worksheet", label: "Worksheet", taskFields: [{ nodeId: finalCheck, kind: "output", fieldPath: "mismatches.sheet" }],
+            source: { origin: "Selected worksheet", detail: "The worksheet that supplied the comparison value.", chain: [] } },
+          { id: "row", label: "Row", taskFields: [{ nodeId: finalCheck, kind: "output", fieldPath: "mismatches.row" }],
+            source: { origin: "Selected worksheet", detail: "The retained worksheet row matched to the employee key.", chain: [] } },
+          { id: "expected", label: "Reference value", taskFields: [{ nodeId: finalCheck, kind: "output", fieldPath: "mismatches.expected" }],
+            source: { origin: "Selected worksheet", detail: "The cell value from the captured version.", chain: [] } },
+          { id: "actual", label: "Resolved value", taskFields: [{ nodeId: finalCheck, kind: "output", fieldPath: "mismatches.actual" }],
+            source: { origin: "Workflow", detail: "The value the workflow resolved for the same field.", chain: [] } },
+        ],
       }],
       branchLabels: [],
       decisions: [
         { id: "reference-result", label: "Reference comparison", reads: { nodeId: finalCheck, fieldPath: "review" },
-          nodeIds: stageIds.map(checkId), initial: "false", outcomes: [
-            { value: "false", label: "No differences to review", then: "Continues with the next workflow action." },
+          nodeIds: stageIds.map(checkId), initial: "null", outcomes: [
+            { value: "null", label: "No differences to review", then: "Continues with the next workflow action." },
             { value: "true", label: "Field differs", then: "Waits for your decision in Logs in both live and dry runs." },
           ] },
         { id: "reference-check-review", label: "Review reference spreadsheet differences", reads: { nodeId: finalGate, fieldPath: "decision" },
@@ -833,7 +843,7 @@ function referenceStages<Input extends z.ZodType>(
         target: { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: PersonLookupResultSchema },
         edgeId: lookupId, cardinality: "many", await: "terminal", join: "all-settled",
         policy: { onChildFailed: "allow-partial", cascadeCancel: "cascade", afterChildRetry: "manual-parent-resume" },
-      }, [earlier[0]!.check], {
+      }, [earlier[0].check], {
         bind: ({ input, outputs }) => {
           const check = CompareReferenceFields.output.safeParse(outputs[checkId("start")]);
           const [name] = referenceFieldsAt({ fullName: lookupName }, input);
@@ -875,7 +885,7 @@ function referenceStages<Input extends z.ZodType>(
     });
     const gate = author.gate(entries.operatorGate(referenceReviewId(suffix), {
       label: "Review reference spreadsheet differences", result: ReferenceReviewSchema,
-      when: { kind: "equals", of: { from: "node", nodeId: check.id, path: "review" }, value: true },
+      when: { kind: "is-present", of: { from: "node", nodeId: check.id, path: "review" } },
     }), [check]);
     earlier.push({ check, gate });
     referenceEntries.push(check, gate);
@@ -1023,7 +1033,9 @@ export function defineWorkflow<
   const { steps: authorSteps, input, role, intake, ...presentation } = spec;
   const author = workflowAuthor<InputSchema>(spec.capabilities?.delegationDisplay);
   const authored = authorSteps(author);
-  const reference = spec.referenceCheck === undefined ? undefined : referenceStages(spec.referenceCheck, authored.steps, author);
+  const reference = spec.referenceCheck === undefined || authored.steps.some(([group]) => group.key === REFERENCE_CHECK_STEP.key)
+    ? undefined : referenceStages(spec.referenceCheck, authored.steps, author);
+  // The compiler takes ready entries in tuple order, so each comparison and gate runs immediately after its last producer.
   const steps = reference === undefined ? authored.steps : [reference, ...authored.steps];
   const rows = spec.referenceCheck !== undefined && spec.rows !== undefined
     && !spec.rows.some(row => row.members.some(member => member.workflow === undefined && member.step === REFERENCE_CHECK_STEP.key))
@@ -1160,7 +1172,6 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
   const builder = flow(definition.input) as unknown as RuntimeFlowBuilder;
   const parallelOf = parallelMembership(definition.steps);
   const emittedParallels = new Set<ParallelEntry<string, unknown>>();
-  let referenceFence: string | undefined;
   const emitParallel = (entry: ParallelEntry<string, unknown>): void => {
     if (emittedParallels.has(entry)) return;
     emittedParallels.add(entry);
@@ -1194,7 +1205,7 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
     if (entry.kind === "transaction") {
       builder.transaction(entry.id, {
         ...(entry.label === undefined ? {} : { label: entry.label }),
-        dependsOn: referenceFence === undefined ? dependsOn : [...dependsOn, referenceFence],
+        dependsOn,
         prepare: { uses: entry.prepareContract, bind: entry.prepareBind },
         ...(entry.previewBind === undefined ? {} : { previewBind: entry.previewBind }),
         commit: { uses: entry.commitContract, bind: entry.commitBind },
@@ -1228,7 +1239,6 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
       ...(entry.when === undefined ? {} : { when: entry.when }),
       result: entry.result,
     });
-    if (referenceComparisonForGate(entry.id) !== undefined) referenceFence = entry.id;
   }
   return builder.build({
     schema: definition.result.schema,

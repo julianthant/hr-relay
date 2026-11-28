@@ -252,7 +252,7 @@ async function parkPendingSweep(keyRule: "current" | "retired" = "retired", revi
         : { kind: "is-present", of: { from: "reference", typeId: EMPLOYEE_REFERENCE_CHECK.id } },
     }).gate(referenceReviewId("start"), {
       dependsOn: ["reference-fields-start"], resolvedBy: "operator", label: "Review reference spreadsheets", result: ReferenceReviewSchema,
-      when: { kind: "equals", of: { from: "node", nodeId: "reference-fields-start", path: "review" }, value: true },
+      when: { kind: "is-present", of: { from: "node", nodeId: "reference-fields-start", path: "review" } },
     }).transaction(WRITE_FIXTURE_NODE_ID, {
       dependsOn: review === undefined ? [] : [referenceReviewId("start")],
       prepare: { uses: UcpathStagePendingTerminationSweep, bind: () => changed },
@@ -345,7 +345,7 @@ describe("write-resolution binding — what a parked write may survive", () => {
       workflowId: intent.workflowId, itemId: intent.itemId, nodeId: "reference-fields-start", attempt: intent.runAttempt,
       claimGeneration: run.claimGeneration, runId: intent.runId, descriptorVersion: descriptor.version,
       contractFingerprint: descriptor.contractFingerprint, implFingerprint: taskImplFingerprint(source),
-      output: { schemaHash: deriveSchemaHash(source.output, "output"), value: { captured: null, matches: [], mismatches: [], review } }, provenance: [], writtenAt: WRITE_FIXTURE_NOW,
+      output: { schemaHash: deriveSchemaHash(source.output, "output"), value: { captured: null, matches: [], mismatches: [], review: review ? true : null } }, provenance: [], writtenAt: WRITE_FIXTURE_NOW,
     }).state, "inserted");
     const evaluate = () => requireWriteResolutionBinding({ arm: "operator-confirmed-absent", descriptor, run, intent, repositories: authority });
     if (!review) assert.equal(evaluate().binding.state, "identical");

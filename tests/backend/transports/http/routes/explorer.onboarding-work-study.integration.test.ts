@@ -195,7 +195,7 @@ it("explains the roster-row and existing-person picks with fictional rows and th
 it("shows each step's system and only the personal fields and sample template of the chosen hire path", async () => {
   const { reviewSpec: spec } = await served("onboarding");
   assert.equal(blocks(spec, "i9-creation", "decision").find(block => block.id === "i9-route")?.label, "I-9 record path");
-  assert.deepEqual(spec.steps.map(entry => entry.system), ["crm", "ucpath", "i9", "ucpath", "local", "i9", "ucpath", "local"]);
+  assert.deepEqual(spec.steps.map(entry => entry.system), ["local", "crm", "ucpath", "i9", "ucpath", "i9", "ucpath", "local"]);
   assert.deepEqual(blocks(spec, "ucpath-search", "card").map(card => [card.title, card.mode]),
     [["Smart HR person search", "fill"], ["Smart HR person search results", "read"]]);
   const existing = walk(spec, { mode: "rehire" }).values, fresh = walk(spec).values;

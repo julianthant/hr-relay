@@ -51,7 +51,7 @@ function agrees(field: string, expected: string, actual: string): boolean {
 
 function dateKey(value: string): string {
   const us = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/u.exec(value);
-  return us === null ? value : `${us[3]}-${us[1]!.padStart(2, "0")}-${us[2]!.padStart(2, "0")}`;
+  return us === null ? value : `${us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}`;
 }
 
 export function compareReferenceFields(

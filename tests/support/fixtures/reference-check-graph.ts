@@ -7,7 +7,7 @@ export function expectedReferenceNodes(suffix: string, sources: readonly string[
     { id: check, kind: "task", dependsOn: [...sources, ...earlier],
       when: { kind: "is-present", of: { from: "reference", typeId: "reference-check" } } },
     { id: gate, kind: "gate", dependsOn: [check],
-      when: { kind: "equals", of: { from: "node", nodeId: check, path: "review" }, value: true } },
+      when: { kind: "is-present", of: { from: "node", nodeId: check, path: "review" } } },
   ];
   return {
     ids: [check, gate],

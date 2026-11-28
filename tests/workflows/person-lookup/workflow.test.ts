@@ -566,11 +566,11 @@ describe("workflow definition public equivalence characterization", () => {
       },
       {
         "kind": "headless",
-        "namespace": "workflow:person-lookup"
+        "namespace": "workbooks"
       },
       {
         "kind": "headless",
-        "namespace": "workbooks"
+        "namespace": "workflow:person-lookup"
       }
     ],
     "intakeTargets": [
@@ -629,7 +629,7 @@ describe("workflow definition public equivalence characterization", () => {
     "eid"
   ],
   "graph": [
-    ...referenceStages[0]!.graph,
+    ...referenceStages[0].graph,
     {
       "id": "searching",
       "kind": "task",
@@ -666,7 +666,7 @@ describe("workflow definition public equivalence characterization", () => {
         "matching"
       ]
     },
-    ...referenceStages[1]!.graph,
+    ...referenceStages[1].graph,
     {
       "id": "cross-verify",
       "kind": "task",
@@ -702,7 +702,7 @@ describe("workflow definition public equivalence characterization", () => {
         }
       }
     },
-    ...referenceStages[2]!.graph,
+    ...referenceStages[2].graph,
     {
       "id": "crm-selected-record",
       "kind": "task",
@@ -772,7 +772,7 @@ describe("workflow definition public equivalence characterization", () => {
         "value": "search"
       }
     },
-    ...referenceStages[3]!.graph,
+    ...referenceStages[3].graph,
     {
       "id": "crm-dates",
       "kind": "task",
@@ -790,7 +790,7 @@ describe("workflow definition public equivalence characterization", () => {
     }
   ],
   "steps": [
-    ...referenceStages[0]!.steps,
+    ...referenceStages[0].steps,
     {
       "key": "searching",
       "nodeId": "searching",
@@ -815,7 +815,7 @@ describe("workflow definition public equivalence characterization", () => {
       "taskId": "workflow:person-lookup/read-resolved-identity",
       "conditional": false
     },
-    ...referenceStages[1]!.steps,
+    ...referenceStages[1].steps,
     {
       "key": "cross-verify",
       "nodeId": "cross-verify",
@@ -832,7 +832,7 @@ describe("workflow definition public equivalence characterization", () => {
       "taskId": "workflow:person-lookup/read-resolved-identity",
       "conditional": true
     },
-    ...referenceStages[2]!.steps,
+    ...referenceStages[2].steps,
     {
       "key": "crm-selected-record",
       "nodeId": "crm-selected-record",
@@ -865,7 +865,7 @@ describe("workflow definition public equivalence characterization", () => {
       "taskId": "workflow:person-lookup/read-active-status",
       "conditional": true
     },
-    ...referenceStages[3]!.steps,
+    ...referenceStages[3].steps,
     {
       "key": "crm-dates",
       "nodeId": "crm-dates",

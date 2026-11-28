@@ -27,7 +27,7 @@ export const compareReferenceFieldsTask = defineTask(CompareReferenceFields, {
     const compared = compareReferenceFields(sheets ?? [], input.fields, input.approved);
     for (const match of compared.matches) ctx.log.info(`${match.sheet}, row ${match.row}: ${spreadsheetField(match.field).label} matches`);
     for (const mismatch of compared.mismatches) ctx.log.info(`${mismatch.sheet}, row ${mismatch.row}: ${spreadsheetField(mismatch.field).label} differs`);
-    const output = { captured, ...compared, review: compared.mismatches.length > 0 };
+    const output = { captured, ...compared, review: compared.mismatches.length > 0 ? true as const : null };
     ctx.recordData(evidenceLeaves(output).map(({ path, value }) => ({ direction: "read" as const, field: path, value })));
     return output;
   },

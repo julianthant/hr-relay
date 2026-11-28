@@ -29,7 +29,7 @@ describe("Explorer spec resolution", () => {
   });
   it("hides every later step when an outcome stops the run", () => {
     const resolved = resolveExplorer(spec, {}, { "search-result": "PERSON_LOOKUP_UCPATH_SEARCH_FAILED" });
-    assert.deepEqual(resolved.steps.map(step => step.id), ["searching"]);
+    assert.deepEqual(resolved.steps.map(step => step.id), ["reference-check", "searching"]);
     assert.equal(resolved.stop?.stops, true);
   });
   it("falls back to a decision's initial outcome when the chosen one no longer applies", () => {

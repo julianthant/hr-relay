@@ -43,7 +43,7 @@ export const CompareReferenceFields = defineTaskContract({
   }),
   output: z.strictObject({
     captured: ReferenceSheetsSchema.nullable(), matches: z.array(MatchSchema), mismatches: z.array(MismatchSchema),
-    review: z.boolean(),
+    review: z.literal(true).nullable(),
   }),
   providers: ["workbooks.library"],
   errorCodes: ["WORKBOOK_PROVIDER_UNAVAILABLE", ...WorkbookRefusalSchema.shape.code.options],

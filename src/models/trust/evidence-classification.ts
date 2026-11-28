@@ -606,6 +606,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ]),
   ...["work-study", "work-study-ucpath-auth", "work-study-transaction", "work-study-reference-check"].flatMap(id => [...person(workflowInput(id), "emplId"), ...open(workflowInput(id), "effectiveDate")]),
   ...person(workflowInput("separations-reference-check"), "emplId", "employeeName"),
+  ...person(workflowResult("separations-reference-check"), "emplId"),
   ...approvedOcrRecordLeaves(taskOutput("ocr/read-approved-record"), "record."),
   ...approvedOcrSnapshotLeaves(taskOutput("ocr/read-approved-snapshot")),
   ...approvedOcrSnapshotLeaves(workflowResult("emergency-contact-read-document")),
