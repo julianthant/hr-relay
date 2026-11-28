@@ -79,7 +79,7 @@ const release = async (page: Page): Promise<void> => { await page.evaluate(() =>
 const REFRESH = {
   held: scene("General over its kept document during a held re-read, a field mid-edit", { server: { read: "hold-later" }, host: { rereadOnceLoaded: true }, play: editDuringReread, story: { ready: JOB_END } }),
   landed: scene("General after the re-read lands, the edit kept", { server: { read: "hold-later" }, host: { rereadOnceLoaded: true }, play: then(editDuringReread, release), story: { ready: JOB_END } }),
-  "kept-document": scene("General over its kept document while a slow re-read runs, the spinner beside the title", { server: { read: "hold-later" }, host: { rereadOnceLoaded: true }, story: { ready: '[data-settings-stale] [role="status"]', knownFailures: { "no-dead-disabled-control": "#1018" } } }),
+  "kept-document": scene("General over its kept document while a slow re-read runs, the spinner beside the title", { server: { read: "hold-later" }, host: { rereadOnceLoaded: true }, story: { ready: '[data-settings-stale] [role="status"]' } }),
 } satisfies Record<"held" | "landed" | "kept-document", Story>;
 
 const SECTION = {
