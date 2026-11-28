@@ -169,7 +169,7 @@ export function runDialogWriteRerunSnapshot(): RerunValuesResponse {
   } });
 }
 
-/** The repeat warning for that Work-Study source: its required filing step runs again. */
+/** The repeat warning when that Work-Study rerun includes the filing step. */
 export function runDialogWriteRerunWarning(): RerunWarningWire {
   return RerunWarningWireSchema.parse({ workflowId: RUN_DIALOG_WORK_STUDY, rerun: {
     source: { runId: RUN_ID, expectedVersion: 3, intent: "rerun", selectedStepKeys: WORK_STUDY.steps.map(({ key }) => key) },
