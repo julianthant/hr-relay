@@ -316,6 +316,7 @@ export class AuthorityDatabase implements Disposable {
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
 
   #authorityCommitCallbacks: (() => void)[] = [];
+  #logWriteFailure: Error | undefined;
   #logPublisher: ((mutation: LogMutation) => void) | undefined;
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
   #slowOperation: SlowOperationHook | undefined;
@@ -2443,6 +2444,8 @@ export class AuthorityDatabase implements Disposable {
     return () => { if (this.#logPublisher === publish) this.#logPublisher = undefined; };
   }
 
+  refuseWritesAfterLogFailure(error: Error): void { this.#logWriteFailure ??= error; }
+
   #publishLogAfterCommit(mutation: LogMutation): void {
     const publish = this.#logPublisher;
     if (publish !== undefined) this.afterAuthorityCommit(() => { publish(mutation); });
@@ -3415,6 +3418,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result, searchValidation: "all" | "progress" | "none" = "all"): Result {
+    if (this.#logWriteFailure !== undefined) throw this.#logWriteFailure;
     if (this.#historyOwner !== undefined) throw new Error("isolated-history-read-only");
     return withOperationProof(() => {
       if (this.#transactionDepth === 0) clearOperationProofSlots();

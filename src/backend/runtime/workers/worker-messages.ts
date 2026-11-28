@@ -14,12 +14,12 @@ export const WorkerLogEnableSchema = z.strictObject({ kind: z.literal("worker-lo
 const logSequence = z.number().int().positive();
 export const WorkerLogMessageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("worker-log-append"), seq: logSequence, row: MirrorLogRecordSchema }),
-  z.strictObject({ kind: z.literal("worker-log-flush"), requestId: z.uuid(), throughSeq: logSequence }),
+  z.strictObject({ kind: z.literal("worker-log-flush"), requestId: z.uuid(), throughSeq: z.number().int().nonnegative(), final: z.literal(true).optional() }),
 ]);
 export type WorkerLogMessage = z.infer<typeof WorkerLogMessageSchema>;
 export const WorkerLogAckSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("worker-log-ack"), throughSeq: logSequence }),
-  z.strictObject({ kind: z.literal("worker-log-flushed"), requestId: z.uuid(), throughSeq: logSequence }),
+  z.strictObject({ kind: z.literal("worker-log-flushed"), requestId: z.uuid(), throughSeq: z.number().int().nonnegative() }),
 ]);
 export type WorkerLogAck = z.infer<typeof WorkerLogAckSchema>;
 

@@ -18,6 +18,13 @@ export const LogMutationSchema = z.discriminatedUnion("kind", [
 ]);
 export type LogMutation = z.infer<typeof LogMutationSchema>;
 
+export class WorkerLogChannelError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : "worker-log-channel-failed", { cause });
+    this.name = "WorkerLogChannelError";
+  }
+}
+
 const sequence = z.number().int().positive();
 export const LogWriterRequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("append"), sequence, mutation: LogMutationSchema }),

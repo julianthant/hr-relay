@@ -410,7 +410,13 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   let accountClosureProven = true;
   let removeStopListeners: (() => void) | undefined;
   let router: IpcRouter | undefined;
-  const logChannel = launch === undefined ? undefined : createWorkerLogChannel();
+  const stopController = new AbortController();
+  let channelFailure: unknown;
+  const logChannel = launch === undefined ? undefined : createWorkerLogChannel(error => {
+    channelFailure = error;
+    database.refuseWritesAfterLogFailure(error);
+    stopController.abort(error);
+  });
   const removeLogPublisher = logChannel === undefined ? undefined : database.bindLogPublisher(logChannel.publish);
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build });
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build });
@@ -526,7 +532,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     }
   })();
 
-  const stopController = new AbortController();
   const forwardStop = (reason: string) => (): void => {
     stopController.abort(new Error(reason));
   };
@@ -565,7 +570,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
 
     const paused = (): boolean => database.authority.workerSlots.get(workerId)?.paused === true;
     let stopRequested = false;
-    let channelFailure: unknown;
     let boundSessions: WorkerSessionManager | undefined;
     let current: WorkerActivity = { state: paused() ? "paused" : "idle" };
     const browserActivities = new Map<symbol, "acquiring" | "authenticating" | "closing">();
@@ -773,7 +777,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       code: "WORKER_CLEANUP_FAILED", reason: "resource-closure-unproved" }, { kind: "worker", workerId }); }
     catch (loggingError) { cleanupErrors.push(loggingError); }
   }
-  try { await logChannel?.flush(); } catch (error) { cleanupErrors.push(error); }
+  try { await logChannel?.drain(); } catch (error) { cleanupErrors.push(error); }
   removeLogPublisher?.();
   router?.close();
   let databaseClosureProven = false;

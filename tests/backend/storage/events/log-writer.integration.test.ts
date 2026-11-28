@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { createWorkerLogChannel } from "../../../../src/backend/runtime/workers/worker-child-channel.js";
+import { createWorkerLogReceiver } from "../../../../src/backend/runtime/workers/worker-ipc-router.js";
 import { WorkerLogMessageSchema } from "../../../../src/backend/runtime/workers/worker-messages.js";
 import { startLogWriter } from "../../../../src/backend/storage/events/log-writer.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
@@ -28,6 +29,10 @@ it("copies only committed notes and recovers committed state rows whose worker d
       throw new Error("synthetic rollback");
     }), /synthetic rollback/u);
     emit("queued before connection");
+    let flushed = false;
+    const waiting = child.flush().then(() => { flushed = true; });
+    await Promise.resolve();
+    assert.equal(flushed, false);
     const received: number[] = [];
     child.attach(raw => {
       const message = WorkerLogMessageSchema.parse(raw);
@@ -45,6 +50,7 @@ it("copies only committed notes and recovers committed state rows whose worker d
     });
     emit("sent without blocking");
     assert.deepEqual(received, [1, 2]);
+    await waiting;
     await child.flush();
     using state = new DatabaseSync(path, { readOnly: true });
     using timeline = new DatabaseSync(join(stateRoot, "timeline.db"), { readOnly: true });
@@ -64,7 +70,16 @@ it("copies only committed notes and recovers committed state rows whose worker d
 it("preserves each run's state order when four runs send interleaved notes", async () => {
   const { database, clock, path, stateRoot, dispose } = await openAuthorityHarness();
   const writer = startLogWriter({ statePath: path, root: stateRoot, onFault: () => {} });
-  const unbind = database.bindLogPublisher(writer.publish);
+  const channels = Array.from({ length: 4 }, () => {
+    const child = createWorkerLogChannel();
+    const receiver = createWorkerLogReceiver(writer, child.receive, child.fail);
+    child.attach(receiver.receive);
+    return { child, receiver };
+  });
+  const channelByRun = new Map<string, ReturnType<typeof createWorkerLogChannel>>();
+  const unbind = database.bindLogPublisher(mutation => {
+    if (mutation.kind === "append" && mutation.row.scope.kind === "run") channelByRun.get(mutation.row.scope.runId)?.publish(mutation);
+  });
   try {
     await writer.ready;
     const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
@@ -72,6 +87,7 @@ it("preserves each run's state order when four runs send interleaved notes", asy
       const run = RunRecordSchema.parse(personLookupQueuedRun({ runId: randomUUID(),
         itemId: deriveItemId("person-lookup", `test-log-run-${index}`) }));
       database.authority.runs.enqueue(run);
+      channelByRun.set(run.envelope.runId, channels[index].child);
       return run;
     });
     const messages = ["first", "second", "third"];
@@ -83,7 +99,14 @@ it("preserves each run's state order when four runs send interleaved notes", asy
         }, level: "step", message });
       }
     }));
-    await writer.flush();
+    await Promise.all(channels.map(({ child }) => child.drain()));
+    assert.ok(channels.every(({ receiver }) => receiver.drained));
+    const receiver = createWorkerLogReceiver(writer, () => {}, () => {});
+    const row = database.authority.timelineEvents.page({}).find(event => event.payload.kind === "note");
+    assert.ok(row);
+    assert.throws(() => receiver.receive({ kind: "worker-log-append", seq: 2, row }), /worker-log-sequence-gap/u);
+    assert.throws(() => receiver.receive({ kind: "worker-log-flush", requestId: randomUUID(), throughSeq: 1 }),
+      /worker-log-flush-sequence-invalid/u);
     using timeline = new DatabaseSync(join(stateRoot, "timeline.db"), { readOnly: true });
     const read = timeline.prepare("SELECT json_extract(payload_json,'$.payload.note.message') AS message FROM timeline_events WHERE run_id=? AND kind='note' ORDER BY cursor");
     for (const { envelope } of runs) assert.deepEqual(read.all(envelope.runId).map(row => row.message), messages);

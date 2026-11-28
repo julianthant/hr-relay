@@ -1,3 +1,4 @@
+import { WorkerLogChannelError } from "../../storage/events/log-mutations.js";
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
 import { readRunCheckpoint, RunContinuationRefusedError, readContinuationGate } from "../../storage/sqlite/run-continuation.js";
 import { DryRunSampleSchema, type DryRunBinding } from "../../../models/workflow/dry-run.js";
@@ -254,6 +255,7 @@ export async function walkRunPlan(
             patched = applyCheckpointPatches({ replayed: entry.record, patches: entry.patches, outputSchema: node.uses.output,
               attempt: envelope.attempt, claimGeneration: claim.claimGeneration, runId, writtenAt: instant() });
           } catch (error) {
+            if (error instanceof WorkerLogChannelError) throw error;
             return await terminalizeAsFailure(buildEntryValidationFailureRecord({ run: getRun(), failureId: deps.ids.uuid(),
               problems: [`injected correction for node "${node.id}" was refused: ${error instanceof Error ? error.message : String(error)}`], occurredAt: instant() }));
           }
@@ -364,6 +366,7 @@ export async function walkRunPlan(
       try {
         produced = assertion.produce({ facts: assertion.facts, scope, assertedAt });
       } catch (error) {
+        if (error instanceof WorkerLogChannelError) throw error;
         return await failNode(node, node.uses.id, error);
       }
       const parsed = node.uses.output.safeParse(produced);
@@ -443,6 +446,7 @@ export async function walkRunPlan(
           try {
             node.uses.input.parse(node.bind(scope));
           } catch (error) {
+            if (error instanceof WorkerLogChannelError) throw error;
             return await failNode(node, node.uses.id, wrapUnhandledTaskError(node.uses.id, error));
           }
           previewOnly.add(String(node.id));
@@ -518,6 +522,7 @@ export async function walkRunPlan(
                 parkedVersion: current.version + 1,
               });
             } catch (error) {
+              if (error instanceof WorkerLogChannelError) throw error;
               return await failNode(node, undefined, error instanceof Error
                 ? error
                 : new Error(`gate "${node.id}" source binding failed`, { cause: error }));
@@ -568,7 +573,7 @@ export async function walkRunPlan(
             previewBinding = node.previewBind?.(transactionScope);
             if (previewBinding !== undefined) previewBinding = { ...previewBinding, samples: previewBinding.samples.map(sample => DryRunSampleSchema.parse(sample)) };
           }
-          catch (error) { return await failNode(node, node.prepare.uses.id, error); }
+          catch (error) { if (error instanceof WorkerLogChannelError) throw error; return await failNode(node, node.prepare.uses.id, error); }
           if (node.dependsOn.some(id => previewOnly.has(String(id))) && previewBinding === undefined) {
             markUnavailable(node);
             continue;
@@ -602,6 +607,7 @@ export async function walkRunPlan(
               }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions.filter(action => action.kind !== "screenshot")),
                 action => { if (action.kind === "screenshot") drainBrowserActions(runSpanIdentity.spanPath, [action], node.commit.uses.id); }));
             } catch (error) {
+              if (error instanceof WorkerLogChannelError) throw error;
               if (error instanceof RunAbandonedError) throw error;
               interruptBeforeFence(node.id);
               return await failNode(node, node.commit.uses.id, error);
@@ -662,6 +668,7 @@ export async function walkRunPlan(
           }
           checkpointRecords.set(String(node.id), record);
         } catch (error) {
+          if (error instanceof WorkerLogChannelError) throw error;
           if (error instanceof RunAbandonedError) throw error;
           if (error instanceof WriteParkedError) {
 
@@ -803,6 +810,7 @@ export async function walkRunPlan(
             emitSettledSpan(node, evidence.manifest.children.length === 0 ? CONDITION_SKIP : { outcome: "done" }, joinSpanPath);
           }
         } catch (error) {
+          if (error instanceof WorkerLogChannelError) throw error;
           if (error instanceof RunAbandonedError || error instanceof WorkerSessionClosureUnprovedError
             || error instanceof RunLifecycleRefusedError && error.outcome.state === "refused" && error.outcome.refusal.reason === "lost") throw error;
           if (runClaim(getRun())?.claimGeneration !== claim.claimGeneration) throw error;

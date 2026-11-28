@@ -47,6 +47,42 @@ it("fails the execution boundary on a missing log acknowledgment before advancin
   }
 });
 
+it("writes no timeline rows after an acknowledgement timeout at the task checkpoint", async () => {
+  const sessions = actionBindingSessions({ clicks: 2 });
+  const harness = await executorHarness({ sessions, descriptor: actionBindingCompiled.descriptor });
+  const { database, clock } = harness.authority;
+  const claimed = enqueueAndClaim(database, actionBindingQueuedRun(clock.now().toISOString()), clock.now().toISOString(), ACTION_BINDING_WORKFLOW_ID);
+  const stop = new AbortController();
+  const child = createWorkerLogChannel(error => {
+    database.refuseWritesAfterLogFailure(error);
+    stop.abort(error);
+  });
+  const unbind = database.bindLogPublisher(child.publish);
+  const reached = Promise.withResolvers<ReturnType<typeof database.authority.timelineEvents.page>>();
+  let taskNoteSent = false;
+  child.attach(message => {
+    if (message.kind === "worker-log-append") {
+      if (message.row.payload.kind === "note") taskNoteSent = true;
+      if (!taskNoteSent) child.receive({ kind: "worker-log-ack", throughSeq: message.seq });
+    } else if (taskNoteSent) reached.resolve(database.authority.timelineEvents.page({}));
+  });
+  try {
+    vi.useFakeTimers();
+    const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock });
+    const executed = assert.rejects(executeClaimedRun({ ...harness.deps, beforeConfirmedWrite: child.flush, taskNotes: writer },
+      { ...claimed, signal: stop.signal }), /worker-log-flush-deadline/u);
+    const prior = await reached.promise;
+    await vi.advanceTimersByTimeAsync(5000);
+    await executed;
+    assert.ok(stop.signal.aborted);
+    assert.deepEqual(database.authority.timelineEvents.page({}), prior);
+    assert.throws(() => database.withAuthorityTransaction(() => assert.fail("transaction ran")), /worker-log-flush-deadline/u);
+  } finally {
+    vi.useRealTimers();
+    unbind();
+  }
+});
+
 describe("cold login action note secrecy", () => {
   for (const failed of [false, true]) {
     it(`drops unbound raw credentials when cold login ${failed ? "fails" : "succeeds"}`, async () => {

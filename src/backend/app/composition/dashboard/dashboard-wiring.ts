@@ -182,9 +182,10 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   wakeForWork = workers.pool.wakeForWork;
   profile.runtime.bindSupervisor(profile.token, workers.pool);
   const stopWorkerControl = requiredClosure(async () => {
-    requireStoppedPool(await workers.pool.stopAll("shutdown"));
-    await nominatim.stop();
-    await stopLogWriter();
+    try {
+      requireStoppedPool(await workers.pool.stopAll("shutdown"));
+      await nominatim.stop();
+    } finally { await stopLogWriter(); }
   });
   custody.closeWorkerControl = stopWorkerControl;
   const { writeResolution, artifacts } = prepareWriteSafety({ database, admission, lifecycle, descriptors, ids });
@@ -397,6 +398,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
   input.onInitialPreflight?.(initialPreflight);
   // Boot spawns the standing members; each one that fails shows on its card with its cause.
+  await logWriter.ready;
   void workers.startActive();
 
   const chatGptOcrTest = createChatGptOcrTestService({ assertCurrent, dispatch: async (input, signal, source) => {
@@ -468,7 +470,6 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   // Unfinished sends become delivery-unknown before any history route serves; expired chats are reclaimed now and hourly.
   database.authority.assistantHistory.settleInterrupted(clock.now().toISOString());
   database.authority.assistantHistory.reclaimExpired(clock.now().toISOString());
-  await logWriter.ready;
   const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;
   const observation = { clock, debugEvents };
   const server: DashboardHttpServer = input.applicationTransport === undefined ? await startHttpServer({

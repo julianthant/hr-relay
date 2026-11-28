@@ -1,3 +1,4 @@
+import { WorkerLogChannelError } from "../../storage/events/log-mutations.js";
 import { OcrApprovalReadResultSchema } from "../../../models/processing/ocr/approved-snapshot.js";
 import { RunContinuationRefusedError, readContinuationGate } from "../../storage/sqlite/run-continuation.js";
 import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds } from "../../logs/generated-artifact-projection.js";
@@ -526,6 +527,7 @@ export function createTaskExecution(
     try {
       const withTransaction = deps.authority.withAuthorityTransaction?.bind(deps.authority);
       if (withTransaction === undefined) throw new Error("generated-artifact-replay-requires-transaction");
+      if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
       const pending = withTransaction(repositories => pendingGeneratedUpdateIds(repositories, record, specs));
       if (pending.length === 0) return undefined;
       const projector = deps.artifactProjector;
@@ -537,6 +539,7 @@ export function createTaskExecution(
       }
       await projector.projectOutbox(pending);
     } catch (error) {
+      if (error instanceof WorkerLogChannelError) throw error;
       return await failNode(node, node.uses.id, error);
     }
     return undefined;
@@ -679,6 +682,7 @@ export function createTaskExecution(
         });
         return undefined;
       } catch (error) {
+        if (error instanceof WorkerLogChannelError) throw error;
         if (input.signal.aborted) {
           emit({
             t: "span.ended", kind: "task",

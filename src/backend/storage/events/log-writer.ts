@@ -72,10 +72,11 @@ export function startLogWriter(input: { statePath: string; root: string; onFault
       send({ kind: "append", sequence, mutation });
     },
     flush: () => closure ?? request("flush"),
-    reconcile: () => closure ?? request("reconcile"),
+    reconcile: () => closure === undefined ? request("reconcile") : Promise.reject(new Error("log-writer-closing")),
+    reportFault: (error: unknown): void => { fail(error); void worker.terminate(); },
     close: (): Promise<void> => {
       closure ??= (async () => {
-        try { await request("close"); }
+        try { if (failure === undefined) await request("close"); }
         finally { await exited.promise; }
       })();
       return closure;

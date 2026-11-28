@@ -143,16 +143,15 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
   const statePath = join(stateRoot, "state.db");
   admission.assertAuthorityDatabase(statePath);
   const logWriter = startLogWriter({ statePath, root: stateRoot, onFault: error => {
-    custody.failedClosures.push(error);
     try { appendEmergencyFault({ stateRoot, build: appVersion, now: clock.now(), error,
       code: "LOG_WRITER_FAILED", area: "log-writer", reason: "database-unavailable" }); }
-    catch (diagnostic) { custody.failedClosures.push(diagnostic); }
+    catch { input.workerProcess?.faultSink?.(JSON.stringify({ code: "LOG_WRITER_FAILED", reason: "boot-log-unavailable" })); }
   } });
   const unbindLogPublisher = database.bindLogPublisher(logWriter.publish);
-  const stopLogWriter = requiredClosure(() => {
+  const stopLogWriter = () => {
     unbindLogPublisher();
     return logWriter.close();
-  });
+  };
   startupCleanups.push(stopLogWriter);
   importLocalDebugLog(stateRoot, database.authority.timelineEvents);
   importLocalDebugLog(machineAdmission.stateRoot, database.authority.timelineEvents);
