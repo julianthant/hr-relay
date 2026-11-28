@@ -60,7 +60,11 @@ export function resolveExecutableChildOutput(evidence: DelegationTerminalEvidenc
   if (resolution.kind === "ordinary" && evidence.edgeId === "ocr-pages" && parentEdgeId === "document-ocr") {
     const pages = OcrPageOutcomeSchema.array().parse(resolution.output);
     if (pages.length > 0 && !pages.some(page => page.state === "done" && page.output.extraction.record !== null)) {
-      throw firstFailure() ?? Object.assign(new Error(ERROR_CATALOG.OCR_NO_REVIEWABLE_RECORDS.text), { code: "OCR_NO_REVIEWABLE_RECORDS" });
+      const failure = firstFailure();
+      if (failure !== undefined) throw failure;
+      const cancelled = pages.find(page => page.state === "cancelled");
+      if (cancelled !== undefined) throw Object.assign(new Error(cancelled.reason), { code: "OCR_PAGE_CANCELLED" });
+      throw Object.assign(new Error(ERROR_CATALOG.OCR_NO_REVIEWABLE_RECORDS.text), { code: "OCR_NO_REVIEWABLE_RECORDS" });
     }
   }
   return resolution;

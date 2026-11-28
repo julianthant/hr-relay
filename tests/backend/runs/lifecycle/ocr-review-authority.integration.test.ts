@@ -84,8 +84,8 @@ it("ends an Emergency Contact run with the recorded reason its only OCR page was
   assert.equal(parent.run.envelope.runId, parentRun.envelope.runId);
   assert.ok(parent.outcome.state === "failed");
   const failure = database.authority.failures.get(parent.outcome.failureId);
-  assert.equal(failure?.summary, reason);
-  assert.notEqual(failure?.code, "OCR_NO_REVIEWABLE_RECORDS");
+  assert.equal(failure?.code, "OCR_PAGE_CANCELLED");
+  assert.equal(failure.summary, reason);
   assert.equal(database.authority.ocrReviews.latest(run.envelope.runId), undefined);
 });
 
