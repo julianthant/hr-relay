@@ -583,7 +583,8 @@ async function runG4(profile: CopyProfile, workspace: string, args: { days: stri
   if (new Set(startGate.shapes.map(row => row.shape)).size !== 2) throw new Error("read-lanes-g4-g2-shapes-invalid");
   const repetitions = z.coerce.number().int().min(5).max(10).parse(args.runs ?? "5");
   const selected = args.shape === undefined ? ["B", "A"] as const : [ShapeSchema.parse(args.shape)];
-  const profileId = await admitG4Copy(profile, workspace);
+  const { acquireRuntimeLifetimeLock } = await import("../../src/backend/storage/admission/lifetime-lock.js");
+  const lockPort = runtimeProfiles[profile].lockPort, cloneRoot = realpathSync(tmpdir());
   const results: Record<Shape, G4Run[]> = { A: [], B: [] };
   const path = join(process.cwd(), `read-lanes-g4-${String(systemClock.nowMs())}.json`);
   const report = { gate: "G4", limits: G4_LIMITS, g2Commit: startGate.commit, profile, node: process.version,
@@ -597,7 +598,17 @@ async function runG4(profile: CopyProfile, workspace: string, args: { days: stri
     for (let index = 0; index < repetitions; index++) {
       for (const shape of selected) {
         process.stderr.write(`G4 ${shape} ${String(index + 1)}/${String(repetitions)}\n`);
-        results[shape].push(await measureG4(shape, profile, workspace, { days, workflow, query, profileId }));
+        const clone = mkdtempSync(join(cloneRoot, CLONE_PREFIX));
+        const result = await withG4Cleanup(async () => {
+          await cloneProfile(workspace, clone, lockPort);
+          const profileId = await admitG4Copy(profile, clone);
+          return await measureG4(shape, profile, clone, { days, workflow, query, profileId });
+        }, async () => {
+          const lock = await acquireRuntimeLifetimeLock(lockPort);
+          try { rmSync(clone, { recursive: true, force: true }); }
+          finally { await lock.close(); }
+        });
+        results[shape].push(result);
       }
     }
   } catch (cause) {
@@ -653,16 +664,7 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
     const workspace = applicationDataWorkspace(undefined, profile);
     if (values.g4 === true) {
       if (!values["fresh-copy"]) throw new Error("read-lanes-g4-fresh-copy-required");
-      const clone = mkdtempSync(join(cloneRoot, CLONE_PREFIX));
-      try {
-        await cloneProfile(workspace, clone, lockPort);
-        await runG4(profile, clone, { days: values.days, workflow: values.workflow, query: values.query, g2: values.g2, runs: values.runs, shape: values.shape });
-      } finally {
-        const { acquireRuntimeLifetimeLock } = await import("../../src/backend/storage/admission/lifetime-lock.js");
-        const lock = await acquireRuntimeLifetimeLock(lockPort);
-        try { rmSync(clone, { recursive: true, force: true }); }
-        finally { await lock.close(); }
-      }
+      await runG4(profile, workspace, { days: values.days, workflow: values.workflow, query: values.query, g2: values.g2, runs: values.runs, shape: values.shape });
     } else if (values.shape !== undefined) {
       if (values["fresh-copy"]) throw new Error("read-lanes-bench-fresh-copy-requires-both-shapes");
       process.stdout.write(`${JSON.stringify(await measure(ShapeSchema.parse(values.shape), clonedWorkspace ?? workspace, lockPort))}\n`);
