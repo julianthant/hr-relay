@@ -1,15 +1,23 @@
 import { RunWorkbookSelectedRowReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
 import { I9SignerOutputSchema } from "../../../src/models/systems/i9/read-section2-signer.js";
-import { EidSchema } from "../../../src/rules/identity/ids.js";
+import { EidSchema, FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createOnboardingRunWorld } from "../../support/helpers/backend/onboarding-run-world.js";
+import { StartStepOmissionRefusedError } from "../../../src/backend/runs/start/step-selection.js";
 import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding/result.js";
 import { RunDryRunPreviewResultSchema } from "../../../src/models/run/result.js";
 import { DRY_RUN_I9_PROFILE_ID, containsDryRunSample } from "../../../src/models/workflow/dry-run.js";
 import { ONBOARDING_WRITE_REVIEW_GATE } from "../../../src/models/workflows/onboarding/read-write-plan.js";
 import { RerunSourceSchema } from "../../../src/models/run/rerun.js";
 import { previewRerunWarnings } from "../../../src/backend/runs/start/rerun.js";
+import { createOperatorProjection, createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/operator.js";
+import { readRunPanel } from "../../../src/backend/runs/queries/run-detail.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { projectRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { CrmReadHireData } from "../../../src/models/systems/crm/read-hire-data.js";
 
 const world = createOnboardingRunWorld();
 afterAll(world.close);
@@ -27,7 +35,91 @@ function assertNewProfilePreview(preview: ReturnType<typeof RunDryRunPreviewResu
     { nodeId: "i9-remote-create", state: "unavailable", reason: "requires-unsubmitted-output" });
 }
 
+async function logsFor(h: Awaited<ReturnType<typeof world.executionFixture>>, runId: string) {
+  const reader = testRunService(h.database, h.clock);
+  const descriptors = { resolve: (id: string) => id === h.descriptor.id ? h.descriptor : undefined };
+  const projection = createOperatorProjection({ database: h.database, stateRoot: h.stateRoot, clock: h.clock, reader,
+    appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(h.database.authority), descriptors });
+  projection.ingestFromTimeline();
+  const panel = await readRunPanel(createOperatorRunDetail({ database: h.database, stateRoot: h.stateRoot, projection, runReader: reader,
+    canonical: { database: h.database, reader, descriptors } }), runId, signal());
+  return projectRunLogs({ ...panel, unavailableEvidence: [] }, { artifactUrl: () => "unused" }).steps;
+}
+
 describe("public onboarding write execution", () => {
+  it("refuses a manually entered CRM record for a different person before capturing the roster", async () => {
+    const h = await world.executionFixture(false, { selectedRow: true });
+    const { fields, department, recruitmentNumber, recordUrl } = CrmReadHireData.example;
+    assert.throws(() => h.plan({ ...h.request,
+      selectedStepKeys: h.descriptor.timeline.map(step => step.key).filter(step => step !== "crm-data"),
+      stepOmissions: [{ step: "crm-data", facts: {
+        ...fields, department, recruitmentNumber, recordUrl, email: "different@example.test", personalEmail: "different@example.test", workEmail: null,
+        middleName: null, ssn: null, addressLine2: null, phone: null,
+      } }],
+    }), (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "facts-invalid"
+      && error.message === "onboarding start step crm-data omission facts are invalid at: email");
+    assert.equal(h.snapshots(), 0);
+  });
+
+  it("skips the delegated lookup and every dependent write when there is no observed I-9 result", async () => {
+    const h = await world.executionFixture(false, { selectedRow: true });
+    const root = h.start({ ...h.request, selectedStepKeys: ["crm-data", "ucpath-search"], stepOmissions: [
+      { step: "i9-search", facts: { i9Status: "Not found", profileId: null } },
+      { step: "hire-review", facts: { decision: "Undecided", emplId: null } },
+      { step: "reference-check", facts: { referenceResult: "Not checked" } },
+      { step: "i9-creation", facts: {} },
+      { step: "ucpath-hire", facts: {} },
+      { step: "master-results", facts: {} },
+    ] });
+    terminal(await h.rawExecution.execute(root, signal()));
+    assert.deepEqual(h.database.authority.runs.listChildren(root.envelope.runId), []);
+    assert.deepEqual(h.database.authority.gateResults.listByRun(root.envelope.runId), []);
+    assert.deepEqual(h.database.authority.writeIntents.listByRun(root.envelope.runId), []);
+    assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
+    const result = h.database.authority.runResults.get(root.envelope.runId);
+    assert.ok(result);
+    assert.partialDeepStrictEqual(result.result.value, { state: "completed-with-manual-steps" });
+  });
+
+  it("records a hire done outside Relay without staging it, opening a write intent, or filling unverified master results", async () => {
+    const person = { emplId: EidSchema.parse("10800000"), name: "Hire, Fixture" };
+    const h = await world.executionFixture(false, { mode: "rehire", selectedRow: true, ssn: "123-45-6789",
+      personMatch: { hits: [person], confirmed: [person], dropped: [] } });
+    const skipped = ["ucpath-hire", "master-results"];
+    const root = h.start({ ...h.request,
+      selectedStepKeys: h.descriptor.timeline.map(step => step.key).filter(step => !skipped.includes(step)),
+      stepOmissions: skipped.map(step => ({ step, facts: {} })),
+    });
+    terminal(await h.rawExecution.execute(root, signal()));
+    assert.deepEqual(h.database.authority.writeIntents.listByRun(root.envelope.runId), []);
+    assert.ok(h.hire.events.every(event => !event.startsWith("prepare:hire:") && event !== "commit:hire"));
+    assert.deepEqual(h.repository.runOperations(root.envelope.runId), []);
+
+    const logs = await logsFor(h, root.envelope.runId);
+    assert.match(logPlainText(logs.filter(step => step.title === "File and verify the UCPath hire")), /Done outside Relay/u);
+  });
+
+  it("validates the typed entry sheet against the saved roster and sends the typed values to the next read", async () => {
+    const h = await world.executionFixture(false, { selectedRow: true, crmReadFails: true, dryRun: true });
+    const { fields, department, recruitmentNumber, recordUrl, personalEmail } = CrmReadHireData.example;
+    const root = h.start({ ...h.request,
+      selectedStepKeys: h.descriptor.timeline.map(step => step.key).filter(step => step !== "crm-data"),
+      stepOmissions: [{ step: "crm-data", facts: {
+        ...fields, department, recruitmentNumber, recordUrl, personalEmail, workEmail: null,
+        middleName: null, ssn: "123-45-6789", addressLine2: null, phone: null, dob: "02/04/2000",
+      } }],
+    });
+    const executed = await h.rawExecution.execute(root, signal());
+    assert.ok(executed.run?.lifecycle.state === "parked-gate" && executed.run.lifecycle.gateId === ONBOARDING_WRITE_REVIEW_GATE,
+      JSON.stringify(executed.run?.lifecycle));
+    assert.equal(h.calls.some(call => call.system === "crm"), false);
+    assert.deepEqual(h.calls.find(call => call.system === "ucpath")?.input,
+      { firstName: "Fixture", lastName: "Hire", dob: "02/04/2000", ssn: "123456789" });
+    const logs = logPlainText(await logsFor(h, root.envelope.runId));
+    assert.match(logs, /SSN \(if listed\): Not shown/u);
+    assert.doesNotMatch(logs, /123-45-6789|123456789/u);
+  });
+
   it("starts from the selected saved row, parks before all writes, then files three fenced receipts and patches only the captured live master", async () => {
     const h = await world.executionFixture(false, { match: "unique", selectedRow: true }), root = h.start();
     assert.deepEqual(RunWorkbookSelectedRowReferenceSchema.parse(root.input.workbookReferences?.[0].value).request.selectedRow, { sheetId: "people", rowId: "people-person" });

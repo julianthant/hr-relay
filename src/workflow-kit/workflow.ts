@@ -641,7 +641,7 @@ interface WorkflowTerminalRun {
     /** The one durable record of what the operator asked for. */
     dryRun: boolean;
     /** The steps this run omitted; an asserted dependency must name one of them. */
-    stepOmissions?: readonly Readonly<{ step: string }>[];
+    stepOmissions?: readonly Readonly<{ step: string; workflow?: string | undefined }>[];
     continuation?: RunContinuation;
   }>;
   readonly input: Readonly<{
@@ -916,26 +916,51 @@ function deriveStepOmissions(
       }
     }
     const skips = manual.skips ?? [];
+    if (manual.off !== undefined && (manual.off === "manual") !== (form.fields.length === 0)) {
+      throw new Error(`${id}: ${owner} requires fields exactly when off takes values`);
+    }
     if (new Set(skips).size !== skips.length) throw new Error(`${id}: ${owner} skips a node twice`);
     for (const skipped of skips) {
       if (!members.has(skipped)) throw new Error(`${id}: ${owner} skips node "${skipped}", which is not a member of that step`);
       if (Object.hasOwn(manual.produces, skipped)) throw new Error(`${id}: ${owner} both produces and skips node "${skipped}"`);
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(skipped), owner);
-      if (node.kind !== "task" && node.kind !== "gate" && node.kind !== "transaction") {
+      const routing = manual.off !== undefined && (node.kind === "child-run" || node.kind === "branch");
+      if (!routing && node.kind !== "task" && node.kind !== "gate" && node.kind !== "transaction") {
         throw new Error(`${id}: ${owner} skips ${node.kind} node "${skipped}"; only a task, gate or transaction is ever skipped`);
       }
-      if (node.kind !== "task" && manual.skipsGatesAndTransactions !== true) {
+      if ((node.kind === "gate" || node.kind === "transaction") && manual.skipsGatesAndTransactions !== true) {
         throw new Error(`${id}: ${owner} skips ${node.kind} node "${skipped}"; a gate or transaction always runs`);
       }
       if (node.kind === "task" && node.dryRun === "stop-before-publish") {
         throw new Error(`${id}: ${owner} skips publishing task "${skipped}"; a publishing task always runs`);
       }
+      if (node.kind === "branch") {
+        for (const target of Object.values(node.cases).flat()) {
+          if (skips.some(member => member === target)) continue;
+          const dependent = nodeByIdOrThrow(id, nodes, target, owner);
+          if (manual.orderOnlyReaders?.includes(target) !== true && dependent.dependsOn.some(id => skips.includes(id))) continue;
+          throw new Error(`${id}: ${owner} skips branch "${skipped}" but "${target}" would still run`);
+        }
+      }
     }
     const skipped = new Set(skips);
+    const kept = new Set(manual.keeps);
+    for (const member of kept) {
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), owner);
+      const ingressGate = node.kind === "gate" && node.resolvedBy === "operator" && node.dependsOn.length === 0;
+      const validation = node.kind === "task" && node.uses.id.startsWith("workflow:") && node.uses.provenance.default === "derived"
+        && node.uses.subject.kind === "none" && node.uses.artifacts === undefined && !isPreviewBoundary(node)
+        && node.dependsOn.some(dependency => Object.hasOwn(manual.produces, dependency));
+      if (manual.off !== "values" || !members.has(member) || skipped.has(member) || Object.hasOwn(manual.produces, member)
+        || !ingressGate && !validation) {
+        throw new Error(`${id}: ${owner} can only keep its own operator ingress gate or local validation of manual values`);
+      }
+    }
     const switchable = category.selection !== undefined || selectedByOneInputCondition(id, nodes, category.nodes, owner);
     for (const member of category.nodes) {
       if (skipped.has(member) || Object.hasOwn(manual.produces, member)) continue;
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), owner);
+      if (manual.off !== undefined && !kept.has(member)) throw new Error(`${id}: ${owner} leaves "${member}" running when off`);
       const read = node.dependsOn.find((dependency) => skipped.has(String(dependency)));
       if (read !== undefined) throw new Error(`${id}: ${owner} runs node "${member}", which reads skipped node "${String(read)}"`);
       if (switchable && (isPreviewBoundary(node) || node.kind === "gate")) {
@@ -973,6 +998,7 @@ function deriveStepOmissions(
     }
     specs.push(Object.freeze({
       step: category.key, form, produces: Object.freeze({ ...manual.produces }),
+      ...(manual.off === undefined ? {} : { off: manual.off }),
       ...(manual.skips === undefined ? {} : { skips: Object.freeze([...manual.skips]) }),
       ...(manual.refine === undefined ? {} : { refine: manual.refine }),
       ...(manual.skipsGatesAndTransactions === undefined ? {} : { skipsGatesAndTransactions: manual.skipsGatesAndTransactions }),
@@ -1591,7 +1617,7 @@ export function defineWorkflowDescriptor<
   for (const omission of stepOmissions) {
     for (const member of [...Object.keys(omission.produces), ...omission.skips ?? []]) {
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), `step "${omission.step}" manual entry`);
-      if (node.kind === "gate") continue;
+      if (node.kind === "gate" && omission.off === undefined) continue;
       omissionOfNode.set(member, Object.freeze({ step: omission.step, produced: Object.hasOwn(omission.produces, member) }));
     }
   }
@@ -1858,6 +1884,10 @@ export function defineWorkflowDescriptor<
           if (entry.reason === "step-omitted") {
             if (expected.omittable !== true) {
               throw new Error(`${purpose} dependency ${entry.nodeId} belongs to no omittable step and cannot be marked step-omitted`);
+            }
+            const omission = stepOmissions.find(spec => spec.off !== undefined && spec.skips?.includes(entry.nodeId) === true);
+            if (omission !== undefined && !currentRun.envelope.stepOmissions?.some(entry => entry.workflow === undefined && entry.step === omission.step)) {
+              throw new Error(`${purpose} dependency ${entry.nodeId} is marked step-omitted but this run did not omit "${omission.step}"`);
             }
             outputs[entry.nodeId] = undefined;
             return { state: "not-run", nodeId: entry.nodeId, reason: entry.reason };

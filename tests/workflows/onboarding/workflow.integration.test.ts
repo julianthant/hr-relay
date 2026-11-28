@@ -182,7 +182,11 @@ describe("onboarding workflow", () => {
     assert.equal(result.i9.state, "verified");
     assert.equal(derive({ ...outputs, "master-results": { ...outputs["master-results"], receiptState: "resolve-required" } }).state, "master-review-required");
     assert.throws(() => OnboardingResultSchema.parse(terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: { ...outputs, "hire-receipt": null } })));
-    assert.deepEqual(descriptor.outcomeProjection?.cases.map(value => value.value), ["filed", "master-review-required"]);
+    const { "master-results": _filled, ...withoutMaster } = outputs;
+    assert.deepEqual(terminal.parseResult(terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: withoutMaster })), {
+      ...result, state: "completed-with-manual-steps", rosterAccess: { state: "omitted", step: "master-results" },
+    });
+    assert.deepEqual(descriptor.outcomeProjection?.cases.map(value => value.value), ["filed", "master-review-required", "completed-with-manual-steps"]);
     assert.ok(descriptor.details.some(detail => "kind" in detail.source && detail.source.kind === "result" && detail.source.fieldPath === "hireWrite.state"));
     for (const workflow of ["onboarding", "onboarding-hire-writes"]) {
       for (const leaf of evidenceLeaves(result)) classifyEvidenceLeaf({ kind: "workflow-result", workflowId: WorkflowIdSchema.parse(workflow) }, leaf.path);

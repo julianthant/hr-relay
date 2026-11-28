@@ -31,6 +31,11 @@ import { CRM_DATES_MANUAL } from "../../../src/workflows/person-lookup/steps/crm
 import { CROSS_VERIFY_MANUAL } from "../../../src/workflows/person-lookup/steps/cross-verify/step.js";
 import { SEARCHING_MANUAL } from "../../../src/workflows/person-lookup/steps/searching/step.js";
 import { FixtureCommit, FixtureStage } from "../../support/fixtures/descriptor-fixtures.js";
+import { CRM_DATA_MANUAL } from "../../../src/workflows/onboarding/steps/crm-data/step.js";
+import { UCPATH_SEARCH_MANUAL } from "../../../src/workflows/onboarding/steps/ucpath-search/step.js";
+import { I9_SEARCH_MANUAL } from "../../../src/workflows/onboarding/steps/i9-search/step.js";
+import { HIRE_REVIEW_MANUAL, I9_CREATION_MANUAL, UCPATH_HIRE_MANUAL, MASTER_RESULTS_MANUAL } from "../../../src/workflows/onboarding/steps/hire-review/step.js";
+import { REFERENCE_CHECK_MANUAL } from "../../../src/workflows/onboarding/steps/reference-check/step.js";
 
 const FixtureInput = z.strictObject({ eid: EidSchema });
 const FixtureCanonicalInput = defineCanonicalInput(
@@ -150,6 +155,7 @@ const VALID_OMISSION: StepManualDeclaration = {
 /** The descriptor ids this guard names explicitly: the registry's manual-entry authors, and the fixture's. */
 const SEPARATIONS_ID = "separations";
 const PERSON_LOOKUP_ID = "person-lookup";
+const ONBOARDING_ID = "onboarding";
 const FIXTURE_ID = "step-omission-guard-valid";
 
 /** The one legitimate fixture descriptor every positive check runs against too. */
@@ -217,6 +223,18 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
     descriptor: PERSON_LOOKUP_ID, step: "crm-dates", declaration: CRM_DATES_MANUAL,
     fieldKeys: ["employmentDate", "oathDate"], produces: ["crm-dates"],
   },
+  {
+    descriptor: ONBOARDING_ID, step: "crm-data", declaration: CRM_DATA_MANUAL, produces: ["crm-source"],
+    fieldKeys: ["recordUrl", "firstName", "lastName", "middleName", "personalEmail", "workEmail", "email", "dob", "ssn", "phone",
+      "address", "addressLine2", "city", "state", "postalCode", "positionNumber", "department", "recruitmentNumber", "appointment", "wage", "effectiveDate", "expectedJobEndDate"],
+  },
+  { descriptor: ONBOARDING_ID, step: "ucpath-search", declaration: UCPATH_SEARCH_MANUAL, fieldKeys: ["match", "emplId"], produces: [] },
+  { descriptor: ONBOARDING_ID, step: "i9-search", declaration: I9_SEARCH_MANUAL, fieldKeys: ["i9Status", "profileId"], produces: [] },
+  { descriptor: ONBOARDING_ID, step: "hire-review", declaration: HIRE_REVIEW_MANUAL, fieldKeys: ["decision", "emplId"], produces: [] },
+  { descriptor: ONBOARDING_ID, step: "reference-check", declaration: REFERENCE_CHECK_MANUAL, fieldKeys: ["referenceResult"], produces: [] },
+  { descriptor: ONBOARDING_ID, step: "i9-creation", declaration: I9_CREATION_MANUAL, fieldKeys: [], produces: [] },
+  { descriptor: ONBOARDING_ID, step: "ucpath-hire", declaration: UCPATH_HIRE_MANUAL, fieldKeys: [], produces: [] },
+  { descriptor: ONBOARDING_ID, step: "master-results", declaration: MASTER_RESULTS_MANUAL, fieldKeys: [], produces: [] },
 ];
 
 /** Every `<descriptor>::<step>` row a complete sweep MUST have visited — the production declarations plus the fixture's one. */
@@ -238,10 +256,18 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
   "person-lookup::cross-verify": { state: "omittable", forces: [] },
   "person-lookup::active-status": { state: "omittable", forces: [] },
   "person-lookup::crm-dates": { state: "omittable", forces: [] },
+  "onboarding::crm-data": { state: "omittable", forces: [] },
+  "onboarding::ucpath-search": { state: "omittable", forces: ["i9-search", "hire-review", "reference-check", "i9-creation", "ucpath-hire", "master-results"] },
+  "onboarding::i9-search": { state: "omittable", forces: ["hire-review", "i9-creation", "reference-check", "ucpath-hire", "master-results"] },
+  "onboarding::hire-review": { state: "omittable", forces: ["reference-check", "i9-creation", "ucpath-hire", "master-results"] },
+  "onboarding::reference-check": { state: "omittable", forces: ["i9-creation", "ucpath-hire", "master-results"] },
+  "onboarding::i9-creation": { state: "omittable", forces: ["ucpath-hire", "master-results"] },
+  "onboarding::ucpath-hire": { state: "omittable", forces: ["master-results"] },
+  "onboarding::master-results": { state: "omittable", forces: [] },
 };
 
 
-const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[] }>>> = {
+const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[]; manual?: readonly string[] }>>> = {
   "separations::kuali-extraction": { asserted: ["plan", "termination-type"], omitted: ["document", "resolve-action"] },
   "separations::identity-check": { asserted: ["department-option", "employment", "subject"], omitted: ["job-summary", "name-search"] },
   "separations::kronos-timecard": { asserted: ["dates"], omitted: ["timecard", "timecard-search"] },
@@ -253,10 +279,18 @@ const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly st
   "person-lookup::cross-verify": { asserted: ["crm-identity"], omitted: ["cross-verify"] },
   "person-lookup::active-status": { asserted: ["active-status"], omitted: ["crm-only-recovery"] },
   "person-lookup::crm-dates": { asserted: ["crm-dates"], omitted: [] },
+  "onboarding::crm-data": { asserted: ["crm-source"], omitted: [] },
+  "onboarding::ucpath-search": { asserted: [], omitted: ["hire-subject", "ucpath-source"] },
+  "onboarding::i9-search": { asserted: [], omitted: ["i9-lookup", "i9-lookup-child"] },
+  "onboarding::hire-review": { asserted: [], omitted: ["hire-findings", "hire-review"] },
+  "onboarding::reference-check": { asserted: [], omitted: ["reference-check", "reference-check-review", "reference-stop"] },
+  "onboarding::i9-creation": { asserted: [], omitted: [], manual: ["i9-profile-plan", "i9-profile-save", "i9-remote-create", "i9-route", "write-plan"] },
+  "onboarding::ucpath-hire": { asserted: [], omitted: [], manual: ["concurrent-hire-create", "concurrent-hire-receipt", "hire-create", "hire-receipt"] },
+  "onboarding::master-results": { asserted: [], omitted: [], manual: ["concurrent-master-results", "master-results"] },
 };
 
 /** The same pinning for the whole-descriptor plan: every omittable step of a descriptor omitted at once. */
-const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[] }>>> = {
+const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[]; manual?: readonly string[] }>>> = {
   [SEPARATIONS_ID]: {
     asserted: ["approval", "dates", "department-option", "employment", "plan", "receipt", "subject", "termination-type"],
     omitted: ["clear-pending", "comparison", "document", "file-termination", "filing-presence", "finalize-kuali", "identity-approval",
@@ -265,6 +299,12 @@ const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asse
   [PERSON_LOOKUP_ID]: {
     asserted: ["active-status", "crm-dates", "crm-identity", "matching", "search-identity", "searching"],
     omitted: ["crm-only-recovery", "cross-verify"],
+  },
+  [ONBOARDING_ID]: {
+    asserted: ["crm-source"],
+    omitted: ["hire-findings", "hire-review", "hire-subject", "i9-lookup", "i9-lookup-child", "reference-check", "reference-check-review", "reference-stop", "ucpath-source"],
+    manual: ["concurrent-hire-create", "concurrent-hire-receipt", "concurrent-master-results", "hire-create", "hire-receipt", "i9-profile-plan",
+      "i9-profile-save", "i9-remote-create", "i9-route", "master-results", "write-plan"],
   },
 };
 
@@ -433,7 +473,7 @@ describe("step-omission invariants", () => {
       const assertGatesExecute = (plan: StepOmissionPlan, shape: string): void => {
         for (const gateId of gateIds) {
           assert.ok(!plan.asserted.has(gateId), `${id} (${shape}): asserts gate "${gateId}"`);
-          assert.ok(!plan.omitted.has(gateId) || declaredSkips.has(gateId), `${id} (${shape}): omits gate "${gateId}" that no step declares it skips`);
+          assert.ok((!plan.omitted.has(gateId) && !plan.manual.has(gateId)) || declaredSkips.has(gateId), `${id} (${shape}): omits gate "${gateId}" that no step declares it skips`);
         }
       };
 
@@ -457,6 +497,7 @@ describe("step-omission invariants", () => {
         assert.ok(expected !== undefined, `${key}: a production step declares an omission with no pinned plan`);
         assert.deepEqual(sorted(alone.asserted.keys()), expected?.asserted, `${key}: asserted nodes changed`);
         assert.deepEqual(sorted(alone.omitted.keys()), expected?.omitted, `${key}: omitted nodes changed`);
+        assert.deepEqual(sorted(alone.manual.keys()), expected.manual ?? [], `${key}: nodes done by hand changed`);
       }
 
       // Every omittable step of the descriptor, omitted at once.
@@ -470,10 +511,11 @@ describe("step-omission invariants", () => {
       assert.ok(expectedWhole !== undefined, `${id}: a production descriptor declares omissions with no pinned whole-descriptor plan`);
       assert.deepEqual(sorted(whole.asserted.keys()), expectedWhole?.asserted, `${id}: whole-descriptor asserted nodes changed`);
       assert.deepEqual(sorted(whole.omitted.keys()), expectedWhole?.omitted, `${id}: whole-descriptor omitted nodes changed`);
+      assert.deepEqual(sorted(whole.manual.keys()), expectedWhole.manual ?? [], `${id}: whole-descriptor nodes done by hand changed`);
     }
     assertSweptEveryDeclaration(audited, "planner sweep");
-    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, FIXTURE_ID]), "the whole-descriptor sweep visited the wrong descriptors");
+    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, ONBOARDING_ID, FIXTURE_ID]), "the whole-descriptor sweep visited the wrong descriptors");
     // Person Lookup has no gate; the ALWAYS-GATE sweep stays non-vacuous through these gated descriptors.
-    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, FIXTURE_ID]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
+    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, ONBOARDING_ID, FIXTURE_ID]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
   });
 });

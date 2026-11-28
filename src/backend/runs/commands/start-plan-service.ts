@@ -140,8 +140,9 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         const submission = failureCorrectionSubmission(descriptor, run, repositories.failures.get(correction.failureId), ingress, sourceBrowserMode(repositories, run));
         return { input: run.input.parsed, submissions: [submission], stepOmissions: run.envelope.stepOmissions };
       });
+      const submissions = source?.submissions ?? ingress.submissions;
       const stepOmissions = source?.interruptedRun !== undefined ? source.stepOmissions : resolveStartStepOmissions(descriptor, ingress.selectedStepKeys,
-        source?.stepOmissions ?? ingress.stepOmissions);
+        source?.stepOmissions ?? ingress.stepOmissions, submissions.length === 1 ? submissions[0] : undefined);
       if (rerunSource?.failureCorrection === undefined && rerunSource?.gateCorrection === undefined) {
         for (const submission of ingress.submissions) for (const correction of [...descriptor.failureCorrections ?? [], ...descriptor.gateCorrections ?? []]) {
           if (descriptor.surfaces?.inputRun?.parser.rules.some(rule => rule.emit === correction.inputField)) continue;
@@ -168,7 +169,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           ...(deps.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: deps.protectedSubmissionBindings }),
           ...(source === undefined ? {} : source.interruptedRun === undefined ? { retainedInputs: [source.input] } : { interruptedRun: source.interruptedRun }),
           ...(source?.supersedeRunId === undefined ? {} : { supersedeRunId: source.supersedeRunId }),
-          submissions: (source?.submissions ?? ingress.submissions).map(submission =>
+          submissions: submissions.map(submission =>
             applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys, stepOmissions)),
           ...(ingress.requestedInstance === undefined ? {} : { requestedInstance: ingress.requestedInstance }),
           dryRun: ingress.dryRun,
