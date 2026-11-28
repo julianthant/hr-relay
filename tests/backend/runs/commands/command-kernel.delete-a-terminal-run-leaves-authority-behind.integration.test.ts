@@ -3,11 +3,16 @@ import { createCommandKernelTestWorld, type Harness } from "../../../support/hel
 import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { HASH_A, HASH_B, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { startLogWriter } from "../../../../src/backend/storage/events/log-writer.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 
 const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, createPlan, startCommand, runCommand } = createCommandKernelTestWorld();
 
@@ -93,6 +98,45 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
     const again = harness.kernel.execute(runCommand("delete", runId, version));
     assert.equal(again.state, "rejected");
     if (again.state === "rejected") assert.equal(again.code, "target-deleted");
+  });
+
+  it("purges both log tables and the step-note index after a terminal run is deleted", async () => {
+    const h = await createHarness();
+    const runId = startOne(h, rejectActiveDescriptor, "10800000");
+    const run = h.database.authority.runs.get(runId);
+    assert.ok(run !== undefined);
+    const writer = startLogWriter({ statePath: join(h.stateRoot, "state.db"), root: h.stateRoot, onFault: () => {} });
+    const unbind = h.database.bindLogPublisher(writer.publish);
+    try {
+      await writer.ready;
+      const repository = h.database.authority.timelineEvents, { envelope } = run;
+      createNoteTimelineWriter({ repository, clock: h.clock }).emitNote({
+        workflow: envelope.workflow, address: { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath: envelope.traceId },
+        level: "step", message: "Deletable indexed note",
+      });
+      createDebugEventWriter({ repository, clock: h.clock, build: "test" }).emit({
+        category: "worker", phase: "settled", area: "deletion-test", correlationId: "9b49cef9-694a-4d00-b65c-8d60dd6f6cff",
+      }, { kind: "run", runId: envelope.runId }, envelope.workflow);
+      const savedNote = repository.page({ runId, limit: 10 }).find(row => row.payload.kind === "note");
+      assert.ok(savedNote !== undefined);
+      await writer.flush();
+      using timeline = new DatabaseSync(join(h.stateRoot, "timeline.db"), { readOnly: true });
+      using dashboard = new DatabaseSync(join(h.stateRoot, "dashboard.db"), { readOnly: true });
+      const notes = timeline.prepare("SELECT cursor FROM timeline_events WHERE run_id=?");
+      const index = timeline.prepare("SELECT rowid FROM timeline_notes_fts WHERE timeline_notes_fts MATCH 'deletable'");
+      const debug = dashboard.prepare("SELECT cursor FROM debug_events WHERE run_id=?");
+      assert.ok(notes.all(runId).length > 0);
+      assert.equal(index.all().length, 1);
+      assert.equal(debug.all(runId).length, 1);
+      const result = h.kernel.execute(runCommand("delete", runId, settle(h, runId)));
+      assert.equal(result.state, "applied");
+      writer.publish({ kind: "append", row: savedNote });
+      await writer.flush();
+      assert.deepEqual([notes.all(runId), index.all(), debug.all(runId)], [[], [], []]);
+    } finally {
+      unbind();
+      await writer.close();
+    }
   });
 
 

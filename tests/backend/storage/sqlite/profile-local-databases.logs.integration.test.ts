@@ -3,9 +3,14 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
+import { MirrorLogRecordSchema } from "../../../../src/backend/storage/events/log-mutations.js";
 import { openLogDatabases } from "../../../../src/backend/storage/sqlite/profile-local-databases.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { openAuthorityHarness } from "../../../support/helpers/phase1f-executor-harness.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { openConfirmedRetentionDatabase } from "../../../support/helpers/storage/confirmed-retention-fixtures.js";
+import { currentAtomicWriteFixture } from "../../../support/helpers/timeline-write-fixture.js";
+import { ATOMIC_WRITE_COMMIT, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 it("opens independently versioned log files and copies the retained log rows with their state cursors", async () => {
   const { database, clock, path, stateRoot, dispose } = await openAuthorityHarness();
@@ -45,4 +50,24 @@ it("opens independently versioned log files and copies the retained log rows wit
       assert.equal(dashboard.prepare("SELECT id FROM debug_events").all().length, 0);
     } finally { logs.close(); }
   } finally { await dispose(); }
+});
+
+it("keeps settled operation evidence in state and refuses it through log ingress", async () => {
+  const profile = await createBoundProfileFixture();
+  try {
+    const { database } = openConfirmedRetentionDatabase(profile.path, "2026-09-08T12:00:00.000Z",
+      currentAtomicWriteFixture(ATOMIC_WRITE_COMMIT), WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT);
+    try {
+      const confirmation = database.authority.timelineEvents.page({ limit: 100 }).find(row => row.payload.kind === "operation-confirmed");
+      assert.ok(confirmation !== undefined);
+      assert.equal(MirrorLogRecordSchema.safeParse(confirmation).success, false);
+      const logs = openLogDatabases(profile.path, profile.stateRoot);
+      try {
+        logs.reconcile();
+        using timeline = new DatabaseSync(join(profile.stateRoot, "timeline.db"), { readOnly: true });
+        assert.equal(timeline.prepare("SELECT id FROM timeline_events WHERE id=?").get(confirmation.eventId), undefined);
+        assert.deepEqual(database.authority.timelineEvents.get(confirmation.eventId), confirmation);
+      } finally { logs.close(); }
+    } finally { database.close(); }
+  } finally { await profile.close(); }
 });
