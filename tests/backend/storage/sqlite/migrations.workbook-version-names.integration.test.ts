@@ -3,6 +3,7 @@ import { expect, it } from "vitest";
 import { applyAuthorityMigrationsAfter } from "../../../../src/backend/storage/sqlite/authority-upgrades.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { createWorkbookLibraryRepository, validateWorkbookLibrary } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 
 it("assigns the first free suffix to existing duplicate names while retaining snapshots and actions", () => {
   using database = new DatabaseSync(":memory:");
@@ -11,7 +12,7 @@ it("assigns the first free suffix to existing duplicate names while retaining sn
     for (const statement of migration.statements) database.exec(statement);
   }
   const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => work().result });
-  const libraryId = "roster", at = "2026-11-02T00:00:00.000Z";
+  const libraryId = "roster", at = IsoInstantSchema.parse("2026-11-02T00:00:00.000Z");
   repository.create({ libraryId, version: 1, createdAt: at, savedAt: at, workbook: { libraryId, name: "Roster.xlsx", themes: [],
     hasFormulas: false, sheets: [{ id: "people", name: "People", hidden: [], width: 1, rows: [{ id: "header", cells: [{ value: "EID" }] }] }] } });
   for (const [operationId, name] of [["first", "Reviewed"], ["second", "Before migration"], ["third", "Reviewed (2)"]]) {
