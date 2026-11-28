@@ -33,7 +33,8 @@ function* activityRunPages(database: AuthorityDatabase, from: string, to: string
   const lower = shiftActivityDay(from, -2), upper = shiftActivityDay(to, 2), limit = 16;
   let after: readonly [string, string, string] | undefined;
   for (;;) {
-    const page = database.readActivityRuns(lower, upper, chunked ? { limit, ...(after === undefined ? {} : { after }) } : undefined);
+    const page = chunked ? database.readActivityRuns(lower, upper, { limit, ...(after === undefined ? {} : { after }) })
+      : database.readActivityRuns(lower, upper);
     yield page.filter(row => {
       const { workflow, enqueuedAt } = row.run.envelope;
       // Separations uses canonical person evidence from inline runs as well.
