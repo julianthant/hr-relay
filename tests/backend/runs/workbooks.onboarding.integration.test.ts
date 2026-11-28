@@ -45,6 +45,17 @@ function foreignNative(record: TimelineEventRecord, runId: string) {
 }
 
 describe("Onboarding captured roster admission and row choice", () => {
+  it("lets the operator choose a valid roster row when another selected source has a blank legal name", async () => {
+    const f = await fixture("unique", { second: "blank" });
+    const run = f.park(f.start());
+    const section = f.section(run);
+    const reference = section.referenceChoices?.[0];
+    assert.ok(reference?.resolution.state === "available");
+    assert.equal(reference.resolution.candidates.length, 2);
+    assert.equal(f.kernel.execute(f.choice(run, 1)).state, "rejected");
+    assert.equal(f.kernel.execute(f.choice(run, 0)).state, "applied");
+  });
+
   it("chooses one of two complete sources with the same row identity and never repeats that choice as a write", async () => {
     const f = await fixture("unique", { second: "conflicting" });
     assert.equal(f.repository.lastUsed("onboarding"), undefined);

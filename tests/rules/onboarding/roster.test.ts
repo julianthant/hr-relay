@@ -52,7 +52,7 @@ describe("Onboarding roster reference mapping", () => {
     }
   });
 
-  it("keeps missing/ambiguous states, validates every candidate and refuses duplicate or foreign membership", () => {
+  it("keeps missing and ambiguous states and refuses duplicate, foreign or wrong-key membership", () => {
     const missing = bind({ ...reference, snapshot: { ...reference.snapshot, rows: [{ key, state: "missing", matches: [] }] } });
     assert.equal(missing.state, "resolve-required"); if (missing.state !== "resolve-required") throw new Error("missing not held");
     assert.equal(missing.reason, "row-missing");
@@ -61,7 +61,7 @@ describe("Onboarding roster reference mapping", () => {
       rows: [{ key, state: "ambiguous", matches: [...reference.snapshot.rows[0].matches, second] }] } };
     assert.equal(bind(ambiguous).state, "resolve-required");
     for (const candidate of [{ ...second, sheetId: "foreign" }, { ...second, rowId: "person" },
-      { ...second, values: { ...values, fullName: false } }]) {
+      { ...second, values: { ...values, email: "other@example.test" } }]) {
       assert.throws(() => bind({ ...ambiguous, snapshot: { ...ambiguous.snapshot,
         rows: [{ key, state: "ambiguous", matches: [...reference.snapshot.rows[0].matches, candidate] }] } }));
     }
@@ -121,7 +121,7 @@ describe("Onboarding roster reference mapping", () => {
       rows: [{ key, state: "missing", matches: [] }] } }, { sheetId: "people", rowId: "person" }), /run workbook reference must retain its exact requested values and membership/u);
   });
 
-  it("validates the whole selected reference, including unselected candidates", () => {
+  it("validates captured membership and the name cells used for the hire", () => {
     const selection = { sheetId: "people", rowId: "person" };
     for (const changed of [
       { ...reference, request: { ...reference.request, keys: ["other@example.test"] } },
@@ -139,10 +139,26 @@ describe("Onboarding roster reference mapping", () => {
       assert.throws(() => bind({ ...reference, snapshot: { ...reference.snapshot,
         rows: [{ key, state: "matched", matches: [{ ...reference.snapshot.rows[0].matches[0], values: changed }] }] } }, selection));
     }
-    for (const candidate of [{ ...reference.snapshot.rows[0].matches[0] },
-      { ...reference.snapshot.rows[0].matches[0], rowId: "second", values: { ...values, fullName: false } }]) {
-      assert.throws(() => bind({ ...reference, snapshot: { ...reference.snapshot,
-        rows: [{ key, state: "ambiguous", matches: [...reference.snapshot.rows[0].matches, candidate] }] } }, selection));
-    }
+    const person = reference.snapshot.rows[0].matches[0];
+    const ambiguous = (other: typeof person) => ({ ...reference, snapshot: { ...reference.snapshot,
+      rows: [{ key, state: "ambiguous", matches: [person, other] }] } });
+    assert.throws(() => bind(ambiguous(person), selection));
+    const blank = ambiguous({ ...person, rowId: "second", values: { ...values, fullName: "" } });
+    assert.equal(bind(blank).state, "resolve-required");
+    assert.equal(bind(blank, selection).state, "resolved");
+    assert.throws(() => bind(blank, { sheetId: "people", rowId: "second" }));
+  });
+
+  it("uses one explicitly picked sheet and retains agreeing copies from every selected sheet", () => {
+    const person = reference.snapshot.rows[0].matches[0];
+    const archive = { ...reference, snapshot: { ...reference.snapshot, worksheets: [{ sheetId: "archive", name: "Archive" }],
+      rows: [{ key, state: "matched", matches: [{ ...person, sheetId: "archive" }] }] } };
+    const archivePick = boundReference(archive, { sheetId: "archive", rowId: "person" });
+    const first = boundReference(reference);
+    const result = bindOnboardingRosterSources([first, archivePick], key, capturedAt);
+    assert.equal(result.roster.state === "resolved" && result.roster.row.binding.sheetId, "archive");
+    assert.deepEqual(result.copies.map(copy => copy.sheetId), ["people"]);
+    assert.throws(() => bindOnboardingRosterSources([boundReference(reference, { sheetId: "people", rowId: "person" }), archivePick], key, capturedAt));
+    assert.throws(() => bindOnboardingRosterSources([first, first], key, capturedAt));
   });
 });

@@ -51,7 +51,7 @@ export function createOnboardingRunWorld() {
   const managers: Awaited<ReturnType<typeof sessionManagerFor>>[] = [];
   const fixtureProfiles = createProfileFixtureSet();
   const world = createCommandKernelTestWorld(fixtureProfiles.create);
-  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other" | "conflicting" | "worksheet"; general?: boolean; legalName?: string; livedName?: string } = {}) {
+  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean | "archive"; second?: "same" | "other" | "conflicting" | "worksheet" | "blank"; general?: boolean; legalName?: string; livedName?: string } = {}) {
     const h = await world.createHarness(undefined, { descriptors: [descriptor], publishQueued: (run, publication) => {
       assert.ok(publication);
       createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -77,7 +77,7 @@ export function createOnboardingRunWorld() {
       metadata: { typeId: "onboarding-roster", sharePoint: null } });
     const second = options.second === undefined || options.second === "worksheet" ? undefined : library.create({ name: "Other roster.xlsx", themes: [], hasFormulas: false,
       sheets: [sheet("people", options.second === "other" ? "elsewhere@example.test" : match === "missing" ? "other@example.test" : key,
-        options.second === "conflicting" ? "Other Hire" : undefined), sheet("archive", "other@example.test")] });
+        options.second === "conflicting" ? "Other Hire" : options.second === "blank" ? "" : undefined), sheet("archive", "other@example.test")] });
     if (second !== undefined && options.general !== true) library.operatorOperation(second.libraryId, "declare-type", { kind: "metadata", expectedVersion: 1,
       metadata: { typeId: "onboarding-roster", sharePoint: null } });
     const config = h.database.authority.runtimeConfig.get(); assert.ok(config);
@@ -89,9 +89,11 @@ export function createOnboardingRunWorld() {
     const version = library.read(saved.libraryId).version;
     const selection = { entry: 1, libraryId: saved.libraryId,
       versionId: library.libraryVersion(saved.libraryId).version.id, sheetId: "people", expectedVersion: version,
-      ...(options.selectedRow ? { selectedRow: { sheetId: "people", rowId: "people-person" } } : {}) };
+      ...(options.selectedRow === true ? { selectedRow: { sheetId: "people", rowId: "people-person" } } : {}) };
     const request = { workflowId: descriptor.id, submissions: [{ email: key, mode: options.mode ?? "new-hire", configuredJobEndDate: "06/30/2027" }],
-      dryRun: options.dryRun ?? false, workbookReferences: options.second === "worksheet" ? [selection, { ...selection, sheetId: "archive" }] : second === undefined ? [selection]
+      dryRun: options.dryRun ?? false, workbookReferences: options.second === "worksheet" ? [selection, { entry: 1, libraryId: selection.libraryId,
+        versionId: selection.versionId, expectedVersion: version, sheetId: "archive",
+        ...(options.selectedRow === "archive" ? { selectedRow: { sheetId: "archive", rowId: "archive-person" } } : {}) }] : second === undefined ? [selection]
         : [selection, { entry: 1, libraryId: second.libraryId, versionId: library.libraryVersion(second.libraryId).version.id, sheetId: "people",
           expectedVersion: library.read(second.libraryId).version }] };
     const plan = (value: unknown = request) => {
@@ -156,7 +158,7 @@ export function createOnboardingRunWorld() {
   type ExecutionFault = "gate-missing" | "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
 
   async function executionFixture(corruptAssertedSubject = false, options: {
-    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean; second?: "same" | "other" | "conflicting" | "worksheet"; legalName?: string; livedName?: string; crmReadFails?: boolean;
+    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean | "archive"; second?: "same" | "other" | "conflicting" | "worksheet" | "blank"; legalName?: string; livedName?: string; crmReadFails?: boolean;
     personMatch?: z.output<typeof SearchPersonMatchOutputSchema>; ssn?: string;
     /** The operator cancels when the library patch starts after filing, so the run ends cancelled with its receipts committed. */
     cancelAfterFiling?: boolean;

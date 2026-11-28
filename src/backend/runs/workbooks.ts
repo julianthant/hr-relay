@@ -62,16 +62,6 @@ const onboardingInputBinding = Object.freeze({
     if (input === null || typeof input !== "object" || Array.isArray(input)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
     const email = OnboardingInput.shape.email.parse(Reflect.get(input, "email"));
     if (references === undefined || references.length === 0) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-    if (references.length === 1) {
-      const retained = parseRunWorkbookReference(references[0]);
-      if ("mode" in retained.request) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-      const selection = "selectedRow" in retained.request ? retained.request.selectedRow : undefined;
-      const selectedEmail = selection === undefined ? email : OnboardingInput.shape.email.parse(retained.snapshot.rows
-        .flatMap(row => row.matches).find(match => match.sheetId === selection.sheetId && match.rowId === selection.rowId)?.values.email);
-      if (selectedEmail !== email) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-      return { ...input, email: selectedEmail, roster: bindOnboardingRosterSources(references, selectedEmail, capturedAt).roster };
-    }
-    if (references.some(reference => "selectedRow" in parseRunWorkbookReference(reference).request)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
     return { ...input, email, roster: bindOnboardingRosterSources(references, email, capturedAt).roster };
   },
 });
@@ -228,7 +218,7 @@ function liveCandidates(repositories: AuthorityRepositories, reference: Referenc
         const rowNumber = sheet.rows.findIndex(row => row.id === match.rowId) + 1;
         const values = Object.fromEntries(fields.map(field => {
           const column = sheet.columnBindings?.findIndex(binding => binding.fieldId === field) ?? -1;
-          return [field, match.row.cells[column]?.value];
+          return [field, match.row.cells[column]?.value ?? null];
         }));
         return { sheetId: sheet.id, rowId: match.rowId, values, label: `${sheet.name} · Row ${rowNumber}`, rowNumber };
       });
@@ -773,14 +763,11 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
       const live = liveCandidates(repositories, member.value, binding.rowKey.email);
       if (member.digest === reference.digest) anchorVersion = live.version;
       const versionName = "versionName" in member.value.snapshot ? member.value.snapshot.versionName : undefined;
-      return live.candidates.map(match => {
-        onboardingRosterRow({ ...binding, workbookId: member.value.snapshot.libraryId, referenceDigest: member.digest, workbookVersion: live.version }, match);
-        return { sheetId: match.sheetId, rowId: match.rowId,
+      return live.candidates.map(match => ({ sheetId: match.sheetId, rowId: match.rowId,
           label: group.length > 1 && versionName !== undefined ? `${versionName} · ${match.label}` : match.label,
           rowNumber: match.rowNumber,
           ...(group.length > 1 ? { referenceDigest: member.digest, workbookVersion: live.version } : {}),
-          values: member.value.request.fields.map(fieldId => ({ fieldId, value: match.values[fieldId] })) };
-      });
+          values: member.value.request.fields.map(fieldId => ({ fieldId, value: match.values[fieldId] })) }));
     });
   } catch (cause) {
     if (!expectedSourceChange(cause)) throw cause;

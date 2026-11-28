@@ -172,9 +172,11 @@ describe("public onboarding write execution", () => {
     assert.equal(h.repository.list().length, 1);
   });
 
-  it("files one hire and fills every agreeing worksheet row in the same workbook", async () => {
-    const h = await world.executionFixture(false, { match: "unique", second: "worksheet", mode: "new-hire", newHireReceiptEid: EidSchema.parse("10800000") });
+  it("starts from the second worksheet's picked row, files one hire and fills every agreeing copy", async () => {
+    const h = await world.executionFixture(false, { match: "unique", second: "worksheet", selectedRow: "archive", mode: "new-hire", newHireReceiptEid: EidSchema.parse("10800000") });
     const root = h.start();
+    assert.deepEqual(root.input.workbookReferences?.map(bound => RunWorkbookSelectedRowReferenceSchema.parse(bound.value).request.selectedRow),
+      [undefined, { sheetId: "archive", rowId: "archive-person" }]);
     const review = await h.rawExecution.execute(root, signal());
     assert.ok(review.run?.lifecycle.state === "parked-gate" && review.run.lifecycle.gateId === ONBOARDING_WRITE_REVIEW_GATE);
     assert.equal(h.approve(root, { decision: "new-hire", ruledOut: [] }).state, "applied");
@@ -184,7 +186,7 @@ describe("public onboarding write execution", () => {
     assert.equal(output.state, "filed");
     assert.ok(output.rosterAccess.state === "batch-recorded");
     assert.deepEqual(output.rosterAccess.rows.map(row => [row.sheetId, row.state === "recorded" ? row.receiptState : row.code]),
-      [["people", "applied"], ["archive", "applied"]]);
+      [["archive", "applied"], ["people", "applied"]]);
     assert.deepEqual(h.library.read(h.id).workbook.sheets.map(sheet => sheet.rows[1].cells.slice(3).map(cell => cell.value)),
       [["10800000", "T009000001"], ["10800000", "T009000001"]]);
     assert.equal(h.hire.events.filter(event => event === "commit:hire").length, 1);
@@ -192,7 +194,7 @@ describe("public onboarding write execution", () => {
   });
 
   it("reports the workbook row that conflicts and keeps the verified fill for the other copy", async () => {
-    const h = await world.executionFixture(false, { match: "unique", second: "same" });
+    const h = await world.executionFixture(false, { match: "unique", second: "same", selectedRow: true });
     assert.ok(h.secondId);
     const root = h.start();
     await h.rawExecution.execute(root, signal());
