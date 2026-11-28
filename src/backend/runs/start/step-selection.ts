@@ -13,6 +13,7 @@ import {
   type StartRowTarget,
   type StepOmissionForm,
   type StepOmissionGraphView,
+  type StepOmissionInput,
   type StepOmissions,
   type StepOmissionSpec,
 } from "../../../models/workflow/step-omission.js";
@@ -267,16 +268,18 @@ export function resolveStartStepOmissions(
 }
 
 /** One step's typed facts, checked against its form and refine rule and stamped with each field's label. */
-function checkedEntry(descriptor: AnyWorkflowDescriptor, step: string, spec: StepOmissionSpec, facts: Record<string, unknown>, submission?: JsonValue) {
-  const parsed = stepOmissionFactsSchema(spec.form).safeParse(facts);
-  // Field KEYS only: the values are the operator's typed HR facts.
+function checkedEntry(descriptor: AnyWorkflowDescriptor, step: string, spec: StepOmissionSpec, facts: Record<string, unknown>,
+  submission?: JsonValue, input?: StepOmissionInput) {
+  const parsed = stepOmissionFactsSchema(spec.form, input).safeParse(facts);
+  // Facts stay private. Only input-dependent validation adds its authored reason.
   const issues = parsed.success
     ? (spec.refine?.(parsed.data, submission) ?? []).map(({ field }) => field)
     : parsed.error.issues.map((issue) => issue.path.map(String).join(".") || "(form)");
   if (issues.length > 0) {
+    const reason = input !== undefined && !parsed.success ? parsed.error.issues[0]?.message : undefined;
     throw new StartStepOmissionRefusedError(
       "facts-invalid",
-      `${descriptor.id} start step ${step} omission facts are invalid at: ${[...new Set(issues)].join(", ")}`,
+      `${descriptor.id} start step ${step} omission facts are invalid at: ${[...new Set(issues)].join(", ")}${reason === undefined ? "" : ` (${reason})`}`,
       parsed.success ? undefined : { cause: parsed.error },
     );
   }
@@ -285,6 +288,16 @@ function checkedEntry(descriptor: AnyWorkflowDescriptor, step: string, spec: Ste
     facts: parsed.data ?? {},
     labels: Object.fromEntries(spec.form.fields.map((field) => [field.key, field.label])),
   };
+}
+
+export function assertStartStepOmissionInputs(descriptor: AnyWorkflowDescriptor, omissions: StepOmissions | undefined, canonicalInput: unknown): void {
+  for (const entry of omissions ?? []) {
+    if (entry.workflow !== undefined) continue;
+    const spec = descriptor.stepOmissions.find(({ step }) => step === entry.step);
+    if (spec?.form.fields.some(field => field.kind === "text" && field.format !== undefined)) {
+      checkedEntry(descriptor, entry.step, spec, entry.facts, undefined, { canonicalInput });
+    }
+  }
 }
 
 function refuseCascade(descriptor: AnyWorkflowDescriptor, entries: StepOmissions | readonly ReturnType<typeof checkedEntry>[]): void {
