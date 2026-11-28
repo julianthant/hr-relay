@@ -245,7 +245,10 @@ describe("worker pool", () => {
     const stopped = w.pool.stop(target, "remove");
     assert.equal(port.sent.at(-1)?.kind, "worker-stop");
     deliverLatest();
-    assert.deepEqual(await stopped, { code: 0, signal: null, at: w.clock.now().toISOString(), outcome: "stopped", reason: "remove" });
+    await stopped;
+    assert.deepEqual(w.pool.snapshot()[0]?.exit, {
+      code: 0, signal: null, at: w.clock.now().toISOString(), outcome: "stopped", reason: "remove", settlement: "settled",
+    });
   });
 
   it("disconnects and kills a child that sends an invalid worker message", async () => {
