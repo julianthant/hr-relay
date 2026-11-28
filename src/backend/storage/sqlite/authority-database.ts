@@ -2848,9 +2848,19 @@ export class AuthorityDatabase implements Disposable {
       const next = this.#transitionWrite(request.writeIntentId,{generation:request.generation,version:request.expectedIntentVersion},{type:"resolve-absent",resolution:request.resolution});
       const {intent:current,attempt} = next;
       const run = this.#readRunRow(current.runId);
-      if (current.status !== "parked" || run === undefined || run.version !== request.resolution.expectedRunVersion
-        || run.lifecycle.state !== "parked-write" || run.lifecycle.writeIntentId !== current.writeIntentId
-        || run.lifecycle.intentGeneration !== current.generation) throw new Error("parked-write-resolution-run-cas-mismatch");
+      if (current.status !== "parked" || run?.lifecycle.state !== "running" || run.cancelRequested === true || run.envelope.dryRun
+        || run.envelope.attempt !== current.runAttempt || current.recheck?.commandId !== request.resolution.commandId
+        || current.recheck.auditId !== request.resolution.auditId || current.recheck.nodeId !== run.envelope.startAt
+        || current.recheck.nodeId !== run.lifecycle.currentNodeId) {
+        throw new Error("parked-write-resolution-run-cas-mismatch");
+      }
+      this.#assertCurrentExecution(current.runId, request.claim);
+      const checked = authenticateParkedWriteRecheck(current, attempt, this.authority.commands.get(current.recheck.commandId),
+        this.authority.commandAudits.get(current.recheck.auditId));
+      if (checked.command.type !== "resolve-write-absent") throw new Error("parked-write-absence-request-required");
+      if (Date.parse(request.settlement.evidence.observedAt) < Date.parse(run.lifecycle.claimedAt)) {
+        throw new Error("parked-write-resolution-absence-proof-mismatch");
+      }
       const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,recheck:_recheck,...base} = current;
       const intent = WriteIntentRecordSchema.parse({...base,status:next.status,settlement:request.settlement,
         resolvedAt:request.resolution.resolvedAt,version:current.version+1,updatedAt:request.resolution.resolvedAt,resolution:request.resolution});

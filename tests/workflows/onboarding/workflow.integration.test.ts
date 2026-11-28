@@ -289,6 +289,23 @@ for (const role of ["profile", "remote"] as const) it(`parks an UNKNOWN ${role} 
   assert.equal(h.database.authority.writeIntents.findByPermanentKey("i9", key)?.generation, 1);
 });
 
+for (const role of ["profile", "remote"] as const) it(`preserves an UNKNOWN ${role} fence during a preview`, async () => {
+  const h = await harness({ [role === "profile" ? "profileSubmitFailure" : "remoteSubmitFailure"]: new Error("synthetic lost submit response") });
+  const initial = await h.run();
+  assert.ok(initial.lifecycle.state === "parked-write");
+  const intent = h.database.authority.writeIntents.get(initial.lifecycle.writeIntentId);
+  assert.ok(intent?.status === "parked");
+  const original = h.database.authority.writeAttempts.get(intent.currentAttemptId);
+  assert.ok(original?.outcome.state === "parked");
+  const events = h.driver.events.slice();
+
+  const preview = await h.run(true, role === "profile" ? h.example : { ...h.example, existingProfileId: "900001" });
+  assert.ok(preview.lifecycle.state === "terminal" && preview.lifecycle.outcome === "failed");
+  assert.deepEqual(h.driver.events, events);
+  assert.deepEqual(h.database.authority.writeIntents.get(intent.writeIntentId), intent);
+  assert.deepEqual(h.database.authority.writeAttempts.listByIntent(intent.writeIntentId), [original]);
+});
+
 it("keeps the unresolved I-9 profile fence after an email correction", async () => {
   const h = await harness({ profileSubmitFailure: new Error("synthetic lost profile response") });
   const initial = await h.run();
