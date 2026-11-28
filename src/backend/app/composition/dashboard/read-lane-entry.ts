@@ -1,7 +1,7 @@
 import "../../../storage/sqlite/dashboard-background-read-worker.js";
 import { runReadLaneWorker } from "../../../storage/sqlite/dashboard-read-host.js";
 
-runReadLaneWorker(new Map([
+runReadLaneWorker(new Map<string, () => Promise<unknown>>([
   [import.meta.resolve("../../../runs/queries/bootstrap.js"), () => import("../../../runs/queries/bootstrap.js")],
   [import.meta.resolve("../../../runs/queries/calendar.js"), () => import("../../../runs/queries/calendar.js")],
   [import.meta.resolve("../../../runs/queries/item-attempt-history.js"), () => import("../../../runs/queries/item-attempt-history.js")],
