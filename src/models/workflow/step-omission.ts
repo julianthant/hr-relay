@@ -15,6 +15,7 @@ const FieldBase = {
   help: z.string().min(1).optional(),
   /** Blank is stored as null. */
   optional: z.literal(true).optional(),
+  withheld: z.literal(true).optional(),
   /** The produced value this field stands for; its accepted facts parse unchanged under that leaf's schema. */
   replaces: z.strictObject({ nodeId: z.string().min(1), path: ValueFieldPathSchema }).optional(),
 };
@@ -176,6 +177,7 @@ export interface StepManualIssue {
 
 /** A step folder's declaration; a producer returns a COMPLETE output the executor parses with the node's own contract output schema — never a partial object or a placeholder. */
 export interface StepManualDeclaration {
+  readonly off?: StartRowOff;
   readonly form: StepOmissionForm;
   readonly produces: Readonly<Record<string, (context: StepOmissionProduceContext) => unknown>>;
   /** Reading nodes that do not run when the values are typed; every node neither produced nor skipped runs. */
@@ -186,6 +188,8 @@ export interface StepManualDeclaration {
   readonly skipsGatesAndTransactions?: true;
   /** Nodes in other steps that depend on a skipped member only to run after it and read none of its output. */
   readonly orderOnlyReaders?: readonly string[];
+  /** An ingress approval that still runs before the operator's values are used. */
+  readonly keepsGate?: string;
 }
 
 /** The descriptor-retained form of one declaration, bound to its step key. */
@@ -200,6 +204,8 @@ export const StartRowLockReasonSchema = z.enum(["form-action", "approval", "boun
 export type StartRowLockReason = z.infer<typeof StartRowLockReasonSchema>;
 export const StartRowKindSchema = z.enum(["switch", "locked-manual", "locked"]);
 export type StartRowKind = z.infer<typeof StartRowKindSchema>;
+export const StartRowOffSchema = z.enum(["manual", "values"]);
+export type StartRowOff = z.infer<typeof StartRowOffSchema>;
 
 /** What a row shows: a whole step, some of its nodes, or one phase of its transaction nodes. */
 export const StartRowMemberSchema = z.strictObject({
@@ -288,6 +294,8 @@ export interface StepOmissionPlan {
   readonly asserted: ReadonlyMap<string, Readonly<{ step: string; facts: JsonObject; produce: (context: StepOmissionProduceContext) => unknown }>>;
   /** node id → the omitted step it belongs to; nothing runs and nothing is produced */
   readonly omitted: ReadonlyMap<string, string>;
+  /** node id → the step completed outside Relay; nothing runs or produces proof */
+  readonly manual: ReadonlyMap<string, string>;
   readonly refusals: readonly StepOmissionRefusal[];
 }
 
@@ -295,6 +303,7 @@ export interface StepOmissionPlan {
 export function planStepOmissions(graph: StepOmissionGraphView, requested: readonly StepOmissionEntry[]): StepOmissionPlan {
   const asserted = new Map<string, { step: string; facts: JsonObject; produce: (context: StepOmissionProduceContext) => unknown }>();
   const omitted = new Map<string, string>();
+  const manual = new Map<string, string>();
   const refusals: StepOmissionRefusal[] = [];
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
   const stepByNode = new Map<string, string>();
@@ -329,7 +338,7 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
       // Skipped gates record no decision; dependent running nodes must refuse.
       const produce = node.kind === "task" ? spec.produces[id] : undefined;
       if (produce !== undefined) asserted.set(id, { step: entry.step, facts: JsonFactsSchema.parse(facts.data), produce });
-      else if (skipped.has(id)) omitted.set(id, entry.step);
+      else if (skipped.has(id)) (spec.off === "manual" ? manual : omitted).set(id, entry.step);
     }
     for (const producedId of Object.keys(spec.produces)) {
       const owner = stepByNode.get(producedId);
@@ -343,9 +352,9 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
   }
 
   for (const node of graph.nodes) {
-    if (asserted.has(node.id) || omitted.has(node.id)) continue;
+    if (asserted.has(node.id) || omitted.has(node.id) || manual.has(node.id)) continue;
     for (const dependency of node.dependsOn) {
-      const blockedBy = omitted.get(dependency);
+      const blockedBy = omitted.get(dependency) ?? manual.get(dependency);
       if (blockedBy === undefined) continue;
       if (specByStep.get(blockedBy)?.orderOnlyReaders?.includes(node.id) === true) continue;
       const ownStep = stepByNode.get(node.id);
@@ -357,7 +366,7 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
       });
     }
   }
-  return Object.freeze({ asserted, omitted, refusals: Object.freeze(refusals) });
+  return Object.freeze({ asserted, omitted, manual, refusals: Object.freeze(refusals) });
 }
 
 /** One step's cascade row: the other steps forced out with it, or the step that cannot be omitted and so blocks it. */

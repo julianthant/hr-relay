@@ -303,7 +303,7 @@ export async function walkRunPlan(
       if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "branch-not-selected" });
       continue;
     }
-    if (entry.mode === "omitted") {
+    if (entry.mode === "omitted" || entry.mode === "manual") {
 
       skippedReasons.set(String(node.id), "step-omitted");
       if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "step-omitted" });

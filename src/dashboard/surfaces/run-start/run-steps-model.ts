@@ -76,7 +76,8 @@ export function startRowsOf(source: StepRowSource): readonly StepRow[] {
     const own = row.target !== undefined && row.target.workflow === undefined ? row.target.step : undefined;
     const systems = systemNote([...new Set(row.members.flatMap(member => member.workflow === undefined ? stepOf(member.step)?.systems ?? [] : []))]);
     const forces = row.manual?.forces ?? [];
-    const note = row.kind === "switch" ? forcesNote(forces) ?? systems
+    const cascadeNote = row.off !== undefined && forces.length > 0 ? `Also skips: ${forces.map(labelOf).join(", ")}` : forcesNote(forces);
+    const note = row.kind === "switch" ? cascadeNote ?? systems
       : row.lockReason === undefined ? systems ?? "Automatic" : LOCK_NOTE[row.lockReason];
     return {
       key: row.key, label: row.label, kind: row.kind, note, includedByDefault: row.includedByDefault, forces, selectable: row.selection !== undefined,

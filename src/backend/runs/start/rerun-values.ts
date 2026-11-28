@@ -384,7 +384,8 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       });
       // The source's typed facts refill a step it had typed, its own or a child's a row targets; they stay typed by hand.
       const typed = (run.envelope.stepOmissions ?? []).filter((entry) => (entry.workflow === undefined
-        ? descriptor.stepOmissions.some((spec) => spec.step === entry.step)
+        ? descriptor.stepOmissions.some((spec) => spec.step === entry.step
+          && !spec.form.fields.some(field => field.withheld === true && Object.hasOwn(entry.facts, field.key) && entry.facts[field.key] !== null))
         : descriptor.startRows.some(({ target }) => target !== undefined && target.workflow === entry.workflow && target.step === entry.step))
         && !containsProtected(JsonValueSchema.parse(entry.facts), privateValues));
       let sourceInput: RerunValuesSnapshot["sourceInput"] = { state: "available", value: run.input.parsed.value };
