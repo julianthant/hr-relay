@@ -117,6 +117,16 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       assert.throws(() => planner.plan({ ...startRequest, selectedStepKeys,
         stepOmissions: [{ step: "search-records", facts: { records: "one | 10000001 | invalid email |" } }],
       }), /omission facts are invalid at: records/);
+      for (const [records, reason] of [
+        ["one | 10000001 | one@example.test | ; one | | two@example.test |", /omission facts are invalid at: records/],
+        ["one | 10000001 | one@example.test |", /one CRM record per requested person/],
+        ["one | 10000001 | one@example.test | ; two | | other@example.test |", /match the requested people in input order/],
+      ] as const) {
+        assert.throws(() => planner.plan({ ...startRequest, selectedStepKeys,
+          stepOmissions: [{ step: "search-records", facts: { records } }],
+        }), reason);
+      }
+      assert.deepEqual(h.database.authority.runs.listByWorkflow(descriptor.id), []);
     }
     if (mode === "manual-reference") {
       assert.throws(() => planner.plan({ ...startRequest, selectedStepKeys: ["search-records", "read-idocs", "package-worksheets"],

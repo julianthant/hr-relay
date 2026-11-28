@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { JsonObject, JsonValue } from "../../rules/validation/canonical-json.js";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { EID_PATTERN, type IsoInstant } from "../../rules/identity/ids.js";
+import { CRM_MANUAL_RECORDS_EXAMPLE, crmManualRecordsIssue } from "../workflows/crm-doc-download/manual-records.js";
 import type { RuntimeScope } from "./graph.js";
 import { TimelineCategoryKeySchema } from "./presentation.js";
 import { ValueFieldPathSchema } from "./rerun-values.js";
@@ -19,20 +20,9 @@ const FieldBase = {
   replaces: z.strictObject({ nodeId: z.string().min(1), path: ValueFieldPathSchema }).optional(),
 };
 
-const TextPatternSchema = z.strictObject({
-  source: z.string().min(1),
-  example: z.string().trim().min(1),
-  message: z.string().min(1),
-}).superRefine(({ source, example }, context) => {
-  try { if (new RegExp(source, "u").test(example)) return; } catch (error) {
-    if (!(error instanceof SyntaxError)) throw error;
-  }
-  context.addIssue({ code: "custom", message: "a text field pattern must compile and accept its example" });
-});
-
 /** The closed field vocabulary the Steps screen draws; each kind owns its parser. */
 export const StepOmissionFieldSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ ...FieldBase, kind: z.literal("text"), pattern: TextPatternSchema.optional() }),
+  z.strictObject({ ...FieldBase, kind: z.literal("text"), format: z.literal("crm-document-records").optional() }),
   /** MM/DD/YYYY — the form every HR date in this tree is typed and staged in. */
   z.strictObject({ ...FieldBase, kind: z.literal("us-date") }),
   /** Shown and typed as MM/DD/YYYY; the server accepts and stores YYYY-MM-DD only. */
@@ -62,11 +52,16 @@ export const UsDateFactSchema = z.string().regex(US_DATE_PATTERN, "a date fact m
 export const IsoDateFactSchema = z.iso.date();
 export const EidFactSchema = z.string().regex(EID_PATTERN, "an employee id fact must be eight digits beginning with 10");
 
-function fieldSchema(field: StepOmissionField): z.ZodType {
+export type StepOmissionInput = Readonly<{ submissions: readonly unknown[] }> | Readonly<{ canonicalInput: unknown }>;
+
+function fieldSchema(field: StepOmissionField, input?: StepOmissionInput): z.ZodType {
   switch (field.kind) {
     case "text": {
       const text = z.string().trim().min(1);
-      return field.pattern === undefined ? text : text.regex(new RegExp(field.pattern.source, "u"), field.pattern.message);
+      return field.format === undefined ? text : text.superRefine((value, context) => {
+        const message = crmManualRecordsIssue(value, input);
+        if (message !== undefined) context.addIssue({ code: "custom", message });
+      });
     }
     case "us-date": return UsDateFactSchema;
     case "iso-date": return IsoDateFactSchema;
@@ -79,14 +74,15 @@ function fieldSchema(field: StepOmissionField): z.ZodType {
 }
 
 /** The schema of one field's stored fact; an optional field also accepts null. */
-export function stepOmissionFieldFactSchema(field: StepOmissionField): z.ZodType {
-  return field.optional === true ? fieldSchema(field).nullable() : fieldSchema(field);
+export function stepOmissionFieldFactSchema(field: StepOmissionField, input?: StepOmissionInput): z.ZodType {
+  const schema = fieldSchema(field, input);
+  return field.optional === true ? schema.nullable() : schema;
 }
 
 /** ONE strict facts schema per form — every key is present; absence is a refusal, not a default. */
-export function stepOmissionFactsSchema(form: StepOmissionForm): z.ZodObject<Record<string, z.ZodType>> {
+export function stepOmissionFactsSchema(form: StepOmissionForm, input?: StepOmissionInput): z.ZodObject<Record<string, z.ZodType>> {
   const shape: Record<string, z.ZodType> = {};
-  for (const field of StepOmissionFormSchema.parse(form).fields) shape[field.key] = stepOmissionFieldFactSchema(field);
+  for (const field of StepOmissionFormSchema.parse(form).fields) shape[field.key] = stepOmissionFieldFactSchema(field, input);
   return z.strictObject(shape);
 }
 
@@ -390,7 +386,7 @@ export function stepOmissionPlaceholderFacts(form: StepOmissionForm): JsonObject
       case "us-date": return "01/01/2000";
       case "iso-date": return "2000-01-01";
       case "eid": return "10000000";
-      case "text": return field.pattern?.example ?? "cascade";
+      case "text": return field.format === "crm-document-records" ? CRM_MANUAL_RECORDS_EXAMPLE : "cascade";
     }
   };
   return JsonFactsSchema.parse(Object.fromEntries(

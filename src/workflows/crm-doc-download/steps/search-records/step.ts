@@ -1,47 +1,19 @@
-import { z } from "zod";
-import { CrmDocumentIdentitySchema, CrmDocumentRecordsSchema } from "../../../../models/systems/crm/documents.js";
+import { CrmDocumentRecordsSchema } from "../../../../models/systems/crm/documents.js";
 import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { CrmDocDownloadCanonicalInput, CrmDocDownloadInput, type CrmDocDownloadInputValue } from "../../../../models/workflows/crm-doc-download/input.js";
+import { crmManualDocumentRecordsSchema } from "../../../../models/workflows/crm-doc-download/manual-records.js";
 import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
-import { matchesCrmDocumentSubject } from "../../../../rules/crm-doc-download/documents.js";
-import { EID_PATTERN } from "../../../../rules/identity/ids.js";
 import { defineStep, inheritStepProof, reuseTask, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { CrmSearchDocumentRecords } from "../../../../models/systems/crm/search-document-records.js";
 
-const identityFields = CrmDocumentIdentitySchema.shape;
-const employeeIdPattern = EID_PATTERN.source.slice(1, -1);
-const email = `(?:${z.regexes.email.source.slice(1, -1)})`;
-const emails = String.raw`(?:${email}\s*\|\s*${email}?|\|\s*${email})`;
-const record = String.raw`\s*[^\s|;][^|;]*\|\s*(?:${employeeIdPattern})?\s*\|\s*${emails}\s*`;
-const manualRecords = z.string().transform(text => text.split(";").map(row =>
-  row.split("|").map(value => value.trim() || null),
-)).pipe(z.array(z.tuple([identityFields.recordId, identityFields.eid, identityFields.workEmail, identityFields.personalEmail]))
-  .refine(rows => new Set(rows.map(([recordId]) => recordId)).size === rows.length
-    && rows.every(([, , workEmail, personalEmail]) => workEmail !== null || personalEmail !== null)))
-  .transform(rows => rows.map(([recordId, eid, workEmail, personalEmail]) => ({ recordId, eid, workEmail, personalEmail })));
-
 export const CRM_DOCUMENT_SEARCH_MANUAL: StepManualDeclaration = {
-  form: { fields: [{ key: "records", label: "CRM records", kind: "text",
-    pattern: { source: `^${record}(?:;${record})*$`, example: "fixture | | fixture@example.test |",
-      message: "Enter a CRM record ID and at least one valid email per person. Use all four columns." },
+  form: { fields: [{ key: "records", label: "CRM records", kind: "text", format: "crm-document-records",
     help: "Enter CRM record ID | Employee ID | Work email | Personal email for each person in input order. Leave unknown fields blank and separate people with semicolons." }] },
-  refine: facts => manualRecords.safeParse(facts.records).success ? []
-    : [{ field: "records", message: "Enter each distinct CRM record ID with at least one valid email." }],
   produces: {
-    "document-records": ({ facts, scope }) => {
-      const { people } = CrmDocDownloadCanonicalInput.parse(scope.input);
-      const identities = manualRecords.parse(facts.records);
-      if (people.length !== identities.length) throw new Error("Manual CRM records must cover the complete batch");
-      const records = people.map((subject, index) => {
-        const identity = identities[index];
-        if (identity === undefined || !matchesCrmDocumentSubject(subject, identity)) {
-          throw new Error("Manual CRM record identity disagrees with the corresponding requested person");
-        }
-        return { subject, identity };
-      });
-      return { records };
-    },
+    "document-records": ({ facts, scope }) => crmManualDocumentRecordsSchema(
+      CrmDocDownloadCanonicalInput.parse(scope.input).people,
+    ).parse(facts.records),
   },
 };
 

@@ -33,6 +33,7 @@ const crmFlow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: crm.id, label
   requiredWorkbookFields: [...crm.requiredWorkbookFields], workbookReference: crm.workbookReference,
   steps: projectStartSteps(crm), rows: projectStartRows(crm).map(startRowWire), inputRun: { state: "present", surface: crm.surfaces.inputRun } };
 const EMAIL = "hire@example.test";
+const SECOND_EMAIL = "second@example.test";
 
 it.each([false, true])("captures each chosen worksheet when starting CRM Document Download with manual records %s", async manual => {
   const f = await world.createHarness(undefined, { descriptors: [crm] });
@@ -41,7 +42,8 @@ it.each([false, true])("captures each chosen worksheet when starting CRM Documen
   const sheet = (id: string) => ({ id, name: id, width: CRM_DOCUMENT_ROSTER_FIELDS.length, hidden: [], headerRow: 1,
     columnBindings: CRM_DOCUMENT_ROSTER_FIELDS.map((fieldId, index) => ({ id: `${id}-${index}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
     rows: [{ id: `${id}-header`, cells: CRM_DOCUMENT_ROSTER_FIELDS.map(value => ({ value })) },
-      { id: `${id}-person`, cells: [EMAIL, "Ada", "Lovelace", null, "Ada", "Lovelace", null].map(value => ({ value })) }] });
+      { id: `${id}-person`, cells: [EMAIL, "Ada", "Lovelace", null, "Ada", "Lovelace", null].map(value => ({ value })) },
+      { id: `${id}-second-person`, cells: [SECOND_EMAIL, "Grace", "Hopper", null, "Grace", "Hopper", null].map(value => ({ value })) }] });
   const saved = library.create({ name: "Contact roster.xlsx", themes: [], hasFormulas: false, sheets: ["Nov 2", "Nov 9", "Nov 16"].map(sheet) });
   repository.putType({ id: crm.workbookReference!.id, name: "Onboarding roster", keyFieldId: crm.workbookReference!.keyFieldId, fields: [...CRM_DOCUMENT_ROSTER_FIELDS], defaultWorkbookId: null });
   assert.equal(library.operatorOperation(saved.libraryId, "declare", { kind: "metadata", expectedVersion: saved.version,
@@ -72,8 +74,9 @@ it.each([false, true])("captures each chosen worksheet when starting CRM Documen
   const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].find(node => node.textContent === "Nov 2"); assert.ok(item);
   await act(async () => { item.click(); }); await h.settle();
   await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-  await dialog.type(EMAIL); await dialog.press("Next");
-  const typedRecords = `fixture | | ${EMAIL} |`;
+  await dialog.type(manual ? `${EMAIL}; ${SECOND_EMAIL}` : EMAIL); await dialog.press("Next");
+  const firstRecord = `fixture | | ${EMAIL} |`;
+  const typedRecords = `${firstRecord}; second | | ${SECOND_EMAIL} |`;
   if (manual) {
     await dialog.press("Customize steps"); await dialog.press("Next");
     for (const label of ["Find latest CRM records", "Resolve worksheet rows", "Download CRM documents", "Package worksheet archives"]) {
@@ -81,9 +84,17 @@ it.each([false, true])("captures each chosen worksheet when starting CRM Documen
     }
     await dialog.press("Find latest CRM records");
     assert.equal(dialog.disabled("Start run"), true);
-    await dialog.fill("CRM records", "fixture | | malformed |");
-    assert.equal(dialog.disabled("Start run"), true);
-    assert.equal(planned, undefined);
+    for (const [description, records] of [
+      ["malformed email", "fixture | | malformed |"],
+      ["duplicate record ID", `${firstRecord}; fixture | | ${SECOND_EMAIL} |`],
+      ["incomplete batch", firstRecord],
+      ["mismatched identity", `${firstRecord}; second | | other@example.test |`],
+    ]) {
+      await dialog.fill("CRM records", records);
+      assert.equal(dialog.disabled("Start run"), true, description);
+      assert.equal(planned, undefined, description);
+      assert.deepEqual(f.database.authority.runs.listByWorkflow(crm.id), [], description);
+    }
     await dialog.fill("CRM records", typedRecords);
     assert.equal(dialog.disabled("Start run"), false);
   }

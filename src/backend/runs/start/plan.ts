@@ -38,6 +38,7 @@ import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { parseTypedDate, type TypedDateControl } from "../../../models/workflow/ingress.js";
 import { z } from "zod";
 import { workbookInputBinding } from "../workbooks.js";
+import { assertStartStepOmissionInputs } from "./step-selection.js";
 
 
 export interface StartPlannerDeps {
@@ -309,6 +310,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     if (plannedInput === undefined) continue;
     const { input, workbookReferences } = plannedInput;
     const { value: canonicalInput, protectedBindings: bindings = [] } = input;
+    assertStartStepOmissionInputs(descriptor, request.stepOmissions, canonicalInput);
     const protectedSubject = hasProtectedSubject(bindings);
     const matchKey = protectedSubject ? protectedSubjectMatchKey(bindings, canonicalInput) : planning.matchKey(canonicalInput);
     const itemId = deriveItemId(descriptor.id, matchKey);
