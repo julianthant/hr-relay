@@ -1013,6 +1013,7 @@ body[data-demo-theme="light"] {
 .ds-menu-indicator { position: absolute; top: 50%; right: 7px; display: flex; width: 16px; height: 16px; transform: translateY(-50%); pointer-events: none; }
 .ds-menu-check { width: 16px; height: 16px; stroke-width: 1.5; color: var(--ds-menu-fg); }
 .ds-menu-item:has(.ds-menu-copy) { padding-block: 5px; }
+.ds-menu-item:has(.ds-menu-copy--one) { padding-block: 4px; }
 .ds-menu-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
 .ds-menu-copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds-menu-copy > span:first-child { font-size: 14px; line-height: 20px; color: var(--ds-menu-fg); }
