@@ -227,6 +227,7 @@ it('settles an oversized add without changing content or ownership and drains th
   expect(typed.state).toBe('applied');
   const persisted = f.database.prepare('SELECT payload_json, ownership_json FROM workbook_library WHERE id=?');
   const before = persisted.get(saved.libraryId);
+  expect(before).toBeDefined();
   const receipt = () => f.repository.runOperations(runId).at(-1)?.receipt;
   const oversized = f.repository.enqueue(saved.libraryId, f.operation('too-large', { kind: 'add', sheetId: 'wide', rowId: 'extra', key: 'new-person', values: { 'roster.notes': 'unsafe' } }));
   f.repository.drain(saved.libraryId);
