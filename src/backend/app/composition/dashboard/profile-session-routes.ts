@@ -463,7 +463,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       if (active !== undefined) {
         // Abandon an open re-enrolment before revocation. An unproved close throws and leaves the session in place.
         await profileRuntime.session.closeDuoReenrol(active.profileId);
-        await profileRuntime.drainForLogout(active.token);
+        await active.runtime.drainForLogout();
         const result = profileRuntime.session.logOut(active.token, { at: clock.now().toISOString() });
         if (result.state !== "cancelling" || result.operationId === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
         pending = { sessionId: active.sessionId, operationId: result.operationId, profileId: active.profileId, epoch: active.epoch, runtime: active.runtime, deleting };

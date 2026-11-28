@@ -26,6 +26,7 @@ export interface DashboardRuntime {
   readonly port: number;
   readonly noteWriter: NoteTimelineWriter;
   readonly notificationStatus: ReturnType<typeof createTrustNotifications>["observer"]["status"];
+  drainForLogout(): Promise<void>;
   detach(onStopFailure?: (failure: DashboardStopFailure) => void): Promise<void>;
   stop(): Promise<void>;
 }

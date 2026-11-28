@@ -30,7 +30,7 @@ export function retainPublicFailureCustody(error: Error, retainedCustodyFailures
   return custodyUnproved;
 }
 
-export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver" | "loopDelayMonitor"> & Partial<Pick<ReturnType<typeof prepareDashboardRuntime>, "settingsProcesses">> & { stopTimeline: () => Promise<void>; readLanes: Pick<DashboardReadLanes, "close">; diagnosticRetentionTimer: ReturnType<typeof setInterval>; hub: { close: StartupCleanup; readonly subscriptionsClosed: boolean }; stopWorkerControl: StartupCleanup; takeWorkerStopFailures(): readonly unknown[]; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; historyTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
+export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver" | "loopDelayMonitor" | "stopLogWriter"> & Partial<Pick<ReturnType<typeof prepareDashboardRuntime>, "settingsProcesses">> & { stopTimeline: () => Promise<void>; readLanes: Pick<DashboardReadLanes, "close">; diagnosticRetentionTimer: ReturnType<typeof setInterval>; hub: { close: StartupCleanup; readonly subscriptionsClosed: boolean }; stopWorkerControl: StartupCleanup; takeWorkerStopFailures(): readonly unknown[]; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; historyTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
   const { profile, selected, requireProducerClosure, notificationObserver, loopDelayMonitor, stopTimeline, readLanes, settingsProcesses, diagnosticRetentionTimer, hub, stopWorkerControl, shutdownRequested, noteWriter, server, gateParkTimer, historyTimer, custody } = input;
   const stepFailures: DashboardStopFailure[] = [];
   let producerClosure: Promise<void> | undefined, producersClosed = false;
@@ -96,6 +96,11 @@ export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDa
     port: server.port,
     notificationStatus: notificationObserver.status,
     noteWriter,
+    async drainForLogout(): Promise<void> {
+      await profile.runtime.drainForLogout(profile.token);
+      // Logout binds the database image after this drain, so queued debug rows must already be committed.
+      await input.stopLogWriter();
+    },
     async detach(onStopFailure?: (failure: DashboardStopFailure) => void): Promise<void> {
       try { await detach(); }
       finally { if (onStopFailure) stepFailures.forEach(onStopFailure); }

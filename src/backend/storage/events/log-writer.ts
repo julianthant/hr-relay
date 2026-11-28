@@ -102,8 +102,9 @@ export function startLogWriter(input: { statePath: string; root: string; onFault
     reportFault: (error: unknown): void => { fail(error); void worker.terminate(); },
     close: (): Promise<void> => {
       closure ??= (async () => {
-        try { if (failure === undefined) await request("close"); }
+        try { await request("close"); }
         finally { await exited.promise; }
+        if (failure !== undefined) throw failure;
       })();
       return closure;
     },

@@ -328,9 +328,17 @@ it("drains two subscribed tabs before revocation and refuses subscription reconn
   const f = await fixture(undefined, "shared"), drained = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   const composeProfile = (await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js")).composeProfileRuntime;
   let context: ReturnType<ReturnType<typeof composeProfile>["selectedContext"]> | undefined;
+  let committedSettlements: number | undefined;
   const profileFactory = vi.spyOn(storageCompose, "composeProfileRuntime").mockImplementation(input => {
     const profile = composeProfile(input);
-    return { ...profile, selectedContext(token) { context = profile.selectedContext(token); return context; } };
+    return { ...profile, selectedContext(token) { context = profile.selectedContext(token); return context; },
+      session: { ...profile.session, logOut(token, request) {
+        assert.ok(context);
+        committedSettlements = context.database.authority.timelineEvents.debugPage({}).filter(({ payload }) =>
+          payload.kind === "debug" && payload.event.category === "sse" && payload.event.phase === "settled").length;
+        return profile.session.logOut(token, request);
+      } },
+    };
   });
   const actualStart = (await vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js")).startDashboardHttpServer;
   const createWriter = debugEvents.createDebugEventWriter;
@@ -379,6 +387,7 @@ it("drains two subscribed tabs before revocation and refuses subscription reconn
     release.resolve();
     const result = await logout; assert.equal(result.status, 200);
     assert.deepEqual(await result.json(), { state: "signed-out", signUpRequired: false });
+    assert.equal(committedSettlements, 2);
     assert.equal(f.machine.readProfileRegistry().sessionGeneration, epoch + 1);
     const after = await subscribe(); assert.equal(after.status, 401);
     assert.deepEqual(await after.json(), { state: "refused", code: "PROFILE_SESSION_STALE" });
