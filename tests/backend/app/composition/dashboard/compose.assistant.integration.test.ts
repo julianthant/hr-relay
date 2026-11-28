@@ -640,8 +640,8 @@ it.each(undoEditScenarios)("$name within the assistant budget", async scenario =
         conversationId, expectedRevision, message, messageId: randomUUID(),
       }));
       assert.equal(step, calls.length);
-      assert.ok(envelope.kind === "result");
-      return envelope;
+      assert.ok(envelope.kind === "result" && envelope.receipt !== undefined);
+      return { result: envelope.result, receipt: envelope.receipt };
     };
     const edited = await send('Set the only spreadsheet worksheet 1, row 2, column 1 to "04/24/2031".', 1, [
       { tool: "read_spreadsheets", args: { view: "list", sheet: null, limit: 5 } },
@@ -798,7 +798,7 @@ it("restores the previous settings override, refuses to revert the original twic
       const result = AssistantM1RespondEnvelopeSchema.parse(await client.assistantRespond({
         conversationId, expectedRevision: revision, message, messageId: randomUUID(),
       }));
-      assert.ok(result.kind === "result");
+      assert.ok(result.kind === "result" && result.receipt !== undefined);
       assert.equal(index, calls.length);
       revision = result.receipt.revision;
       return result.result;

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { SETTINGS_SCHEMA_HASH, SettingsPatchSchema, deriveRawSettingsPatchFingerprint, isRetiredSettingsPath } from "../../../../models/config/settings.js";
 import type { AssistantReplyPart } from "../../../../models/dashboard/assistant.js";
 import { searchPartitionDay } from "../../../../models/dashboard/search-calendar.js";
-import { encodeEditableWorkbook, WorkbookMetadataSchema } from "../../../../models/dashboard/workbooks.js";
+import { encodeEditableWorkbook, WorkbookCellChangeSchema, WorkbookMetadataSchema } from "../../../../models/dashboard/workbooks.js";
 import { WorkbookLibraryChangeSchema, type WorkbookLibraryEntry } from "../../../../models/dashboard/workbook-library.js";
 import { NotificationCommandRequestSchema, SettingsCommandRequestSchema } from "../../../../rules/commands/commands.js";
 import type { Clock } from "../../../../rules/time/clock.js";
@@ -170,8 +170,7 @@ function reverseSheet(details: SheetEdit, library: ReturnType<UndoDeps["workbook
       workbook.sheets.find(sheet => sheet.id === location.sheetId)?.rows.find(row => row.id === location.rowId)?.cells[location.column];
     const workbook = encodeEditableWorkbook(library.read(libraryId).workbook), cell = findCell(workbook);
     if (cell === undefined || cell.richText !== undefined || cell.hyperlink !== undefined || !same(cell.value, next)) return stale();
-    const Value = z.union([z.string(), z.number(), z.boolean(), z.null(), z.strictObject({ type: z.literal("date"), value: z.iso.datetime() })]);
-    cell.value = Value.parse(prior);
+    cell.value = WorkbookCellChangeSchema.shape.oldValue.parse(prior);
     const write = edits.workbooks().operatorOperation(libraryId, owner.id, { kind: "save", expectedVersion: current.version, workbook });
     if (write.state !== "applied") return refused();
     const saved = entry(), cellAfter = findCell(encodeEditableWorkbook(library.read(libraryId).workbook));
