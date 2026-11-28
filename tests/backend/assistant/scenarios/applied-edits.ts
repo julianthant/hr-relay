@@ -2,7 +2,8 @@ import type { AssistantFailureCode } from "../../../../src/models/dashboard/assi
 import type { JsonValue } from "../../../../src/rules/validation/canonical-json.js";
 
 type Call = Readonly<{ tool: string; args: JsonValue }>;
-type EditScenario = Readonly<{ name: string; message: string; calls: readonly Call[]; largestRequest: number; total: number; refusal?: AssistantFailureCode; changeWorkbookAfterRead?: boolean }>;
+type EditScenario = Readonly<{ name: string; message: string; calls: readonly Call[]; largestRequest: number; total: number;
+  refusal?: AssistantFailureCode; changeWorkbookAfterRead?: boolean; maskedSource?: string }>;
 
 const readSheet = { tool: "read_spreadsheets", args: { view: "list", sheet: null, limit: 5 } } as const;
 const readSetting = { tool: "read_settings", args: { key: "browser.headless" } } as const;
@@ -36,4 +37,17 @@ export const editScenarios = [{
   calls: [{ tool: "change_settings", args: { key: "sharepointOnboardingRosterUrl", operation: "set-text", source: "replacement" } }],
   refusal: "ASSISTANT_EDIT_REFUSED",
   largestRequest: 4_550, total: 4_550,
+}, {
+  name: "Refuse part of an operator word",
+  message: "Show my browser configuration.",
+  calls: [readSetting, { tool: "change_settings", args: { key: "browser.headless", operation: "enable", source: "on" } }],
+  refusal: "ASSISTANT_VALUE_NEEDS_SOURCE",
+  largestRequest: 4_700, total: 9_300,
+}, {
+  name: "Refuse text from a generated redaction",
+  message: "Set the operator label to relay.sample@example.invalid.",
+  calls: [{ tool: "read_settings", args: { key: "actor.label" } },
+    { tool: "change_settings", args: { key: "actor.label", operation: "set-text", source: "email" } }],
+  maskedSource: "relay.sample@example.invalid", refusal: "ASSISTANT_VALUE_NEEDS_SOURCE",
+  largestRequest: 4_700, total: 9_300,
 }] as const satisfies readonly EditScenario[];

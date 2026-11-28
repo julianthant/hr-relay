@@ -2,12 +2,13 @@ import { z } from "zod";
 import { NotificationTriggerSchema } from "../../../../models/notifications/notifications.js";
 import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
 import { NotificationCommandRequestSchema } from "../../../../rules/commands/commands.js";
-import { observeEdit, requireEditRead } from "../../applied-edits.js";
+import { observeEdit, operatorEditSource, requireEditRead, requireOperatorSource } from "../../applied-edits.js";
 import { AssistantChangeOutput, AssistantToolRefusal, referenceSchema, type AssistantPlugin } from "../plugin.js";
 import type { AssistantPluginDeps } from "../registry.js";
 
 const MAX_ITEMS = 50;
-const Change = z.strictObject({ note: referenceSchema("N"), state: z.enum(["read", "unread"]) });
+const Change = z.strictObject({ note: referenceSchema("N"), state: z.enum(["read", "unread"]), source: z.string().min(1).max(6).nullable() });
+const StateRequest = /^(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?(?:mark\s+(?<marked>[^.!?\r\n]+?)(?:\s+as)?|set\s+(?<set>[^.!?\r\n]+?)\s+to)\s+(?<state>read|unread)[.!?]?$/iu;
 
 export function notificationsPlugin(deps: AssistantPluginDeps): AssistantPlugin {
   const parameters = z.strictObject({ unreadOnly: z.boolean() });
@@ -35,10 +36,18 @@ export function notificationsPlugin(deps: AssistantPluginDeps): AssistantPlugin 
   const { edits } = deps;
   if (edits !== undefined) tools.push({
     kind: "change", tier: "write-local", name: "change_notifications",
-    description: "Mark one listed notification read or unread as the operator explicitly requested.",
+    description: "Mark one listed notification read or unread on a direct Mark or Set request. Pass the exact operator state word as source or null if absent.",
     parameters: Change, output: AssistantChangeOutput, privacy: [],
     async change(input, context) {
-      const { note, state } = Change.parse(input), notificationId = context.references.resolve(note, ["N"]).target;
+      const { note, state, source } = Change.parse(input);
+      const stated = requireOperatorSource(context, source);
+      const request = StateRequest.exec(context.operatorText.trim())?.groups;
+      const target = request?.marked ?? request?.set ?? "";
+      if (stated.toLowerCase() !== state || request?.state?.toLowerCase() !== state
+        || /\b(?:and|or|no|not|never|instead|except|without|as|to)\b/iu.test(target)) {
+        throw new AssistantToolRefusal("ASSISTANT_VALUE_NEEDS_SOURCE");
+      }
+      const notificationId = context.references.resolve(note, ["N"]).target;
       return () => edits.apply(context, owner => {
         const previous = edits.notification(notificationId);
         if (previous === undefined || previous.actorId !== context.actorId || previous.clearedAt !== undefined
@@ -54,7 +63,7 @@ export function notificationsPlugin(deps: AssistantPluginDeps): AssistantPlugin 
         if (next === undefined || next.status !== state || next.version !== previous.version + 1) throw new Error("assistant-edit-notification-readback-mismatch");
         return { details: { kind: "notifications", command, notificationId, revision: next.version,
           prior: { status: previous.status, snooze: previous.snooze }, next: { status: next.status, snooze: next.snooze } },
-          label: "Changed the notification", before: previous.status, after: next.status };
+          label: "Changed the notification", before: previous.status, after: next.status, source: operatorEditSource(context, state) };
       });
     },
   });

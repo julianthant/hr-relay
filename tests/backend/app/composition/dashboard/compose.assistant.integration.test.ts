@@ -502,11 +502,16 @@ it("applies spreadsheet and settings edits in the accepted turn, keeps values lo
     for (const [index, scenario] of editScenarios.entries()) {
       const calls = [...scenario.calls];
       const measured: number[] = [];
+      const settingsBefore = db.authority.settingsCurrent.get();
       transport.setResponse(init => {
         assert.ok(typeof init.body === "string");
         const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
         measured.push(Math.ceil(Buffer.byteLength(init.body) / 4));
         for (const value of [privateName, privateCell, libraryId]) assert.ok(!init.body.includes(value));
+        if ("maskedSource" in scenario) {
+          assert.ok(!init.body.includes(scenario.maskedSource));
+          assert.ok(init.body.includes("[redacted email]"));
+        }
         if ("changeWorkbookAfterRead" in scenario && measured.length === 2) {
           const entry = db.authority.workbooks.catalog().find(row => row.libraryId === libraryId);
           assert.ok(entry);
@@ -533,6 +538,7 @@ it("applies spreadsheet and settings edits in the accepted turn, keeps values lo
         assert.ok(envelope.kind === "result" && envelope.result.state === "no-reply", JSON.stringify(envelope));
         assert.equal(envelope.result.reason, scenario.refusal);
         assert.equal(edits.length, 2);
+        assert.deepEqual(db.authority.settingsCurrent.get(), settingsBefore);
         assert.equal(db.authority.workbooks.read(libraryId)?.workbook.name,
           index >= 3 ? "Autumn tracker" : "Summer tracker");
         continue;
@@ -571,5 +577,65 @@ it("applies spreadsheet and settings edits in the accepted turn, keeps values lo
     const activity = await client.assistantActivity?.();
     assert.ok(activity?.rows.some(row => row.label === "Renamed the spreadsheet"));
     assert.ok(activity?.rows.some(row => row.label === "Changed Headless browser"));
+  });
+});
+
+it("requires an operator notification change request and journals the accepted change once", async () => {
+  await withServedAssistant(async fixture => {
+    const { context, transport, origin, clock } = fixture;
+    const { run } = seedAssistantReadRun(fixture);
+    const db = context.database, authority = db.authority;
+    const at = clock.now().toISOString(), notificationId = randomUUID();
+    const title = "Synthetic private notification", summary = "Synthetic private notification detail";
+    const notice = authority.notifications.create({ notificationId, actorId: LOCAL_OPERATOR_ACTOR_ID,
+      dedupeFingerprint: "d".repeat(64), trigger: "failed", channel: "ping", status: "unread", snooze: { state: "not-snoozed" },
+      title, summary, links: [{ kind: "run", runId: run.envelope.runId }], count: 1, lastSeenAt: at, version: 1, createdAt: at, updatedAt: at }).record;
+    const door = clientDoor(createDashboardClient({ baseUrl: origin }));
+    const commandRows = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, "state.db"), database =>
+      database.prepare("SELECT id FROM commands WHERE family='notification' ORDER BY id").all());
+    async function request(message: string, source: string | null) {
+      let calls = 0;
+      transport.setResponse(init => {
+        assert.ok(typeof init.body === "string");
+        for (const value of [notificationId, title, summary]) assert.ok(!init.body.includes(value));
+        const modelRequest = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
+        const output = modelRequest.input.at(-1);
+        let name = "list_notifications", args: unknown = { unreadOnly: false };
+        if (calls++ === 1) {
+          assert.ok(output !== undefined && "type" in output && output.type === "function_call_output");
+          const listed = z.object({ items: z.array(z.object({ note: z.string(), trigger: z.string(), state: z.string() })) }).parse(JSON.parse(output.output));
+          const row = listed.items.find(item => item.trigger === "failed");
+          assert.ok(row && row.state === "unread");
+          name = "change_notifications";
+          args = { note: row.note, state: "read", source };
+        }
+        return new Response(completedResponseStream([{ type: "function_call", namespace: "relay", name,
+          call_id: String(calls), arguments: JSON.stringify(args), status: "completed" }], modelRequest.model, `resp_notice_${String(calls)}`),
+        { headers: { "Content-Type": "text/event-stream" } });
+      });
+      const result = await send(door, { message });
+      assert.equal(calls, 2);
+      return result;
+    }
+    const before = commandRows();
+    for (const [message, source] of [["List my read and unread notifications.", "read"],
+      ["Mark the notification as read.", null], ["Mark the read notification as unread.", "read"],
+      ["Mark the notification as not read.", "read"]] as const) {
+      assert.deepEqual(await request(message, source), { state: "refused", code: "ASSISTANT_VALUE_NEEDS_SOURCE",
+        message: ASSISTANT_FAILURES.ASSISTANT_VALUE_NEEDS_SOURCE });
+      assert.deepEqual(authority.notifications.get(notificationId), notice);
+      assert.deepEqual(authority.assistantAppliedEdits.list(at), []);
+      assert.deepEqual(commandRows(), before);
+    }
+    assert.deepEqual(await request("Please mark the notification as read.", "read"), { state: "answered", text: "Changed the notification to read." });
+    const [edit, extra] = authority.assistantAppliedEdits.list(at);
+    assert.ok(edit?.details.kind === "notifications" && extra === undefined);
+    assert.equal(edit.details.notificationId, notificationId);
+    assert.deepEqual([edit.details.command, edit.details.prior.status, edit.details.next.status, edit.details.revision], ["notification-read", "unread", "read", 2]);
+    assert.ok(edit.source?.kind === "operator" && edit.source.messageId === edit.turn.messageId);
+    assert.deepEqual(authority.notifications.get(notificationId), { ...notice, status: "read", version: 2 });
+    const audit = authority.commandAudits.findByCommand(edit.id);
+    assert.deepEqual([audit?.request.source, audit?.request.requestedBy], ["assistant", LOCAL_OPERATOR_ACTOR_ID]);
+    assert.deepEqual(commandRows(), [...before, { id: edit.id }].sort((a, b) => String(a.id).localeCompare(String(b.id))));
   });
 });

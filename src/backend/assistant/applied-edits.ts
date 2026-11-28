@@ -9,6 +9,7 @@ import { sha256Hex } from "../../rules/validation/sha256.js";
 import type { AssistantAppliedEditInput } from "../storage/sqlite/assistant-applied-edits.js";
 import type { WorkbookLibraryService } from "../workbooks/workbook-library-service.js";
 import { AssistantToolRefusal, type AssistantChangeContext } from "./plugins/plugin.js";
+import { operatorValueSpans } from "./references.js";
 
 export type LocalEditCommand = Extract<CommandRequest, { family: "notification" } | { type: "apply-settings" }>;
 type EditResult = Readonly<{ details: AssistantAppliedEditInput["details"]; label: string; before: string; after: string;
@@ -30,7 +31,11 @@ export function requireEditRead(context: AssistantChangeContext, target: string,
 }
 
 export function requireOperatorSource(context: AssistantChangeContext, source: string | null) {
-  if (source === null || !context.operatorText.includes(source) || /\[redacted |\[\[|\]\]/u.test(source)) {
+  if (source === null || source.trim().length === 0) throw new AssistantToolRefusal("ASSISTANT_VALUE_NEEDS_SOURCE");
+  const literal = source.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const word = String.raw`[\p{L}\p{M}\p{N}\p{Pc}]`;
+  const exact = new RegExp(`(?<!${word})${literal}(?!${word})`, "u");
+  if (!operatorValueSpans(context.operatorText).some(span => exact.test(span))) {
     throw new AssistantToolRefusal("ASSISTANT_VALUE_NEEDS_SOURCE");
   }
   return source;
