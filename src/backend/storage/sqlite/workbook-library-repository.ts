@@ -323,7 +323,7 @@ export const WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION = Object.freeze({ version: 3
 ]) });
 
 export const WORKBOOK_VERSION_NAMES_CONVERSION_ID = 'workbook-version-names:v1';
-export const WORKBOOK_VERSION_NAMES_MIGRATION = Object.freeze({ version: 47, statements: Object.freeze([
+export const WORKBOOK_VERSION_NAMES_MIGRATION = Object.freeze({ version: 48, statements: Object.freeze([
   `SELECT '${WORKBOOK_VERSION_NAMES_CONVERSION_ID}'`,
 ]) });
 

@@ -180,7 +180,7 @@ async function fixture() {
 describe("native authority admission",()=>{
 afterEach(_afterEachFixture0);
 
-  it.each([0,1,48,99])("refuses version %i without rewriting its header or retained rows",async version=>{
+  it.each([0,1,CURRENT_AUTHORITY_SCHEMA_VERSION + 1,99])("refuses version %i without rewriting its header or retained rows",async version=>{
     const f=await fixture();f.close(f.open());
     const db=new DatabaseSync(f.path);
     let baseline: ReturnType<ReturnType<DatabaseSync["prepare"]>["all"]>;

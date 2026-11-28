@@ -6,7 +6,7 @@ import { createWorkbookLibraryRepository, validateWorkbookLibrary } from "../../
 
 it("assigns the first free suffix to existing duplicate names while retaining snapshots and actions", () => {
   using database = new DatabaseSync(":memory:");
-  const predecessorVersion = 46;
+  const predecessorVersion = 47;
   for (const migration of SQLITE_MIGRATIONS.filter(migration => migration.version <= predecessorVersion)) {
     for (const statement of migration.statements) database.exec(statement);
   }
