@@ -117,7 +117,7 @@ describe("the Steps stage draws the served rows", () => {
   ])("keeps Onboarding Start off when %s needs an employee ID", async (row, choice, value, idField) => {
     const dialog = await openSteps({ ...served("onboarding"), inputRun: h.WORKFLOWS[0].inputRun }, h.TYPED);
     await dialog.press(row);
-    for (const action of ["Check reference spreadsheets", "Create I-9 profile", "Submit hire", "Fill master results"]) await dialog.press(action);
+    for (const action of ["Reference spreadsheets", "Create I-9 profile", "Submit hire", "Fill master results"]) await dialog.press(action);
     if (value === "Found") {
       await dialog.fill("I-9 lookup result", "Unresolved");
       await dialog.fill("Hire review decision", "Undecided");

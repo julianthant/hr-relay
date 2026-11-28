@@ -16,7 +16,7 @@ describe("Onboarding Start run rows", () => {
       ["ucpath-search", "Match existing person"],
       ["i9-search", "Search I-9 profiles"],
       ["hire-review", "Review hire findings"],
-      ["reference-check", "Check reference spreadsheets"],
+      ["reference-check", "Reference spreadsheets"],
       ["i9-creation", "Create I-9 profile"],
       ["ucpath-hire", "Submit hire"],
       ["master-results", "Fill master results"],

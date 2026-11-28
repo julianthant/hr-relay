@@ -1,4 +1,4 @@
-import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
+import { defineWorkflow, REFERENCE_CHECK_STEP } from "../../workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 import { OnboardingInput, OnboardingCanonicalInput } from "../../models/workflows/onboarding/input.js";
@@ -59,7 +59,7 @@ export const onboardingWorkflow = defineWorkflow({
     { key: "ucpath-search", label: "Match existing person", members: [{ step: "ucpath-search" }], target: { step: "ucpath-search" } },
     { key: "i9-search", label: "Search I-9 profiles", members: [{ step: "i9-search" }], target: { step: "i9-search" } },
     { key: "hire-review", label: "Review hire findings", members: [{ step: "hire-review" }], target: { step: "hire-review" } },
-    { key: "reference-check", label: "Check reference spreadsheets", members: [{ step: "reference-check" }], target: { step: "reference-check" } },
+    { key: "reference-check", label: REFERENCE_CHECK_STEP.label, members: [{ step: "reference-check" }], target: { step: "reference-check" } },
     { key: "i9-creation", label: "Create I-9 profile", members: [{ step: "i9-creation" }], target: { step: "i9-creation" } },
     { key: "ucpath-hire", label: "Submit hire", members: [{ step: "ucpath-hire" }], target: { step: "ucpath-hire" } },
     { key: "master-results", label: "Fill master results", members: [{ step: "master-results" }], target: { step: "master-results" } },
