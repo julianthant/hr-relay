@@ -1091,9 +1091,8 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
           return version;
         };
         if (change.kind === 'create-version') {
-          const names = versionNames(state.versions);
-          if (change.from.kind !== 'sharepoint' && names.has(change.name.trim())) throw new WorkbookLibraryError('WORKBOOK_VERSION_NAME_EXISTS');
-          const name = availableVersionName(change.name, names);
+          const name = change.name.trim();
+          if (versionNames(state.versions).has(name)) throw new WorkbookLibraryError('WORKBOOK_VERSION_NAME_EXISTS');
           let version: number, snapshotId: string;
           if (change.from.kind === 'sharepoint') {
             const meta = metadata(id);
@@ -1133,10 +1132,11 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
             change: { kind: 'sync', expectedVersion: before.version, workbook: sharePointWorkbook } });
         } else if (change.kind === 'rename-version') {
           selected(change.versionId);
-          if (state.versions.some(version => version.id !== change.versionId && version.name.trim() === change.name.trim())) {
+          const name = change.name.trim();
+          if (state.versions.some(version => version.id !== change.versionId && version.name.trim() === name)) {
             throw new WorkbookLibraryError('WORKBOOK_VERSION_NAME_EXISTS');
           }
-          next.versions = next.versions.map(version => version.id === change.versionId ? { ...version, name: change.name } : version);
+          next.versions = next.versions.map(version => version.id === change.versionId ? { ...version, name } : version);
         } else if (change.kind === 'delete-version') {
           const version = selected(change.versionId);
           if (state.selectedVersionId === version.id || inUse(id, at, version)) throw new WorkbookLibraryError('WORKBOOK_VERSION_IN_USE');

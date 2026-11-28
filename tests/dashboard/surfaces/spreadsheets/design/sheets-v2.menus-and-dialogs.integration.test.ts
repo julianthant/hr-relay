@@ -229,6 +229,17 @@ it('creates a version from SharePoint when the spreadsheet is linked', async () 
   assert.ok(byText('[data-slot="toast-title"]', 'Created the version'));
 });
 
+it('shows the name refusal when creating a SharePoint version with a taken name', async () => {
+  wiring.adapter.changeLibrary = vi.fn(async () => ({ state: 'refused', message: 'A version with this name exists.' }));
+  await render();
+  await click(host.querySelector('button[aria-label="Versions of Roster.xlsx, now v2"]'));
+  await click(byText('button', 'New version'));
+  await type(document.body.querySelector('input[aria-label="Name"]'), ' v2 ');
+  await click(byText('button', 'Create'));
+  assert.deepEqual(lastChange(), { kind: 'create-version', name: 'v2', from: { kind: 'sharepoint' }, useNow: false });
+  assert.ok(byText('[data-slot="toast-description"]', 'A version with this name exists.'));
+});
+
 it('renames a version', async () => {
   await openVersions();
   await click(document.body.querySelector('button[aria-label="Rename v1"]'));

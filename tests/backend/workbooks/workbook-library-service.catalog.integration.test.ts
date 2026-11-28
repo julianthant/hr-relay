@@ -160,6 +160,8 @@ it('names a SharePoint version atomically and keeps the prior version in use whe
   expect(f.service.read(f.record.libraryId)).toEqual(before);
   expect(f.service.libraryVersion(f.record.libraryId, version!.id).workbook.sheets[0].rows[1].cells[1].value).toBe('Fresh Person');
   expect(await f.service.libraryAction(f.record.libraryId, request, new AbortController().signal)).toEqual(result);
+  await expect(f.apply({ kind: 'create-version', name: ' Fresh roster ', from: { kind: 'sharepoint' }, useNow: false }))
+    .rejects.toMatchObject({ code: 'WORKBOOK_VERSION_NAME_EXISTS' });
   expect(downloads).toBe(1);
   expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
 });

@@ -477,7 +477,11 @@ it('creates a named version from SharePoint only after its download settles', as
   assert.equal(named.version.name, 'Remote review');
   assert.equal(named.version.source, 'sharepoint');
   assert.equal(named.workbook.sheets[0].rows[1].cells[0].value, 'Remote');
-  assert.equal((await client.workbookCatalog())[0].state.selectedVersionId, before.state.selectedVersionId);
+  const [after] = await client.workbookCatalog();
+  assert.equal(after.state.selectedVersionId, before.state.selectedVersionId);
+  const duplicate = await action({ ...request, operationId: 'duplicate-version', expectedVersion: after.version, expectedRevision: after.state.revision });
+  assert.equal(duplicate.status, 409);
+  assert.deepEqual(await duplicate.json(), { state: 'error', code: 'WORKBOOK_VERSION_NAME_EXISTS', message: 'A version with this name exists.', retryable: false });
   assert.equal((await action(request)).status, 200);
   assert.equal(downloads, 2);
 });

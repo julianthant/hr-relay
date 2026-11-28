@@ -451,8 +451,12 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       signal.throwIfAborted();
       const apply = (workbook?: EditableWorkbookWire) => { assertCurrent(); return deps.repository.libraryAction(libraryId, action, deps.clock.now().toISOString(), workbook); };
       if (action.change.kind === 'sync') return tracked(libraryId, () => withDownloadedWorkbook(libraryId, action.operationId, signal, apply));
-      return action.change.kind === 'create-version' && action.change.from.kind === 'sharepoint'
-        ? withDownloadedWorkbook(libraryId, action.operationId, signal, apply) : apply();
+      if (action.change.kind === 'create-version' && action.change.from.kind === 'sharepoint') {
+        const name = action.change.name.trim();
+        if (state.versions.some(version => version.name.trim() === name)) throw new WorkbookLibraryError('WORKBOOK_VERSION_NAME_EXISTS');
+        return withDownloadedWorkbook(libraryId, action.operationId, signal, apply);
+      }
+      return apply();
     },
     create(value: unknown): SavedWorkbook {
       const workbook = input(EditableWorkbookSchema, value);
