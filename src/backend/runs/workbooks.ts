@@ -78,9 +78,7 @@ const onboardingInputBinding = Object.freeze({
 const ocrInputBinding = Object.freeze({
   sourceToIngress(source: unknown) {
     if (source === null || typeof source !== "object" || Array.isArray(source)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-    const input = { ...source, roster: null };
-    Reflect.deleteProperty(input, "rosterChoice");
-    return input;
+    return { ...source, roster: null, rosterChoice: "not-required" };
   },
   assertSubmission(input: unknown) {
     if (input !== null && typeof input === "object" && (Reflect.get(input, "roster") != null
