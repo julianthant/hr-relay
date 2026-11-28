@@ -8,6 +8,7 @@ import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values
 import { planStart } from "../../../../src/backend/runs/start/plan.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-repositories.js";
 import { evidenceLeaves } from "../../../../src/models/trust/evidence-classification.js";
+import { referenceReviewId } from "../../../../src/models/processing/workbooks/reference-fields.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { derivePlannedInputFingerprint, StartPlanRecordSchema } from "../../../../src/models/run/start-plan.js";
 import { StartCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
@@ -53,6 +54,10 @@ function currentSource() {
   const checkpoints: RunCheckpointRecord[] = [];
   for (const id of finalize.dependsOn) {
     const node = descriptorRuntimeNodes(descriptor).find(candidate => candidate.id === id);
+    if (id === referenceReviewId("approval")) {
+      assert.ok(node?.kind === "gate" && node.resolvedBy === "operator" && node.when !== undefined);
+      continue;
+    }
     assert.ok(node?.kind === "task");
     const override: unknown = id === "approval" ? { ...COMPOSITION_SCOPE_OUTPUTS.approval, jobs: FINALIZATION_SCOPE_OUTPUTS.approval.jobs } : Reflect.get(COMPOSITION_SCOPE_OUTPUTS, id);
     const value = JsonValueSchema.parse(node.uses.output.parse(merge(JsonValueSchema.parse(node.uses.example), JsonValueSchema.parse(override))));
