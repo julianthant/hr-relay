@@ -18,7 +18,7 @@ it("starts with operator readings for each original page and withholds release",
   const f = await world.fixture({ pageCount: 2, holdPages: true });
   const descriptor = f.root.descriptor;
   const input = OcrInputSchema.parse({ ...OcrInputSchema.parse(f.run.input.parsed.value), readingId: randomUUID(),
-    approval: "release", reading: { kind: "subscription" } });
+    approval: "release", roster: null, reading: { kind: "subscription" } });
   const sample = sourceFixture(1).inputs[0];
   const original = submittedPage(sample, "Example, Avery", "emergency-contact");
   assert.ok(original.record);
@@ -78,7 +78,7 @@ it("starts with operator readings for each original page and withholds release",
 it("settles with an omitted review when grouping and its dependent rows are off", async () => {
   const f = await world.fixture({ holdPages: true });
   const descriptor = f.root.descriptor;
-  const run = f.canonical.start(descriptor, { ...OcrInputSchema.parse(f.run.input.parsed.value), readingId: randomUUID(), approval: "release" }, {
+  const run = f.canonical.start(descriptor, { ...OcrInputSchema.parse(f.run.input.parsed.value), readingId: randomUUID(), approval: "release", roster: null }, {
     dryRun: false, selectedStepKeys: ["source-pages", "page-readings"],
     ...(f.workbookReferences === undefined ? {} : { workbookReferences: f.workbookReferences }),
     stepOmissions: [

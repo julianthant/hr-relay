@@ -88,8 +88,11 @@ it("reads the canonical review published by a renamed parent result node", async
       const approval = author.gate({ id: "approve-records", label: "Approve selected records", resolvedBy: "operator",
         result: OcrApprovalReferenceSchema, when: { kind: "equals", of: { from: "input", path: "approval" }, value: "release" },
       }, [completed]);
+      const signerStep = signerLookups[0];
+      assert.ok(signerStep.manual);
+      const renamedSignerStep = author.group(signerStep, { manual: { ...signerStep.manual, skips: [signers.id, completed.id] } });
       return {
-        steps: [sourcePages, pageReadings, reviewRecords, identityLookups, [signerLookups[0], [signers, completed]], [approvalStep[0], [approval]]],
+        steps: [sourcePages, pageReadings, reviewRecords, identityLookups, [renamedSignerStep, [signers, completed]], [approvalStep[0], [approval]]],
         result: author.result(original.result.schema, [completed, approval, review], ({ input, outputs }) =>
           original.result.derive({ input, outputs: { ...outputs, "read-result": outputs["collect-review-result"] } })),
       };
