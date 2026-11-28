@@ -95,6 +95,13 @@ describe("authority check closure", () => {
         classification: "local-write", commandId: command.commandId, target: command.target, subject: { kind: "none" },
         options: { kind: "none" }, configDescriptor: { kind: "none" } },
       command, plan: null, revision: 1, state: "prepared", result: null, createdAt: NOW, expiresAt });
+    store.database.authority.assistantAppliedEdits.insert({
+      id: randomUUID(), actorId: command.requestedBy, committedAt: NOW, label: "Changed Headless browser",
+      turn: { conversationId: chat.id, messageId: randomUUID(), profileId, epoch: chat.epoch,
+        acceptedAt: NOW, ordinal: 1, acceptedRevision: 2, proposalAnswer: null },
+      details: { kind: "settings", path: "browser.headless", command: "apply-settings", revision: 2,
+        prior: { clear: true }, next: { set: false } },
+    });
     store.closeDatabase();
     raw = new DatabaseSync(store.databasePath);
     seedAssistantPhaseOne(raw, profileId, expiresAt);
