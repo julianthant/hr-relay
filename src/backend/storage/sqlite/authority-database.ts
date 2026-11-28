@@ -284,6 +284,7 @@ export class AuthorityDatabase implements Disposable {
   #historyOwner?: AuthorityDatabase;
   #historyCursorOffset = 0;
   #calendarCache?: { position: ReturnType<AuthorityDatabase["capturedChangeKey"]>; entries: Map<string, CalendarWire> };
+  #dashboardParentCache?: { position: ReturnType<AuthorityDatabase["capturedChangeKey"]>; parents: DelegationAuthenticationMemo["parents"] };
   readonly #dashboardReadSources = new Set<symbol>();
   /** Statements reused across reads: only the run lookup a queue read repeats per row, used with get(), never iterate(). */
   #statements: SQLTagStore;
@@ -2481,6 +2482,21 @@ export class AuthorityDatabase implements Disposable {
       }
       entries.set(key, structuredClone(wire));
       return wire;
+    });
+  }
+
+  /** Calendar and Queue use the same proved parent facts on their read lane. */
+  withDashboardQueueRead<Result>(read: () => Result): Result {
+    return this.withAuthorityReadSnapshot(() => {
+      this.#validateExternalQuerySources();
+      const memo = this.#delegationReadSnapshot?.memo;
+      if (memo === undefined || this.#changeReader === undefined) return read();
+      const position = this.capturedChangeKey(), previous = this.#dashboardParentCache;
+      if (previous?.position.schemaCookie === position.schemaCookie
+        && calendarChangeIntervalClear(this.#database, previous.position.changeLogSeq, position.changeLogSeq)) memo.parents = previous.parents;
+      const result = read();
+      this.#dashboardParentCache = { position, parents: memo.parents };
+      return result;
     });
   }
 

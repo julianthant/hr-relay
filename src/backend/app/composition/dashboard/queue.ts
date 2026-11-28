@@ -203,10 +203,12 @@ export const queueDayRead = defineLaneRead(import.meta.url, "dashboard-queue-day
       replica.state.factsKey = factsKey;
       replica.projection.processFactsChanged();
     }
-    replica.projection.ingestFromTimeline();
-    const health = replica.projection.health();
-    if (health.state === "degraded") throw new Error(`queue-day-fold-degraded: ${health.lastError ?? "unknown"}`);
-    return replica.projection.buildLaneDay(day);
+    return context.history.withDashboardQueueRead(() => {
+      replica.projection.ingestFromTimeline();
+      const health = replica.projection.health();
+      if (health.state === "degraded") throw new Error(`queue-day-fold-degraded: ${health.lastError ?? "unknown"}`);
+      return replica.projection.buildLaneDay(day);
+    });
   },
 });
 

@@ -564,7 +564,8 @@ export class RunQueueProjection {
       return;
     }
     try {
-      this.#ingestTail(readTimelineRecords(this.#deps.timeline, this.#timelineCursor));
+      this.#ingestTail(readTimelineRecords(this.#deps.timeline, this.#timelineCursor, undefined,
+        this.#deps.replica === true ? PROJECTION_SPAN_TYPES : undefined));
     } catch (error) {
       this.#degrade(`timeline ingest failed: ${error instanceof Error ? error.message : String(error)}`);
     }

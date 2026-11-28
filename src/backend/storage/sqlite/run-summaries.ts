@@ -208,8 +208,9 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
         WHERE parent_id IS NOT NULL AND parent_id>? AND local_day<=? ${childDays}
         GROUP BY parent_id ORDER BY parent_id LIMIT ?`);
       const selectEnvelope = database.prepare("SELECT envelope_json FROM runs WHERE id=?");
-      const selectLinkedCounts = database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs ${runIndex(database, "runs_day_idx")}
-        WHERE id IN (SELECT value FROM json_each(?)) AND parent_id=? AND local_day<=? ${childDays} GROUP BY local_day ORDER BY local_day`);
+      const selectLinkedCounts = database.prepare(`SELECT local_day AS day,count(*) AS count FROM json_each(?) linked
+        CROSS JOIN runs ON runs.id=linked.value
+        WHERE parent_id=? AND local_day<=? ${childDays} GROUP BY local_day ORDER BY local_day`);
       let afterParent = "";
       for (;;) {
         const parents = selectParents.all(afterParent, today, ...dateBindings, 500).map(raw => parentRow.parse(raw));
