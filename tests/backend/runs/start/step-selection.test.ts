@@ -328,7 +328,7 @@ describe("served start rows", () => {
     separations: [["kuali-extraction", "switch", null], ["identity-check", "switch", null], ["kronos-timecard", "switch", null], ["identity-review", "switch", null],
       ["pending-termination", "switch", null], ["submit-termination", "switch", null], ["kuali-finalization", "switch", null]],
     onboarding: [["crm-data", "locked", "guard-read"], ["ucpath-search", "locked", "guard-read"], ["i9-search", "locked", "guard-read"], ["hire-review", "locked", "approval"], ["i9-creation", "locked", "form-action"], ["ucpath-hire", "locked", "form-action"], ["master-results", "locked", null]],
-    "work-study": [["ucpath-auth", "locked", "guard-read"], ["transaction", "locked", "form-action"]],
+    "work-study": [["ucpath-auth", "switch", null], ["transaction", "switch", null]],
     "i9-check-start": [["read-forms", "locked", null], ["match-people", "locked", null], ["review-records", "locked", "approval"],
       ["ucpath-match", "switch", null], ["ucpath-dates", "switch", null], ["tracker-row", "locked", "form-action"]],
     "crm-doc-download": [["search-records", "locked", null], ["reference", "locked", "approval"], ["read-idocs", "locked", null], ["package-worksheets", "locked", null]],

@@ -1,5 +1,7 @@
+import { z } from "zod";
 import { UcpathStagePayPathWorkStudy } from "../../../../models/systems/ucpath/stage-paypath-work-study.js";
 import { UcpathSubmitPayPathWorkStudy } from "../../../../models/systems/ucpath/submit-paypath-work-study.js";
+import { OmittedStepResultArmSchema, type StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { WorkStudyInput } from "../../../../models/workflows/work-study/input.js";
 import { WorkStudyReadTransactionPlan, type WorkStudyPlan } from "../../../../models/workflows/work-study/read-transaction-plan.js";
 import { workStudyTarget } from "../../../../rules/work-study/plan.js";
@@ -13,6 +15,13 @@ import { buildUcpathAuth } from "../ucpath-auth/step.js";
 
 const PAGE = "PayPath Actions";
 export const SAVE_NODE = "save-transaction";
+const transactionManual: StepManualDeclaration = {
+  form: { fields: [] },
+  produces: {},
+  skips: [TRANSACTION_PLAN_NODE, SAVE_NODE],
+  skipsGatesAndTransactions: true,
+};
+
 const planned = (label: string, fieldPath: string, example: string) =>
   ({ label, sources: [{ nodeId: TRANSACTION_PLAN_NODE, kind: "output", fieldPath }], example }) as const;
 const plannedField = (id: string, operatorField: string, detail: string) =>
@@ -20,6 +29,7 @@ const plannedField = (id: string, operatorField: string, detail: string) =>
 
 export const TRANSACTION_STEP = Object.freeze({
   ...defineWorkflowStep({ key: "transaction", label: "Submit work-study transaction" }), system: "ucpath" as const,
+  manual: transactionManual,
   description: "Plan the PayPath work-study transaction on the supplied effective date, fill it in PayPath Actions and, in a live run, Save and Submit it.",
   operatorFields: [
     planned("Effective date", "effectiveDate", "08/03/2026"),
@@ -47,6 +57,11 @@ export const TRANSACTION_STEP = Object.freeze({
   } as const,
 });
 
+const TransactionResultSchema = z.union([
+  WorkStudyResultSchema,
+  OmittedStepResultArmSchema.extend({ step: z.literal(TRANSACTION_STEP.key), plan: WorkStudyResultSchema.shape.plan.optional() }),
+]);
+
 /** What the operator is told per person: filed by this run, or already filed for this date and not filed again. */
 const WORK_STUDY_DISPOSITION_STATE = { committed: "saved", "already-present": "already-filed" } as const;
 
@@ -62,10 +77,13 @@ export function buildTransaction(author: WorkflowAuthor<typeof WorkStudyInput>, 
   const target = ({ outputs }: { outputs: { [TRANSACTION_PLAN_NODE]: WorkStudyPlan } }) => workStudyTarget(outputs[TRANSACTION_PLAN_NODE]);
   const save = author.transaction(saveEntry, reference === undefined ? [plan] : [plan, reference.review], { prepareBind: target, commitBind: target });
   return { plan, steps: [[TRANSACTION_STEP, [plan, save]]] as const,
-    result: author.result(WorkStudyResultSchema, [plan, save], ({ outputs }) => ({
-      state: WORK_STUDY_DISPOSITION_STATE[outputs[SAVE_NODE].disposition],
-      plan: outputs[TRANSACTION_PLAN_NODE], receipt: outputs[SAVE_NODE].output.receipt,
-    })) };
+    result: author.result(TransactionResultSchema, [plan, save], ({ outputs }): z.input<typeof TransactionResultSchema> => {
+      const filed = outputs[SAVE_NODE];
+      return filed === undefined ? { state: "omitted", step: TRANSACTION_STEP.key } : {
+        state: WORK_STUDY_DISPOSITION_STATE[filed.disposition],
+        plan: outputs[TRANSACTION_PLAN_NODE], receipt: filed.output.receipt,
+      };
+    }) };
 }
 
 export const workStudyTransactionDefinition = defineStep({

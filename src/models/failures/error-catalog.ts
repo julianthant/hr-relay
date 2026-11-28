@@ -463,7 +463,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   CRM_SIGN_IN_FAILED: catalogEntry(
-    "CRM sign-in failed.",
+    "Relay could not identify where CRM sign-in stopped.",
     EmptyParametersSchema,
   ),
   ONBASE_SESSION_HELD: catalogEntry("Another session holds OnBase. Its browser must close first.", EmptyParametersSchema),

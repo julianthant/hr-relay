@@ -12,6 +12,10 @@ export type { EditableSettingsPath, EditableSettingsSectionId } from "./settings
 
 const EditorValueSchema = z.union([z.string(), z.number().int(), z.boolean(), z.record(z.string(), z.union([z.string(), z.number().int(), z.boolean()])), z.array(z.string())]);
 export type EditorValue = z.infer<typeof EditorValueSchema>;
+const ordinaryEditorRows = new Map<string, typeof SETTINGS_CATALOG[number]>(
+  SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings").map(row => [row.key, row]));
+const requiredEditorKeys = [...ordinaryEditorRows.keys()].filter(key => !key.startsWith("annualDates.") && !isRetiredSettingsPath(key));
+const requiredEditorMembership = new Set(requiredEditorKeys);
 export const EditableSettingsLeafWireSchema = z.strictObject({
   path: z.string().min(1),
   catalogKey: z.string().min(1),
@@ -27,7 +31,7 @@ export const EditableSettingsLeafWireSchema = z.strictObject({
   minimum: z.number().int().nonnegative().optional(), unit: z.string().min(1).optional(), hazard: z.string().min(1).optional(),
 }).superRefine((leaf, context) => {
   const key = catalogKeyForEditorPath(leaf.path);
-  const row = SETTINGS_CATALOG.find(candidate => candidate.key === key && candidate.sourceClass === "ordinary-settings");
+  const row = ordinaryEditorRows.get(key);
   if (row === undefined || key !== leaf.catalogKey) {
     context.addIssue({ code: "custom", message: "settings leaf is not catalogued" }); return;
   }
@@ -38,8 +42,13 @@ export const EditableSettingsLeafWireSchema = z.strictObject({
     context.addIssue({ code: "custom", message: "settings input type mismatch" });
   }
   const valuePath = leaf.path.replace(".*.", ".FY2000.");
+  const valid = new Map<EditorValue, boolean>();
   for (const name of ["effectiveValue", "activeValue", "defaultValue", "settingsValue"] as const) {
-    if (leaf[name] !== undefined && !SettingsPatchSchema.safeParse({ [valuePath]: { set: leaf[name] } }).success) {
+    const value = leaf[name];
+    if (value === undefined) continue;
+    const accepted = valid.get(value) ?? SettingsPatchSchema.safeParse({ [valuePath]: { set: value } }).success;
+    valid.set(value, accepted);
+    if (!accepted) {
       context.addIssue({ code: "custom", path: [name], message: "invalid settings value" });
     }
   }
@@ -91,10 +100,9 @@ export const EditableSettingsWireSchema = z.strictObject({
   const leaves = document.sections.flatMap(section => section.leaves);
   const keys = leaves.map(leaf => leaf.path);
   if (new Set(keys).size !== keys.length) issue("editable settings inventory repeats a path");
-  const expected = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && !row.key.startsWith("annualDates.") && !isRetiredSettingsPath(row.key)).map(row => row.key);
   const currentJobEndDate = `annualDates.FY${String(document.currentFiscalYear)}.jobEndDate`;
-  if (expected.some(key => !keys.includes(key)) || keys.filter(key => key.startsWith("annualDates.")).join("\0") !== currentJobEndDate
-    || keys.some(key => !new Set<string>(expected).has(key) && key !== currentJobEndDate)) issue("editable settings inventory membership mismatch");
+  if (requiredEditorKeys.some(key => !keys.includes(key)) || keys.filter(key => key.startsWith("annualDates.")).join("\0") !== currentJobEndDate
+    || keys.some(key => !requiredEditorMembership.has(key) && key !== currentJobEndDate)) issue("editable settings inventory membership mismatch");
   for (const section of document.sections) for (const leaf of section.leaves) {
     if (settingsSectionFor(leaf.path) !== section.id) issue("editable setting is in the wrong section");
     if (document.runtimeStatus.state === "current" && canonicalJsonStringify(leaf.activeValue ?? null) !== canonicalJsonStringify(leaf.effectiveValue ?? null)) issue("current settings values disagree with active values");

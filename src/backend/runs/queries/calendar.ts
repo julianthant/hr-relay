@@ -15,6 +15,6 @@ export function createCalendarQuery(database: Pick<AuthorityDatabase, "queryRunC
 }
 
 export const calendarLaneRead = defineLaneRead(import.meta.url, "calendar", {
-  lane: "search", priority: "interactive", args: CalendarQuerySchema,
+  lane: "search", priority: "interactive", args: CalendarQuerySchema, sourceProof: "per-read",
   run: ({ history, nowMs }, query) => createCalendarQuery(history, { now: () => new Date(nowMs) }).read(query),
 });

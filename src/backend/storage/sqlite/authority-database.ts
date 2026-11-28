@@ -25,6 +25,7 @@ import type { CredentialStore } from "../../../models/config/credential-store.js
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { ConfigSnapshotRecordSchema,type ConfigSnapshotRecord,ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
+import { CalendarStoreQuerySchema, CalendarWireSchema, type CalendarWire } from "../../../models/dashboard/calendar.js";
 import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import { RunEnvelopeSchema } from "../../../models/run/envelope.js";
 import { ConfirmationPublicationSchema,confirmationPublicationFromRow,confirmedOperationTimeline,reconstructConfirmedOperation,type ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
@@ -235,6 +236,24 @@ function changeLogIntervalClear(database: DatabaseSync, cursor: number, through:
     && database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name IN (SELECT value FROM json_each(?)) LIMIT 1`).get(cursor, selected) === undefined;
 }
 
+/** Calendar proves run ancestry and delegation evidence. Settings and notification-health writes cannot change that proof. */
+function calendarChangeIntervalClear(database: DatabaseSync, from: number, through: number): boolean {
+  const count = through - from;
+  if (count === 0) return true;
+  if (count < 0 || count > 256) return false;
+  const changes = readAuthorityChanges(database, from, count);
+  return changes.length === count && changes.every((change, index) => {
+    if (change.seq !== from + index + 1) return false;
+    if (change.table === "settings" || change.table === "notification_states") return change.op === "update";
+    if (change.table === "settings_snapshots") return change.op === "insert";
+    if (change.table !== "commands" && change.table !== "command_audits") return false;
+    const settingsImages = change.keys.filter(key => key === "family:settings").length;
+    if (change.keys.some(key => key.startsWith("run:"))) return false;
+    return change.op === "insert" ? settingsImages === 1
+      : change.table === "commands" && change.op === "update" && settingsImages === 2;
+  });
+}
+
 const SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES = 1000;
 
 export class AuthorityDatabase implements Disposable {
@@ -261,6 +280,7 @@ export class AuthorityDatabase implements Disposable {
   #checkpointCustodians = 0;
   #historyOwner?: AuthorityDatabase;
   #historyCursorOffset = 0;
+  #calendarCache?: { position: ReturnType<AuthorityDatabase["capturedChangeKey"]>; entries: Map<string, CalendarWire> };
   readonly #dashboardReadSources = new Set<symbol>();
   /** Statements reused across reads: only the run lookup a queue read repeats per row, used with get(), never iterate(). */
   #statements: SQLTagStore;
@@ -397,6 +417,7 @@ export class AuthorityDatabase implements Disposable {
       } else {
         if (!existed && purpose !== "stopped-restore-projection") this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#configureConnection();
+        if (options.checkpointOwner === "dashboard-navigation") this.holdCheckpointCustody();
         if (existed && purpose === "ordinary") this.#initializeSchema(existingVersion, options.migrationOwner);
       }
       this.#database.exec("BEGIN");
@@ -1856,22 +1877,45 @@ export class AuthorityDatabase implements Disposable {
 
   checkQueueDaySources(day: string, previous?: number | Readonly<{
     through: number;
+    retryConfigFingerprint: string | undefined;
     runIds: readonly string[];
     timelineRunIds: readonly string[];
     lastWorkerClaims: readonly { workerId: string; cursor: number | null }[];
     relationships: readonly { runId: string; parentId: string | null; workflowId: string; itemId: string; day: string }[];
     month: { from: string; to: string; counts: readonly { day: string; count: number }[] };
-  }>): { through: number; kind: "full" | "unchanged" } | { through: number; kind: "runs"; runIds: readonly string[]; dayRunIds: readonly string[]; countDays: readonly string[] } | undefined {
+  }>): { through: number; kind: "full"; retryConfigFingerprint: string | undefined } | { through: number; kind: "unchanged" }
+    | { through: number; kind: "runs"; runIds: readonly string[]; dayRunIds: readonly string[]; countDays: readonly string[] } | undefined {
     if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return undefined;
     return this.#withReadSnapshot(() => {
       this.#validateExternalQuerySources();
       const through = changeLogHighWater(this.#database);
-      if (previous === undefined) return { through, kind: "full" };
-      if (typeof previous === "number") return { through, kind: through === previous ? "unchanged" : "full" };
+      const retryConfigFingerprint = () => {
+        const settings = readAppSettings(this.#database);
+        const active = settings?.active;
+        if (active == null || settings?.saved != null && (settings.saved.revision !== active.settingsRevision
+          || settings.saved.settingsFingerprint !== active.settingsFingerprint)) return undefined;
+        return active.configFingerprint;
+      };
+      const full = () => ({ through, kind: "full" as const, retryConfigFingerprint: retryConfigFingerprint() });
+      if (previous === undefined) return full();
+      if (typeof previous === "number") return through === previous ? { through, kind: "unchanged" }
+        : { through, kind: "full", retryConfigFingerprint: undefined };
       if (through === previous.through) return { through, kind: "unchanged" };
       const retained = z.object({ count: z.number().int().nonnegative() }).parse(
         this.#database.prepare(`SELECT count(*) AS count FROM ${CHANGE_LOG_TABLE} WHERE seq > ?`).get(previous.through));
-      if (retained.count !== through - previous.through) return { through, kind: "full" };
+      if (retained.count !== through - previous.through) return full();
+
+      // Ordinary preferences can advance Settings and append a snapshot while leaving Retry eligibility unchanged.
+      const settingsChange = this.#database.prepare(`SELECT op, table_name FROM ${CHANGE_LOG_TABLE}
+        WHERE seq > ? AND table_name IN ('settings','settings_snapshots')
+        ORDER BY (table_name = 'settings_snapshots' AND op <> 'insert') DESC LIMIT 1`).get(previous.through);
+      if (settingsChange !== undefined) {
+        const fingerprint = retryConfigFingerprint();
+        if (fingerprint === undefined || fingerprint !== previous.retryConfigFingerprint
+          || settingsChange.table_name === "settings_snapshots" && settingsChange.op !== "insert") {
+          return { through, kind: "full", retryConfigFingerprint: fingerprint };
+        }
+      }
 
       const sharedChange = this.#database.prepare(`WITH changed_runs(id) AS (
           SELECT DISTINCT json_extract(row_key,'$[0]') FROM ${CHANGE_LOG_TABLE} WHERE seq > ? AND table_name = 'runs'
@@ -1887,8 +1931,7 @@ export class AuthorityDatabase implements Disposable {
         SELECT 1 FROM ${CHANGE_LOG_TABLE} change WHERE seq > ? AND (
         table_name IN ('run_batches','run_delegations','delegation_dependencies','run_checkpoints',
           'gate_results','run_failures','run_receipts','write_intents','write_attempts','dryrun_results',
-          'worker_pools','worker_slots','auth_leases','ocr_review_revisions','ocr_approved_snapshots','ocr_source_uploads',
-          'settings','settings_snapshots')
+          'worker_pools','worker_slots','auth_leases','ocr_review_revisions','ocr_approved_snapshots','ocr_source_uploads')
         OR (table_name = 'run_results' AND (
           NOT EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%')
           OR EXISTS (SELECT 1 FROM json_each(change.keys_json) WHERE value LIKE 'run:%' AND substr(value,5) NOT IN (SELECT id FROM changed_runs))
@@ -1929,7 +1972,7 @@ export class AuthorityDatabase implements Disposable {
         ))
       ) LIMIT 1`).get(previous.through, previous.through, JSON.stringify(previous.runIds), JSON.stringify(previous.timelineRunIds),
         JSON.stringify(previous.lastWorkerClaims), previous.through);
-      if (sharedChange !== undefined) return { through, kind: "full" };
+      if (sharedChange !== undefined) return full();
 
       const changedRuns = this.#database.prepare(`SELECT 1 FROM ${CHANGE_LOG_TABLE}
         WHERE seq > ? AND table_name = 'runs' LIMIT 1`).get(previous.through);
@@ -1963,7 +2006,7 @@ export class AuthorityDatabase implements Disposable {
         HAVING min(CASE op WHEN 'insert' THEN seq END) IS NOT min(seq)
           AND json_extract(row_key,'$[0]') NOT IN (SELECT json_extract(value,'$.runId') FROM json_each(?))
         LIMIT 1`).get(previous.through, relationships);
-      if (unknown !== undefined) return { through, kind: "full" };
+      if (unknown !== undefined) return full();
 
       const rows = this.#database.prepare(`WITH RECURSIVE facts(id,parent,workflow,item) AS (
           SELECT id,parent_id,workflow,item_id FROM runs
@@ -2301,8 +2344,30 @@ export class AuthorityDatabase implements Disposable {
   }
 
   queryRunCalendar(query: Parameters<ReturnType<typeof createRunSummaries>["calendar"]>[1]) {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId),
-      envelopes => this.authority.dependencies.parents(envelopes)).calendar(this.getMeta().authorityGeneration, query) });
+    return this.withAuthorityReadSnapshot(() => {
+      this.#validateExternalQuerySources();
+      const authorityGeneration = this.getMeta().authorityGeneration;
+      const read = () => createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId),
+        envelopes => this.authority.dependencies.parents(envelopes)).calendar(authorityGeneration, query);
+      if (this.#transactionMode !== "read" || this.#changeReader === undefined) return read();
+      const { month, day, today } = CalendarStoreQuerySchema.parse(query);
+      const key = `${month}|${day}|${today}`;
+      const position = this.capturedChangeKey();
+      const previous = this.#calendarCache;
+      const entries = previous !== undefined && previous.position.schemaCookie === position.schemaCookie
+        && calendarChangeIntervalClear(this.#database, previous.position.changeLogSeq, position.changeLogSeq)
+        ? previous.entries : new Map<string, CalendarWire>();
+      this.#calendarCache = { position, entries };
+      const cached = entries.get(key);
+      if (cached !== undefined) return CalendarWireSchema.parse({ ...cached, authorityGeneration });
+      const wire = read();
+      if (entries.size >= 4) {
+        const oldest = entries.keys().next().value;
+        if (oldest !== undefined) entries.delete(oldest);
+      }
+      entries.set(key, structuredClone(wire));
+      return wire;
+    });
   }
 
   readRunSummaries() {

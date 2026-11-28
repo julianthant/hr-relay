@@ -253,6 +253,19 @@ describe("served Logs wiring", () => {
     await act(async () => button("Cancel run").click());
     assert.deepEqual(sent, ["resume", "cancel"]);
   });
+  it("draws the Duo card after the recorded steps", async () => {
+    const h = commandBindingFixture();
+    const selected = { ...selection(), row: QueueSurfaceWireSchema.parse({ ...selection().row, status: "awaiting-approval",
+      endedAt: { state: "absent", reason: "still running" }, operatorWait: { state: "present", kind: "duo", system: "ucpath", since: AT } }) };
+    const served = RunDetailWireSchema.parse({ ...detail(selected), availableSections: ["logs"] });
+    const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : served);
+    await serveRows(h.binding.authority.dayState.rows, client, RUN);
+    await mount(createElement(TipClient, { client, children: createElement(DashboardCommandBindingProvider, { binding: h.binding,
+      children: createElement(LogSample, { selection: selected }) }) }));
+    const text = document.body.textContent ?? "";
+    assert.ok(text.indexOf("Authoritative note 0") >= 0);
+    assert.ok(text.indexOf("Approving Duo for") > text.indexOf("Authoritative note 0"), text);
+  });
   it("retains exact parked UNKNOWN identity with no submission control", async () => {
     let writes = 0;
     const parked = RunDetailSectionResponseSchema.parse({ section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, native: nativeOf(RUN, 40), runId: RUN } });

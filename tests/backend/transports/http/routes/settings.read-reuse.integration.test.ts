@@ -9,7 +9,7 @@ import { createComposedDashboardReadHost } from "../../../../../src/backend/app/
 import { composeSettings } from "../../../../../src/backend/app/composition/dashboard/settings.js";
 import type { DashboardReadLanes } from "../../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { assertRetainedProfileBrowserRoot } from "../../../../../src/backend/storage/maintenance/profile-custody.js";
-import { activeSettingsRuntimeIdentity } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
+import { activeSettingsRuntimeIdentity, createProtectedSettingsRuntimeReader } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { registerSettingsRoutes } from "../../../../../src/backend/transports/http/routes/settings.js";
 import { EditableSettingsWireSchema } from "../../../../../src/models/dashboard/settings-editor.js";
@@ -29,7 +29,12 @@ it("serves the Settings editor with its store part from the navigation lane, reb
     const hostFacts = { primaryDisplay: null };
     const store = createCredentialStore({ stateRoot: fixture.stateRoot });
     let protectedFailure = false;
-    const credentials = { ...store, read: () => { if (protectedFailure) throw new Error("protected store unreadable"); return store.read(); } };
+    const credentials = { ...store, read: () => { throw new Error("editor read on main"); } };
+    const protectedReader = createProtectedSettingsRuntimeReader(store);
+    const readProtectedSettings = async () => {
+      if (protectedFailure) throw new Error("protected store unreadable");
+      return protectedReader.read();
+    };
     // Whether each store-part read was served from the lane's cache.
     const storeParts: boolean[] = [];
     const readLanes: Pick<DashboardReadLanes, "read"> = { read: async (definition, args, options) => {
@@ -38,7 +43,7 @@ it("serves the Settings editor with its store part from the navigation lane, reb
       return reply;
     } };
     const { routes, editable } = composeSettings({ database, clock, environment: {}, hostFacts, readLanes,
-      active: activeSettingsRuntimeIdentity, credentials });
+      active: activeSettingsRuntimeIdentity, credentials, readProtectedSettings });
     const app: DashboardApp = new Hono();
     app.onError((error, c) => c.json({ message: error.message }, 500));
     registerSettingsRoutes(app, routes);
