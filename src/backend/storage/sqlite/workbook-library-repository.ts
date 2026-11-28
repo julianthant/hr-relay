@@ -17,6 +17,9 @@ import { changeLogTriggers } from "./authority-change-log.js";
 const WorkbookDigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
 const WorkbookReferenceSchema = z.looseObject({ workbookDigest: WorkbookDigestSchema });
 const WorkbookPayloadRowSchema = z.strictObject({ digest: WorkbookDigestSchema, payload_json: z.string() });
+const WorkbookHoldRowsSchema = z.array(z.strictObject({
+  library_id: z.string(), version_id: z.string().nullable(), revision: z.number().int().nullable(), whole_workbook: z.union([z.literal(0), z.literal(1)]),
+}));
 const workbookCacheCharacters = 32 * 1024 * 1024;
 /** Stores one workbook once, as canonical JSON addressed by its sha256; returns the digest. */
 function storeWorkbook(database: DatabaseSync, value: unknown): string {
@@ -999,20 +1002,39 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
       return record;
     });
   };
-  const inUse = (id: string, at: string, version?: WorkbookLibraryState["versions"][number]) => database.prepare('SELECT 1 FROM workbook_operations WHERE workbook_id=? AND receipt_json IS NULL LIMIT 1').get(id) !== undefined
-    || database.prepare(`SELECT 1 FROM runs,json_each(runs.lifecycle_json,'$.input.workbookReferences') reference
-    WHERE runs.state<>'terminal' AND json_extract(reference.value,'$.value.snapshot.libraryId')=?
-      AND (? IS NULL OR json_extract(reference.value,'$.value.snapshot.versionId')=?
-        OR (json_type(reference.value,'$.value.snapshot.versionId') IS NULL AND json_extract(reference.value,'$.value.snapshot.version')=?)) LIMIT 1`)
-      .get(id, version?.id ?? null, version?.id ?? null, version?.version ?? null) !== undefined
-    || database.prepare(`SELECT 1 FROM run_requests,json_each(run_requests.payload_json,'$.planned') planned,
-      json_each(planned.value,'$.workbookReferences') reference
-      WHERE json_type(run_requests.payload_json,'$.consumedBy') IS NULL
-        AND json_extract(run_requests.payload_json,'$.expiresAt')>?
-        AND json_extract(reference.value,'$.value.snapshot.libraryId')=?
-        AND (? IS NULL OR json_extract(reference.value,'$.value.snapshot.versionId')=?
-          OR (json_type(reference.value,'$.value.snapshot.versionId') IS NULL AND json_extract(reference.value,'$.value.snapshot.version')=?)) LIMIT 1`)
-      .get(at, id, version?.id ?? null, version?.id ?? null, version?.version ?? null) !== undefined;
+  const holds = (at: string, id: string | null = null) => {
+    const rows = database.prepare(`WITH references_in_use AS (
+      SELECT json_extract(reference.value,'$.value.snapshot') AS snapshot
+      FROM runs,json_each(runs.lifecycle_json,'$.input.workbookReferences') reference WHERE runs.state<>'terminal'
+      UNION ALL
+      SELECT json_extract(reference.value,'$.value.snapshot')
+      FROM run_requests,json_each(run_requests.payload_json,'$.planned') planned,json_each(planned.value,'$.workbookReferences') reference
+      WHERE json_type(run_requests.payload_json,'$.consumedBy') IS NULL AND json_extract(run_requests.payload_json,'$.expiresAt')>?
+    ), workbook_holds AS (
+      SELECT json_extract(snapshot,'$.libraryId') AS library_id,json_extract(snapshot,'$.versionId') AS version_id,
+        CASE WHEN json_type(snapshot,'$.versionId') IS NULL THEN json_extract(snapshot,'$.version') END AS revision,0 AS whole_workbook
+      FROM references_in_use
+      UNION
+      SELECT workbook_id,NULL,NULL,1 FROM workbook_operations WHERE receipt_json IS NULL
+    )
+    SELECT * FROM workbook_holds WHERE library_id IS NOT NULL AND (? IS NULL OR library_id=?)`).all(at, id, id);
+    return WorkbookHoldRowsSchema.parse(rows);
+  };
+  const holdsVersion = (hold: z.infer<typeof WorkbookHoldRowsSchema>[number], version: WorkbookLibraryState["versions"][number]) =>
+    hold.whole_workbook === 1 || hold.version_id === version.id || hold.revision === version.version;
+  const inUse = (id: string, at: string, version?: WorkbookLibraryState["versions"][number]) =>
+    holds(at, id).some(hold => version === undefined || holdsVersion(hold, version));
+  const withVersionHolds = (catalog: readonly z.infer<typeof WorkbookLibraryEntrySchema>[], at: string | undefined) => {
+    if (at === undefined || catalog.every(entry => entry.state.versions.length === 1)) return catalog;
+    const byLibrary = Map.groupBy(holds(at), hold => hold.library_id);
+    return catalog.map(entry => {
+      const relevant = byLibrary.get(entry.libraryId);
+      if (relevant === undefined) return entry;
+      const heldVersionIds = entry.state.versions.filter(version => version.id !== entry.state.selectedVersionId
+        && relevant.some(hold => holdsVersion(hold, version))).map(version => version.id);
+      return heldVersionIds.length === 0 ? entry : { ...entry, heldVersionIds };
+    });
+  };
   const repository: WorkbookLibraryRepository = {
     lastUsed: workflowId => storage(() => deps.read(() => lastUsed(workflowId))),
     rememberLastUsed: value => storage(() => deps.mutate(() => {
@@ -1030,9 +1052,9 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
         .run(record.workflowId, record.revision, record.acceptedCommandId, record.usedAt, canonicalJsonStringify(record));
       return { result: record, changes: 1 };
     })),
-    catalog: () => storage(() => deps.read(() => {
+    catalog: at => storage(() => deps.read(() => {
       const cached = readCache();
-      if (cached?.catalog !== undefined) return cached.catalog;
+      if (cached?.catalog !== undefined) return withVersionHolds(cached.catalog, at);
       const catalog = database.prepare('SELECT * FROM workbook_library ORDER BY saved_at DESC,id').all().flatMap(raw => {
         const current = cachedFromRow(raw), state = libraryState(current.libraryId);
         if (state.removed) return [];
@@ -1048,9 +1070,8 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
           rowCount: record.workbook.sheets.reduce((count, sheet) => count + sheet.rows.length - (sheet.headerRow ?? 1), 0),
           state, metadata: meta, type: workbookType, ...sync })];
       });
-      if (cached === undefined) return catalog;
-      cached.catalog = deepFreeze(catalog);
-      return cached.catalog;
+      if (cached !== undefined) cached.catalog = deepFreeze(catalog);
+      return withVersionHolds(catalog, at);
     })),
     libraryState: id => storage(() => deps.read(() => libraryState(id))),
     atomically: work => storage(() => deps.mutate(() => ({ result: work(), changes: 0 }))),
@@ -1091,9 +1112,8 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
           return version;
         };
         if (change.kind === 'create-version') {
-          const names = versionNames(state.versions);
-          if (change.from.kind !== 'sharepoint' && names.has(change.name.trim())) throw new WorkbookLibraryError('WORKBOOK_VERSION_NAME_EXISTS');
-          const name = availableVersionName(change.name, names);
+          const name = change.name.trim();
+          if (versionNames(state.versions).has(name)) throw new WorkbookLibraryError('WORKBOOK_VERSION_NAME_EXISTS');
           let version: number, snapshotId: string;
           if (change.from.kind === 'sharepoint') {
             const meta = metadata(id);
@@ -1133,10 +1153,11 @@ function workbookLibraryRepository(deps: WorkbookLibraryRepositoryDeps, inspecte
             change: { kind: 'sync', expectedVersion: before.version, workbook: sharePointWorkbook } });
         } else if (change.kind === 'rename-version') {
           selected(change.versionId);
-          if (state.versions.some(version => version.id !== change.versionId && version.name.trim() === change.name.trim())) {
+          const name = change.name.trim();
+          if (state.versions.some(version => version.id !== change.versionId && version.name.trim() === name)) {
             throw new WorkbookLibraryError('WORKBOOK_VERSION_NAME_EXISTS');
           }
-          next.versions = next.versions.map(version => version.id === change.versionId ? { ...version, name: change.name } : version);
+          next.versions = next.versions.map(version => version.id === change.versionId ? { ...version, name } : version);
         } else if (change.kind === 'delete-version') {
           const version = selected(change.versionId);
           if (state.selectedVersionId === version.id || inUse(id, at, version)) throw new WorkbookLibraryError('WORKBOOK_VERSION_IN_USE');
