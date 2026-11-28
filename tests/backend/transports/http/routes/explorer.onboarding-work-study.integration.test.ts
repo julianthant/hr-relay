@@ -195,7 +195,8 @@ it("explains the roster-row and existing-person picks with fictional rows and th
   const [roster] = blocks(spec, "crm-data", "pick"); assert.ok(roster);
   assert.deepEqual(roster.columns, ["Email", "Legal name", "Preferred name"]);
   assert.deepEqual(roster.rows[0]?.cells, ["bea.morrow@example.test", "Morrow, Bea Avery", "Morrow, Bea Avery"]);
-  assert.match(roster.question.context, /missing or has several/u);
+  assert.match(roster.question.context, /saved rows for the same email disagree/u);
+  assert.match(roster.question.context, /Agreeing rows proceed as one hire/u);
   const [person] = visible(blocks(spec, "hire-review", "pick"), walk(spec, { mode: "rehire" }).values); assert.ok(person);
   assert.equal(person.title, "UCPath matches");
   assert.deepEqual(person.columns, ["Name", "Employee ID", "UCPath check"]);
