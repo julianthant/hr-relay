@@ -406,7 +406,8 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           && !containsProtected(JsonValueSchema.parse(entry.facts), privateValues);
       });
       let sourceInput: RerunValuesSnapshot["sourceInput"] = { state: "available", value: run.input.parsed.value };
-      if (canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
+      if (descriptor.stepOmissions.some(spec => spec.withholdsBoundInput?.(run.input.parsed.value) === true)
+        || canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
         || containsProtected(run.input.parsed.value, privateValues)) sourceInput = { state: "unavailable", reason: "protected" };
       else if (older && descriptor.surfaces.inputRun?.typedInput !== undefined) {
         const input = run.input.parsed.value;

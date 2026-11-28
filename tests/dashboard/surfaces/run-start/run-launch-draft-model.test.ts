@@ -216,10 +216,12 @@ describe("omission facts", () => {
     assert.deepEqual(off.copiedOmissions, {});
   });
   it("opens and closes a child row and a locked row through manualRows, and starts a child row empty", () => {
-    const kid: StepRow = { ...row("read"), key: "kid", stepKey: undefined, child: { workflow: "kids", step: "read" } };
-    const open = toggleRow(freshLaunchDraft(plain), plain, snapshot, kid, false);
+    const withChild: RunStartWorkflow = { ...plain, rows: [{ key: "kid", label: "Read child", kind: "switch", includedByDefault: true,
+      members: [{ workflow: "kids", step: "read" }], target: { workflow: "kids", step: "read" }, manual: { form: OMIT_FORM, forces: [] } }] };
+    const [kid] = startRowsOf(withChild);
+    const open = toggleRow(freshLaunchDraft(withChild), withChild, snapshot, kid, false);
     assert.deepEqual([open.manualRows, open.stepDrafts], [["kid"], {}]);
-    assert.deepEqual(toggleRow(open, plain, snapshot, kid, true).manualRows, []);
+    assert.deepEqual(toggleRow(open, withChild, snapshot, kid, true).manualRows, []);
     const locked: StepRow = { ...row("read"), kind: "locked-manual" };
     assert.deepEqual(toggleManual(freshLaunchDraft(plain), null, locked, true).manualRows, ["read"]);
     assert.deepEqual(toggleManual({ ...freshLaunchDraft(plain), manualRows: ["read"] }, null, locked, false).manualRows, []);

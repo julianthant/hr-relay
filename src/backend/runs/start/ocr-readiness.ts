@@ -6,12 +6,14 @@ import type { StartPlanRecord } from "../../../models/run/start-plan.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { CheckpointExpectationSchema, loadCheckpoint } from "../../../models/workflow/checkpoint.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
+import { delegatedStepOmissions } from "../../../models/workflow/step-omission.js";
 import { PreflightAdmissionRefusal } from "../../../rules/preflight/preflight-admission.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { descriptorRuntimeNodes, workflowDelegatedDescriptor, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { ChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { captureRunContinuation, retainedCheckpoint, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
+import { applyStepOmissionInputs, bindSingleStartChild } from "./step-selection.js";
 
 const OCR_EDGES: ReadonlySet<string> = new Set(["document-ocr", "i9-documents", "ocr-pages"]);
 
@@ -55,9 +57,19 @@ function hasPendingExtraction(repositories: AuthorityRepositories, descriptor: A
 }
 
 export function requiresOcrForStart(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor,
-  plan: Pick<StartPlanRecord, "planned" | "rerun">): boolean {
+  plan: Pick<StartPlanRecord, "planned" | "rerun" | "stepOmissions">): boolean {
   const { requiresOcrProvider } = workflowPlanning(descriptor);
-  if (!plan.planned.some(({ input }) => requiresOcrProvider(input.value))) return false;
+  const delegate = plan.stepOmissions === undefined ? undefined : descriptorRuntimeNodes(descriptor).find(node => node.kind === "child-run"
+    && OCR_EDGES.has(node.edgeId) && plan.stepOmissions?.some(entry => entry.workflow === node.target.id));
+  const target = delegate?.kind === "child-run" ? workflowDelegatedDescriptor(descriptor, delegate.target.id) : undefined;
+  const omissions = target === undefined ? undefined : delegatedStepOmissions(plan.stepOmissions, target.id);
+  const requiresOcr = plan.planned.some(({ input }) => {
+    if (!requiresOcrProvider(input.value)) return false;
+    if (target === undefined || !target.stepOmissions.some(spec => spec.bindInput !== undefined && omissions?.some(entry => entry.step === spec.step))) return true;
+    const childInput = bindSingleStartChild(descriptor, target.id, input.value);
+    return workflowPlanning(target).requiresOcrProvider(applyStepOmissionInputs(target, childInput, omissions));
+  });
+  if (!requiresOcr) return false;
   if (plan.rerun?.continuation === undefined) return true;
   const source = repositories.runs.get(plan.rerun.source.runId);
   if (source === undefined) throw new RunContinuationRefusedError("run-continuation-ocr-source-unavailable");
@@ -65,7 +77,7 @@ export function requiresOcrForStart(repositories: AuthorityRepositories, descrip
 }
 
 export function assertOcrStartReady(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor,
-  plan: Pick<StartPlanRecord, "planned" | "rerun">, available: (() => boolean) | undefined): void {
+  plan: Pick<StartPlanRecord, "planned" | "rerun" | "stepOmissions">, available: (() => boolean) | undefined): void {
   if (available !== undefined && requiresOcrForStart(repositories, descriptor, plan) && !available())
     throw new PreflightAdmissionRefusal("blocked", ERROR_CATALOG.PROVIDER_UNAVAILABLE.text);
 }

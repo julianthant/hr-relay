@@ -105,8 +105,9 @@ export const AssistantFunctionDefinitionSchema = z.strictObject({ type: z.litera
     return value.type === "object" && strict(value);
   }),
 });
+export const ASSISTANT_MAX_TOOLS = 18;
 export const AssistantFunctionNamespaceSchema = z.strictObject({ type: z.literal("namespace"), name: FunctionNameSchema,
-  description: z.string().min(1).max(4000), tools: z.array(AssistantFunctionDefinitionSchema).min(1).max(16),
+  description: z.string().min(1).max(4000), tools: z.array(AssistantFunctionDefinitionSchema).min(1).max(ASSISTANT_MAX_TOOLS),
 });
 export type AssistantFunctionNamespace = z.infer<typeof AssistantFunctionNamespaceSchema>;
 export const AssistantInferenceRequestSchema = z.strictObject({ model: AssistantModelSlugSchema,
@@ -191,6 +192,7 @@ export const ASSISTANT_FAILURES = Object.freeze({
   ASSISTANT_PROPOSAL_CHANGED: ERROR_CATALOG.ASSISTANT_PROPOSAL_CHANGED.text,
   ASSISTANT_VALUE_NEEDS_SOURCE: ERROR_CATALOG.ASSISTANT_VALUE_NEEDS_SOURCE.text,
   ASSISTANT_EDIT_STALE: ERROR_CATALOG.ASSISTANT_EDIT_STALE.text,
+  ASSISTANT_UNDO_STALE: ERROR_CATALOG.ASSISTANT_UNDO_STALE.text,
   ASSISTANT_EDIT_REFUSED: ERROR_CATALOG.ASSISTANT_EDIT_REFUSED.text,
   ASSISTANT_SPREADSHEET_REFUSED: ERROR_CATALOG.ASSISTANT_SPREADSHEET_REFUSED.text,
   ASSISTANT_AUTHORITY_INVALID: ERROR_CATALOG.ASSISTANT_AUTHORITY_INVALID.text,
