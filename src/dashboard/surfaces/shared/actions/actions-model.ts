@@ -118,9 +118,18 @@ export function toastAppliedCommandResult(
   });
 }
 
-const sentenceBody = (text: string) => text.replace(/[.!?]+$/u, "").replace(/^\p{Lu}(?=\p{Ll})/u, letter => letter.toLowerCase());
-/** A conflict names the row; a refusal says what the server said: "Couldn't cancel: the run already finished." */
+/** Operator copy per refusal code: the server's own sentence names run ids and internals. */
+const REFUSAL_REASON: Partial<Record<Extract<CommandSettlement, { reason: "rejected" }>["code"], string>> = {
+  "invalid-state": "the run already finished or changed",
+  "target-not-found": "the run no longer exists",
+  "target-deleted": "the run was deleted",
+  "policy-refused": "Relay's rules don't allow it",
+  "capability-unavailable": "it isn't available right now",
+};
+const refusalReason = (entry: CommandResultFeedEntry): string => entry.settlement.reason === "rejected"
+  ? REFUSAL_REASON[entry.settlement.code] ?? "Relay refused it" : entry.settlement.message;
+/** A conflict names the row; a refusal says why: "Couldn't cancel: the run already finished or changed." */
 export const commandResultTitle = (entry: CommandResultFeedEntry) => entry.settlement.reason === "conflict"
   ? `${entry.actionLabel}: row changed`
-  : `Couldn't ${entry.actionLabel.replace(/ run$/iu, "").toLowerCase()}: ${sentenceBody(entry.settlement.message)}.`;
-export const commandResultDetail = (entry: CommandResultFeedEntry) => `${entry.subject} · ${entry.settlement.message}`;
+  : `Couldn't ${entry.actionLabel.replace(/ run$/iu, "").toLowerCase()}: ${refusalReason(entry)}.`;
+export const commandResultDetail = (entry: CommandResultFeedEntry) => `${entry.subject} · ${refusalReason(entry)}`;

@@ -19,7 +19,7 @@ export function RunStartInput({
   workflow, workflowId, inputRun, pdfSurface, pdfInput, draft: { text, referenceDrafts, referenceSelections, selectedWorkbookRows },
   typedValues, typedInputRef, preview, busy, sending, recovery, update,
   spreadsheets: { library, selectedWorkflow, workbookCheck, requiredTypes, compatibilityMissing, referenceSources, checkSheets, versionSources },
-  savedRows: { rowCapability, workbookRows, rowSource, rowSelectionFresh, rowChoices },
+  savedRows: { rowCapability, rowLibrary, rowVersion, workbookRows, rowSource, rowSelectionFresh, rowChoices },
 }: {
   workflow: RunStartWorkflow | undefined;
   workflowId: string;
@@ -98,7 +98,7 @@ export function RunStartInput({
                         {referenceControls([rowCapability.typeId], true)}
                         {library.catalogRefreshing && <p role="status">Refreshing reference data. Row selection is disabled.</p>}
                         {workbookRows.state === "loading" && <div role="status" aria-label="Loading saved rows"><Skeleton className="h-9 w-full" /></div>}
-                        {workbookRows.state === "error" && <FailureNotice sentence={`Saved rows unavailable: ${workbookRows.error}`} action={{ label: "Refresh reference data", disabled: sending, onClick: () => void library.adapter.refreshCatalog() }} />}
+                        {workbookRows.state === "error" && <FailureNotice sentence={`Couldn't read the rows of ${rowLibrary?.name ?? "the saved spreadsheet"}${rowVersion === undefined ? "" : ` (${rowVersion.name})`}: ${workbookRows.error}`} action={{ label: "Refresh reference data", disabled: sending, onClick: () => void library.adapter.refreshCatalog() }} />}
                         {!rowSelectionFresh && <Banner tone="warning" title="Previous row selection"><p>Selected rows are out of date.</p><Button variant="secondary" disabled={sending} onClick={() => update(launchDraft.clearWorkbookRows)}>Clear previous row selection</Button></Banner>}
                         {workbookRows.state === "ready" && rowChoices.length === 0 && <EmptyState title="No saved data rows" description="This version has only headers." />}
                         {rowChoices.length > 0 && <Table label="Saved spreadsheet rows"><THead><TR><TH>Select</TH><TH>Source row</TH><TH>Lookup key</TH></TR></THead><TBody>{rowChoices.map(choice => {
