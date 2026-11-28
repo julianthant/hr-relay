@@ -74,6 +74,17 @@ async function fixture() {
 }
 
 describe("hourly in-session backup", () => {
+  it("retires a lone log companion from an interrupted session backup deletion", async () => {
+    const f = await fixture();
+    await expect(f.sessionBackups.check()).resolves.toBe("taken");
+    const [kept] = f.names(".session.sqlite");
+    const orphan = kept.replace(/-[0-9a-f-]{36}\.session/u, "-00000000-0000-4000-8000-000000000000.session");
+    writeFileSync(join(f.directory, `${orphan}.dashboard.db`), "unpaired log", { mode: 0o600 });
+    await expect(f.sessionBackups.check()).resolves.toBe("recent");
+    expect(f.names(".session.sqlite.dashboard.db")).toEqual([`${kept}.dashboard.db`]);
+    expect(f.names(".session.sqlite")).toEqual([kept]);
+  });
+
   it.each(["missing", "damaged"] as const)("replaces a session backup whose log companion is %s", async damage => {
     const f = await fixture();
     await expect(f.sessionBackups.check()).resolves.toBe("taken");

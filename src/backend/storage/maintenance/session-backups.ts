@@ -43,7 +43,8 @@ export type SessionBackups = Readonly<{
 type VerifiedManifest = Readonly<{ name: string; createdAt: string; authorityGeneration: number }>;
 
 function fileIdentity(path: string): string {
-  const stats = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+  const readIdentity = /\.(?:timeline|dashboard)\.db(?:-wal|-shm|-journal)?$/u.test(path) ? lstatSync : statSync;
+  const stats = readIdentity(path, { bigint: true, throwIfNoEntry: false });
   return stats === undefined ? "missing" : `${String(stats.dev)}:${String(stats.ino)}:${String(stats.size)}:${String(stats.mtimeNs)}:${String(stats.ctimeNs)}`;
 }
 
@@ -65,7 +66,7 @@ function readManifest(path: string): { state: "valid"; manifest: AuthorityBackup
 
 /** Whether the bytes match the manifest; false only for a confirmed absence, a non-file or a size or checksum mismatch. */
 async function backupBytesMatch(path: string, manifest: AuthorityBackupManifest): Promise<boolean> {
-  const stats = lstatSync(path, { throwIfNoEntry: false });
+  const stats = statSync(path, { throwIfNoEntry: false });
   if (stats === undefined || !stats.isFile() || stats.size !== manifest.byteSize) return false;
   const hash = createHash("sha256");
   await pipeline(createReadStream(path), hash);
