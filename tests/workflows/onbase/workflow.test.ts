@@ -47,9 +47,10 @@ describe("OnBase child-only workflow registration", () => {
 
     const view = { nodes, timeline: descriptor.timeline, stepOmissions: descriptor.stepOmissions };
     const allOn = planStepOmissions(view, []);
-    assert.deepEqual([...allOn.asserted, ...allOn.omitted, ...allOn.refusals], []);
+    assert.deepEqual([...allOn.asserted, ...allOn.omitted, ...allOn.manual, ...allOn.refusals], []);
     const allOff = planStepOmissions(view, [{ step: "source-page", facts: { sourcePage: 1 } }, { step: "import-document", facts: {} }]);
-    assert.deepEqual([...allOff.omitted], [["source-page", "source-page"], ["import-document", "import-document"]]);
+    assert.deepEqual([...allOff.omitted], [["source-page", "source-page"]]);
+    assert.deepEqual([...allOff.manual], [["import-document", "import-document"]]);
     assert.deepEqual([...allOff.asserted, ...allOff.refusals], []);
   });
   it("requires saved-document proof for a filing and refuses it for a manual import", () => {

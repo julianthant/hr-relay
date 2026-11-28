@@ -14,6 +14,7 @@ export const OnbaseResultSchema = z.strictObject({
   path: ["savedDocument"], message: "A saved document is required only for a committed or already-present import.",
 });
 const importManual: StepManualDeclaration = {
+  off: "manual",
   form: { fields: [] },
   produces: {},
   skips: ["import-document"],

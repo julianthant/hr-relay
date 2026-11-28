@@ -6,6 +6,7 @@ import { readOnbaseSourcePage } from "../../tasks/read-source-page.js";
 
 // Typed page numbers cannot supply the verified PDF bytes that Import needs.
 const sourcePageManual: StepManualDeclaration = {
+  off: "values",
   form: { fields: [{ key: "sourcePage", label: "PDF page", kind: "integer", min: 1 }] },
   produces: {},
   skips: ["source-page"],

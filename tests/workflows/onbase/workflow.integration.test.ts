@@ -10,7 +10,7 @@ import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/e
 import { buildRunDetail } from "../../../src/backend/runs/queries/run-detail.js";
 import { buildRunLogsWhole } from "../../../src/backend/runs/queries/run-logs.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
-import { projectStartRows, projectStartSteps, resolveStartStepOmissions, StartStepOmissionRefusedError } from "../../../src/backend/runs/start/step-selection.js";
+import { projectStartRows, projectStartSteps, resolveStartStepOmissions, startRowWire, StartStepOmissionRefusedError } from "../../../src/backend/runs/start/step-selection.js";
 import { createOnbaseDriver } from "../../../src/backend/systems/onbase/driver/interpreter.js";
 import { extractOnbasePage } from "../../../src/backend/systems/onbase/tasks/read-source-page.js";
 import { createWriteSequencer } from "../../../src/backend/runtime/writes/write-sequencer.js";
@@ -18,6 +18,7 @@ import { createTransactionHistory } from "../../../src/backend/storage/sqlite/tr
 import { projectRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import { handOffStepOmissions } from "../../../src/dashboard/surfaces/run-start/run-start-model.js";
+import { startRowsOf } from "../../../src/dashboard/surfaces/run-start/run-steps-model.js";
 import { ONBASE_EXAMPLE_INPUT, OnbaseInputSchema, OnbaseTargetSchema } from "../../../src/models/systems/onbase/import-document.js";
 import { OnbaseCommitImport } from "../../../src/models/systems/onbase/upload-import.js";
 import type { StepOmissions } from "../../../src/models/workflow/step-omission.js";
@@ -156,11 +157,13 @@ it("derives a receipt for the skipped source page and import without exposing th
 it("requires a typed PDF page and an explicit import omission when source preparation is off", () => {
   const { descriptor } = onbaseModule;
   const rows = projectStartRows(descriptor);
-  assert.deepEqual(rows.map(({ key, kind, lockReason, manual }) => [key, kind, lockReason, manual?.form.fields, manual?.forces]), [
-    ["source-page", "switch", undefined, [{ key: "sourcePage", label: "PDF page", kind: "integer", min: 1 }], ["import-document"]],
-    ["import-document", "switch", undefined, [], []],
+  const steps = projectStartSteps(descriptor);
+  assert.deepEqual(rows.map(({ key, kind, off, lockReason, manual }) => [key, kind, off, lockReason, manual?.form.fields, manual?.forces]), [
+    ["source-page", "switch", "values", undefined, [{ key: "sourcePage", label: "PDF page", kind: "integer", min: 1 }], ["import-document"]],
+    ["import-document", "switch", "manual", undefined, [], []],
   ]);
-  assert.deepEqual([...handOffStepOmissions(projectStartSteps(descriptor), ["import-document"])], [["import-document", ["source-page"]]]);
+  assert.equal(startRowsOf({ steps, rows: rows.map(startRowWire) }).find(({ key }) => key === "source-page")?.note, "Also skips: Import Emergency Contact");
+  assert.deepEqual([...handOffStepOmissions(steps, ["import-document"])], [["import-document", ["source-page"]]]);
   assert.throws(() => resolveStartStepOmissions(descriptor, ["import-document"], [{ step: "source-page", facts: { sourcePage: 2 } }]),
     (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "cascade-refused");
   assert.throws(() => resolveStartStepOmissions(descriptor, [], [{ step: "source-page", facts: { sourcePage: 0 } }, { step: "import-document", facts: {} }]),
