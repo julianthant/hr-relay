@@ -87,16 +87,16 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     if (action !== undefined) void onAction?.(isCancelOption(option) ? withoutConfirm(action) : action, target);
   }, [resource, selection.row.actions, onAction, target]);
   const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <FailureNotice sentence={`${logsReadFailedTitle}: Relay could not refresh these logs.`} /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, logsReadFailedTitle]);
-  const content = useMemo(() => failureMissing ? <FailureNotice sentence={`${logsUnavailableTitle}: ${formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text}`} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogFeedPadding><LogSkeleton /></LogFeedPadding> : resource.state === "failed" ? <div className="p-4"><FailureNotice sentence={resource.retryable === false && resource.error !== undefined ? resource.error : "Couldn't load logs."}
+  const content = useMemo(() => failureMissing ? <div className="p-[var(--ds-space-section)]"><FailureNotice sentence={`${logsUnavailableTitle}: this run or step no longer exists.`} /></div> : resource.snapshot === undefined ? resource.state === "loading" ? <LogFeedPadding><LogSkeleton /></LogFeedPadding> : resource.state === "failed" ? <div className="p-[var(--ds-space-section)]"><FailureNotice sentence={resource.retryable === false && resource.error !== undefined ? resource.error : "Couldn't load logs."}
     action={onRetryLogs === undefined || resource.retryable === false ? undefined : { label: "Retry", onClick: onRetryLogs }} /></div> : undefined : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, resource.retryable, resource.error, onRetryLogs]);
   const afterStep = useCallback((id: string) => {
     const findings = projection.ucpathFindings;
     const showFindings = findings?.stepId === id;
     const showPreview = id === lastStepId && previewRegion !== undefined;
     if (!showFindings && !showPreview) return undefined;
-    return <>{showFindings && findings !== undefined ? <UcpathFoundTransactions key={`${selection.row.runId}:${findings.stepId}`} attemptLabel={findings.attemptLabel}
+    return <>{showFindings && findings !== undefined ? <div className="col-start-2 mt-4 min-w-0"><UcpathFoundTransactions key={`${selection.row.runId}:${findings.stepId}`} attemptLabel={findings.attemptLabel}
       presentation={resource.command?.state === "pending" ? { state: "checking" } : findings.presentation}
-      onDecision={resource.onUcpathDecision} /> : undefined}
+      onDecision={resource.onUcpathDecision} /></div> : undefined}
       {showPreview ? <div className="col-start-2 mt-4 min-w-0">{previewRegion}</div> : undefined}</>;
   }, [projection.ucpathFindings, selection.row.runId, resource.command?.state, resource.onUcpathDecision, lastStepId, previewRegion]);
   const retryRun = useCallback(() => {
@@ -115,13 +115,14 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
       {retry !== undefined && onAction !== undefined && <IconButton size="md" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [parentRun,onOpenLinked,resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,retry,onAction,retryEnabled,retryRun,feedback]);
   const startup = selection.row.notStarting;
   const setupProblem = startup !== undefined && WorkerSetupRefusalCodeSchema.safeParse(startup.code).success ? startup.summary : undefined;
+  // The Duo wait is a state card: it follows the recorded setup in the feed.
+  const duoCard = setupProblem === undefined && selection.row.operatorWait.state === "present" ? <div className="mt-4 min-w-0"><DuoWaitBanner wait={selection.row.operatorWait} nowIso={selection.row.updatedAt} /></div> : undefined;
   return <><LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
-    status={status} navigation={setupProblem !== undefined ? <div className="px-3 py-2"><Banner tone="warning" title={setupProblem} /></div>
-      : selection.row.operatorWait.state === "present" ? <DuoWaitBanner wait={selection.row.operatorWait} nowIso={selection.row.updatedAt} /> : undefined}
+    status={status} navigation={setupProblem !== undefined ? <div className="px-3 py-2"><Banner tone="warning" title={setupProblem} /></div> : undefined}
     onReview={reviewAvailable ? onReview : undefined}
     toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} headerActions={headerActions} rerun={rerun} records={records}
     content={content}
-    afterStep={afterStep} trailingContent={emptyPreview} />
+    afterStep={afterStep} trailingContent={duoCard === undefined ? emptyPreview : <>{emptyPreview}{duoCard}</>} />
     {reviewAvailable && <ReviewDialog open={Boolean(reviewOpen)} onOpenChange={open => { if (!open) onLogs?.(); }} subject={selection.workflowLabel}><RunReview selection={selection} focus={reviewFocus} /></ReviewDialog>}</>;
 }
 
