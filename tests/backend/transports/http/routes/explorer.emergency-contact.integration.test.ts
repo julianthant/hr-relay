@@ -59,12 +59,14 @@ it("serves PDF-start choices with OCR enabled and the filing choice unset", asyn
     ] },
     { id: "extractWithOcr", label: "Extract with OCR", initial: "true", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }] },
     { id: "dry-run", label: "Dry run", initial: "false", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }] },
+    { id: "skip-members", label: "Preview approved Emergency Contacts", initial: "run", choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }] },
   ]);
 });
 
 it("retains failed pages and members for review, while a failed document stops before contacts start", async () => {
   const parent = await review("emergency-contact");
   assert.deepEqual(walk(parent, { "read-document": "child-failed" }).steps, ["read-document"]);
+  assert.deepEqual(walk(parent, { "skip-members": "skip" }).steps, ["read-document"]);
   assert.equal(walk(parent, { members: "child-failed" }).stop, undefined);
   assert.match(outcome(parent, "members", "child-failed").then, /failed person.*Logs/u);
   const ocr = await review("ocr");
@@ -124,8 +126,9 @@ it("names every delegated workflow and its document, person or page scope, with 
   const parent = await review("emergency-contact");
   assert.deepEqual(blocks(parent, "read-document", "starts"), [{ kind: "starts", workflowId: "ocr", title: "OCR", each: "This PDF" }]);
   assert.deepEqual(blocks(parent, "members", "starts"), [{ kind: "starts", workflowId: "emergency-contact-member", title: "Emergency Contact member", each: "Each approved person" }]);
-  assert.deepEqual(parent.sessions.filter(session => applies(session, { onbaseFiling: "skip" })).map(session => session.system), ["ucpath", "crm", "i9"]);
-  assert.deepEqual(parent.sessions.filter(session => applies(session, { onbaseFiling: "file" })).map(session => session.system), ["ucpath", "crm", "i9", "onbase"]);
+  assert.deepEqual(parent.sessions.filter(session => applies(session, { onbaseFiling: "skip", "skip-members": "run" })).map(session => session.system), ["ucpath", "crm", "i9"]);
+  assert.deepEqual(parent.sessions.filter(session => applies(session, { onbaseFiling: "file", "skip-members": "run" })).map(session => session.system), ["ucpath", "crm", "i9", "onbase"]);
+  assert.deepEqual(parent.sessions.filter(session => applies(session, { onbaseFiling: "file", "skip-members": "skip" })).map(session => session.system), ["ucpath", "crm", "i9"]);
   const member = await review("emergency-contact-member");
   assert.deepEqual(member.options.find(option => option.id === "onbaseFiling"), parent.options.find(option => option.id === "onbaseFiling"));
   assert.deepEqual(walk(member, { onbaseFiling: "skip" }).steps, ["reference-check", "contact-plan", "contact-preview"]);

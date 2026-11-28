@@ -62,8 +62,9 @@ describe("Emergency Contact Start run rows", () => {
     for (const row of rows.filter(({ child }) => child?.workflow === "emergency-contact-member")) {
       assert.equal(rowIncluded(row, selected, []), false, row.key);
       assert.equal(rowFieldsOpen(row, selected, []), false, row.key);
-      assert.ok(row.child);
-      assert.throws(() => resolveStartStepOmissions(descriptor, selected, [{ step: "members", facts: {} }, { ...row.child, facts: {} }]),
+      const { child } = row;
+      assert.ok(child);
+      assert.throws(() => resolveStartStepOmissions(descriptor, selected, [{ step: "members", facts: {} }, { ...child, facts: {} }]),
         (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "cascade-refused", row.key);
     }
     assert.deepEqual(resolveStartStepOmissions(descriptor, selected, [{ step: "members", facts: {} }]), [{ step: "members", facts: {}, labels: {} }]);
@@ -92,8 +93,8 @@ describe("Emergency Contact Start run rows", () => {
 
   it("plans nothing new and keeps today's node lists of the run and its member run", () => {
     assert.equal(resolveStartStepOmissions(descriptor, projectStartSteps(descriptor).map(({ key }) => key), undefined), undefined);
-    // Today's 4 and 9 nodes with their kinds, dependencies and dry-run stops.
+    // Pins node identities, kinds, dependencies and dry-run stops with every switch on.
     assert.equal(nodeDigest(descriptorRuntimeNodes(descriptor)), "6297f780d9c773cb801aa754b71a57d97da4fa443124f9df35466e3fab9458a7");
-    assert.equal(nodeDigest(descriptorRuntimeNodes(emergencyContactMemberModule.descriptor)), "4c30231da6ab1cacfe255d2e7dadec1d6187e7f486c9cb9060a33ead9aebc489");
+    assert.equal(nodeDigest(descriptorRuntimeNodes(emergencyContactMemberModule.descriptor)), "1a39ed27f3b3a4f52b0a36182324a44b4f132ff5e44d5d5cdc0c7d2f1f066d64");
   });
 });

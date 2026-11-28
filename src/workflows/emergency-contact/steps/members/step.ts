@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { EmergencyContactInputSchema } from "../../../../models/workflows/emergency-contact/input.js";
 import { ReadEmergencyContactResult } from "../../../../models/workflows/emergency-contact/read-result.js";
 import { EmergencyContactResultSchema } from "../../../../models/workflows/emergency-contact/result.js";
@@ -11,7 +12,7 @@ import { buildEmergencyContactRecords } from "../read-document/step.js";
 const resultSchema = z.union([EmergencyContactResultSchema, z.strictObject({ state: z.literal("stopped"), reason: z.literal("existing-contacts-not-read") })]);
 
 export const MEMBERS_STEP = Object.freeze({ key: "members", label: "Preview approved Emergency Contacts", system: "ucpath" as const,
-  manual: { off: "values", stop: "Stops without reading the existing contacts.", form: { fields: [] }, produces: {}, skips: ["members", "read-result"] } as const,
+  manual: { off: "values", stop: "Stops without reading the existing contacts.", form: { fields: [] }, produces: {}, skips: ["members", "read-result"] } satisfies StepManualDeclaration,
   review: { pages: [{ id: "approved-people", title: "Approved people", mode: "Read only", nodeIds: ["members", "read-result"],
     lines: [
       { id: "start-members", kind: "action", text: "Start a separate contact run for each approved person with an Employee ID.", nodeIds: ["members"] },

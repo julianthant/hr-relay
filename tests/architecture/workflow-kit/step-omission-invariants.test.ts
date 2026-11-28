@@ -619,7 +619,7 @@ describe("step-omission invariants", () => {
     }
     assertSweptEveryDeclaration(audited, "planner sweep");
     const expectedGated = [SEPARATIONS_ID, PERSON_LOOKUP_ID, ONBOARDING_ID, WORK_STUDY_ID, EC_MEMBER_ID, FIXTURE_ID, "crm-doc-download"];
-    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([...expectedGated, I9_CHECK_START_ID]), "the whole-descriptor sweep visited the wrong descriptors");
+    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([...expectedGated, I9_CHECK_START_ID, EC_ID]), "the whole-descriptor sweep visited the wrong descriptors");
     assert.deepEqual(sorted(gatedDescriptors), sorted(expectedGated), "the gated descriptors the ALWAYS-GATE sweep covers changed");
   });
 });
