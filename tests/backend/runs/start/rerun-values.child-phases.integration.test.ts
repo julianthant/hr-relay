@@ -4,8 +4,8 @@ import { z } from "zod";
 import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
-import type { StartRowDeclaration } from "../../../../src/models/workflow/step-omission.js";
-import { EidSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
+import type { StartRowDeclaration, StepOmissionEntry } from "../../../../src/models/workflow/step-omission.js";
+import { EidSchema, IsoInstantSchema, ItemIdSchema, PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
@@ -37,6 +37,7 @@ afterAll(() => profiles.close());
 
 const Input = z.strictObject({ eid: EidSchema });
 const Output = z.strictObject({ transactionId: z.string().min(1) });
+const ManualImportOutput = Output.extend({ transactionId: Output.shape.transactionId.nullable() });
 const Pair = z.strictObject({ eid: EidSchema });
 const EID_A = "10800001", EID_B = "10800002";
 const common = { version: 1, icon: "ShieldCheck" as const, category: "operations" as const, input: Input,
@@ -46,14 +47,24 @@ const common = { version: 1, icon: "ShieldCheck" as const, category: "operations
   role: defineWorkflowRole({ kind: "standalone" }) };
 const policy = { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" } as const;
 
-const writeChild = compileWorkflow(defineWorkflow({ ...common, id: "child-phases-write", code: "cpw", label: "Child phases write",
-  scenarios: ["write-fixture/happy"], steps: ({ transaction, result }) => {
-    const write = transaction({ id: "write", label: "Write", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
-      dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 }, [], {
-      prepareBind: ({ input }) => input, commitBind: ({ input }) => input,
-    });
-    return { steps: [[{ key: "write", label: "Write" }, [write]]], result: result(Output, [write], ({ outputs }) => outputs.write.output) };
-  } })).descriptor;
+function writeChildFixture(id: string, withOmission: boolean) {
+  return compileWorkflow(defineWorkflow({ ...common, id, code: "cpw", label: "Child phases write",
+    scenarios: ["write-fixture/happy"], steps: ({ transaction, group, result }) => {
+      const write = transaction({ id: "write", label: "Write", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
+        dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 }, [], {
+        prepareBind: ({ input }) => input, commitBind: ({ input }) => input,
+      });
+      const step = { key: "write", label: "Write" };
+      const writeStep = withOmission ? group(step, { manual: {
+        off: "manual", form: { fields: [] }, produces: {}, skips: ["write"], skipsGatesAndTransactions: true,
+      } }) : step;
+      return { steps: [[writeStep, [write]]],
+        result: result(withOmission ? ManualImportOutput : Output, [write], ({ outputs }) => outputs.write?.output ?? { transactionId: null }) };
+    } })).descriptor;
+}
+
+const writeChild = writeChildFixture("child-phases-write", false);
+const manualImportChild = writeChildFixture("child-phases-manual-import", true);
 
 /** Two read nodes in one step: the first fails for the second person, the second fails for the first. */
 const pairChild = compileWorkflow(defineWorkflow({ ...common, id: "child-phases-pair", code: "cpp", label: "Child phases pair",
@@ -71,7 +82,9 @@ const stagedChild = compileWorkflow(defineWorkflow({ ...common, id: "child-phase
     const read = (id: string) => task({ id, contract: plan1Contract, replay: "checkpoint" }, [], ({ input }) => ({ emplId: input.eid, text: id, mode: "ok" as const }));
     const first = read("first"), second = read("second"), third = read("third");
     const typed = ({ scope }: { scope: { input: unknown } }) => Plan1Output.parse({ eid: (scope.input as { eid: string }).eid, disposition: "typed", providerState: "typed" });
-    return { steps: [[group({ key: "pair", label: "Pair" }, { manual: { form: { fields: [] }, produces: { first: typed, second: typed } } }), [first, second]],
+    return { steps: [[group({ key: "pair", label: "Pair" }, { manual: {
+      form: { fields: [{ key: "note", label: "Note", kind: "text", optional: true, withheld: true }] }, produces: { first: typed, second: typed },
+    } }), [first, second]],
       [{ key: "later", label: "Later" }, [third]]], result: result(Pair, [first, second, third], ({ input }) => ({ eid: input.eid })) };
   } })).descriptor;
 
@@ -104,8 +117,10 @@ async function harness(child: AnyWorkflowDescriptor, result: z.ZodType, binds: r
 }
 type Harness = Awaited<ReturnType<typeof harness>>;
 
-async function runThrough(h: Harness, dryRun: boolean): Promise<RunRecord> {
-  const root = h.start(h.proposal(undefined, undefined, dryRun));
+async function runThrough(h: Harness, dryRun: boolean, stepOmissions?: readonly StepOmissionEntry[]): Promise<RunRecord> {
+  const plan = stepOmissions === undefined ? h.proposal(undefined, undefined, dryRun)
+    : h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: WRITE_FIXTURE_EID }], dryRun, selectedStepKeys: ["members"], stepOmissions });
+  const root = h.start(plan);
   await h.execute(root);
   for (const child of h.database.authority.runs.listChildren(root.envelope.runId)) {
     // The harness's write sequencer leases the parent workflow's session manager, so a child's transaction needs the run's config bound there too.
@@ -134,6 +149,37 @@ const restartKeys = (snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow) 
 const facts = (nodes: readonly { phase?: string; state: string; reason: string }[]) => nodes.map(({ phase, state, reason }) => [phase, state, reason]);
 
 describe("child step facts over a transaction's phases and several child runs", () => {
+  it("keeps a delegated Import done outside Relay off when Rerun opens", async () => {
+    const target = { workflow: manualImportChild.id, step: "write" };
+    const row: StartRowDeclaration = { key: "import", label: "Import", members: [target], target };
+    const h = await harness(manualImportChild, ManualImportOutput, [WRITE_FIXTURE_EID], [members, row]);
+    const run = await runThrough(h, false, [{ ...target, facts: {} }]);
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify(run.lifecycle));
+    const [child] = h.database.authority.runs.listChildren(run.envelope.runId);
+    assert.ok(child);
+    assert.deepEqual(child.envelope.stepOmissions, [{ step: "write", facts: {}, labels: {} }]);
+    assert.deepEqual(h.database.authority.writeIntents.listByRun(child.envelope.runId), []);
+
+    const rerun = readRerunValues(rerunValuesDeps(h), { runId: run.envelope.runId, expectedVersion: run.version });
+    assert.ok(rerun.state === "available", JSON.stringify(rerun));
+    assert.deepEqual(facts(rerun.snapshot.children?.[0]?.steps[0]?.nodes ?? []), [
+      ["prepare", "unfinished", "step-omitted"], ["commit", "unfinished", "step-omitted"],
+    ]);
+    assert.deepEqual(restartKeys(rerun.snapshot, startWorkflow(h.descriptor)), { steps: ["members"], off: ["import"] });
+
+    const { completion: _completion, sessionId: _sessionId, envelope, ...retained } = child;
+    const { stepOmissions: _omissions, ...pendingEnvelope } = envelope;
+    const pending: RunRecord = { ...retained, lifecycle: { state: "queued" }, envelope: { ...pendingEnvelope,
+      runId: RunIdSchema.parse("00000000-0000-4000-8000-00000000fa18"), itemId: ItemIdSchema.parse("00000000-0000-4000-8000-00000000fa19"),
+    } };
+    const deps = rerunValuesDeps(h);
+    const runs = { ...h.database.authority.runs, listChildren: () => [child, pending] };
+    const mixed = readRerunValues({ ...deps, database: { authority: { ...h.database.authority, runs },
+      withAuthorityReadSnapshot: h.database.withAuthorityReadSnapshot.bind(h.database) } }, { runId: run.envelope.runId, expectedVersion: run.version });
+    assert.ok(mixed.state === "available", JSON.stringify(mixed));
+    assert.deepEqual(restartKeys(mixed.snapshot, startWorkflow(h.descriptor)), { steps: ["members"], off: [] });
+  });
+
   it("shows a dry-run child's transaction prepared by preview and its commit unfinished", async () => {
     const h = await harness(writeChild, Output, [WRITE_FIXTURE_EID], writeRows);
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
@@ -191,9 +237,11 @@ describe("child step facts over a transaction's phases and several child runs", 
 
   const pairMembers: StartRowDeclaration = { key: "pair", label: "Pair", members: [{ workflow: pairChild.id, step: "pair" }] };
   /** A parent waiting on its members, cancelled with the dashboard's own Cancel request, which carries no reason. */
-  async function cancelledParent(binds: readonly string[], child = pairChild, rows: readonly StartRowDeclaration[] = [members, pairMembers]) {
+  async function cancelledParent(binds: readonly string[], child = pairChild, rows: readonly StartRowDeclaration[] = [members, pairMembers],
+    stepOmissions?: readonly StepOmissionEntry[]) {
     const h = await harness(child, Pair, binds, rows);
-    const root = h.start(h.proposal(undefined, undefined, false));
+    const root = h.start(h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: WRITE_FIXTURE_EID }], dryRun: false,
+      selectedStepKeys: ["members"], ...(stepOmissions === undefined ? {} : { stepOmissions }) }));
     await h.execute(root);
     const waiting = h.fresh(root);
     const cancel = composeCommandRequest({ kind: "command", command: "cancel", expectedVersion: waiting.version } as unknown as CommandAction,
@@ -224,6 +272,17 @@ describe("child step facts over a transaction's phases and several child runs", 
 
   const stagedPair: StartRowDeclaration = { key: "pair", label: "Pair", members: [{ workflow: stagedChild.id, step: "pair" }], target: { workflow: stagedChild.id, step: "pair" } };
   const stagedLater: StartRowDeclaration = { key: "later", label: "Later", members: [{ workflow: stagedChild.id, step: "later" }] };
+
+  it.each([null, "fictional withheld manual note"])("refills delegated manual values only when the withheld note is empty (%s)", async note => {
+    const entry = { workflow: stagedChild.id, step: "pair", facts: { note } };
+    const { h, run } = await cancelledParent([EID_A], stagedChild, [members, stagedPair, stagedLater], [entry]);
+    assert.deepEqual(run.envelope.stepOmissions, [{ ...entry, labels: { note: "Note" } }]);
+    const response = readRerunValues(rerunValuesDeps(h), { runId: run.envelope.runId, expectedVersion: run.version });
+    assert.ok(response.state === "available", JSON.stringify(response));
+    assert.deepEqual(response.snapshot.typed, note === null ? [{ ...entry, labels: { note: "Note" } }] : undefined);
+    if (note !== null) assert.equal(JSON.stringify(response).includes(note), false);
+  });
+
   const skipped = (nodeId: string) => [{ nodeId, attempt: 1, startedAt: "2026-11-25T12:00:00.000Z", endedAt: "2026-11-25T12:00:01.000Z", outcome: "skipped" as const }];
   /** The cancelled parent's Rerun values with these member checkpoints, failures and executions, its members listed in `order`. */
   function readStaged(h: Harness, run: RunRecord, change: Readonly<{ checkpoints: (member: RunRecord) => readonly string[]; failed?: Readonly<{ member: RunRecord; nodeId: string }>;

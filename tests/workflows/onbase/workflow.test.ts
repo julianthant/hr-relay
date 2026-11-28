@@ -7,7 +7,9 @@ import { BROWSER_SYSTEM_BINDINGS } from "../../../src/backend/runtime/browser/sy
 import { onbaseStore } from "../../../src/backend/systems/onbase/task-registry.js";
 import { ONBASE_EXAMPLE_INPUT, OnbaseInputSchema, ONBASE_EXAMPLE_TARGET, ONBASE_EXAMPLE_PROOF, validateOnbaseImportVerdict } from "../../../src/models/systems/onbase/import-document.js";
 import { OnbaseCommitImport } from "../../../src/models/systems/onbase/upload-import.js";
-import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
+import { planStepOmissions } from "../../../src/models/workflow/step-omission.js";
+import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
+import { OnbaseResultSchema } from "../../../src/workflows/onbase/steps/import-document/step.js";
 
 describe("OnBase child-only workflow registration", () => {
   it("binds its real exclusive system store and derived proofs without public or undeclared starts", () => {
@@ -31,6 +33,31 @@ describe("OnBase child-only workflow registration", () => {
     assert.equal(imported.dryRun, "stop-after-prepare"); assert.equal(imported.probePolicy, "always");
     assert.equal(OnbaseCommitImport.writeSafety.completion.kind, "upload-verify");
     assert.equal(OnbaseCommitImport.writeSafety.idempotency.recoveryAbsence.kind, "operator-only");
+  });
+  it("pins the executable graphs and OnBase-only omission plans", () => {
+    const { descriptor } = onbaseModule;
+    const nodes = descriptorRuntimeNodes(descriptor);
+    const sourceGraph = [["source-page", "task", []]];
+    const importGraph = [...sourceGraph, ["import-document", "transaction", ["source-page"]]];
+    const graph = (workflow: AnyWorkflowDescriptor) => descriptorRuntimeNodes(workflow).map(({ id, kind, dependsOn }) => [id, kind, dependsOn]);
+    assert.deepEqual(graph(descriptor), importGraph);
+    assert.deepEqual(graph(onbaseSourcePageModule.descriptor), sourceGraph);
+    assert.deepEqual(graph(onbaseImportDocumentModule.descriptor), importGraph);
+    assert.deepEqual(descriptor.stepLocks, []);
+
+    const view = { nodes, timeline: descriptor.timeline, stepOmissions: descriptor.stepOmissions };
+    const allOn = planStepOmissions(view, []);
+    assert.deepEqual([...allOn.asserted, ...allOn.omitted, ...allOn.manual, ...allOn.refusals], []);
+    const allOff = planStepOmissions(view, [{ step: "source-page", facts: { sourcePage: 1 } }, { step: "import-document", facts: {} }]);
+    assert.deepEqual([...allOff.omitted], [["source-page", "source-page"]]);
+    assert.deepEqual([...allOff.manual], [["import-document", "import-document"]]);
+    assert.deepEqual([...allOff.asserted, ...allOff.refusals], []);
+  });
+  it("requires saved-document proof for a filing and refuses it for a manual import", () => {
+    assert.equal(OnbaseResultSchema.safeParse({ disposition: "committed", savedDocument: ONBASE_EXAMPLE_PROOF }).success, true);
+    assert.equal(OnbaseResultSchema.safeParse({ disposition: "committed" }).success, false);
+    assert.equal(OnbaseResultSchema.safeParse({ disposition: "omitted" }).success, true);
+    assert.equal(OnbaseResultSchema.safeParse({ disposition: "omitted", savedDocument: ONBASE_EXAMPLE_PROOF }).success, false);
   });
   it("rejects invalid source pages, non-PDFs, input dry-run flags and mismatched saved proofs", () => {
     for (const input of [{ ...ONBASE_EXAMPLE_INPUT, sourcePage: 0 }, { ...ONBASE_EXAMPLE_INPUT, dryRun: true },
