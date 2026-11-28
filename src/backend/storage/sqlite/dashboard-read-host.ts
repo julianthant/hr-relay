@@ -55,14 +55,14 @@ export type LaneWarmContext = Pick<LaneReadContext, "start" | "native" | "histor
 type AtomicLaneRead<Args, Result> = {
   readonly priority: "interactive" | "background";
   readonly source?: never;
-  readonly run: (context: LaneReadContext, args: Args) => Result;
+  run(this: void, context: LaneReadContext, args: Args): Result;
   readonly chunks?: never;
 };
 type ChunkedLaneRead<Args, Result> = {
   readonly priority: "background";
   readonly source?: "native";
   readonly run?: never;
-  readonly chunks: (context: LaneReadContext, args: Args) => Generator<void, Result, void>;
+  chunks(this: void, context: LaneReadContext, args: Args): Generator<void, Result, void>;
 };
 type LaneReadExecution<Args, Result> = AtomicLaneRead<Args, Result> | ChunkedLaneRead<Args, Result>;
 
@@ -243,8 +243,8 @@ interface Lane {
 
 /**
  * The main thread's side of the read lanes: waiters with latest-wins slots, posting reads to their lane as soon as it can
- * take them, lane restarts, and the WAL checkpoint window. Each lane orders its own messages (checkpoint, then interactive,
- * then background), so no handoff between two lane messages waits on the main thread. The main thread runs no SQLite for a
+ * take them, lane restarts, and the WAL checkpoint window. Each lane orders its own messages, so no handoff between two lane
+ * messages waits on the main thread. The main thread runs no SQLite for a
  * lane read.
  */
 export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmission; database: AuthorityDatabase; clock: Clock;

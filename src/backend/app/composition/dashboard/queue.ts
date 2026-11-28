@@ -226,7 +226,7 @@ function createDayLane(lanes: DashboardReadLanes, workerMembers: () => readonly 
   return {
     processRevision: () => facts().revision,
     async read(day, request) {
-      const reply = await lanes.read(queueDayRead, { day }, { ...request, processFacts: facts() });
+      const reply = await lanes.read(queueDayRead, { day: LocalDateSchema.parse(day) }, { ...request, processFacts: facts() });
       return { body: reply.body, processRevision: reply.position.processRevision };
     },
   };
