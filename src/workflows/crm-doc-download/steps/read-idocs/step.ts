@@ -1,12 +1,19 @@
 import type { z } from "zod";
 import { CrmDownloadedPeopleSchema, CrmDocumentRecordsSchema } from "../../../../models/systems/crm/documents.js";
 import { CrmDocDownloadInput } from "../../../../models/workflows/crm-doc-download/input.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import { defineStep, inheritStepProof, reuseTask, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { CrmReadIdocs } from "../../../../models/systems/crm/read-idocs.js";
 import { buildSearchRecords } from "../search-records/step.js";
 import type { buildReference } from "../reference/step.js";
+
+export const CRM_DOCUMENT_READ_IDOCS_MANUAL: StepManualDeclaration = {
+  form: { fields: [{ key: "pdfFileNames", label: "Downloaded PDF filenames", kind: "text" }] },
+  produces: {},
+  skips: ["document-pdfs"],
+};
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "read-idocs", label: "Download CRM documents" }), system: "crm",
@@ -69,7 +76,7 @@ export function buildReadIdocs(author: WorkflowAuthor<typeof CrmDocDownloadInput
     (input: z.output<typeof CrmDocumentRecordsSchema>) => input);
   const dependencies = reference === undefined ? [search.records] as const : [search.records, reference.choice] as const;
   const documents = author.task(call.identity, dependencies, ({ outputs }) => call.bind({ input: outputs["document-records"] }));
-  return { documents, steps: [[group, [documents]]] as const,
+  return { documents, steps: [[reference === undefined ? group : author.group(group, { manual: CRM_DOCUMENT_READ_IDOCS_MANUAL }), [documents]]] as const,
     result: author.result(CrmDownloadedPeopleSchema, [documents], ({ outputs }) => outputs["document-pdfs"]) };
 }
 
@@ -80,7 +87,7 @@ export const crmDocumentReadIdocsDefinition = defineStep({
     build: (parent: WorkflowDefinition<typeof CrmDocDownloadInput>) => ({
       ...inheritStepProof(parent), code: "cdd", label: group.label, summary: "Proves identity-bound iDocs downloads and retained PDF artifacts for the batch.",
       steps: (author: WorkflowAuthor<typeof CrmDocDownloadInput>) => {
-        const search = buildSearchRecords(author), downloaded = buildReadIdocs(author, search);
+        const search = buildSearchRecords(author, false), downloaded = buildReadIdocs(author, search);
         return { steps: [...search.steps, ...downloaded.steps], result: downloaded.result };
       },
     }),
