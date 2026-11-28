@@ -63,6 +63,7 @@ const MANUAL_PAGE_READINGS: StepManualDeclaration = {
   },
   bindInput: (input, { readings }) => JsonValueSchema.parse(OcrInputSchema.parse({ ...OcrInputSchema.parse(input), extractWithOcr: true,
     reading: { kind: "manual", actorId: "local-operator", assertions: documentPageValues(readings) } })),
+  withholdsBoundInput: input => OcrInputSchema.safeParse(input).data?.reading.kind === "manual",
 };
 
 const WITHHOLD_RELEASE: StepManualDeclaration = {

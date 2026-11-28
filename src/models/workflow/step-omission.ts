@@ -201,6 +201,8 @@ export interface StepManualDeclaration {
   readonly refine?: (facts: JsonObject, submission: JsonValue | undefined) => readonly StepManualIssue[];
   /** Binds typed facts into the admitted input before any reader or child receives it. */
   readonly bindInput?: (input: JsonValue, facts: JsonObject) => JsonValue;
+  /** The admitted input contains private reading values, including when bound by a parent. */
+  readonly withholdsBoundInput?: (input: JsonValue) => boolean;
   /** Own facts describe the parent document, not one shared assertion applied to its child members. */
   readonly allowsChildFanOut?: true;
   /** Allows `skips` to name the step's gates and transactions: the typed values stand for their decision or write. */

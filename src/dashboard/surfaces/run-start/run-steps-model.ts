@@ -1,6 +1,6 @@
 import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
 import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
-import type { StartRowKind, StartRowLockReason, StartRowOff, StepOmissionField, StepOmissionForm } from "../../../models/workflow/step-omission.js";
+import type { StartRowKind, StartRowLockReason, StepOmissionField, StepOmissionForm } from "../../../models/workflow/step-omission.js";
 import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-model.js";
 import { foldStepOmissionFacts, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
 
@@ -29,7 +29,7 @@ export interface StepRow {
   readonly key: string;
   readonly label: string;
   readonly kind: StartRowKind;
-  readonly off?: StartRowOff;
+  readonly startWithValuesAlone?: true;
   readonly lockReason?: StartRowLockReason;
   /** The grey line under the title. */
   readonly note: string | undefined;
@@ -82,7 +82,7 @@ export function startRowsOf(source: StepRowSource): readonly StepRow[] {
       : row.lockReason === undefined ? systems ?? "Automatic" : LOCK_NOTE[row.lockReason];
     return {
       key: row.key, label: row.label, kind: row.kind, note, includedByDefault: row.includedByDefault, forces, selectable: row.selection !== undefined,
-      ...(row.off === undefined ? {} : { off: row.off }),
+      ...(row.startWithValuesAlone === undefined ? {} : { startWithValuesAlone: row.startWithValuesAlone }),
       members: row.members.map(({ workflow, step, nodes }) => ({ step, ...(workflow === undefined ? {} : { workflow }), ...(nodes === undefined ? {} : { nodes }) })),
       ...(row.lockReason === undefined ? {} : { lockReason: row.lockReason }),
       ...(own === undefined ? {} : { stepKey: own }),
@@ -126,7 +126,7 @@ export function includedRowCount(rows: readonly StepRow[], selectedStepKeys: rea
 
 /** A single typed-values row can supply the entire run. */
 export function lastIncludedSwitch(row: StepRow, rows: readonly StepRow[], selectedStepKeys: readonly string[], manualRows: ManualRows): boolean {
-  if (rows.length === 1 && row.off === "values") return false;
+  if (row.startWithValuesAlone === true) return false;
   return row.kind === "switch" && rowIncluded(row, selectedStepKeys, manualRows) && includedRowCount(rows, selectedStepKeys, manualRows) === 1;
 }
 

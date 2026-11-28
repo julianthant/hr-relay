@@ -30,6 +30,7 @@ const MANUAL_PAGE: StepManualDeclaration = {
   },
   bindInput: (input, { reading }) => JsonValueSchema.parse(manualOcrPageInput(
     OcrPageWorkflowInputSchema.parse(input).page, "local-operator", pageValues(reading))),
+  withholdsBoundInput: input => OcrPageWorkflowInputSchema.safeParse(input).data?.reading.kind === "manual",
 };
 export const OCR_PAGE_STEP = Object.freeze({ ...defineWorkflowStep({ key: "read-page", label: "Read source page" }), system: "local" as const,
   description: "Read the exact original page through the declared subscription or manual reading and retain page-bound observations or assertions without approving a person's identity.",

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { deriveRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { projectTypedSteps } from "../../../src/backend/runs/queries/run-detail/typed-values.js";
+import { readRerunValues } from "../../../src/backend/runs/start/rerun-values.js";
 import { OcrPageWorkflowInputSchema } from "../../../src/models/workflows/ocr-page/input.js";
 import { OcrInputSchema } from "../../../src/models/workflows/ocr/input.js";
 import { OcrWorkflowResultSchema } from "../../../src/models/workflows/ocr/result.js";
@@ -63,7 +64,12 @@ it("starts with operator readings for each original page and withholds release",
     checkpoints: authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId) });
   const typed = projectTypedSteps(settled, descriptor).get("page-readings")?.typedValues;
   assert.partialDeepStrictEqual(typed, { fields: [{ key: "readings", withheld: true }] });
-  assert.equal(JSON.stringify({ typed, receipt }).includes("Omission Evidence Example"), false);
+  const rerun = readRerunValues({ database: f.database, reader: f.canonical.lifecycle, descriptors: { resolve: f.resolve } },
+    { runId: run.envelope.runId, expectedVersion: settled.version });
+  assert.equal(rerun.state, "available");
+  assert.deepEqual(rerun.snapshot.sourceInput, { state: "unavailable", reason: "protected" });
+  assert.equal(rerun.snapshot.typed?.some(entry => entry.step === "page-readings"), false);
+  assert.equal(JSON.stringify({ typed, receipt, rerun }).includes("Omission Evidence Example"), false);
 });
 
 it("settles with an omitted review when grouping and its dependent rows are off", async () => {

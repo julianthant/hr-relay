@@ -35,6 +35,7 @@ export interface StartRowProjection {
   readonly includedByDefault: boolean;
   readonly kind: StartRowKind;
   readonly off?: StartRowOff;
+  readonly startWithValuesAlone?: true;
   readonly lockReason?: StartRowLockReason;
   readonly members: readonly StartRowMember[];
   readonly target?: StartRowTarget;
@@ -395,6 +396,8 @@ export function projectStartRows(descriptor: AnyWorkflowDescriptor): readonly St
       includedByDefault: step?.includedByDefault ?? true,
       kind,
       ...(kind === "switch" && spec?.off !== undefined ? { off: spec.off } : {}),
+      ...(kind === "switch" && row.target?.workflow === undefined && descriptor.timeline.length === 1 && spec?.bindInput !== undefined
+        ? { startWithValuesAlone: true as const } : {}),
       ...(reason === undefined ? {} : { lockReason: reason }),
       members: row.members,
       ...(row.target === undefined ? {} : { target: row.target }),
@@ -428,6 +431,7 @@ export function startRowWire(row: StartRowProjection): NonNullable<WorkflowStart
   return {
     key: row.key, label: row.label, includedByDefault: row.includedByDefault, kind: row.kind,
     ...(row.off === undefined ? {} : { off: row.off }),
+    ...(row.startWithValuesAlone === undefined ? {} : { startWithValuesAlone: row.startWithValuesAlone }),
     ...(row.lockReason === undefined ? {} : { lockReason: row.lockReason }),
     members: row.members.map((member) => ({ ...member, ...(member.nodes === undefined ? {} : { nodes: [...member.nodes] }) })),
     ...(row.target === undefined ? {} : { target: { ...row.target } }),

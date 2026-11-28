@@ -1007,6 +1007,7 @@ function deriveStepOmissions(
       ...(manual.skips === undefined ? {} : { skips: Object.freeze([...manual.skips]) }),
       ...(manual.refine === undefined ? {} : { refine: manual.refine }),
       ...(manual.bindInput === undefined ? {} : { bindInput: manual.bindInput }),
+      ...(manual.withholdsBoundInput === undefined ? {} : { withholdsBoundInput: manual.withholdsBoundInput }),
       ...(manual.allowsChildFanOut === undefined ? {} : { allowsChildFanOut: manual.allowsChildFanOut }),
       ...(manual.skipsGatesAndTransactions === undefined ? {} : { skipsGatesAndTransactions: manual.skipsGatesAndTransactions }),
       ...(manual.orderOnlyReaders === undefined ? {} : { orderOnlyReaders: Object.freeze([...manual.orderOnlyReaders]) }),
