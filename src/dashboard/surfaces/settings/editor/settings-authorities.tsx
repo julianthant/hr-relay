@@ -3,7 +3,7 @@ import { SettingsSectionSkeleton } from "../settings-loading.js";
 import { Fragment } from "react";
 import { Server } from "lucide-react";
 import { Form } from "@heroui/react";
-import { BodySection, FormGroup, PageHeading, Panel, PanelBody, PanelHeader, ResultRow, Spinner, dsIcon, dsText, Notice } from "../../../ds/ui.js";
+import { BodySection, FormGroup, PageHeading, Panel, PanelBody, PanelHeader, ResultRow, Spinner, dsIcon, dsText, Notice, FailureNotice } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
@@ -23,7 +23,7 @@ const PROTECTED_DESCRIPTION: Readonly<Record<string, string>> = {
 function CredentialsSection({ editor, profileName, embedded }: { editor: Editor; profileName: string; embedded: boolean }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" contentOnly={embedded} />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Credentials unavailable" description="Reopen Settings to try again." />;
+  if (editor.editor.state === "failed") return <FailureNotice sentence="Credentials unavailable; reopen Settings to try again." />;
   const settingsDocument = editor.editor.document;
   const authority = settingsDocument.protectedSettings;
   const credentials = editor.protectedEditor;

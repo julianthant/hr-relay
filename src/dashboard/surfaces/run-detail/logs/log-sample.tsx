@@ -20,7 +20,11 @@ import { useDashboardClient, useDashboardCommandBinding } from "../../../state/c
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
 import { LogFeedPadding, LogSkeleton } from "../../shared/loading/loading.js";
 import { RunStateChips } from "../run-state-chips.js";
-import { isNeedsDuo, queueRowTitle } from "../../queue/queue-model.js";
+import { queueRowTitle, type QueueSurfaceWire } from "../../queue/queue-model.js";
+import { SYSTEM_NAME } from "../../shared/status/system-chip-model.js";
+import { elapsedSecondsBetween } from "../../shared/status/format.js";
+import { formatDuration } from "../../../lib/date-format.js";
+import { useServedView } from "../../../state/served-clock.js";
 import { RunReview } from "../review/review.js";
 import { ReviewDialog } from "../review/review-dialog.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
@@ -32,6 +36,14 @@ function withoutConfirm(action: ActionDescriptorWire): ActionDescriptorWire {
   if (action.kind !== "command") return action;
   const { confirm: _confirm, ...direct } = action;
   return direct;
+}
+
+/** Status only: fast-duo approves on its own; a failed approval fails the run and the operator reruns it. */
+function DuoWaitBanner({ wait, nowIso }: { wait: Extract<QueueSurfaceWire["operatorWait"], { state: "present" }>; nowIso: string }) {
+  const elapsed = useServedView(nowIso, now => formatDuration(Math.max(0, elapsedSecondsBetween(wait.since, now))));
+  // The banner is a live region: the ticking text is hidden from it so a tick never announces; the same text sits outside it for reading.
+  return <div className="px-3 py-2"><Banner tone="info" title={`Approving Duo for ${SYSTEM_NAME[wait.system]}`}><span aria-hidden className="tabular-nums">Waiting {elapsed}</span></Banner>
+    <span className="sr-only">Waiting {elapsed}</span></div>;
 }
 
 export function LogSample({ selection, initialStepId, confirm, ...navigation }: { selection: LogSelection; initialStepId?: string; confirm?: RunWiringConfirm } & ServedNavigation) {
@@ -74,8 +86,8 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
     const action = selection.row.actions.find(candidate => candidate.key === key);
     if (action !== undefined) void onAction?.(isCancelOption(option) ? withoutConfirm(action) : action, target);
   }, [resource, selection.row.actions, onAction, target]);
-  const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <Notice tone="danger" title={logsReadFailedTitle} description="Relay could not refresh these logs." /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, logsReadFailedTitle]);
-  const content = useMemo(() => failureMissing ? <Notice sticky tone="danger" title={logsUnavailableTitle} description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogFeedPadding><LogSkeleton /></LogFeedPadding> : resource.state === "failed" ? <div className="p-4"><FailureNotice sentence={resource.retryable === false && resource.error !== undefined ? resource.error : "Couldn't load logs."}
+  const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" && resource.snapshot !== undefined ? <FailureNotice sentence={`${logsReadFailedTitle}: Relay could not refresh these logs.`} /> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, logsReadFailedTitle]);
+  const content = useMemo(() => failureMissing ? <FailureNotice sentence={`${logsUnavailableTitle}: ${formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text}`} /> : resource.snapshot === undefined ? resource.state === "loading" ? <LogFeedPadding><LogSkeleton /></LogFeedPadding> : resource.state === "failed" ? <div className="p-4"><FailureNotice sentence={resource.retryable === false && resource.error !== undefined ? resource.error : "Couldn't load logs."}
     action={onRetryLogs === undefined || resource.retryable === false ? undefined : { label: "Retry", onClick: onRetryLogs }} /></div> : undefined : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, resource.retryable, resource.error, onRetryLogs]);
   const afterStep = useCallback((id: string) => {
     const findings = projection.ucpathFindings;
@@ -105,7 +117,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
   const setupProblem = startup !== undefined && WorkerSetupRefusalCodeSchema.safeParse(startup.code).success ? startup.summary : undefined;
   return <><LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
     status={status} navigation={setupProblem !== undefined ? <div className="px-3 py-2"><Banner tone="warning" title={setupProblem} /></div>
-      : isNeedsDuo(selection.row) ? <div className="px-3 py-2"><Banner tone="info" title="Approve the Duo sign-in"><span>Approve it on your phone to continue.</span></Banner></div> : undefined}
+      : selection.row.operatorWait.state === "present" ? <DuoWaitBanner wait={selection.row.operatorWait} nowIso={selection.row.updatedAt} /> : undefined}
     onReview={reviewAvailable ? onReview : undefined}
     toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} headerActions={headerActions} rerun={rerun} records={records}
     content={content}

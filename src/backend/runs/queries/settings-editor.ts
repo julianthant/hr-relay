@@ -25,6 +25,7 @@ const LABELS: Readonly<Record<string, string>> = {
   "preferences.notifications.runFinished": "Run finished", "preferences.notifications.needsYou": "Needs you",
   "preferences.notifications.failures": "Failures", "preferences.notifications.sound": "Notification sound",
   "preferences.sendShortcut": "Send shortcut",
+  "preferences.assistantFullAccess": "Full access",
 };
 const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "preferences.preventSleepWhileRunning": "Keep this Mac awake while a run is going.",
@@ -34,6 +35,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "preferences.notifications.failures": "Alert when a run fails.",
   "preferences.notifications.sound": "Sound for finished runs, failures and runs that need you.",
   "preferences.sendShortcut": "Choose which keys send a message in the assistant.",
+  "preferences.assistantFullAccess": "Let Relay start supported dry runs without asking.",
 };
 export function settingsLabel(key: string): string {
   return LABELS[key] ?? key.split(".").map(part => part.replace(/([a-z])([A-Z])/gu, "$1 $2")).join(" · ");

@@ -10,9 +10,9 @@ import { mountSettingsHarness,settingsAction,syntheticSettingsAuthority } from "
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { vi.useRealTimers(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
-async function setup() {
+async function setup(withPersonPreferences = false) {
   const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
-  const mounted = await mountSettingsHarness(authority, "general"); cleanups.push(mounted.close); return { ...mounted, authority };
+  const mounted = await mountSettingsHarness(authority, "general", undefined, withPersonPreferences); cleanups.push(mounted.close); return { ...mounted, authority };
 }
 const headings = (host: ParentNode) => [...host.querySelectorAll(".ds-body-section-heading")].map(heading => heading.firstChild?.textContent);
 const ROWS = [
@@ -43,7 +43,7 @@ describe("Settings > General groups", () => {
     assert.deepEqual(rows.map(sectionOf), ["Runs", "Runs", "Notifications", "Notifications", "Notifications", "Notifications"]);
   });
   it("puts the ChatGPT status row before the Full access switch and no Subscription page in the nav", async () => {
-    const h = await setup();
+    const h = await setup(true);
     const card = h.host.querySelector('[data-settings-path="chatgpt.account"]');
     const permission = h.host.querySelector('[data-settings-path="assistant.fullAccess"]');
     assert.ok(card && permission);
@@ -54,15 +54,26 @@ describe("Settings > General groups", () => {
     assert.equal(ids.includes("subscription"), false);
     assert.equal(resolveSettingsSection(buildSettingsNav(document), "subscription").state === "open" && (resolveSettingsSection(buildSettingsNav(document), "subscription") as { entry: { id: string } }).entry.id, "general");
   });
-  it("flips Full access for the assistant's approval menu", async () => {
-    const h = await setup();
-    const input = h.host.querySelector<HTMLElement>('[data-settings-path="assistant.fullAccess"] [role="switch"], [data-settings-path="assistant.fullAccess"] input[type="checkbox"]');
+  it("shows a Full access change immediately and saves and restores it through Settings", async () => {
+    const h = await setup(true);
+    const path = "preferences.assistantFullAccess";
+    const findSwitch = (host: HTMLElement) => host.querySelector<HTMLInputElement>('[data-settings-path="assistant.fullAccess"] input[type="checkbox"]');
+    const input = findSwitch(h.host);
     assert.ok(input);
-    const before = input.getAttribute("aria-checked") === "true" || (input as HTMLInputElement).checked === true;
+    assert.equal(input.checked, false);
+    const pending = Promise.withResolvers<void>();
+    h.ports.execute = async request => { await pending.promise; return h.authority.execute(request); };
     await settingsAction(() => input.click());
-    const after = h.host.querySelector<HTMLElement>('[data-settings-path="assistant.fullAccess"] [role="switch"], [data-settings-path="assistant.fullAccess"] input[type="checkbox"]');
-    assert.equal(after?.getAttribute("aria-checked") === "true" || (after as HTMLInputElement).checked === true, !before);
-    await settingsAction(() => input.click());
+    assert.equal(input.checked, true);
+    assert.equal(leafValue(h.authority, path), false);
+    await settingsAction(() => pending.resolve());
+    assert.equal(leafValue(h.authority, path), true);
+    const reopened = await mountSettingsHarness(h.authority, "general", undefined, true);
+    cleanups.push(reopened.close);
+    const saved = findSwitch(reopened.host);
+    assert.equal(saved?.checked, true);
+    await settingsAction(() => saved?.click());
+    assert.equal(leafValue(h.authority, path), false);
   });
   it("finds the ChatGPT card and Full access through the page's search", async () => {
     const h = await setup();

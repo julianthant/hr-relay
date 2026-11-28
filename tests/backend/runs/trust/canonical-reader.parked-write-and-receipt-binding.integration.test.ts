@@ -8,7 +8,7 @@ import { foldTrustGate } from "../../../support/helpers/backend/trust-authority-
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 import { afterAll, afterEach, describe, it } from "vitest";
-import { WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureDescriptorWithMovedKey } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { absentProbeEvidence, WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureDescriptorWithMovedKey } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { closePersonLookupReceiptDatabase, openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
 
 import { deriveRunEvidenceReceipt, type ReceiptBuildInput } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
@@ -101,7 +101,7 @@ afterEach(cleanup);
     assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.completion, undefined);
   });
 
-  it("confirmed-absent makes the run resumable at the transaction node, intent retryable", async () => {
+  it("files one new generation only after the fresh system read confirms absence", async () => {
     const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
@@ -119,10 +119,72 @@ afterEach(cleanup);
     const resumed = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(resumed && resumed.lifecycle.state === "queued");
     assert.equal(resumed.envelope.startAt, WRITE_FIXTURE_NODE_ID);
-    assert.equal(
-      harness.database.authority.writeIntents.get(intent.writeIntentId)?.status,
-      "retryable",
-    );
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
+    const [originalAttempt] = harness.database.authority.writeAttempts.listByIntent(intent.writeIntentId);
+    assert.ok(originalAttempt);
+
+    harness.world.events.length = 0;
+    delete harness.world.commitThrows;
+    harness.world.probeResults.push(absentProbeEvidence(harness.clock.now().toISOString()));
+    assert.equal((await harness.resume()).outcomes[0]?.state, "done");
+    assert.deepEqual(harness.world.events.filter(event => /^(probe|prepare|commit-click)/u.test(event)), [
+      "probe", "prepare", "commit-click:ucpath.write-fixture.save-submit",
+    ]);
+    const saved = harness.database.authority.writeIntents.get(intent.writeIntentId);
+    assert.equal(saved?.status, "committed");
+    assert.equal(saved?.generation, intent.generation + 1);
+    assert.equal(harness.database.authority.writeAttempts.listByIntent(intent.writeIntentId).length, 2);
+    assert.deepEqual(harness.database.authority.writeAttempts.get(originalAttempt.writeAttemptId), originalAttempt);
+  });
+
+  it("keeps the original intent parked until the requested fresh read can resolve it", async () => {
+    const harness = await roundTrip();
+    await harness.park();
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+
+    const result = harness.kernel.execute(resolutionCommand("resolve-write-absent", {
+      runId: WRITE_FIXTURE_RUN_ID,
+      expectedVersion: parked.version,
+      writeIntentId: intent.writeIntentId,
+      intentGeneration: intent.generation,
+    }, {}));
+    assert.equal(result.state, "applied");
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked",
+      "the operator's answer cannot make the generation retryable before a fresh system read");
+
+    const eventsBeforeRead = harness.world.events.length;
+    harness.world.probeResults.push({ state: "present", proof: { transactionId: "T998877" } });
+    assert.equal((await harness.resume()).outcomes[0]?.state, "done");
+    assert.deepEqual(harness.world.events.slice(eventsBeforeRead), ["probe"]);
+    const saved = harness.database.authority.writeIntents.get(intent.writeIntentId);
+    assert.equal(saved?.status, "committed");
+    assert.equal(saved?.generation, intent.generation);
+  });
+
+  it.each(["stale", "foreign", "failed"] as const)("keeps the write parked when the requested read is %s", async read => {
+    const harness = await roundTrip();
+    await harness.park();
+    const intent = parkedIntent(harness.database);
+    const parked = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
+    assert.ok(parked);
+    harness.clock.advanceWall(1_000);
+    assert.equal(harness.kernel.execute(resolutionCommand("resolve-write-absent", {
+      runId: WRITE_FIXTURE_RUN_ID, expectedVersion: parked.version,
+      writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
+    }, {})).state, "applied");
+
+    harness.world.events.length = 0;
+    const absent = absentProbeEvidence(read === "stale" ? WRITE_FIXTURE_NOW : harness.clock.now().toISOString());
+    harness.world.probeResults.push(read === "failed" ? new Error("read failed") : read === "foreign"
+      ? { ...absent, evidence: { ...absent.evidence, idempotencyKeyDigest: "f".repeat(64) } } : absent);
+    assert.equal((await harness.resume()).outcomes[0]?.state, "parked-write");
+    assert.deepEqual(harness.world.events, ["probe"]);
+    const after = harness.database.authority.writeIntents.get(intent.writeIntentId);
+    assert.ok(after?.status === "parked");
+    assert.equal(after.recheck, undefined);
+    assert.equal(harness.database.authority.writeAttempts.listByIntent(intent.writeIntentId).length, 1);
   });
 
 
@@ -146,7 +208,8 @@ afterEach(cleanup);
     }, {}));
     assert.equal(result.state, "applied", "an incidental closure move may not strand a parked write");
 
-    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "retryable");
+    const requested = harness.database.authority.writeIntents.get(intent.writeIntentId);
+    assert.ok(requested?.status === "parked" && requested.recheck !== undefined);
     const resumed = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(resumed && resumed.lifecycle.state === "queued");
     assert.equal(resumed.envelope.startAt, WRITE_FIXTURE_NODE_ID);
@@ -301,7 +364,7 @@ afterEach(cleanup);
     assert.equal(harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
   });
 
-  it("lifts the moment the write is answered ABSENT", async () => {
+  it("keeps cancellation refused while an absence resolution waits for its read", async () => {
     const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
@@ -321,12 +384,8 @@ afterEach(cleanup);
     assert.ok(resumed);
 
     const cancelled = harness.kernel.execute(cancelCommand(WRITE_FIXTURE_RUN_ID, resumed.version));
-    assert.equal(cancelled.state, "applied");
-    const settled = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
-    assert.ok(settled && settled.lifecycle.state === "terminal");
-    assert.equal(settled.lifecycle.outcome, "cancelled");
-    // The retryable intent is untouched by the cancel, exactly as §4.1 says.
-    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "retryable");
+    assert.equal(cancelled.state, "rejected");
+    assert.equal(harness.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
   });
 
   it("keeps cancellation refused while a recheck waits for read proof", async () => {

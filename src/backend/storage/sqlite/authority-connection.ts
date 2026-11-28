@@ -1,9 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { AUTHORITY_DERIVED_TABLES, AuthorityTableNameSchema, ProjectionTableNameSchema, type TableName } from "../../../models/config/authority.js";
+import { CHANGE_TRACKING_TABLES, RUN_SEARCH_FTS_TABLES, AuthorityTableNameSchema, ProjectionTableNameSchema, type TableName } from "../../../models/config/authority.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../models/config/authority-schema-versions.js";
 import { CHANGE_LOG_SCHEMA_VERSION } from "./authority-change-log.js";
+import { RUN_SEARCH_FTS_SCHEMA_VERSION } from "./run-search-fts.js";
 
 export const AuthorityDatabaseOpenModeSchema = z.enum([
   "read-write",
@@ -91,9 +92,13 @@ export function readTextPragma(database: DatabaseSync, name: "journal_mode"): st
   return value;
 }
 
-/** The registry tables present; the change log's derived tables are checked as schema objects and against their sources instead. */
+/** The registry tables present; derived tables are checked as schema objects. */
 export function inspectionTableNames(database: DatabaseSync): string[] {
-  const derived = readIntPragma(database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION ? AUTHORITY_DERIVED_TABLES : [];
+  const version = readIntPragma(database, "user_version");
+  const derived = [
+    ...(version >= CHANGE_LOG_SCHEMA_VERSION ? CHANGE_TRACKING_TABLES : []),
+    ...(version >= RUN_SEARCH_FTS_SCHEMA_VERSION ? RUN_SEARCH_FTS_TABLES : []),
+  ];
   return database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
     .all().map(row => TableNameRowSchema.parse(row).name).filter(name => !derived.some(table => table === name));
 }

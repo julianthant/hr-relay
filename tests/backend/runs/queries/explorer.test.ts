@@ -440,10 +440,7 @@ describe("the workflow explorer projection", () => {
 
     assert.equal(entry.surfaces.inputRun.state, "declared");
     if (entry.surfaces.inputRun.state !== "declared") return;
-    assert.match(
-      entry.surfaces.inputRun.placeholder,
-      /^e\.g\. 4502; 4510$/u,
-    );
+    assert.equal(entry.surfaces.inputRun.placeholder, "Separate Kuali IDs with semicolons");
     assert.equal(entry.surfaces.inputRun.supportsDryRun, true);
   });
 

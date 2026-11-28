@@ -1,15 +1,15 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AssistantFile } from './assistant-panel-model.js';
 import type { PersonPreferences } from '../../../models/config/person-preferences.js';
+import type { AssistantApprovalMode } from '../../../models/dashboard/assistant.js';
 
 export const ASSISTANT_MODEL = 'GPT-6.1 Sol';
-export const ASSISTANT_APPROVALS = [
-  { label: 'Ask before every action', description: 'Confirm each proposed change.' },
-  { label: 'Full access', description: 'Relay acts without asking each time.' },
-] as const;
-export const FULL_ACCESS = ASSISTANT_APPROVALS[1].label;
+export const ASSISTANT_APPROVALS = {
+  ask: { label: 'Ask before every action', description: 'Confirm each proposed change.' },
+  'full-access': { label: 'Full access', description: 'Start supported dry runs without asking.' },
+} satisfies Record<AssistantApprovalMode, { label: string; description: string }>;
 export type ComposerMenu = 'attach' | 'approval' | 'model' | 'voice';
-export interface ComposerValue { readonly text: string; readonly files: readonly AssistantFile[]; readonly model: string; readonly effort: string; readonly approval: string }
+export interface ComposerValue { readonly text: string; readonly files: readonly AssistantFile[]; readonly model: string; readonly effort: string; readonly approvalMode: AssistantApprovalMode }
 export interface ComposerDraft { readonly text: string; readonly files: readonly AssistantFile[] }
 export interface ComposerDraftPort { read(): ComposerDraft; retain(draft: ComposerDraft): void }
 
@@ -23,12 +23,14 @@ export function composerEnterAction(shortcut: PersonPreferences['sendShortcut'],
   if (shortcut === 'enter') return modified ? 'new-line' : 'send';
   return modified ? 'send' : 'native';
 }
-export function useComposer({ onSend, draft, initialText = '', settlementKey }: { settlementKey?: string; onSend: (value: ComposerValue) => Promise<boolean>; initialText?: string; draft?: ComposerDraftPort }) {
+export function useComposer({ onSend, draft, initialText = '', settlementKey, fullAccessAllowed = false }: { settlementKey?: string; onSend: (value: ComposerValue) => Promise<boolean>; initialText?: string; draft?: ComposerDraftPort; fullAccessAllowed?: boolean }) {
   const [text, setText] = useState(() => draft?.read().text ?? initialText);
   const [files, setFiles] = useState<readonly AssistantFile[]>(() => draft?.read().files ?? []);
   useLayoutEffect(() => { draft?.retain({ text, files }); }, [draft, text, files]);
   const effort = 'Medium';
-  const [approval, setApproval] = useState<string>(ASSISTANT_APPROVALS[0].label);
+  const [pickedApproval, setApprovalMode] = useState<AssistantApprovalMode>('ask');
+  const approvalMode = fullAccessAllowed ? pickedApproval : 'ask';
+  useEffect(() => { if (!fullAccessAllowed) setApprovalMode('ask'); }, [fullAccessAllowed]);
   const [menu, setMenu] = useState<ComposerMenu | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -70,8 +72,8 @@ export function useComposer({ onSend, draft, initialText = '', settlementKey }: 
     sending.current = true;
     submitted.current = { version: draftVersion.current, text, files };
     try {
-      if (await onSend({ text, files, model: ASSISTANT_MODEL, effort, approval })) { setText(''); setFiles([]); setMenu(null); }
+      if (await onSend({ text, files, model: ASSISTANT_MODEL, effort, approvalMode })) { setText(''); setFiles([]); setMenu(null); }
     } finally { sending.current = false; }
   }
-  return { text, setText, files, setFiles, effort, approval, setApproval, menu, setMenu, textarea, fileInput, popup, send };
+  return { text, setText, files, setFiles, effort, approvalMode, setApprovalMode, menu, setMenu, textarea, fileInput, popup, send };
 }

@@ -9,7 +9,7 @@ import type { RunDecisionType } from "../../../../../../src/models/dashboard/run
 import { QueueMemberTargetSchema, type QueueStatusSchema } from "../../../../../../src/models/dashboard/projection.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../../src/models/failures/error-catalog.js";
 import { ErrorCodeSchema, IsoInstantSchema } from "../../../../../../src/rules/identity/ids.js";
-import { Badge, Banner, Notice, FailureNotice } from "../../../../../../src/dashboard/ds/ui.js";
+import { Badge, Banner, FailureNotice } from "../../../../../../src/dashboard/ds/ui.js";
 import { LogPanel } from "../../../../../../src/dashboard/surfaces/run-detail/log-panel.js";
 import { LogActionButton, LogHeaderButton } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-action-button.js";
 import type { LinkedRunEntry } from "../../../../../../src/dashboard/surfaces/run-detail/linked-runs-model.js";
@@ -22,6 +22,9 @@ import type { LogEntry, LogScreenshot, LogStep } from "../../../../../../src/das
 import { pauseTimeline, type LogTimelineStage } from "../../../../../../src/dashboard/surfaces/run-detail/logs/log-timeline-model.js";
 import { RecordReview } from "../../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 import type { RecordReviewProps } from "../../../../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
+import { createDashboardClient } from "../../../../../../src/dashboard/client/index.js";
+import { DashboardClientProvider } from "../../../../../../src/dashboard/state/client-context.js";
+import { RunReview } from "../../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 import { ReviewDialog } from "../../../../../../src/dashboard/surfaces/run-detail/review/review-dialog.js";
 import { logTimelineSample, separationLogs } from "../../../../fixtures/dashboard/log-preview/log-fixture.js";
 import { queueStoryRow } from "../../../../fixtures/dashboard/queue-row-story-surfaces.js";
@@ -202,13 +205,12 @@ const LOGS = {
   loading: { ...panel("Logs still loading", { steps: [], timeline: [], content: <LogFeedPadding><LogSkeleton /></LogFeedPadding> }), slowFetch: { region: READY } },
   refreshing: panel("Logs refreshing", { steps: readingSteps, timeline: reading, toolbar: <Badge tone="neutral">Refreshing</Badge> }),
   "refresh-failed": panel("Logs that could not refresh", { steps: readingSteps, timeline: reading,
-    toolbar: <Notice tone="danger" title={LOGS_READ_FAILED} description="Relay could not refresh these logs." /> }),
+    toolbar: <FailureNotice sentence={`${LOGS_READ_FAILED}: Relay could not refresh these logs.`} /> }),
   "load-failed": panel("Logs that could not load", { steps: [], timeline: [], content: <div className="p-4"><FailureNotice sentence="Couldn't load logs." action={{ label: "Retry", onClick: noop }} /></div> }),
-  unavailable: panel("Logs for a step that is gone", { steps: [], timeline: [], content: <Notice sticky tone="danger" title={LOGS_UNAVAILABLE}
-    description={formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text} /> }),
+  unavailable: panel("Logs for a step that is gone", { steps: [], timeline: [], content: <FailureNotice sentence={`${LOGS_UNAVAILABLE}: ${formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text}`} /> }),
   empty: panel("A run that has logged nothing yet", { steps: [], timeline: logTimelineSample("empty") }),
   "needs-duo": panel("A run waiting for the Duo sign-in", { steps: [], timeline: logTimelineSample("empty"),
-    navigation: <div className="px-3 py-2"><Banner tone="info" title="Approve the Duo sign-in"><span>Approve it on your phone to continue.</span></Banner></div> }),
+    navigation: <div className="px-3 py-2"><Banner tone="info" title="Approving Duo for UCPath"><span className="tabular-nums">Waiting 2m 10s</span></Banner></div> }),
 } satisfies Record<LogsResource, Story>;
 
 const preview = (state: DryRunState): Story => {
@@ -236,7 +238,18 @@ const REVIEW = {
   empty: reviewStory("A review with no records", REVIEW_CARDS.empty),
 } satisfies Record<ReviewCase, Story>;
 
+/** The real Review panel on a client whose reads fail, so its notice is the shipped one. */
+const REVIEW_NOTICE = {
+  unavailable: {
+    title: "Review records that could not be read", ready: '[role="alert"]',
+    render: () => <StoryFrame><DashboardClientProvider client={createDashboardClient({ baseUrl: "http://relay.story.test", fetchImpl: () => Promise.reject(new Error("offline")) })}>
+      <ReviewDialog open onOpenChange={noop} subject="Emergency Contact scan"><RunReview selection={{ row: queueStoryRow("done", 50), workflowLabel: "Emergency Contact" }} /></ReviewDialog>
+    </DashboardClientProvider></StoryFrame>,
+    expects: [{ pattern: /offline|Failed to fetch|relay\.story\.test/u, reason: "the story's client fails every read on purpose" }],
+  },
+} satisfies Record<"unavailable", Story>;
+
 export const RUN_PANEL_STORIES = defineSurface("run-panel", {
   header: HEADER, "log-header": LOG_HEADER, pause: PAUSE, logs: LOGS, decision: DECISION, card: CARD, answered: ANSWERED,
-  write: WRITE, failure: FAILURE, capture: CAPTURE, "capture-problem": CAPTURE_PROBLEM, entry: ENTRY, note: NOTE, "dry-run": DRY_RUN, review: REVIEW,
+  write: WRITE, failure: FAILURE, capture: CAPTURE, "capture-problem": CAPTURE_PROBLEM, entry: ENTRY, note: NOTE, "dry-run": DRY_RUN, review: REVIEW, "review-notice": REVIEW_NOTICE,
 });
