@@ -1,5 +1,5 @@
 import type { AnyCommitTaskContract } from "../../models/task/task-contract.js";
-import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "./write-safety.js";
+import { WriteAttemptRecordSchema, WriteIntentRecordSchema, type AbsentEvidence, type WriteIntentRecord } from "./write-safety.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../commands/commands.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../identity/ids.js";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
@@ -9,14 +9,16 @@ export function authenticateParkedWriteRecheck(intentInput: unknown, attemptInpu
   const attempt = WriteAttemptRecordSchema.parse(attemptInput);
   const command = CommandRequestSchema.parse(commandInput);
   const audit = CommandAuditRecordSchema.parse(auditInput);
-  if (intent.status !== "parked" || intent.recheck === undefined || command.family !== "run" || command.type !== "recheck-write"
+  if (intent.status !== "parked" || intent.recheck === undefined || command.family !== "run"
+    || (command.type !== "recheck-write" && command.type !== "resolve-write-absent")
     || attempt.outcome.state !== "parked") throw new Error("parked-write-recheck-authentication-missing");
   const request = intent.recheck;
   if (canonicalJsonStringify(audit.writeResolution) !== canonicalJsonStringify(intent)
     || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
     || command.requestedBy !== LOCAL_OPERATOR_ACTOR_ID || request.commandId !== command.commandId || request.auditId !== audit.auditId
     || request.requestedAt !== audit.completedAt || intent.updatedAt !== request.requestedAt
-    || request.expectedRunVersion !== command.target.expectedVersion || request.transactionId !== command.payload.transactionId
+    || request.expectedRunVersion !== command.target.expectedVersion
+    || request.transactionId !== (command.type === "recheck-write" ? command.payload.transactionId : undefined)
     || command.target.runId !== intent.runId || command.target.writeIntentId !== intent.writeIntentId
     || command.target.intentGeneration !== intent.generation || command.target.writeAttemptId !== intent.currentAttemptId
     || command.target.bindingProofDigest !== intent.bindingProofDigest || command.payload.occurrenceKeyDigest !== intent.idempotencyKeyDigest
@@ -26,6 +28,13 @@ export function authenticateParkedWriteRecheck(intentInput: unknown, attemptInpu
     || canonicalJsonStringify(attempt.bindingProof) !== canonicalJsonStringify(intent.bindingProof)) throw new Error("parked-write-recheck-binding-mismatch");
   authenticateResult(audit, intent.runId, command.commandId, request.expectedRunVersion);
   return { intent, attempt, command, audit };
+}
+
+export function isFreshParkedWriteAbsence(intent: Extract<WriteIntentRecord, { status: "parked" }>, evidence: AbsentEvidence, resolvedAt: string): boolean {
+  const observedAt = Date.parse(evidence.observedAt);
+  return intent.recheck !== undefined && evidence.idempotencyKeyDigest === intent.idempotencyKeyDigest
+    && observedAt >= Date.parse(intent.recheck.requestedAt) && observedAt >= Date.parse(intent.fencedAt)
+    && observedAt <= Date.parse(resolvedAt);
 }
 
 function authenticateResult(audit: ReturnType<typeof CommandAuditRecordSchema.parse>, runId: string, commandId: string, version: number) {
@@ -47,18 +56,27 @@ export function authenticateParkedWriteResolution(intentInput: unknown, attemptI
     || attempt.outcome.state !== "parked" || command.family !== "run"
     || (command.type !== "recheck-write" && command.type !== "resolve-write-absent")) throw new Error("parked-write-resolution-authentication-missing");
   const binding = intent.resolution;
-  if (command.type === "recheck-write") {
+  if (audit.writeResolution?.status === "parked") {
     const requested = authenticateParkedWriteRecheck(audit.writeResolution, attempt, command, audit).intent;
     if (requested.recheck === undefined) throw new Error("parked-write-recheck-authentication-missing");
-    if (intent.status !== "committed" || binding.decision !== "present" || binding.commandId !== requested.recheck.commandId
+    if (binding.commandId !== requested.recheck.commandId
       || binding.auditId !== requested.recheck.auditId || binding.expectedRunVersion !== requested.recheck.expectedRunVersion
       || Date.parse(binding.resolvedAt) < Date.parse(requested.recheck.requestedAt)) throw new Error("parked-write-recheck-settlement-mismatch");
     const { parkedCode: _code, message: _message, authorityReason: _reason, recheck: _recheck, ...base } = requested;
-    const expected = { ...base, status: "committed", version: requested.version + 1, updatedAt: binding.resolvedAt,
-      completionProof: intent.completionProof, confirmedAt: binding.resolvedAt, resolution: binding };
+    if (intent.status === "retryable" && (command.type !== "resolve-write-absent"
+      || intent.settlement.state !== "operator-confirmed-absent" || intent.settlement.operator !== command.requestedBy
+      || intent.settlement.writeIntentId !== intent.writeIntentId || intent.settlement.generation !== intent.generation
+      || intent.settlement.confirmedAt !== binding.resolvedAt || intent.settlement.evidence === undefined
+      || !isFreshParkedWriteAbsence(requested, intent.settlement.evidence, binding.resolvedAt))) {
+      throw new Error("parked-write-resolution-absence-proof-mismatch");
+    }
+    const expected = { ...base, version: requested.version + 1, updatedAt: binding.resolvedAt, resolution: binding,
+      ...(intent.status === "committed"
+        ? { status: "committed", completionProof: intent.completionProof, confirmedAt: binding.resolvedAt }
+        : { status: "retryable", settlement: intent.settlement, resolvedAt: binding.resolvedAt }) };
     if (canonicalJsonStringify(intent) !== canonicalJsonStringify(expected)) throw new Error("parked-write-recheck-settlement-mismatch");
   } else {
-    if (canonicalJsonStringify(audit.writeResolution) !== canonicalJsonStringify(intent)) throw new Error("parked-write-resolution-audit-acknowledgement-mismatch");
+    if (command.type !== "resolve-write-absent" || canonicalJsonStringify(audit.writeResolution) !== canonicalJsonStringify(intent)) throw new Error("parked-write-resolution-audit-acknowledgement-mismatch");
     if (binding.commandId !== command.commandId || binding.auditId !== audit.auditId
       || command.requestedBy !== LOCAL_OPERATOR_ACTOR_ID || audit.completedAt !== binding.resolvedAt
       || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)

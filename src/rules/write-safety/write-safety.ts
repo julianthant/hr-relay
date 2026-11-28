@@ -166,6 +166,7 @@ export const OperatorAbsenceResolutionSchema = z.strictObject({
   generation: PositiveIntSchema,
   operator: ActorIdSchema,
   confirmedAt: IsoInstantSchema,
+  evidence: AbsentEvidenceSchema.optional(),
 });
 
 /** Either stabilized negative evidence or a typed operator resolution. */

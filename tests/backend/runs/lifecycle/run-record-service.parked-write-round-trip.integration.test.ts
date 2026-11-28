@@ -61,7 +61,7 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     assert.equal(harness.database.getMeta().authorityGeneration, generation);
   });
 
-  it("Not saved only confirms absence: the intent turns retryable, and the next attempt probes before it prepares or clicks", async () => {
+  it("Not saved queues a read that settles a saved write against the original attempt", async () => {
     const harness = await roundTrip();
     await harness.park();
     const intent = parkedIntent(harness.database);
@@ -70,15 +70,19 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     const command = resolutionCommand("resolve-write-absent", { runId: WRITE_FIXTURE_RUN_ID, expectedVersion: parked.version,
       writeIntentId: intent.writeIntentId, intentGeneration: intent.generation }, {});
     assert.equal(harness.kernel.execute(command).state, "applied");
-    const resolved = harness.database.authority.writeIntents.get(intent.writeIntentId);
-    assert.ok(resolved?.status === "retryable" && resolved.settlement.state === "operator-confirmed-absent");
+    const requested = harness.database.authority.writeIntents.get(intent.writeIntentId);
+    assert.ok(requested?.status === "parked" && requested.recheck?.commandId === command.commandId);
     assert.equal(harness.database.authority.writeAttempts.listByIntent(intent.writeIntentId).length, 1, "the answer itself starts no attempt");
 
     harness.world.events.length = 0;
     harness.world.probeResults.push({ state: "present", proof: { transactionId: "T998877" } });
-    await harness.resume();
+    assert.equal((await harness.resume()).outcomes[0]?.state, "done");
     assert.equal(harness.world.events[0], "probe");
     assert.equal(harness.world.events.some(event => /prepare|commit-click/u.test(event)), false, "a present probe files nothing again");
+    const saved = harness.database.authority.writeIntents.get(intent.writeIntentId);
+    assert.ok(saved?.status === "committed");
+    assert.equal(saved.resolution?.writeAttemptId, requested.currentAttemptId);
+    assert.deepEqual(saved.completionProof.value, { transactionId: "T998877" });
   });
 
   it("refuses Mark as failed on a parked write: the run stays parked and the intent UNKNOWN", async () => {
