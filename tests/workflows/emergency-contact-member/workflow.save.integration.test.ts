@@ -228,7 +228,8 @@ it("uses the typed reference result to open the downstream review before a live 
   const panel = await readRunPanel(createOperatorRunDetail({ database: f.database, stateRoot, projection, runReader: reader,
     canonical: { database: f.database, reader, descriptors } }), runId, world.SIGNAL);
   const { gate } = panel.detail;
-  assert.ok(gate.state === "open" && gate.decision?.options.some(option => option.id === "continue"));
+  assert.ok(gate.state === "open" && gate.decision !== undefined);
+  assert.ok(gate.decision.options.some(option => option.id === "continue"));
   assert.equal(gate.decision.context, "Reference spreadsheet result: Unconfirmed");
 });
 
