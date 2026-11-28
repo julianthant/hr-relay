@@ -330,10 +330,12 @@ describe("served start rows", () => {
     onboarding: [["crm-data", "switch", null], ["ucpath-search", "switch", null], ["i9-search", "switch", null], ["hire-review", "switch", null],
       ["reference-check", "switch", null], ["i9-creation", "switch", null], ["ucpath-hire", "switch", null], ["master-results", "switch", null]],
     "work-study": [["ucpath-auth", "switch", null], ["transaction", "switch", null]],
-    "i9-check-start": [["read-forms", "switch", null], ["match-people", "switch", null], ["review-records", "switch", null],
+    "i9-check-start": [["documents", "switch", null], ["ocr-source-pages", "switch", null], ["read-forms", "switch", null],
+      ["ocr-group-records", "switch", null], ["match-people", "switch", null], ["ocr-signer-lookups", "switch", null], ["review-records", "switch", null],
       ["roster-reference", "switch", null], ["ucpath-match", "switch", null], ["ucpath-dates", "switch", null], ["retention", "switch", null], ["tracker-row", "switch", null]],
     "crm-doc-download": [["search-records", "switch", null], ["reference", "switch", null], ["read-idocs", "switch", null], ["package-worksheets", "switch", null]],
-    "emergency-contact": [["read-emergency-contact", "locked", null], ["match-extracted-people", "locked", null], ["review-extracted-records", "locked", "approval"],
+    "emergency-contact": [["ocr-source-pages", "switch", null], ["read-emergency-contact", "switch", null], ["ocr-group-records", "switch", null],
+      ["match-extracted-people", "switch", null], ["ocr-signer-lookups", "switch", null], ["review-extracted-records", "switch", null],
       ["read-existing-contacts", "locked", "bound-read"], ["fill-emergency-contact", "locked", "form-action"], ["save-emergency-contact", "locked", "form-action"]],
   };
 

@@ -4,9 +4,9 @@ import { RunList, RunListRow } from "../../ds/primitives/run-list.js";
 import { Badge, Switch } from "../../ds/ui.js";
 import * as launchDraft from "./run-launch-draft-model.js";
 import { StepOmissionFactsForm } from "./run-start-kit.js";
-import type { StepOmissionFactDraft, forcedStepOmissions } from "./run-start-model.js";
+import { forcedStepOmissions, type StepOmissionFactDraft } from "./run-start-model.js";
 import type { RunStartWorkflow } from "./run-start.js";
-import { includedRowCount, lastIncludedSwitch, retainedRowSteps, rowIncluded, sourceBadge, type OpenStepRow, type ManualRows, type StepRow, type StepsFailure } from "./run-steps-model.js";
+import { childStepViews, includedRowCount, lastIncludedSwitch, retainedRowSteps, rowIncluded, sourceBadge, type OpenStepRow, type ManualRows, type StepRow, type StepsFailure } from "./run-steps-model.js";
 
 export function RunStartSteps({
   workflow, snapshot, rows, selectedStepKeys, manualRows, forcedByStep, handOffByStep, openRows, isRerun, multiSubject,
@@ -30,6 +30,8 @@ export function RunStartSteps({
   update: (change: (current: launchDraft.LaunchDraft) => launchDraft.LaunchDraft) => void;
 }) {
   const stepLabels = (keys: readonly string[]): string => keys.map(key => rows.find(row => row.stepKey === key)?.label ?? stepLabel(key)).join(", ");
+  const children = childStepViews(rows);
+  const forcedByChild = forcedStepOmissions(children, children.map(({ key }) => key).filter(key => !manualRows.includes(key)));
   /** Use the shared cascade; locked omissions cannot be changed by another checkbox path. */
   const toggleRow = (row: StepRow, next: boolean) => {
     if (workflow !== undefined) update(current => launchDraft.toggleRow(current, workflow, snapshot, row, next));
@@ -53,8 +55,10 @@ export function RunStartSteps({
                     {rows.map((row) => {
                       const included = rowIncluded(row, selectedStepKeys, manualRows, snapshot);
                       const retained = snapshot?.retainedSteps === undefined ? undefined : retainedRowSteps(row, snapshot);
-                      const forcedBy = row.requiresStep !== undefined && !selectedStepKeys.includes(row.requiresStep) ? [row.requiresStep]
-                        : row.stepKey === undefined ? [] : forcedByStep.get(row.stepKey) ?? [];
+                      const missingPrerequisite = row.requiresStep !== undefined && !selectedStepKeys.includes(row.requiresStep) ? row.requiresStep : undefined;
+                      const forcedBy = missingPrerequisite === undefined
+                        ? (row.stepKey === undefined ? forcedByChild.get(row.key) : forcedByStep.get(row.stepKey)) ?? []
+                        : [missingPrerequisite];
                       const open = openRows.find(candidate => candidate.row.key === row.key);
                       const badge = isRerun && snapshot !== null ? sourceBadge(row, snapshot) : undefined;
                       const doneByHand = row.stop === undefined && row.form !== undefined && row.form.fields.length === 0;
@@ -65,7 +69,7 @@ export function RunStartSteps({
                         : row.kind === "switch" ? { checked: included, disabled, onChange: (next: boolean) => toggleRow(row, next) } : undefined;
                       const needs = row.stepKey === undefined ? [] : handOffByStep.get(row.stepKey) ?? [];
                       const note = retained !== undefined ? included ? undefined : "Uses the earlier result."
-                        : forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.`
+                        : forcedBy.length > 0 ? `Omitted with ${row.child === undefined || missingPrerequisite !== undefined ? stepLabels(forcedBy) : rows.filter(other => forcedBy.includes(other.key)).map(other => other.label).join(", ")}.`
                         : needs.length > 0 ? `Needs ${stepLabels(needs)}. Turn off if done by hand.`
                         : oneSubjectOnly ? "One person only." : !included && row.stop !== undefined
                           ? row.note === undefined ? row.stop : `${row.note.replace(/\.?$/u, ".")} ${row.stop}`

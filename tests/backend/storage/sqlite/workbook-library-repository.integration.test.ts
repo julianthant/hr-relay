@@ -54,25 +54,42 @@ function workbookFixture(database: DatabaseSync, cache = false) {
   return { repository, service, id: first.libraryId };
 }
 
-it("gives two SharePoint pulls of the same revision distinct names and snapshots", () => {
+it("requires unique names for manual SharePoint versions of the same revision", () => {
   using database = new DatabaseSync(":memory:");
   const { id, repository, service } = workbookFixture(database);
   service.operatorOperation(id, "link", { kind: "metadata", expectedVersion: 2,
     metadata: { typeId: "roster", sharePoint: { url: "https://example.sharepoint.com/sites/hr/Roster.xlsx", verifiedAt: savedAt } } });
   const saved = service.read(id), downloaded = encodeSavedWorkbook(saved).workbook;
-  const pull = (operationId: string) => {
+  const pull = (operationId: string, name: string) => {
     const action = { operationId, expectedRevision: repository.libraryState(id).revision, expectedVersion: saved.version,
-      change: { kind: "create-version", name: "Reviewed", from: { kind: "sharepoint" }, useNow: false } };
+      change: { kind: "create-version", name, from: { kind: "sharepoint" }, useNow: false } };
     return { action, result: repository.libraryAction(id, action, savedAt, downloaded) };
   };
-  const first = pull("pull-one"), second = pull("pull-two");
+  const first = pull("pull-one", " Reviewed ");
+  expect(() => pull("duplicate", "Reviewed")).toThrow(expect.objectContaining({ code: "WORKBOOK_VERSION_NAME_EXISTS" }));
+  expect(repository.libraryState(id)).toEqual(first.result.result);
+  const second = pull("pull-two", "Approved");
   const one = repository.libraryVersion(id, first.action.operationId);
   const two = repository.libraryVersion(id, second.action.operationId);
-  expect([one.version.name, two.version.name]).toEqual(["Reviewed", "Reviewed (2)"]);
+  expect([one.version.name, two.version.name]).toEqual(["Reviewed", "Approved"]);
   expect([one.version.version, two.version.version]).toEqual([saved.version, saved.version]);
   expect(one.version.snapshotId).not.toBe(two.version.snapshotId);
   expect(two.workbook).toEqual(one.workbook);
   expect(repository.libraryAction(id, second.action, savedAt)).toEqual(second.result);
+});
+
+it("stores trimmed version names and refuses a rename to a taken name", () => {
+  using database = new DatabaseSync(":memory:");
+  const { id, repository, service } = workbookFixture(database);
+  const apply = (operationId: string, change: unknown) => repository.libraryAction(id, {
+    operationId, expectedRevision: repository.libraryState(id).revision, expectedVersion: service.read(id).version, change,
+  }, savedAt);
+  apply("copy", { kind: "create-version", name: " Copy ", from: { kind: "version", versionId: "original" }, useNow: false });
+  expect(repository.libraryVersion(id, "copy").version.name).toBe("Copy");
+  apply("rename-copy", { kind: "rename-version", versionId: "copy", name: " X " });
+  expect(repository.libraryVersion(id, "copy").version.name).toBe("X");
+  expect(() => apply("rename-original", { kind: "rename-version", versionId: "original", name: " X " }))
+    .toThrow(expect.objectContaining({ code: "WORKBOOK_VERSION_NAME_EXISTS" }));
 });
 
 it("keeps a generated revision name from colliding with an existing named version", () => {

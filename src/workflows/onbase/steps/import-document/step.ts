@@ -2,12 +2,26 @@ import { z } from "zod";
 import { ONBASE_DOCUMENT_TYPE, OnbaseInputSchema, OnbaseSavedDocumentSchema } from "../../../../models/systems/onbase/import-document.js";
 import { OnbaseCommitImport } from "../../../../models/systems/onbase/upload-import.js";
 import { OnbasePrepareImport } from "../../../../models/systems/onbase/stage-import.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { buildSource } from "../source-page/step.js";
 
-export const OnbaseResultSchema = z.strictObject({ disposition: z.enum(["committed", "already-present"]), savedDocument: OnbaseSavedDocumentSchema });
+export const OnbaseResultSchema = z.strictObject({
+  disposition: z.enum(["committed", "already-present", "omitted"]),
+  savedDocument: OnbaseSavedDocumentSchema.optional(),
+}).refine(({ disposition, savedDocument }) => (disposition === "omitted") === (savedDocument === undefined), {
+  path: ["savedDocument"], message: "A saved document is required only for a committed or already-present import.",
+});
+const importManual: StepManualDeclaration = {
+  off: "manual",
+  form: { fields: [] },
+  produces: {},
+  skips: ["import-document"],
+  skipsGatesAndTransactions: true,
+};
 export const ONBASE_IMPORT_STEP = Object.freeze({ ...defineWorkflowStep({ key: "import-document", label: "Import Emergency Contact" }), system: "onbase" as const,
+  manual: importManual,
   review: {
     pages: [
       {
@@ -127,8 +141,10 @@ export function buildImport(author: WorkflowAuthor<typeof OnbaseInputSchema>, up
     prepareBind: ({ outputs }) => outputs["source-page"], commitBind: ({ outputs }) => outputs["source-page"],
   });
   return { steps: [[ONBASE_IMPORT_STEP, [imported]]] as const,
-    result: author.result(OnbaseResultSchema, [imported], ({ outputs }) => ({ disposition: outputs["import-document"].disposition,
-      savedDocument: outputs["import-document"].output.savedDocument })) };
+    result: author.result(OnbaseResultSchema, [imported], ({ outputs }): z.input<typeof OnbaseResultSchema> => {
+      const result = outputs["import-document"];
+      return result === undefined ? { disposition: "omitted" } : { disposition: result.disposition, savedDocument: result.output.savedDocument };
+    }) };
 }
 export const onbaseImportDocumentDefinition = defineStep({
   group: ONBASE_IMPORT_STEP, build: buildImport,

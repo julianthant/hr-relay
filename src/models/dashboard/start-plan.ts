@@ -37,7 +37,7 @@ const SHARED_REQUEST_LEAVES = {
 
 const hasStartSelection = (request: { rerunSource?: unknown; selectedStepKeys?: string[] | undefined; stepOmissions?: z.infer<typeof StepOmissionsSchema> | undefined }) =>
   request.rerunSource !== undefined || request.selectedStepKeys?.length !== 0
-  || request.stepOmissions?.some(entry => entry.workflow === undefined) === true;
+  || request.stepOmissions?.some(entry => entry.workflow === undefined || Object.keys(entry.facts).length > 0) === true;
 const hasStartInput = (request: { rerunSource?: unknown; submissions: unknown[] }) =>
   request.submissions.length > 0 || request.rerunSource !== undefined;
 

@@ -2,6 +2,7 @@ import { descriptorRuntimeNodes, workflowDelegatedDescriptor, type AnyWorkflowDe
 import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
 import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import {
+  delegatedStepOmissions,
   planStepOmissions,
   stepOmissionCascade,
   stepOmissionFactsSchema,
@@ -38,6 +39,7 @@ export interface StartRowProjection {
   readonly off?: StartRowOff;
   readonly stop?: string;
   readonly requiresStep?: string;
+  readonly startWithValuesAlone?: true;
   readonly lockReason?: StartRowLockReason;
   readonly members: readonly StartRowMember[];
   readonly target?: StartRowTarget;
@@ -232,7 +234,7 @@ export function resolveStartStepOmissions(
     }
     submitted.set(entry.step, entry.facts);
   }
-  const resolved: { workflow?: string; step: string; facts: Record<string, unknown>; labels: Record<string, string> }[] = [];
+  const resolved: (ReturnType<typeof checkedEntry> & { workflow?: string })[] = [];
   for (const step of steps) {
     const spec = specByStep.get(step.key);
     if (spec === undefined) continue;
@@ -249,7 +251,8 @@ export function resolveStartStepOmissions(
     }
     resolved.push(checkedEntry(descriptor, step.key, spec, facts, submission));
   }
-  const own = resolved.length;
+  if (resolved.length > 0) refuseCascade(descriptor, resolved);
+  const byChild = new Map<string, ReturnType<typeof checkedEntry>[]>();
   // A child entry is checked in the child's descriptor; the parent plans nothing for it.
   for (const row of descriptor.startRows) {
     const workflow = row.target?.workflow;
@@ -264,13 +267,14 @@ export function resolveStartStepOmissions(
     const spec = child.stepOmissions.find(({ step }) => step === entry.step);
     if (spec === undefined) throw new Error(`${descriptor.id} start row ${row.key} targets ${workflow}/${entry.step}, which declares no manual entry`);
     const checked = checkedEntry(child, entry.step, spec, entry.facts);
-    refuseCascade(child, [checked]);
+    const entries = byChild.get(workflow) ?? [];
+    entries.push(checked);
+    byChild.set(workflow, entries);
     resolved.push({ workflow, ...checked });
   }
+  for (const [workflow, entries] of byChild) refuseCascade(workflowDelegatedDescriptor(descriptor, workflow), entries);
   if (resolved.length === 0) return undefined;
-  const canonical = StepOmissionsSchema.parse(resolved);
-  if (own > 0) refuseCascade(descriptor, canonical);
-  return canonical;
+  return StepOmissionsSchema.parse(resolved);
 }
 
 /** One step's typed facts, checked against its form and refine rule and stamped with each field's label. */
@@ -297,6 +301,16 @@ function checkedEntry(descriptor: AnyWorkflowDescriptor, step: string, spec: Ste
 }
 
 export function assertStartStepOmissionInputs(descriptor: AnyWorkflowDescriptor, omissions: StepOmissions | undefined, canonicalInput: unknown): void {
+  for (const workflow of new Set(omissions?.flatMap(entry => entry.workflow === undefined ? [] : [entry.workflow]))) {
+    const child = workflowDelegatedDescriptor(descriptor, workflow);
+    if (!child.stepOmissions.some(spec => spec.bindInput !== undefined)) continue;
+    const bound = bindSingleStartChild(descriptor, workflow, canonicalInput);
+    for (const entry of delegatedStepOmissions(omissions, workflow) ?? []) {
+      const spec = child.stepOmissions.find(({ step }) => step === entry.step);
+      if (spec === undefined) throw new Error(`${child.id} declares no typed values for ${entry.step}`);
+      checkedEntry(child, entry.step, spec, entry.facts, bound);
+    }
+  }
   for (const entry of omissions ?? []) {
     if (entry.workflow !== undefined) continue;
     const spec = descriptor.stepOmissions.find(({ step }) => step === entry.step);
@@ -304,6 +318,20 @@ export function assertStartStepOmissionInputs(descriptor: AnyWorkflowDescriptor,
       checkedEntry(descriptor, entry.step, spec, entry.facts, undefined, { canonicalInput });
     }
   }
+}
+
+export function bindSingleStartChild(descriptor: AnyWorkflowDescriptor, workflow: string, canonicalInput: unknown): JsonValue {
+  const delegates = descriptorRuntimeNodes(descriptor).filter(node => node.kind === "child-run" && node.target.id === workflow);
+  const [node] = delegates;
+  if (delegates.length !== 1 || node?.kind !== "child-run" || node.dependsOn.length !== 0) {
+    throw new Error(`${descriptor.id} needs one initial delegation to bind typed ${workflow} input`);
+  }
+  const input = node.bind({ input: JsonValueSchema.parse(canonicalInput), outputs: {} });
+  if (node.cardinality === "one") return JsonValueSchema.parse(input);
+  if (!Array.isArray(input) || input.length !== 1) {
+    throw new StartStepOmissionRefusedError("single-subject-only", `Start with one document to enter typed ${workflow} values.`);
+  }
+  return JsonValueSchema.parse(input[0]);
 }
 
 function refuseCascade(descriptor: AnyWorkflowDescriptor, entries: StepOmissions | readonly ReturnType<typeof checkedEntry>[]): void {
@@ -351,7 +379,21 @@ export function applyStartStepSelection(
       ? step.control.selectedWhen
       : !step.control.selectedWhen;
   }
-  return JsonValueSchema.parse(customized);
+  return applyStepOmissionInputs(descriptor, JsonValueSchema.parse(customized), stepOmissions);
+}
+
+export function applyStepOmissionInputs(descriptor: AnyWorkflowDescriptor, input: JsonValue, omissions?: StepOmissions): JsonValue {
+  let bound = input;
+  for (const spec of descriptor.stepOmissions) {
+    const entry = omissions?.find(({ workflow, step }) => workflow === undefined && step === spec.step);
+    if (entry === undefined || spec.bindInput === undefined) continue;
+    try {
+      bound = spec.bindInput(bound, stepOmissionFactsSchema(spec.form).parse(entry.facts));
+    } catch {
+      throw new StartStepOmissionRefusedError("facts-invalid", `${descriptor.id} start step ${spec.step} cannot bind its typed values to the input`);
+    }
+  }
+  return bound;
 }
 
 /** The Start run rows, each with its kind and lock reason, from the declared rows or one per timeline step; a child member or target reads the bound child. */
@@ -393,9 +435,10 @@ export function projectStartRows(descriptor: AnyWorkflowDescriptor): readonly St
         : spec !== undefined && manualKind(view.descriptor, spec) === "locked-manual" ? "locked-manual" : "locked";
     const reason = kind === "switch" ? undefined : lockReason(row.members);
     const forces = step?.control.state === "omittable" ? step.control.forces : Object.freeze([]);
-    // The parent's bind builds a child's input, so a child step's own selection cannot be switched from here.
-    if (row.target?.workflow !== undefined && (step?.control.state === "selectable" || forces.length > 0 || kind === "locked")) {
-      throw new Error(`${descriptor.id} start row ${row.key} targets child step ${row.target.workflow}/${row.target.step}, which only its own typed values can switch`);
+    const target = row.target;
+    if (target?.workflow !== undefined && (step?.control.state === "selectable" || kind === "locked" || forces.some(forced =>
+      !descriptor.startRows.some(other => other.target?.workflow === target.workflow && other.target?.step === forced)))) {
+      throw new Error(`${descriptor.id} start row ${row.key} targets child step ${target.workflow}/${target.step}, which only its own typed values can switch`);
     }
     return Object.freeze({
       key: row.key,
@@ -405,6 +448,9 @@ export function projectStartRows(descriptor: AnyWorkflowDescriptor): readonly St
       ...(kind === "switch" && spec?.off !== undefined ? { off: spec.off } : {}),
       ...(spec?.stop === undefined ? {} : { stop: spec.stop }),
       ...(requiresStep === undefined ? {} : { requiresStep }),
+      ...(kind === "switch" && row.target?.workflow === undefined && descriptor.timeline.length === 1 && spec !== undefined
+        && (spec.bindInput !== undefined || spec.off === "values" && Object.keys(spec.produces).length > 0)
+        ? { startWithValuesAlone: true as const } : {}),
       ...(reason === undefined ? {} : { lockReason: reason }),
       members: row.members,
       ...(row.target === undefined ? {} : { target: row.target }),
@@ -447,6 +493,7 @@ export function startRowWire(row: StartRowProjection): NonNullable<WorkflowStart
     ...(row.off === undefined ? {} : { off: row.off }),
     ...(row.stop === undefined ? {} : { stop: row.stop }),
     ...(row.requiresStep === undefined ? {} : { requiresStep: row.requiresStep }),
+    ...(row.startWithValuesAlone === undefined ? {} : { startWithValuesAlone: row.startWithValuesAlone }),
     ...(row.lockReason === undefined ? {} : { lockReason: row.lockReason }),
     members: row.members.map((member) => ({ ...member, ...(member.nodes === undefined ? {} : { nodes: [...member.nodes] }) })),
     ...(row.target === undefined ? {} : { target: { ...row.target } }),

@@ -57,6 +57,7 @@ type RunCheckpointRecord,
 import { GateResultRecordSchema,type GateResultRecord,type OperatorGateResultRecord } from "../../../models/workflow/gates.js";
 import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
+import { stepOmissionFactsSchema } from "../../../models/workflow/step-omission.js";
 import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
 import {
 ErrorCodeSchema,
@@ -629,6 +630,12 @@ function deriveReceipt(
 
 
     if (node.kind === "gate") {
+      const snapshotApproval = findSnapshotApprovalDecision(descriptor.id, id);
+      const withheld = snapshotApproval !== undefined && evidence.notRun === "step-omitted"
+        && descriptor.stepOmissions.some(spec => spec.off === "values" && spec.skipsGatesAndTransactions === true && spec.skips?.includes(id)
+          && envelope.stepOmissions?.some(entry => entry.workflow === undefined && entry.step === spec.step
+            && stepOmissionFactsSchema(spec.form).safeParse(entry.facts).success));
+      if (withheld && gateResultsByNode.has(id)) throw new OcrReviewRefusedError();
       // An inapplicable conditional gate produces no synthetic operator decision.
       if (node.resolvedBy === "operator" && node.when !== undefined
         && node.dependsOn.every((dependency) => byNode.get(String(dependency))?.record !== undefined)) {
@@ -675,7 +682,7 @@ function deriveReceipt(
         });
         continue;
       }
-      if (lifecycle.outcome === "done" && findSnapshotApprovalDecision(descriptor.id, id) !== undefined) throw new OcrReviewRefusedError();
+      if (lifecycle.outcome === "done" && snapshotApproval !== undefined && !withheld) throw new OcrReviewRefusedError();
     }
 
     if (record === undefined) {

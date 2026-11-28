@@ -12,15 +12,19 @@ import { i9CheckStartModule } from "../../support/helpers/registered-workflows.j
 const descriptor = i9CheckStartModule.descriptor;
 
 it("serves a switch for every I-9 Check row", () => {
-  assert.deepEqual(projectStartRows(descriptor).map(({ key, kind, off, lockReason, target }) => [key, kind, off, lockReason, target]), [
-    ["read-forms", "switch", "values", undefined, { step: "documents" }],
-    ["match-people", "switch", "values", undefined, { step: "documents" }],
-    ["review-records", "switch", "values", undefined, { step: "documents" }],
-    ["roster-reference", "switch", "values", undefined, { step: "roster-reference" }],
-    ["ucpath-match", "switch", "values", undefined, { workflow: "i9-check", step: "person-match" }],
-    ["ucpath-dates", "switch", "values", undefined, { workflow: "i9-check", step: "person-lookup" }],
-    ["retention", "switch", "values", undefined, { step: "retention" }],
-    ["tracker-row", "switch", "manual", undefined, { step: "publication" }],
+  assert.deepEqual(projectStartRows(descriptor).map(({ key, label, kind, lockReason, target }) => ({ key, label, kind, lockReason: lockReason ?? null, target: target ?? null })), [
+    { key: "documents", label: "Read and approve PDFs", kind: "switch", lockReason: null, target: { step: "documents" } },
+    { key: "ocr-source-pages", label: "Prepare source pages", kind: "switch", lockReason: null, target: { workflow: "ocr", step: "source-pages" } },
+    { key: "read-forms", label: "Read I-9 forms", kind: "switch", lockReason: null, target: { workflow: "ocr", step: "page-readings" } },
+    { key: "ocr-group-records", label: "Group records for review", kind: "switch", lockReason: null, target: { workflow: "ocr", step: "review-records" } },
+    { key: "match-people", label: "Match extracted people", kind: "switch", lockReason: null, target: { workflow: "ocr", step: "identity-lookups" } },
+    { key: "ocr-signer-lookups", label: "Look up official signers", kind: "switch", lockReason: null, target: { workflow: "ocr", step: "signer-lookups" } },
+    { key: "review-records", label: "Review extracted records", kind: "switch", lockReason: null, target: { workflow: "ocr", step: "approval" } },
+    { key: "roster-reference", label: "Read Action History", kind: "switch", lockReason: null, target: { step: "roster-reference" } },
+    { key: "ucpath-match", label: "Match person in UCPath", kind: "switch", lockReason: null, target: { workflow: "i9-check", step: "person-match" } },
+    { key: "ucpath-dates", label: "Read employment dates", kind: "switch", lockReason: null, target: { workflow: "i9-check", step: "person-lookup" } },
+    { key: "retention", label: "Collect retention results", kind: "switch", lockReason: null, target: { step: "retention" } },
+    { key: "tracker-row", label: "Append retention tracker row", kind: "switch", lockReason: null, target: { step: "publication" } },
   ]);
   const match = projectStartRows(descriptor).find(row => row.key === "ucpath-match");
   assert.ok(match?.members.some(member => member.workflow === "i9-check" && member.step === "reference-check"));
@@ -31,12 +35,12 @@ it("serves a switch for every I-9 Check row", () => {
   assert.deepEqual(typed, [{ workflow: "i9-check", step: "person-lookup", facts: { emplId: null, name: null, hireDate: null }, labels: { emplId: "UCPath Employee ID", name: "UCPath name", hireDate: "UCPath hire date" } }]);
 });
 
-it("switching off OCR review also skips its source and dependent rows without opening any OCR values form", () => {
+it("switching off parent PDF review skips its source and dependent rows without opening any OCR values form", () => {
   const steps = projectStartSteps(descriptor).map(step => ({ ...step, control: startStepWireControl(step.control) }));
   const rows = startRowsOf({ steps, rows: projectStartRows(descriptor).map(startRowWire) });
-  const review = rows.find(row => row.key === "review-records");
+  const review = rows.find(row => row.key === "documents");
   assert.ok(review?.stepKey);
-  assert.match(review.note ?? "", /Also skips: Read I-9 forms, Match extracted people/u);
+  assert.match(review.note ?? "", /Also skips: Prepare source pages, Read I-9 forms/u);
   assert.match(review.note ?? "", /Match person in UCPath/u);
   const all = steps.map(step => step.key);
   const requested = toggleStepSelection(steps, all, review.stepKey, false);

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { childRunOutcomeSchema } from "../../workflow/graph.js";
+import { OmittedStepResultArmSchema } from "../../workflow/step-omission.js";
 import { PersonLookupResultSchema } from "../person-lookup/result.js";
 import { OcrReviewSeedSchema, OcrReviewCheckpointSchema, compactOcrReviewSeed } from "./review-seed.js";
 import { OcrPersonLookupRequestSchema, OcrSignerLookupRequestSchema } from "./lookup.js";
@@ -16,8 +17,12 @@ export const OcrResultSchema = z.strictObject({ review: OcrReviewSeedSchema,
   ])) });
 export const OcrApprovalReferenceSchema = z.strictObject({ snapshotId: CommandIdSchema, sourceRunId: RunIdSchema,
   revision: PositiveIntSchema, digest: FingerprintSchema });
-export const OcrWorkflowResultSchema = z.strictObject({ review: OcrReviewCheckpointSchema, identities: OcrResultSchema.shape.identities,
+export const OcrReviewedResultSchema = z.strictObject({ review: OcrReviewCheckpointSchema, identities: OcrResultSchema.shape.identities,
   approvedSnapshot: OcrApprovalReferenceSchema.nullable() });
+export const OcrWorkflowResultSchema = z.union([
+  OcrReviewedResultSchema,
+  z.strictObject({ review: OmittedStepResultArmSchema, identities: z.tuple([]), approvedSnapshot: z.null() }),
+]);
 
 export const OcrResultCheckpointSchema = z.strictObject({ review: z.strictObject({ digest: FingerprintSchema }), identities: OcrResultSchema.shape.identities });
 export function compactOcrResult(result: z.output<typeof OcrResultSchema>) {

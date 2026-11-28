@@ -1046,6 +1046,7 @@ const ROUTE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: 'wire/workbook-library-action-status', path: 'record.libraryId', origin: 'repository-authored' },
     { surface: 'wire/workbook-library-action-result', path: 'libraryId', origin: 'repository-authored' },
     { surface: 'wire/workbook-library-catalog', path: '[].libraryId', origin: 'repository-authored' },
+    { surface: 'wire/workbook-library-catalog', path: '[].heldVersionIds[]', origin: 'repository-authored' },
     ...['name', 'worksheets[].id', 'worksheets[].name', 'metadata.typeId'].map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].${path}`, origin: 'captured-hr-value' as const })),
     ...LIBRARY_MUTABLE_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].type.${path}`, origin: 'captured-hr-value' as const })),
     ...['versionId', 'versionName'].map(path => ({ surface: 'wire/workbook-reference', path, origin: path === 'versionId' ? 'repository-authored' : 'operator-authored' })),

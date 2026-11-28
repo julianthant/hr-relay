@@ -1,4 +1,5 @@
 import { editScenarios } from "../../../assistant/scenarios/applied-edits.js";
+import { undoEditScenarios } from "../../../assistant/scenarios/undo-edits.js";
 import { faultAuthoritySnapshot, assertHttpFaultOnly, assertOnlyLoopStallWrites, exactHttpFaultLoopDelay } from "../../../../support/helpers/backend/http-route-harness.js";
 import { AssistantM1RespondEnvelopeSchema, assistantSessionAttribution, type AssistantM1Request, type AssistantM1RespondEnvelope } from "../../../../../src/models/dashboard/assistant.js";
 import { replyText } from "../../../../../src/dashboard/surfaces/assistant/assistant-reply-parts-model.js";
@@ -601,6 +602,88 @@ it("applies spreadsheet and settings edits in the accepted turn, keeps values lo
   });
 });
 
+it.each(undoEditScenarios)("$name within the assistant budget", async scenario => {
+  await withServedAssistant(async ({ context, transport, origin, clock }) => {
+    const client = createDashboardClient({ baseUrl: origin }), db = context.database;
+    const libraryId = randomUUID(), conversationId = randomUUID(), at = IsoInstantSchema.parse(clock.now().toISOString());
+    const workbook = { name: "Separations tracker", libraryId, themes: {}, hasFormulas: false, sheets: [{
+      id: "worksheet", name: "Sheet", width: 1, hidden: [],
+      rows: [{ id: "heading", cells: [{ value: "Header" }] }, { id: "row", cells: [{ value: "04/23/2031" }] }],
+    }] };
+    db.authority.workbooks.create({ libraryId, version: 1, createdAt: at, savedAt: at, workbook });
+    const saved = () => {
+      const row = db.authority.workbooks.read(libraryId);
+      assert.ok(row);
+      return row;
+    };
+    assert.equal(AssistantHistoryResultSchema.parse(await client.assistantHistoryWrite?.({
+      operation: "create", conversationId, title: "Undo scenario",
+    })).state, "saved");
+    const measured: number[] = [];
+    const send = async (message: string, expectedRevision: number, calls: readonly { tool: string; args: object }[], beforeLast?: () => void) => {
+      let step = 0;
+      transport.setResponse(init => {
+        assert.ok(typeof init.body === "string");
+        const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
+        measured.push(Math.ceil(Buffer.byteLength(init.body) / 4));
+        const call = calls[step++];
+        assert.ok(call);
+        assert.ok(request.tools[0]?.tools.some(tool => tool.name === call.tool));
+        assert.ok(!init.body.includes(libraryId));
+        assert.ok(!init.body.includes("04/23/2031"));
+        if (step === calls.length) beforeLast?.();
+        return new Response(completedResponseStream([{ type: "function_call", namespace: "relay", name: call.tool,
+          call_id: String(measured.length), arguments: JSON.stringify(call.args), status: "completed" }], request.model,
+        `resp_undo_${String(measured.length)}`), { headers: { "Content-Type": "text/event-stream" } });
+      });
+      const envelope = AssistantM1RespondEnvelopeSchema.parse(await client.assistantRespond({
+        conversationId, expectedRevision, message, messageId: randomUUID(),
+      }));
+      assert.equal(step, calls.length);
+      assert.ok(envelope.kind === "result" && envelope.receipt !== undefined);
+      return { result: envelope.result, receipt: envelope.receipt };
+    };
+    const edited = await send('Set the only spreadsheet worksheet 1, row 2, column 1 to "04/24/2031".', 1, [
+      { tool: "read_spreadsheets", args: { view: "list", sheet: null, limit: 5 } },
+      { tool: "change_spreadsheet", args: { change: { action: "set-cell", sheet: "[[S1.g1]]", worksheet: 1, row: 2, column: 1,
+        format: "text", source: "04/24/2031" } } },
+    ]);
+    assert.equal(edited.result.state, "answered");
+    assert.equal(saved().workbook.sheets[0]?.rows[1]?.cells[0]?.value, "04/24/2031");
+    const undone = await send("Undo the tracker change.", edited.receipt.revision, [
+      { tool: "list_today_edits", args: {} }, { tool: "undo_edit", args: { edit: "[[U1.g1]]" } },
+    ], () => {
+      if (scenario.laterValue === null) return;
+      const current = structuredClone(saved()), cell = current.workbook.sheets[0]?.rows[1]?.cells[0];
+      assert.ok(cell);
+      cell.value = scenario.laterValue;
+      db.authority.workbooks.save({ ...current, version: current.version + 1 }, current.version);
+    });
+    assert.equal(saved().workbook.sheets[0]?.rows[1]?.cells[0]?.value, scenario.expectedValue);
+    assert.equal(saved().version, 3);
+    const edits = db.authority.assistantAppliedEdits.list(at);
+    if (scenario.laterValue === null) {
+      assert.ok(undone.result.state === "answered");
+      const [part] = undone.result.reply.parts;
+      assert.ok(part?.kind === "text" && part.editId !== undefined);
+      assert.deepEqual(part.runs, [
+        { kind: "plain", text: "Changed Separations tracker, worksheet 1, row 2, column 1 back: " },
+        { kind: "value", previous: "04/24/2031", value: "04/23/2031" },
+        { kind: "plain", text: "." },
+      ]);
+      assert.ok((await client.assistantActivity?.())?.rows.some(row => row.id === part.editId));
+      assert.equal(edits.length, 2);
+    } else {
+      assert.ok(undone.result.state === "no-reply");
+      assert.equal(undone.result.reason, "ASSISTANT_UNDO_STALE");
+      assert.equal(ASSISTANT_FAILURES[undone.result.reason], "Not undone: changed since.");
+      assert.equal(edits.length, 1);
+    }
+    assert.ok(Math.max(...measured) <= scenario.largestRequest, scenario.name);
+    assert.ok(measured.reduce((sum, count) => sum + count, 0) <= scenario.total, scenario.name);
+  });
+});
+
 it("requires an operator notification change request and journals the accepted change once", async () => {
   await withServedAssistant(async fixture => {
     const { context, transport, origin, clock } = fixture;
@@ -669,5 +752,78 @@ it("requires an operator notification change request and journals the accepted c
     const audit = authority.commandAudits.findByCommand(edit.id);
     assert.deepEqual([audit?.request.source, audit?.request.requestedBy], ["assistant", LOCAL_OPERATOR_ACTOR_ID]);
     assert.deepEqual(commandIds(), [...before, edit.id].sort());
+
+    const undo = async (message: string, token: string) => {
+      let calls = 0;
+      transport.setResponse(init => {
+        assert.ok(typeof init.body === "string");
+        const modelRequest = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), index = calls++;
+        const name = index === 0 ? "list_today_edits" : "undo_edit", args = index === 0 ? {} : { edit: token };
+        return new Response(completedResponseStream([{ type: "function_call", namespace: "relay", name,
+          call_id: String(calls), arguments: JSON.stringify(args), status: "completed" }], modelRequest.model, `resp_notice_undo_${String(calls)}`),
+        { headers: { "Content-Type": "text/event-stream" } });
+      });
+      const result = await send(door, { message });
+      assert.equal(calls, 2);
+      return result;
+    };
+    assert.deepEqual(await undo("Undo the notification change.", "[[U1.g1]]"),
+      { state: "answered", text: "Changed the notification back: unread." });
+    assert.deepEqual(authority.notifications.get(notificationId), { ...notice, version: 3 });
+    const reversal = authority.assistantAppliedEdits.list(at).find(row => row.id !== edit.id);
+    assert.ok(reversal?.details.kind === "notifications");
+    assert.equal(authority.commandAudits.findByCommand(reversal.id)?.request.type, "notification-unread");
+    assert.deepEqual(authority.notifications.get(olderId), older);
+  });
+});
+
+it("restores the previous settings override, refuses to revert the original twice, and can undo the reversal", async () => {
+  await withServedAssistant(async ({ context, transport, origin, clock }) => {
+    const client = createDashboardClient({ baseUrl: origin }), authority = context.database.authority;
+    const conversationId = randomUUID(), at = clock.now().toISOString(), initial = authority.settingsCurrent.get()?.settings.browser?.headless;
+    assert.equal(AssistantHistoryResultSchema.parse(await client.assistantHistoryWrite?.({
+      operation: "create", conversationId, title: "Setting undo",
+    })).state, "saved");
+    let revision = 1;
+    const respond = async (message: string, calls: readonly { name: string; args: object }[]) => {
+      let index = 0;
+      transport.setResponse(init => {
+        assert.ok(typeof init.body === "string");
+        const modelRequest = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), call = calls[index++];
+        assert.ok(call);
+        return new Response(completedResponseStream([{ type: "function_call", namespace: "relay", name: call.name,
+          call_id: String(index), arguments: JSON.stringify(call.args), status: "completed" }], modelRequest.model, `resp_setting_${String(index)}`),
+        { headers: { "Content-Type": "text/event-stream" } });
+      });
+      const result = AssistantM1RespondEnvelopeSchema.parse(await client.assistantRespond({
+        conversationId, expectedRevision: revision, message, messageId: randomUUID(),
+      }));
+      assert.ok(result.kind === "result" && result.receipt !== undefined);
+      assert.equal(index, calls.length);
+      revision = result.receipt.revision;
+      return result.result;
+    };
+    const changed = initial !== false ? false : true, word = changed ? "on" : "off";
+    const set = await respond(`Turn headless browser mode ${word}.`, [
+      { name: "read_settings", args: { key: "browser.headless" } },
+      { name: "change_settings", args: { key: "browser.headless", operation: changed ? "enable" : "disable", source: word } },
+    ]);
+    assert.equal(set.state, "answered");
+    const list = { name: "list_today_edits", args: {} };
+    const undo = (number: number) => ({ name: "undo_edit", args: { edit: `[[U${String(number)}.g1]]` } });
+    assert.equal((await respond("Undo the setting change.", [list, undo(1)])).state, "answered");
+    const restored = authority.settingsCurrent.get();
+    assert.equal(restored?.settings.browser?.headless, initial);
+    const replay = await respond("Undo edit 1.", [list, undo(1)]);
+    assert.ok(replay.state === "no-reply");
+    assert.equal(replay.reason, "ASSISTANT_UNDO_STALE");
+    assert.deepEqual(authority.settingsCurrent.get(), restored);
+    assert.equal(authority.assistantAppliedEdits.list(at).length, 2);
+    assert.equal((await respond("Undo the setting change.", [{ name: "list_today_edits", args: {} },
+      // Both records are now offered as choices, including the original stale edit.
+      { name: "undo_edit", args: { edit: "[[U2.g1]]" } }])).state, "no-reply");
+    assert.equal((await respond("Undo edit 2.", [list, undo(2)])).state, "answered");
+    assert.equal(authority.settingsCurrent.get()?.settings.browser?.headless, changed);
+    assert.equal(authority.assistantAppliedEdits.list(at).length, 3);
   });
 });

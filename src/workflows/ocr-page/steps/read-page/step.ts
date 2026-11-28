@@ -1,11 +1,37 @@
 import { ExtractFormPage } from "../../../../models/processing/ocr/extract-form-page.js";
-import { OcrPageWorkflowInputSchema } from "../../../../models/workflows/ocr-page/input.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
+import { manualOcrPageInput, OcrPageWorkflowInputSchema, parseManualOcrPageValues } from "../../../../models/workflows/ocr-page/input.js";
 import { ReadManualOcrReading } from "../../../../models/workflows/ocr-page/read-manual-reading.js";
 import { ReadOcrPageReading } from "../../../../models/workflows/ocr-page/read-page-reading.js";
 import { OcrPageReadingSchema } from "../../../../models/workflows/ocr/page-accounting.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
+import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
+
+function pageValues(value: unknown) {
+  if (typeof value !== "string") throw new Error("Enter an original-page reading.");
+  return parseManualOcrPageValues(value);
+}
+
+const MANUAL_PAGE: StepManualDeclaration = {
+  off: "values",
+  form: { fields: [{ key: "reading", label: "Page reading", kind: "text", format: "ocr-page-reading", withheld: true,
+    help: "Enter JSON with pageKind, readAt (ISO time) and record. Use an answers list of path and answer pairs, or null for a non-form page." }] },
+  produces: {}, skips: ["extract", "read-page-reading"], keeps: ["manual-reading"],
+  refine: ({ reading }, submission) => {
+    try {
+      const values = pageValues(reading);
+      if (submission !== undefined) manualOcrPageInput(OcrPageWorkflowInputSchema.parse(submission).page, "local-operator", values);
+      return [];
+    } catch {
+      return [{ field: "reading", message: "Enter a valid reading of the original page." }];
+    }
+  },
+  bindInput: (input, { reading }) => JsonValueSchema.parse(manualOcrPageInput(
+    OcrPageWorkflowInputSchema.parse(input).page, "local-operator", pageValues(reading))),
+  withholdsBoundInput: input => OcrPageWorkflowInputSchema.safeParse(input).data?.reading.kind === "manual",
+};
 export const OCR_PAGE_STEP = Object.freeze({ ...defineWorkflowStep({ key: "read-page", label: "Read source page" }), system: "local" as const,
   description: "Read the exact original page through the declared subscription or manual reading and retain page-bound observations or assertions without approving a person's identity.",
   review: {
@@ -33,7 +59,7 @@ export const OCR_PAGE_STEP = Object.freeze({ ...defineWorkflowStep({ key: "read-
 });
 
 export function buildStep(author: WorkflowAuthor<typeof OcrPageWorkflowInputSchema>) {
-  const { task, result } = author;
+  const { group, task, result } = author;
   const extract = task({
     id: "extract", contract: ExtractFormPage, replay: "checkpoint",
     when: { kind: "equals", of: { from: "input", path: "reading.kind" }, value: "subscription" }
@@ -49,7 +75,7 @@ export function buildStep(author: WorkflowAuthor<typeof OcrPageWorkflowInputSche
     when: { kind: "equals", of: { from: "input", path: "reading.kind" }, value: "manual" }
   }, [], ({ input }) => input);
   return {
-    steps: [[OCR_PAGE_STEP, [extract, reading, manual]]] as const,
+    steps: [[group(OCR_PAGE_STEP, { manual: MANUAL_PAGE }), [extract, reading, manual]]] as const,
     result: result(OcrPageReadingSchema, [reading, manual], ({ outputs }) => {
       const output = outputs["read-page-reading"] ?? outputs["manual-reading"];
       if (output === undefined) throw new Error("OCR page has neither a provider reading nor an operator assertion.");

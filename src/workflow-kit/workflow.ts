@@ -964,9 +964,12 @@ function deriveStepOmissions(
       const validation = node.kind === "task" && node.uses.id.startsWith("workflow:") && node.uses.provenance.default === "derived"
         && node.uses.subject.kind === "none" && node.uses.artifacts === undefined && !isPreviewBoundary(node)
         && node.dependsOn.some(dependency => Object.hasOwn(manual.produces, dependency));
+      const inputBacked = manual.bindInput !== undefined && (node.kind === "child-run"
+        || node.kind === "task" && !isPreviewBoundary(node) && !node.uses.providers?.length
+          && node.uses.subject.kind === "none");
       if (manual.off !== "values" || !members.has(member) || skipped.has(member) || Object.hasOwn(manual.produces, member)
-        || !operatorGate && !ingressRead && !validation) {
-        throw new Error(`${id}: ${owner} can only keep an ingress read, operator gate, or local validation of manual values`);
+        || !operatorGate && !ingressRead && !validation && !inputBacked) {
+        throw new Error(`${id}: ${owner} can only keep an ingress read, operator gate, local validation, or input-backed reader`);
       }
     }
     const switchable = category.selection !== undefined || selectedByOneInputCondition(id, nodes, category.nodes, owner);
@@ -1021,6 +1024,9 @@ function deriveStepOmissions(
       ...(manual.ownStartOnly === undefined ? {} : { ownStartOnly: manual.ownStartOnly }),
       ...(manual.skips === undefined ? {} : { skips: Object.freeze([...manual.skips]) }),
       ...(manual.refine === undefined ? {} : { refine: manual.refine }),
+      ...(manual.bindInput === undefined ? {} : { bindInput: manual.bindInput }),
+      ...(manual.withholdsBoundInput === undefined ? {} : { withholdsBoundInput: manual.withholdsBoundInput }),
+      ...(manual.allowsChildFanOut === undefined ? {} : { allowsChildFanOut: manual.allowsChildFanOut }),
       ...(manual.skipsGatesAndTransactions === undefined ? {} : { skipsGatesAndTransactions: manual.skipsGatesAndTransactions }),
       ...(manual.orderOnlyReaders === undefined ? {} : { orderOnlyReaders: Object.freeze([...manual.orderOnlyReaders]) }),
       ...(manual.alsoSkips === undefined ? {} : { alsoSkips: Object.freeze([...manual.alsoSkips]) }),

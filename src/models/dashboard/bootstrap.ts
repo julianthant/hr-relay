@@ -93,6 +93,7 @@ export const WorkflowStartWireSchema = z.strictObject({
     off: StartRowOffSchema.optional(),
     stop: z.string().min(1).optional(),
     requiresStep: StepKeySchema.optional(),
+    startWithValuesAlone: z.literal(true).optional(),
     lockReason: StartRowLockReasonSchema.optional(),
     members: z.array(StartRowMemberSchema).min(1),
     target: StartRowTargetSchema.optional(),

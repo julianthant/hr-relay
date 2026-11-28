@@ -131,7 +131,8 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
     const stepOmissions = source?.interruptedRun !== undefined ? source.stepOmissions : resolveStartStepOmissions(descriptor, ingress.selectedStepKeys,
       source?.stepOmissions ?? ingress.stepOmissions, submissions.length === 1 ? submissions[0] : undefined);
     if (rerunSource === undefined && ingress.selectedStepKeys?.length === 0 && !descriptor.stepOmissions.some(spec =>
-      (spec.stop !== undefined || descriptor.timeline.length === 1 && spec.off === "values" && Object.keys(spec.produces).length > 0)
+      (spec.stop !== undefined || descriptor.timeline.length === 1
+        && (spec.bindInput !== undefined || spec.off === "values" && Object.keys(spec.produces).length > 0))
       && stepOmissions?.some(entry => entry.workflow === undefined && entry.step === spec.step))) {
       throw new StartStepOmissionRefusedError("selection-invalid", "Select at least one step to start.");
     }
