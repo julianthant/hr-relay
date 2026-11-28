@@ -111,7 +111,7 @@ function DropdownMenuItem({
 
 /** A two-line item body: the title with a grey description under it. */
 function DropdownMenuItemCopy({ title, description }: { title: React.ReactNode; description?: React.ReactNode }) {
-  return <span className="ds-menu-copy"><span>{title}</span>{description && <span>{description}</span>}</span>
+  return <span className={cn("ds-menu-copy", !description && "ds-menu-copy--one")}><span>{title}</span>{description && <span>{description}</span>}</span>
 }
 
 function DropdownMenuSub({ ...props }: MenuPrimitive.SubmenuRoot.Props) {

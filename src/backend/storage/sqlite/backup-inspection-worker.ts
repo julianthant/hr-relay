@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { isMainThread, parentPort, Worker, workerData } from "node:worker_threads";
@@ -34,7 +35,7 @@ type ReplyVerdict<Value> = Readonly<{ value: Value } | { error: Error; invalid: 
 /** Each queued request waits for the previous worker thread to exit, so at most one runs in this process. */
 let previousThread: Promise<void> = Promise.resolve();
 
-/** Resolves when every worker thread started so far has exited. */
+/** Resolves after the worker threads started so far exit and finish scratch cleanup. */
 export function backupThreadIdle(): Promise<void> { return previousThread; }
 
 function failureError(reply: z.infer<typeof FailedReplySchema>): Error {
@@ -59,7 +60,7 @@ function runOnWorkerThread<Value>(request: unknown, signal: AbortSignal | undefi
     const fail = (error: Error) => { if (!settled) { settled = true; reject(error); } };
     const stopWhileQueued = () => fail(abortReason(signal));
     if (signal?.aborted === true) stopWhileQueued(); else signal?.addEventListener("abort", stopWhileQueued, { once: true });
-    void turn.then(() => {
+    void turn.then(async () => {
       signal?.removeEventListener("abort", stopWhileQueued);
       if (settled) { releaseTurn(); return; }
       let scratchDirectory: string, worker: Worker;
@@ -71,7 +72,12 @@ function runOnWorkerThread<Value>(request: unknown, signal: AbortSignal | undefi
           // os.tmpdir() reads the thread's own environment, so the snapshot copy lands in the folder removed on its exit.
           env: { ...workerBootstrapEnvironment(), TMPDIR: scratchDirectory, TMP: scratchDirectory, TEMP: scratchDirectory },
           workerData: request });
-      } catch (error) { removeScratchDirectory(scratchDirectory); releaseTurn(); fail(new Error("backup-inspection-worker-failed", { cause: error })); return; }
+      } catch (error) {
+        await removeScratchDirectory(scratchDirectory);
+        releaseTurn();
+        fail(new Error("backup-inspection-worker-failed", { cause: error }));
+        return;
+      }
       const stop = () => { fail(abortReason(signal)); void worker.terminate(); };
       signal?.addEventListener("abort", stop, { once: true });
       worker.once("message", (message: unknown) => {
@@ -85,9 +91,10 @@ function runOnWorkerThread<Value>(request: unknown, signal: AbortSignal | undefi
       worker.once("messageerror", error => fail(new Error("backup-inspection-worker-failed", { cause: error })));
       worker.once("exit", exitCode => {
         signal?.removeEventListener("abort", stop);
-        removeScratchDirectory(scratchDirectory);
-        releaseTurn();
-        fail(new Error(`backup-inspection-worker-exited: ${String(exitCode)}`));
+        void removeScratchDirectory(scratchDirectory).then(() => {
+          releaseTurn();
+          fail(new Error(`backup-inspection-worker-exited: ${String(exitCode)}`));
+        });
       });
     });
   });
@@ -160,8 +167,8 @@ function createScratchDirectory(): string {
   return directory;
 }
 
-function removeScratchDirectory(directory: string): void {
-  try { rmSync(directory, { recursive: true, force: true, maxRetries: 3 }); }
+async function removeScratchDirectory(directory: string): Promise<void> {
+  try { await rm(directory, { recursive: true, force: true, maxRetries: 3 }); }
   catch { /* The next start's sweep removes a folder this process could not. */ }
 }
 

@@ -108,6 +108,7 @@ export function createCopySamples(input: Readonly<{ stored: StoredSamples; realS
   const refuseSource = (runId: RunId | undefined) => { if (runId !== undefined && runIds.has(runId)) throw new SampleRunRefusedError(); };
   const planSource = (input: unknown) => RerunPlanSourceSchema.safeParse(input).data?.rerunSource.runId;
   return Object.freeze({
+    dayFacts: (): readonly Pick<Sample, "slot" | "leases">[] => [...samples.values()].map(({ slot, leases }) => ({ slot, leases })),
     slots: (): readonly WorkerSlotRecord[] => [...samples.values()].map(sample => sample.slot),
     views: (): readonly WorkerMemberView[] => [...samples.values()].map(sample => sample.view),
     leases: (workerId: string) => samples.get(WorkerIdSchema.parse(workerId))?.leases,

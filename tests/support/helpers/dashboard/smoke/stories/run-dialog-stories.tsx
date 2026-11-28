@@ -87,7 +87,7 @@ const STAGE = {
   StartSteps: stage("A customized start's Steps, the last page", reading(PASS), "Start", {
     then: async page => { await customizeSteps(page); await press(page, "Next"); await at(page, "Steps"); } }),
   RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
-  CancelledSteps: stage("A Work-Study run cancelled after it filed: every served step is required, so all run again", writeRerunClient(), "Steps", { rerun: true, ...WORK_STUDY_RERUN }),
+  CancelledSteps: stage("A Work-Study run cancelled after it filed, with both switches on by default", writeRerunClient(), "Steps", { rerun: true, ...WORK_STUDY_RERUN }),
   CancelledReceipts: stage("That rerun's Start, naming the receipt the source already filed", writeRerunClient(), "Start", { rerun: true, ...WORK_STUDY_RERUN }),
   CancelledWarning: stage("That rerun warned before its filing step files again", writeRerunClient({ previewRerunWarnings: async () => runDialogWriteRerunWarning() }), "Start", { rerun: true, ...WORK_STUDY_RERUN,
     then: async page => { await press(page, "Start live run"); await dialog(page).getByText("already submitted").waitFor(); } }),
@@ -185,7 +185,7 @@ const PDF = {
 } satisfies Record<PdfInputState, Story>;
 
 /** What the dialog shows when the reference spreadsheets a workflow reads cannot be read or checked. */
-type ReferenceState = "none-added" | "pdfs-none-added" | "loading" | "catalog-failed" | "compatibility-failed" | "unchecked" | "check-loading" | "check-failed" | "chosen" | "spreadsheet-menu" | "worksheet-menu" | "one-of-several" | "three-worksheets" | "several-menu" | "start";
+type ReferenceState = "none-added" | "pdfs-none-added" | "loading" | "catalog-failed" | "compatibility-failed" | "unchecked" | "check-loading" | "check-failed" | "chosen" | "spreadsheet-menu" | "long-name-menu" | "worksheet-menu" | "one-of-several" | "three-worksheets" | "several-menu" | "start";
 const unreadable = () => { throw new Error("The spreadsheets could not be read."); };
 const reference = (title: string, served: Partial<DashboardClient>, catalog = RUN_DIALOG_REFERENCE_CATALOG, extra: Partial<Story> & SceneOptions = {}): Story =>
   stage(title, () => runDialogClient({ workbookTypes: async () => [], ...served }), "Input", { catalog, ...extra });
@@ -202,6 +202,7 @@ const chooseThree = async (page: Page) => { await chooseRoster(page);
   await dialog(page).getByRole("button", { name: /worksheets, /u }).click(); await worksheetSearch(page).waitFor();
   for (const name of ["Nov. 16", "Nov 9"]) await page.getByRole("menuitemcheckbox", { name }).click(); };
 const several = (title: string, then: (page: Page) => Promise<void>) => reference(title, runDialogReferenceReads(SHEETS, "onboarding-roster", RUN_DIALOG_CRM_SHAPE), RUN_DIALOG_SEVERAL_SHEETS_CATALOG, { then, workflowId: RUN_DIALOG_CRM });
+export const LONG_NAME = "Roster of all onboarding and separation candidates for the fall quarter 2026 final reviewed edition v3 (do not edit).xlsx";
 const REFERENCE = {
   "none-added": reference("The reference field before any spreadsheet is picked", RUN_DIALOG_REFERENCE_READS),
   "pdfs-none-added": reference("PDFs chosen, the reference field still empty", { ...RUN_DIALOG_REFERENCE_READS, uploadOcrSource: runDialogUpload }, RUN_DIALOG_PDF_REFERENCE_CATALOG, { then: afterAttach(pdfFile("first.pdf"), pdfFile("second.pdf", "%PDF-1.4 two")) }),
@@ -213,6 +214,8 @@ const REFERENCE = {
   "check-failed": reference("The optional check's list could not be read", { workbookCatalog: async () => unreadable(), workbookCompatibility: async () => ({ workflows: [], libraries: [] }) }, RUN_DIALOG_CHECK_CATALOG),
   chosen: reference("A saved spreadsheet chosen for the reference field", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: chooseRoster }),
   "spreadsheet-menu": reference("The Add spreadsheet menu open, searching Roster", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { knownFailures: { "named-and-focusable": "#532" }, then: async page => {
+    await dialog(page).getByRole("button", { name: /Add spreadsheet|Change spreadsheet/u }).click(); await page.getByRole("searchbox", { name: "Find a spreadsheet" }).fill("Roster"); await page.getByRole("menuitem").filter({ hasText: "Roster" }).first().waitFor(); } }),
+  "long-name-menu": reference("The Add spreadsheet menu open on a spreadsheet with a very long name", runDialogReferenceReads(["First"], "roster-type", undefined, LONG_NAME), RUN_DIALOG_REFERENCE_CATALOG, { knownFailures: { "named-and-focusable": "#532" }, then: async page => {
     await dialog(page).getByRole("button", { name: /Add spreadsheet|Change spreadsheet/u }).click(); await page.getByRole("searchbox", { name: "Find a spreadsheet" }).fill("Roster"); await page.getByRole("menuitem").filter({ hasText: "Roster" }).first().waitFor(); } }),
   "worksheet-menu": reference("The chosen spreadsheet's worksheet menu open", runDialogReferenceReads(SHEETS), RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page);
     await dialog(page).getByRole("button", { name: /worksheet, /u }).click(); await page.getByRole("searchbox", { name: "Find a worksheet" }).waitFor(); } }),

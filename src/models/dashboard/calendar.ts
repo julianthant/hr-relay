@@ -4,6 +4,7 @@ import { DayCountWireSchema } from "./projection.js";
 export const CalendarMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/u);
 export const CalendarQuerySchema = z.strictObject({ month: CalendarMonthSchema, day: z.iso.date() });
 export type CalendarQuery = z.infer<typeof CalendarQuerySchema>;
+export const CalendarStoreQuerySchema = CalendarQuerySchema.extend({ today: z.iso.date() });
 
 /** Bounded availability, separate from the selected day's snapshot counts. */
 export const CalendarWireSchema = z.strictObject({
