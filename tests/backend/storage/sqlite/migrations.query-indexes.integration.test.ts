@@ -4,7 +4,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { applyAuthorityMigrationsAfter } from "../../../../src/backend/storage/sqlite/authority-upgrades.js";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-inspection.js";
-import { ASSISTANT_PHASE_ONE_TABLES } from "../../../../src/models/config/authority.js";
+import { ASSISTANT_PHASE_ONE_TABLES, RUN_SEARCH_FTS_TABLES } from "../../../../src/models/config/authority.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, LIST_INDEXES, QUERY_INDEXES, QUERY_INDEX_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { restoreSchema36QueryIndexes } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
@@ -37,9 +37,9 @@ function migrateTo36(database: DatabaseSync): void {
 }
 
 describe("query index migration 37", () => {
-  it("is schema version 37, under the current schema 45, and changes no table", () => {
+  it("is schema version 37, under the current schema 48, and changes no table", () => {
     assert.equal(QUERY_INDEX_SCHEMA_VERSION, 37);
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 45);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 48);
     assert.deepEqual(migrationTableNames(37), migrationTableNames(36));
     assert.deepEqual(auditMigrationTableCoverage(), []);
   });
@@ -52,8 +52,9 @@ describe("query index migration 37", () => {
       assert.ok(prior.some(object => object.name === "checkpoints_replay_idx"));
       migrateTo36(database);
       const after = schemaObjects(database);
-      const laterObjectChanges = new Set(["delegation_dependencies", "run_search", "assistant_messages_settle_only"]);
-      const laterTables = new Set(["workbook_payloads", "debug_events", ...ASSISTANT_PHASE_ONE_TABLES]);
+      const laterObjectChanges = new Set(["delegation_dependencies", "run_search", "assistant_messages_settle_only",
+        "run_search_fts_insert", "run_search_fts_delete", "run_search_fts_update"]);
+      const laterTables = new Set(["workbook_payloads", "debug_events", ...ASSISTANT_PHASE_ONE_TABLES, "assistant_applied_edits", ...RUN_SEARCH_FTS_TABLES]);
       assert.deepEqual(after.filter(object => !(object.name in QUERY_INDEXES) && !(object.name in LIST_INDEXES)
         && !laterObjectChanges.has(object.name) && !laterTables.has(object.tbl_name)),
         prior.filter(object => object.name !== "checkpoints_replay_idx" && !laterObjectChanges.has(object.name)));

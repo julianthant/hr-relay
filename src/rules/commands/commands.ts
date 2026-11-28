@@ -628,7 +628,7 @@ export const CommandAuditRecordSchema = z.strictObject({
     return;
   }
   const intent = audit.writeResolution;
-  if (request.type === "recheck-write") {
+  if (request.type === "recheck-write" || intent?.status === "parked") {
     if (intent?.status !== "parked" || intent.recheck?.commandId !== request.commandId
       || intent.recheck.auditId !== audit.auditId || intent.recheck.requestedAt !== audit.completedAt) {
       context.addIssue({ code: "custom", path: ["writeResolution"], message: "applied recheck requires its immutable request acknowledgement" });

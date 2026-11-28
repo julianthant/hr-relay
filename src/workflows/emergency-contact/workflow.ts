@@ -8,6 +8,7 @@ import { PositiveIntSchema } from "../../rules/identity/ids.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { EMERGENCY_CONTACT_SCENARIOS } from "../emergency-contact-member/workflow.js";
 import { REFERENCE_CHECK } from "../../models/processing/workbooks/verify-person.js";
+import { usesOcrProvider } from "../../models/workflows/ocr/input.js";
 
 const UNNAMED_PDF_TITLE = "Emergency Contact PDF";
 
@@ -16,6 +17,7 @@ export const emergencyContactWorkflow = defineWorkflow({
   summary: "Reads and releases a PDF, then delegates exactly its approved records for primary contact previews.",
   requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] }, workbookCheck: REFERENCE_CHECK, input: EmergencyContactInputSchema, canonicalInput: EmergencyContactCanonicalInput,
   inputSubject: "document", surface: { shape: "operation" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
+  requiresOcrProvider: usesOcrProvider,
   capabilities: { review: false, editData: false, singleAcquisitionPerSystemPerClaim: true },
   surfaces: { uploadRun: { title: { segments: [{ kind: "literal", text: "Emergency Contact PDFs" }] },
     fields: [{ kind: "select", field: "onbaseFiling", label: "File to OnBase", required: true, options: [{ value: "file", label: "File" }, { value: "skip", label: "Do not file" }] },
@@ -33,11 +35,14 @@ export const emergencyContactWorkflow = defineWorkflow({
     { nodeId: "members", purpose: "Delegate the exact approved record order to Emergency Contact members." },
   ],
   rows: [
+    { key: "ocr-source-pages", label: "Prepare source pages", members: [{ workflow: "ocr", step: "source-pages" }], target: { workflow: "ocr", step: "source-pages" } },
     { key: "read-emergency-contact", label: "Read emergency contact", members: [{ step: "read-document", nodes: ["read-document"] },
-      { workflow: "ocr", step: "source-pages" }, { workflow: "ocr", step: "page-readings" }] },
+      { workflow: "ocr", step: "page-readings" }], target: { workflow: "ocr", step: "page-readings" } },
+    { key: "ocr-group-records", label: "Group records for review", members: [{ workflow: "ocr", step: "review-records" }], target: { workflow: "ocr", step: "review-records" } },
     { key: "match-extracted-people", label: "Match extracted people", members: [{ step: "read-document", nodes: ["approved-records"] },
-      { workflow: "ocr", step: "review-records" }, { workflow: "ocr", step: "identity-lookups" }, { workflow: "ocr", step: "signer-lookups" }] },
-    { key: "review-extracted-records", label: "Review extracted records", members: [{ workflow: "ocr", step: "approval" }] },
+      { workflow: "ocr", step: "identity-lookups" }], target: { workflow: "ocr", step: "identity-lookups" } },
+    { key: "ocr-signer-lookups", label: "Look up official signers", members: [{ workflow: "ocr", step: "signer-lookups" }], target: { workflow: "ocr", step: "signer-lookups" } },
+    { key: "review-extracted-records", label: "Review extracted records", members: [{ workflow: "ocr", step: "approval" }], target: { workflow: "ocr", step: "approval" } },
     { key: "read-existing-contacts", label: "Read existing contacts", members: [{ workflow: "emergency-contact-member", step: "contact-plan" },
       { workflow: "emergency-contact-member", step: "reference-check" }] },
     { key: "fill-emergency-contact", label: "Fill emergency contact", members: [{ workflow: "emergency-contact-member", step: "contact-preview", phase: "prepare" }] },

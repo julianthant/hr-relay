@@ -15,18 +15,18 @@ afterEach(() => { act(() => root?.unmount()); host?.remove(); root = undefined; 
 const SAVED_PASSWORD = "saved-placeholder-secret";
 const calls: string[] = [];
 type Draft = Partial<Record<"ucpathUserId" | "ucpathPassword", { kind: "set"; raw: string }>>;
-function fakeEditor(draft: Draft = {}): never {
+function fakeEditor(draft: Draft = {}, failedNames: string[] = []): never {
   return {
     editor: { state: "loaded", document: { protectedSettings: { state: "available", rows: [{ name: "ucpathUserId", label: "UCPath user ID", purpose: "p" }, { name: "ucpathPassword", label: "UCPath password", purpose: "p" }],
       entries: { ucpathUserId: { value: "ucp-user", valueId: "a" }, ucpathPassword: { value: SAVED_PASSWORD, valueId: "b" } } } } },
     readProblem: undefined,
-    protectedEditor: { locked: false, draft, errors: {}, setExplicitSave: () => {}, reset: (name: string) => { calls.push(`reset ${name}`); }, submit: () => { calls.push("submit"); }, update: () => {}, clear: () => {} },
+    protectedEditor: { locked: false, savingNames: [], failedNames, save: { state: "idle" }, draft, errors: {}, setExplicitSave: () => {}, reset: (name: string) => { calls.push(`reset ${name}`); }, submit: () => { calls.push("submit"); }, update: () => {}, clear: () => {} },
   } as never;
 }
-async function mount(name: "ucpathUserId" | "ucpathPassword", label: string, thing: string, draft: Draft = {}): Promise<void> {
+async function mount(name: "ucpathUserId" | "ucpathPassword", label: string, thing: string, draft: Draft = {}, failedNames: string[] = []): Promise<void> {
   calls.length = 0;
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(ToastProvider, { children: createElement(ProtectedPencilRow, { editor: fakeEditor(draft), name, label, thing, description: "d" }) })));
+  await act(async () => root?.render(createElement(ToastProvider, { children: createElement(ProtectedPencilRow, { editor: fakeEditor(draft, failedNames), name, label, thing, description: "d" }) })));
 }
 const dialog = (): HTMLElement | null => document.body.querySelector<HTMLElement>('[role="dialog"]');
 const press = (name: string) => act(async () => { [...(dialog()?.querySelectorAll("button") ?? [])].find(item => item.textContent === name)?.click(); });
@@ -38,6 +38,14 @@ describe("Settings > Account UCPath rows", () => {
     await mount("ucpathUserId", "Username", "UCPath username");
     assert.match(host?.textContent ?? "", /Usernameucp-user/u);
     assert.ok(pencil("Edit UCPath username"));
+  });
+
+  it("shows the typed username while a save waits, and the served one after it fails", async () => {
+    await mount("ucpathUserId", "Username", "UCPath username", { ucpathUserId: { kind: "set", raw: "typed-user" } });
+    assert.match(host?.textContent ?? "", /Usernametyped-user/u);
+    act(() => root?.unmount()); host?.remove();
+    await mount("ucpathUserId", "Username", "UCPath username", { ucpathUserId: { kind: "set", raw: "typed-user" } }, ["ucpathUserId"]);
+    assert.match(host?.textContent ?? "", /Usernameucp-user/u);
   });
 
   it("opens Edit UCPath username with the saved username, Cancel and Save", async () => {

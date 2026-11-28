@@ -8,7 +8,7 @@ import { setSpreadsheetColumnField, spreadsheetHeaderRow } from '../spreadsheet-
 import { formatDayTime } from '../../../lib/date-format.js';
 
 export interface Field { readonly key: string; readonly label: string }
-export interface VersionEntry { readonly id: string; readonly n: number; readonly at: string; readonly note: string }
+export interface VersionEntry { readonly id: string; readonly n: number; readonly at: string; readonly name: string; readonly inUse: boolean }
 /** One library entry as the list and detail pages show it. */
 export interface Sheet {
   readonly id: string; readonly name: string; readonly sharePoint: string | null;
@@ -16,7 +16,7 @@ export interface Sheet {
   readonly workflow?: string; readonly run?: { readonly id: string; readonly day: string };
   /** Served on SharePoint-linked entries only. */
   readonly sync?: WorkbookLibrarySyncStatus;
-  readonly updatedAt: string; readonly version: number; readonly currentVersionId: string; readonly versions: readonly VersionEntry[];
+  readonly updatedAt: string; readonly version: number; readonly currentVersionId: string; readonly versionName: string; readonly versions: readonly VersionEntry[];
 }
 /** A picked file before it joins the library; `id` is unique to one pick for the session, and `document` is absent while the file is read. */
 export interface ImportDraft { readonly id: string; readonly name: string; readonly tags: readonly string[]; readonly document?: EditableWorkbook }
@@ -27,13 +27,18 @@ export interface Dataset { readonly headers: readonly string[]; readonly rows: r
 /** "2026-11-08T14:32:00Z" → "Nov 8, 2:32 PM" in the operator's time zone. */
 export const stamp = (iso: string): string => formatDayTime(iso);
 
-export const sheetOf = (entry: WorkbookLibraryEntry): Sheet => ({
+export const sheetOf = (entry: WorkbookLibraryEntry): Sheet => {
+  const versions = entry.state.versions.map(version => ({ id: version.id, n: version.version, at: version.savedAt, name: version.name,
+    inUse: version.id === entry.state.selectedVersionId || (entry.heldVersionIds?.includes(version.id) ?? false),
+  })).toSorted((a, b) => b.n - a.n);
+  return {
   id: entry.libraryId, name: entry.name, sharePoint: entry.metadata.sharePoint?.url ?? null, pinned: entry.state.pinned, tags: entry.state.tags,
   workflow: entry.state.origin.kind === 'workflow' ? entry.state.origin.workflowLabel : undefined,
   run: entry.state.origin.kind === 'workflow' ? { id: entry.state.origin.runId, day: entry.state.origin.partitionDay } : undefined,
   sync: entry.sync, updatedAt: entry.updatedAt, version: entry.state.versions.find(version => version.id === entry.state.selectedVersionId)?.version ?? entry.version, currentVersionId: entry.state.selectedVersionId,
-  versions: entry.state.versions.map(version => ({ id: version.id, n: version.version, at: version.savedAt, note: version.name })).toSorted((a, b) => b.n - a.n),
-});
+    versions, versionName: versions.find(version => version.id === entry.state.selectedVersionId)?.name ?? '',
+  };
+};
 
 const SYNC_WHY = ['WORKBOOK_SYNC_FAILED', 'WORKBOOK_SYNC_NOT_APPLIED', 'WORKBOOK_VERSION_CONFLICT', 'WORKBOOK_METADATA_UNSUPPORTED'] as const;
 /** The plain sentence for why the last sync failed, or undefined when it did not fail; a code outside the sync set gets the generic sync sentence. */

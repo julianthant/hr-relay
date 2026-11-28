@@ -290,10 +290,30 @@ function subjectEvidence(evidence: z.infer<typeof SubjectEvidenceWireSchema>) {
   return { kind: evidence.kind, digest: evidence.digest };
 }
 
-/** Catalog sentence for the code. Protected input drops raw diagnostic text. */
+const CRM_SIGN_IN_STEP_SENTENCES = {
+  "navigate-login-entry": "Relay could not open the CRM sign-in page.",
+  "campus-discovery": "Relay could not verify the campus sign-in route for CRM.",
+  "sso-form": "Relay could not verify the UCSD sign-in form for CRM.",
+  "credential-fill": "Relay could not enter the stored credentials into the verified CRM sign-in form.",
+  "sso-submit": "Relay could not submit the verified UCSD sign-in form for CRM.",
+  "duo-clearance": "Relay could not verify that CRM sign-in finished after credential submission.",
+  "verify-landing": "Relay could not verify the signed-in CRM page.",
+} satisfies Record<SignInStep, string>;
+
+const CRM_LANDING_CHECK_SENTENCES = {
+  "application-route": "Relay could not verify that CRM reached a stable signed-in page.",
+  "positive-evidence": "Relay could not verify a CRM session cookie after sign-in.",
+  "sign-in-form-absent": "Relay could not confirm that the CRM sign-in form cleared.",
+  "evidence-system": CRM_SIGN_IN_STEP_SENTENCES["verify-landing"],
+} satisfies Record<SignInCheck, string>;
+
+/** Operator-safe sentence for the recorded failure. Protected input drops raw diagnostic text. */
 export function projectFailureForOperator(failureInput: unknown, protectedInput = false): FailureRecord {
   const failure = FailureRecordSchema.parse(failureInput);
-  const summary = operatorFailureSentence(failure.code);
+  const refusal = failure.debug?.signInRefusal;
+  const summary = failure.code === "CRM_SIGN_IN_FAILED" && refusal?.system === "crm"
+    ? refusal.check === undefined ? CRM_SIGN_IN_STEP_SENTENCES[refusal.step] : CRM_LANDING_CHECK_SENTENCES[refusal.check]
+    : operatorFailureSentence(failure.code);
   if (!protectedInput) return FailureRecordSchema.parse({ ...failure, summary });
   const subject = failure.subject === undefined ? undefined : {
     ...(failure.subject.expected === undefined ? {} : { expected: subjectEvidence(failure.subject.expected) }),

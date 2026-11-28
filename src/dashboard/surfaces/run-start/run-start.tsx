@@ -33,7 +33,7 @@ import { SYSTEM_NAME } from "../shared/status/system-chip-model.js";
 import { planRefusalNotice, forcedStepOmissions, handOffStepOmissions, initialStepOmissionDraft, typedInputDefaults, typedInputMode, typedDateControls, usDateText, typedControlAvailable } from "./run-start-model.js";
 import { includedRowCount, rowFieldsOpen, rowOpenFold, startRowsOf, stepEntries, type OpenStepRow, type StartStep, type StepRow } from "./run-steps-model.js";
 import { reconcileRunStartStage, runStartStages } from "./run-start-timeline.js";
-import { pdfRunOcrFooter, pdfRunSelectValue, pdfRunSwitchValue, restorePdfRun, usePdfRunInput } from "./run-start-pdfs.js";
+import { pdfRunOcrFooter, pdfRunReadingMode, pdfRunSelectValue, pdfRunSwitchValue, restorePdfRun, usePdfRunInput } from "./run-start-pdfs.js";
 import { RunStartInput } from "./run-start-input.js";
 import { RunStartSteps } from "./run-start-steps.js";
 import { runStartGates, runStartPlanRequest, runStartRequestFingerprint, useRunStartInputPreview } from "./run-start-request-model.js";
@@ -97,6 +97,9 @@ const NO_WORKFLOW_SELECTED = Object.freeze({
 
 /** The original input cannot be sent again: a spreadsheet, worksheet, row or PDF of the source run is gone or unreadable, or its value was protected. */
 const RERUN_INPUT_GONE = formatErrorCatalogFailure(createErrorCatalogFailure("RERUN_SOURCE_INPUT_PROTECTED", {})).text;
+
+const offersOcrReadings = ({ form }: Pick<StepRow, "form">): boolean => form?.fields.some(field =>
+  field.kind === "text-list" && field.format === "ocr-document-readings") === true;
 
 /** Restore intake focus to its launcher; it is the control that opened the workspace. */
 
@@ -232,13 +235,12 @@ export function RunStartDialog({
   const handOffByStep = useMemo(() => handOffStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
   const rows = useMemo(() => startRowsOf({ steps, rows: workflow?.rows }), [steps, workflow?.rows]);
   const inputDriven = useCallback((row: StepRow): boolean => launchDraft.rowInputDriven(workflow, typedValues, row), [workflow, typedValues]);
-  const openRows: readonly OpenStepRow[] = useMemo(() => customizeSteps && !draft.interruptedRerun ? rows.flatMap(row => {
+  const openRowDrafts = useMemo(() => customizeSteps && !draft.interruptedRerun ? rows.flatMap(row => {
     if (row.form === undefined || inputDriven(row) || !rowFieldsOpen(row, selectedStepKeys, manualRows)) return [];
-    return [rowOpenFold(row, row.form, stepDrafts[row.key] ?? initialStepOmissionDraft(row.form))];
+    return [{ row, form: row.form, draft: stepDrafts[row.key] ?? initialStepOmissionDraft(row.form) }];
   }) : [], [customizeSteps, rows, selectedStepKeys, manualRows, stepDrafts, inputDriven, draft.interruptedRerun]);
-  const stepOmissions = useMemo(() => stepEntries(openRows), [openRows]);
   const requestFingerprint = runStartRequestFingerprint(draft, spreadsheets, savedRows, pdfInput, rerunSource, workflowId, typedValues,
-    customizeSteps, dryRun, captureBrowserScreenshots, selectedStepKeys, openRows);
+    customizeSteps, dryRun, captureBrowserScreenshots, selectedStepKeys, openRowDrafts);
   const [requestProblem, setRequestProblem] = useState<string | null>(null);
   const suppressStage = useRef(false);
   /** `submit` as last drawn: the one way on from this stage, for the footer button, the Enter key and a clean plan's own start. Null when refused. */
@@ -418,7 +420,10 @@ export function RunStartDialog({
     }
   }, [catalog, selectWorkflow, send, sending]);
 
-  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Start" || (!isRerun && currentStage === "Steps"), open);
+  const typedOcr = openRowDrafts.some(offersOcrReadings);
+  const ocrChoicePending = !isRerun && customizeSteps && currentStage === "Start" && rows.some(offersOcrReadings);
+  const requiresOcr = !typedOcr && !ocrChoicePending && pdfSurface !== undefined && pdfRunReadingMode(pdfSurface, pdfInput.draft, pdfInput.picks) === "subscription";
+  const checks = useRunChecks(client, workflow?.workflowId, open && !hidden, currentStage === "Start" || (!isRerun && currentStage === "Steps"), open, requiresOcr);
   /** The check whose Fix opened Settings; once the checks are re-read after the return, its row takes focus again. */
   const fixedCheck = useRef<{ check: string; reread: boolean } | null>(null);
   const fixCheck = (item: RunCheckRow) => {
@@ -442,6 +447,10 @@ export function RunStartDialog({
   const typedInputRef = useRef<HTMLTextAreaElement>(null);
 
   const preview = useRunStartInputPreview(draft, savedRows, inputRun, typedValues, snapshot, rerunSource, pdfSurface, pdfInput);
+  const openRows: readonly OpenStepRow[] = useMemo(() => openRowDrafts.map(({ row, form, draft }) =>
+    rowOpenFold(row, form, draft, { submissions: preview.submissions })),
+    [openRowDrafts, preview.submissions]);
+  const stepOmissions = useMemo(() => stepEntries(openRows), [openRows]);
 
   /** Priority starts off when more than one person is entered, until the operator picks it. */
   const priority = launchDraft.effectivePriority(priorityChoice, preview.entries.length);
@@ -657,7 +666,7 @@ export function RunStartDialog({
               items={[
                 workflow?.label,
                 workflow === undefined ? undefined : `${includedRowCount(rows, selectedStepKeys, manualRows, snapshot)} of ${rows.length} steps`,
-                pdfSurface === undefined ? undefined : pdfRunOcrFooter(pdfSurface, pdfInput.draft, pdfInput.picks),
+                typedOcr ? "Manual reading" : pdfSurface === undefined ? undefined : pdfRunOcrFooter(pdfSurface, pdfInput.draft, pdfInput.picks),
                 priority === "interactive" ? "Priority" : undefined,
               ].filter((item): item is string => item !== undefined)}
             />}

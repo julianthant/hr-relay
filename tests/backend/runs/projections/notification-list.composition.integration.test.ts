@@ -229,7 +229,7 @@ it("refreshes a streamed storage notice when only its concern's health clears", 
     clock.advanceWall(1000);
     health(false);
     assert.equal(routes.snapshot("local-operator")[0].kind, "notification", "a GET may read the new state before the stream polls");
-    routes.pollList();
+    await routes.pollList();
     assert.equal(connection.pending, 1);
     const change = await connection.next();
     assert.ok(change?.type === "change" && change.day === undefined);
@@ -237,13 +237,13 @@ it("refreshes a streamed storage notice when only its concern's health clears", 
 
     health(true);
     listFailed = true;
-    routes.pollList();
+    await routes.pollList();
     assert.equal(reportListReadFailure.mock.calls.length, 1);
     const unavailable = await connection.next();
     assert.ok(unavailable?.type === "change");
     assert.equal(unavailable.rows.find(row => row.model === "notification-list")?.value.state, "unavailable");
     listFailed = false;
-    routes.pollList();
+    await routes.pollList();
     assert.deepEqual(standing(await connection.next()), [true]);
     connection.close();
   } finally {

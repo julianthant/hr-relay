@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CrmDocumentSubjectSchema } from "../../systems/crm/documents.js";
 import { defineCanonicalInput } from "../../workflow/canonical-input.js";
-import { InputParserSpecSchema } from "../../workflow/ingress.js";
+import type { InputParserSpec } from "../../workflow/ingress.js";
 
 const people = CrmDocumentSubjectSchema.array().min(1).refine(values =>
   new Set(values.map(subject => `${subject.kind}:${subject.value.toLowerCase()}`)).size === values.length, "CRM people must be unique")
@@ -14,4 +14,4 @@ export const CrmDocDownloadCanonicalInput = defineCanonicalInput(CrmDocDownloadI
   { people: "fixture@example.test; second@example.test" },
 ]);
 export type CrmDocDownloadInputValue = z.output<typeof CrmDocDownloadInput>;
-export const CRM_DOCUMENT_INPUT_PARSER = InputParserSpecSchema.parse({ split: { kind: "whole-text" }, rules: [{ when: { kind: "otherwise" }, emit: "people" }] });
+export const CRM_DOCUMENT_INPUT_PARSER = { split: { kind: "whole-text" }, rules: [{ when: { kind: "otherwise" }, emit: "people" }] } satisfies InputParserSpec;

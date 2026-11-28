@@ -123,7 +123,8 @@ async function fixture(changeCheckpoint?: (row: RunCheckpointRecord) => RunCheck
     const sequencer = createWriteSequencer({ authority: { authority: overrides,
       withAuthorityTransaction: work => h.database.withAuthorityTransaction(work),
       commitWriteAttempt: h.database.commitWriteAttempt.bind(h.database),
-      commitRecheckedParkedWrite: h.database.commitRecheckedParkedWrite.bind(h.database) }, lifecycle: testRunLifecycle(h.database, h.clock),
+      commitRecheckedParkedWrite: h.database.commitRecheckedParkedWrite.bind(h.database),
+      settleResolvedParkedAbsence: h.database.settleResolvedParkedAbsence.bind(h.database) }, lifecycle: testRunLifecycle(h.database, h.clock),
       stores: buildWriteFixtureRegistry(h.world), sessions: h.manager, emitter: h.emitter.emitter,
       clock: h.clock, ids: h.ids, scheduler: h.scheduler, taskDeadlineMs: 60_000, operator: "local-operator",
       log: recordingLogger().log  });

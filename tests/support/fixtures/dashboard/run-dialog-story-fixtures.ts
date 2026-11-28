@@ -18,6 +18,7 @@ import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { CommandResultSchema, type CommandResult } from "../../../../src/rules/commands/commands.js";
 import intakeSnapshot from "./run-dialog-intake-sessions.json" with { type: "json" };
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../../src/models/intake/wire.js";
+import { FIXTURE_CHATGPT_OCR_AVAILABLE } from "./fixture-chatgpt-account.js";
 import bootstrapSnapshot from "./run-dialog-bootstrap.json" with { type: "json" };
 import workStudySnapshot from "./run-dialog-work-study.json" with { type: "json" };
 import separationsSnapshot from "./run-dialog-separations.json" with { type: "json" };
@@ -64,6 +65,9 @@ export const RUN_DIALOG_CRM = "crm-doc-download";
 export const RUN_DIALOG_SEVERAL_SHEETS_CATALOG = catalogOf(flow => ({ ...flow, workflowId: RUN_DIALOG_CRM, label: "CRM Document Download", icon: "FileText", code: "cd",
   requiredWorkbookFields: [...CRM_DOCUMENT_ROSTER_FIELDS], workbookReference: { id: ONBOARDING_ROSTER_TYPE_ID, keyFieldId: "email", mode: "keys", writableFields: [] },
   inputRun: flow.inputRun.state === "present" ? { state: "present", surface: { ...flow.inputRun.surface, placeholder: "Enter employee IDs or emails for one batch" } } : flow.inputRun }));
+/** The entry as a workflow that starts one run per saved roster row. */
+export const RUN_DIALOG_SAVED_ROWS_CATALOG = catalogOf(flow => ({ ...flow, requiredWorkbookFields: ["eid"], workbookReference: { id: "roster-type", keyFieldId: "eid", mode: "keys", writableFields: [] },
+  inputRun: flow.inputRun.state === "present" ? { state: "present", surface: { ...flow.inputRun.surface, workbookRows: { typeId: "roster-type", inputField: "eid" } } } : flow.inputRun }));
 /** The entry as a workflow with the optional second check. */
 export const RUN_DIALOG_CHECK_CATALOG = catalogOf(flow => ({ ...flow, workbookCheck: { id: "reference-check", keyFieldId: "eid" } }));
 /** The entry as a PDF workflow: documents in, an OCR switch and a required choice on the Options stage. */
@@ -113,7 +117,7 @@ export const RUN_DIALOG_READY = runDialogReadiness([]);
 
 /** A client that serves only what the story scripts and READY readiness; reaching for anything else fails the story loudly. */
 export function runDialogClient(served: Partial<DashboardClient> = {}): DashboardClient {
-  const methods: Partial<DashboardClient> = { readPreflight: async () => RUN_DIALOG_READY, ...served };
+  const methods: Partial<DashboardClient> = { readPreflight: async () => RUN_DIALOG_READY, checkChatGptAccount: async () => FIXTURE_CHATGPT_OCR_AVAILABLE, ...served };
   return new Proxy(methods, { get(target, property): unknown {
     const impl: unknown = Reflect.get(target, property);
     if (impl === undefined && typeof property === "string" && property !== "then") throw new Error(`the Run dialog story reached for client.${property}, which it does not serve`);
@@ -166,7 +170,7 @@ export function runDialogWriteRerunSnapshot(): RerunValuesResponse {
   } });
 }
 
-/** The repeat warning for that Work-Study source: its required filing step runs again. */
+/** The repeat warning when that Work-Study rerun includes the filing step. */
 export function runDialogWriteRerunWarning(): RerunWarningWire {
   return RerunWarningWireSchema.parse({ workflowId: RUN_DIALOG_WORK_STUDY, rerun: {
     source: { runId: RUN_ID, expectedVersion: 3, intent: "rerun", selectedStepKeys: WORK_STUDY.steps.map(({ key }) => key) },

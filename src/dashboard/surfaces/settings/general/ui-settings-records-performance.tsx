@@ -7,7 +7,7 @@ import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { performancePresentation, performanceSectionGroups, type PerformanceGroup } from "./settings-performance-model.js";
 import { settingNote, settingTitle } from "../settings-presentation.js";
 import { timeoutSetting } from "./settings-timeouts-model.js";
-import { SettingsValueControl } from "../editor/settings-controls.js";
+import { SavingMark, SettingsValueControl } from "../editor/settings-controls.js";
 
 import { SettingsSearchDisclosure } from "../navigation/settings-search-disclosure.js";
 import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
@@ -43,6 +43,7 @@ function PerformanceRow({ editor, leaf }: { editor: Editor; leaf: EditableSettin
       </Field>
       : <div className="settings-performance-fallback"><SettingsValueControl leaf={leaf} operation={operation} error={error} disabled={editor.locked} update={(rawValue, immediate) => editor.update(leaf.path, rawValue, immediate)} />
         </div>}
+    <SavingMark editor={editor} path={leaf.path} />
     {leaf.validity === "unset" && <p className="settings-performance-hazard">Not set</p>}
     {leaf.hazard !== undefined && <p className="settings-performance-hazard">{leaf.hazard}</p>}
   </div>;

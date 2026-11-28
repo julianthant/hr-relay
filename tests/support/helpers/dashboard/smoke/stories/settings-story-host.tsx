@@ -1,6 +1,6 @@
 /** What every Settings story mounts: the real page on the in-page server, the command binding the app gives it, and the toasts
  * the app raises from its save callbacks. */
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { DashboardClientProvider, DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../../../../../../src/dashboard/state/client-context.js";
 import { useToasts } from "../../../../../../src/dashboard/ds/ui.js";
 import { AppearanceSettings } from "../../../../../../src/dashboard/surfaces/settings/general/appearance-settings.js";
@@ -17,6 +17,7 @@ import { LOADING } from "../../../../../../src/dashboard/state/async-resource.js
 import { PersonPreferencesContext } from "../../../../../../src/dashboard/lib/person-preferences.js";
 import { createPersonPreferences } from "../../../../../../src/dashboard/state/person-preferences-model.js";
 import bootstrapJson from "../../../../fixtures/dashboard/settings-story-bootstrap.json" with { type: "json" };
+import { useEditableSettings } from "../../../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { SettingsPage } from "../../../../../../src/dashboard/surfaces/settings/settings.js";
 import type { SettingsStoryServer } from "../../../../fixtures/dashboard/settings-story-fixtures.js";
 import { StoryFrame } from "./story-frame.js";
@@ -97,9 +98,20 @@ export interface SettingsHostProps {
   readonly account?: AccountStub;
   readonly chatGpt?: ChatGptAccountSnapshot;
   readonly deleteAccount?: DeleteAccountPresentation;
+  /** Reads the document again through the page's own read after the first has landed, so the page shows its kept copy over a slow re-read. */
+  readonly rereadOnceLoaded?: boolean;
 }
 
-export function SettingsHost({ server, section, searchTarget, backToRun, account, chatGpt, deleteAccount }: SettingsHostProps) {
+function RereadOnceLoaded() {
+  const settings = useEditableSettings({ actorId: ACTOR, descriptorFingerprint: "d".repeat(64) });
+  const reload = useRef(settings.reload);
+  reload.current = settings.reload;
+  // The first read has answered by then.
+  useEffect(() => { const timer = setTimeout(() => { reload.current(); }, 600); return () => { clearTimeout(timer); }; }, []);
+  return null;
+}
+
+export function SettingsHost({ server, section, searchTarget, backToRun, account, chatGpt, deleteAccount, rereadOnceLoaded }: SettingsHostProps) {
   const port = useMemo(() => chatGpt === undefined ? undefined : chatGptPort(chatGpt), [chatGpt]);
   const page = useMemo(() => accountPageStub(account), [account]);
   const settings = <ToastProviderBridge>{callbacks => <SettingsPage section={section} {...(searchTarget === undefined ? {} : { searchTarget })} {...(backToRun === undefined ? {} : { backToRun })}
@@ -107,5 +119,6 @@ export function SettingsHost({ server, section, searchTarget, backToRun, account
     actorId={ACTOR} profileName="Jordan Lee" descriptorFingerprint={"d".repeat(64)} onSection={noop} onClose={noop} {...callbacks} />}</ToastProviderBridge>;
   return <StoryFrame><DashboardClientProvider client={server.client}><StoryCommandBinding rows={server.rows}>
     {port === undefined ? settings : <ChatGptAccountContext.Provider value={port}>{settings}</ChatGptAccountContext.Provider>}
+    {rereadOnceLoaded === true && <RereadOnceLoaded />}
   </StoryCommandBinding></DashboardClientProvider></StoryFrame>;
 }

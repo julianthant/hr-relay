@@ -191,9 +191,22 @@ it("reopens from the exact verified document while sharing a pending refresh and
   await render(true); const verified = controller?.editor; assert.ok(verified?.state === "loaded");
   await render(false); seen.length = 0; await render(true);
   assert.equal(calls, 2); assert.ok(seen.every(state => state.state === "loaded" && state.document === verified.document));
-  assert.ok(controller); assert.equal(controller.locked, true);
+  assert.ok(controller); assert.equal(controller.locked, false);
   await act(async () => controller?.reload()); assert.equal(calls, 2);
   await act(async () => held.resolve(original)); assert.equal(controller.locked, false);
+});
+
+it("keeps the edit and shows the newly served value when a held re-read lands", async () => {
+  const h = await setup();
+  let release: (() => void) | undefined;
+  h.setRead(() => new Promise(resolve => { release = () => resolve(h.newer); }));
+  await act(async () => h.controller().reload());
+  assert.equal(h.controller().refreshing, true);
+  assert.equal(h.controller().locked, false);
+  await act(async () => h.controller().update("preferences.theme", "light"));
+  await act(async () => { release?.(); });
+  assert.deepEqual(h.controller().draft["preferences.theme"], { kind: "set", raw: "light" });
+  assert.equal(h.controller().leaves.find(leaf => leaf.path === "actor.label")?.effectiveValue, "Newer saved values");
 });
 
 for (const outcome of ["success", "failure"] as const) it(`settles editable and relocation ${outcome} after the production StrictMode effect replay`, async () => {

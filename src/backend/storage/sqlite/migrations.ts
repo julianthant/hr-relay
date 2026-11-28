@@ -9,12 +9,14 @@ import { FAILURE_NOTE_REMOVAL_MIGRATION } from "./failure-note-removal-migration
 import { ASSISTANT_ATTACHMENTS_MIGRATION } from "./assistant-attachments.js";
 import { ASSISTANT_GRANT_RETIREMENT_MIGRATION, RETIRED_ASSISTANT_GRANT_TABLE } from "./assistant-grant-retirement.js";
 import { CHANGE_LOG_MIGRATION, changeLogTriggers } from "./authority-change-log.js";
+import { RUN_SEARCH_FTS_MIGRATION } from "./run-search-fts.js";
 import { DEBUG_EVENTS_MIGRATION } from "./timeline-repository.js";
 import { OCR_REVIEW_MIGRATION } from "./ocr-review.js";
-import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
+import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_MIGRATION, WORKBOOK_VERSION_NAMES_MIGRATION } from "./workbook-library-repository.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { CapturedWorkbookWriteSourceSchema, RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { ASSISTANT_APPLIED_EDITS_STATEMENTS, ASSISTANT_APPLIED_EDITS_TABLE } from "./assistant-applied-edits.js";
 import { ASSISTANT_PHASE_ONE_TABLES, AUTHORITY_DERIVED_TABLES, AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
@@ -48,6 +50,7 @@ export const BUILD_ID_ENVELOPE_SCHEMA_VERSION = 22;
 export const OCR_SEARCH_TERMS_SCHEMA_VERSION = 41;
 export const ASSISTANT_PHASE_ONE_SCHEMA_VERSION = 43;
 export const ASSISTANT_HISTORY_PAYLOAD_SCHEMA_VERSION = 44;
+export const ASSISTANT_APPLIED_EDITS_SCHEMA_VERSION = 47;
 export const OCR_SEARCH_TERMS_BACKFILL_ID = "run-search-ocr-subject-terms:v1";
 export const OCR_SEARCH_TERMS_COLUMN_SQL = "ALTER TABLE run_search ADD COLUMN ocr_subject_terms TEXT";
 /** Migration 22 deletes every run approved before envelopes carried a build id, through the native run deletion. */
@@ -1210,6 +1213,11 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     `CREATE TRIGGER command_audits_immutable BEFORE UPDATE ON command_audits
       BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
   ] },
+  RUN_SEARCH_FTS_MIGRATION,
+  { version: ASSISTANT_APPLIED_EDITS_SCHEMA_VERSION, statements: [
+    ...ASSISTANT_APPLIED_EDITS_STATEMENTS, ...changeLogTriggers(ASSISTANT_APPLIED_EDITS_TABLE),
+  ] },
+  WORKBOOK_VERSION_NAMES_MIGRATION,
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
@@ -1231,6 +1239,7 @@ export function migrationTableNames(version: number): readonly (AuthorityTableNa
     && (version >= 26 || (name !== "assistant_conversations" && name !== "assistant_messages"))
     && (version >= 28 || name !== "assistant_attachments")
     && (version >= ASSISTANT_PHASE_ONE_SCHEMA_VERSION || !ASSISTANT_PHASE_ONE_TABLES.some(table => table === name))
+    && (version >= ASSISTANT_APPLIED_EDITS_SCHEMA_VERSION || name !== ASSISTANT_APPLIED_EDITS_TABLE)
     && (version >= 14 || name !== "exclusive_session_leases")
     && (version >= 17 || !name.startsWith("ocr_"))
     && (version >= 25 || name !== "workflow_workbook_selections")

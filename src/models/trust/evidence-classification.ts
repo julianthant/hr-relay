@@ -628,7 +628,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...ocrArtifactLeaves(workflowInput(id), "document."), ...open(workflowInput(id), "sourcePage", "onbaseFiling"),
   ]),
   ...["emergency-contact-member", "emergency-contact-member-contact-preview", "emergency-contact-member-onbase-filing"].flatMap(id => [
-    ...open(workflowResult(id), "disposition"), ...contactProofLeaves(workflowResult(id), "proof."),
+    ...open(workflowResult(id), "disposition", "step"), ...contactProofLeaves(workflowResult(id), "proof."),
   ]),
   ...contactPlannedOutputLeaves(workflowResult("emergency-contact-member-contact-plan")),
   ...["emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].flatMap(id => [
@@ -673,6 +673,8 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...open(scope, "worksheetCount", "personCount", "documentCount", "collection.artifact.bytes", "collection.artifact.mediaType"),
     ...["collection.artifact.id", "collection.artifact.sha256"].map(path => ({ scope, path, classification: "sensitive-hr", transform: "drop" })),
   ]),
+  ...open(workflowResult("crm-doc-download"), "state", "step"),
+  ...open(workflowResult("crm-doc-download-package-worksheets"), "state", "step"),
   { scope: workflowResult("crm-doc-download-search-records"), path: "records", classification: "direct-identifier", transform: "digest" },
   { scope: workflowResult("crm-doc-download-read-idocs"), path: "people", classification: "direct-identifier", transform: "digest" },
   ...["crm-doc-download", "crm-doc-download-search-records", "crm-doc-download-reference", "crm-doc-download-read-idocs", "crm-doc-download-package-worksheets"].map(id =>
@@ -692,7 +694,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...["ocr", "ocr-source-pages"].flatMap(id => [
     ...ocrArtifactLeaves(workflowInput(id), "document."),
     ...ocrRosterLeaves(workflowInput(id), "roster."),
-    ...open(workflowInput(id), "approval", "formType", "reading.kind", "extractWithOcr"),
+    ...open(workflowInput(id), "approval", "formType", "reading.kind", "extractWithOcr", "assertedPageCount"),
     ...ocrPrivateLeaves(workflowInput(id), "sourceRunId", "fileName", "readingId", "reading.actorId", "reading.assertions"),
   ]),
   ...["ocr-page", "ocr-page-reading"].flatMap(id => [
@@ -704,7 +706,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ]),
   ...ocrResultLeaves(workflowResult("ocr")),
   ...ocrPrivateLeaves(workflowResult("ocr"), "approvedSnapshot", "approvedSnapshot.snapshotId", "approvedSnapshot.sourceRunId", "approvedSnapshot.digest"),
-  ...open(workflowResult("ocr"), "approvedSnapshot.revision"),
+  ...open(workflowResult("ocr"), "approvedSnapshot.revision", "review.state", "review.step"),
   ...ocrManifestHeadLeaves(workflowResult("ocr-source-pages"), "manifest."),
   ...ocrPrivateLeaves(gateResult("ocr", "approve-records"), "snapshotId", "sourceRunId", "digest"),
   ...open(gateResult("ocr", "approve-records"), "revision"),
@@ -736,8 +738,8 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...onboardingPrivateLeaves(gateResult(id, "hire-review"), "emplId", "ruledOut"),
     ...onboardingPlanLeaves(workflowResult(id), "plan."),
     ...onboardingSubjectLeaves(workflowResult(id), "subject."),
-    ...open(workflowResult(id), "state", "i9.state", "hireWrite.state", "hireWrite.disposition",
-      "rosterAccess.state", "rosterAccess.version", "rosterAccess.receiptState", "rosterAccess.code", "rosterAccess.message"),
+    ...open(workflowResult(id), "state", "subject.step", "i9.state", "i9.step", "hireWrite.state", "hireWrite.step", "hireWrite.disposition",
+      "rosterAccess.state", "rosterAccess.step", "rosterAccess.version", "rosterAccess.receiptState", "rosterAccess.code", "rosterAccess.message"),
     ...i9CreationProofLeaves(workflowResult(id), "i9.", true),
     ...hireProofLeaves(workflowResult(id), "hireWrite.receipt."),
     ...onboardingPrivateLeaves(workflowResult(id), "rosterAccess.operationId", "rosterAccess.libraryId"),

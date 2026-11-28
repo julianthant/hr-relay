@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { setImmediate as yieldTurn } from "node:timers/promises";
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { buildActivityReport, failureStepOfTaskSpans, type ActivityReportRow } from "../queries/activity-analytics.js";
@@ -34,7 +35,8 @@ import {
   type ActivityReportWire,
   type ActivityAssistantUsage,
 } from "../../../models/dashboard/activity.js";
-import { DashboardDayPatchSchema } from "../../../models/dashboard/subscription.js";
+import { DashboardDayPatchSchema, QueueDayCountsSchema } from "../../../models/dashboard/subscription.js";
+import { RowRevisionSchema } from "../../../models/dashboard/primitives.js";
 import {
   PositiveIntSchema,
   LocalDateSchema,
@@ -240,21 +242,43 @@ export interface RunQueueProjectionDeps {
 const PublishedSurfaceSchema = z.strictObject({ runId: RunIdSchema, status: QueueStatusSchema, startedAt: IsoInstantSchema });
 export type PublishedSurface = z.infer<typeof PublishedSurfaceSchema>;
 
+const QueueRowBasisSchema = z.strictObject({ runId: RunIdSchema, status: QueueStatusSchema,
+  rowRevision: RowRevisionSchema, fingerprint: z.string().length(64) });
+const QueuePatchBasisSchema = z.strictObject({
+  shared: z.string().length(64),
+  rows: z.array(QueueRowBasisSchema),
+  counts: QueueDayCountsSchema,
+});
+export type QueuePatchBasis = z.infer<typeof QueuePatchBasisSchema>;
+
+function queueFingerprint(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+export function queueRowBasis(row: QueueSurfaceWire): z.infer<typeof QueueRowBasisSchema> {
+  return { runId: row.runId, status: row.status, rowRevision: row.rowRevision, fingerprint: queueFingerprint(row) };
+}
+
 const LaneDayFactsSchema = z.strictObject({
   /** The timeline position the day's fold reached, in the snapshot its rows were read in. */
   position: z.number().int().nonnegative(),
   surfaces: z.array(PublishedSurfaceSchema),
   /** Whether this read built the day, rather than reusing one it had cached. */
   built: z.boolean(),
+  patchBasis: QueuePatchBasisSchema.optional(),
 });
 export type LaneDayFacts = z.infer<typeof LaneDayFactsSchema>;
 /** The day without main's envelope stamp. The lane never names a projection cursor or generation. */
 export type UnstampedDayWire = Omit<DashboardDayWire, "projectionGeneration" | "snapshotCursor">;
 
 /** The lane body: `{"d":<unstamped day>,"f":<facts>}`, serialized once where it was built. */
-export function laneDayBody(day: DashboardDayWire, facts: LaneDayFacts): { d: UnstampedDayWire; f: LaneDayFacts } {
+export function laneDayBody(day: DashboardDayWire, facts: Omit<LaneDayFacts, "patchBasis">): { d: UnstampedDayWire; f: LaneDayFacts } {
   const { projectionGeneration: _generation, snapshotCursor: _cursor, ...unstamped } = day;
-  return { d: unstamped, f: facts };
+  const { queueSurfaces, attemptHistory, monthCounts, workflowCounts, statusCounts, ...shared } = unstamped;
+  return { d: unstamped, f: { ...facts,
+    patchBasis: { counts: { monthCounts, workflowCounts, statusCounts }, rows: queueSurfaces.map(queueRowBasis),
+      // Attempt times are validated against each row. Their membership and order are independent facts.
+      shared: queueFingerprint([shared, monthCounts, attemptHistory?.map(entry => entry.runId)]) } } };
 }
 
 const LANE_DAY_HEAD = "{\"d\":";
@@ -312,7 +336,8 @@ type ProjectionCursor = z.infer<typeof ProjectionCursorSchema>;
 
 export type RunQueueProjectionChange =
   | { readonly kind: "patch"; readonly cursor: ProjectionCursor; readonly position: number; readonly day: string; readonly patch: z.infer<typeof DashboardDayPatchSchema> }
-  | { readonly kind: "snapshot"; readonly cursor: ProjectionCursor; readonly position: number }
+  | { readonly kind: "snapshot"; readonly cursor: ProjectionCursor; readonly position: number;
+      readonly statusCandidate?: { readonly day: string; readonly replacement: QueueSurfaceWire } }
   | { readonly kind: "generation"; readonly cursor: ProjectionCursor }
   /** Runs whose timeline records an ingest folded, notes included, that no patch or snapshot of that ingest carried. */
   | { readonly kind: "runs"; readonly runIds: readonly RunId[]; readonly position: number };
@@ -1054,6 +1079,7 @@ export class RunQueueProjection {
       let snapshotNeeded = affected.workerChanged;
       let batchPresentationChanged = false;
       let crossDayMembersChanged = false;
+      let statusCandidate: { day: string; replacement: QueueSurfaceWire } | undefined;
       const snapshot = this.#canonicalSnapshot();
       const { byId, children } = snapshot;
       const context = this.#readContext(snapshot.runs);
@@ -1109,6 +1135,7 @@ export class RunQueueProjection {
         if (crossDayMembersChanged) snapshotNeeded = true;
         if (!countNeutral) {
           snapshotNeeded = true;
+          if (isQueueTopLevel(replacement) && affectedIds.size === 1) statusCandidate = { day, replacement };
           continue;
         }
         patches.push({
@@ -1131,7 +1158,8 @@ export class RunQueueProjection {
       const position = this.#timelineCursor;
       const changes: RunQueueProjectionChange[] = snapshotOnly ? []
         : patches.map(patch => ({ kind: "patch" as const, cursor: this.takeCursor(), position, ...patch }));
-      if (snapshotNeeded) changes.push({ kind: "snapshot", cursor: this.takeCursor(), position });
+      if (snapshotNeeded) changes.push({ kind: "snapshot", cursor: this.takeCursor(), position,
+        ...(!snapshotOnly && !affected.workerChanged && statusCandidate !== undefined ? { statusCandidate } : {}) });
       return changes;
     });
     for (const change of publications) this.#emit(change);
@@ -1796,7 +1824,8 @@ export class RunQueueProjection {
       const validUntil = this.#deps.authority.nextDuoLeaseExpiry?.(now) ?? Infinity;
       deepFreeze(wire);
       return { wire, cache: { wire, workerKey,
-        sources: { ...sources, through: revision.through }, reusable, builtAt: now, validUntil,
+        sources: { ...sources, through: revision.through, retryConfigFingerprint: revision.kind === "full"
+          ? revision.retryConfigFingerprint : previous?.sources.retryConfigFingerprint }, reusable, builtAt: now, validUntil,
         cursor: wire.snapshotCursor, refreshedRuns: new Set() } };
     };
     const { wire, cache } = summaries === undefined ? read() : summaries.withSnapshot(read);
@@ -1845,7 +1874,7 @@ export class RunQueueProjection {
     this.#dayCache.clear();
   }
 
-  #laneFacts(wire: DashboardDayWire, built: boolean): LaneDayFacts {
+  #laneFacts(wire: DashboardDayWire, built: boolean): Omit<LaneDayFacts, "patchBasis"> {
     return { position: this.#timelineCursor, built,
       surfaces: wire.queueSurfaces.map(({ runId, status, startedAt }) => ({ runId, status, startedAt })) };
   }
@@ -1970,7 +1999,7 @@ export class RunQueueProjection {
   }
 
   #buildDashboardDayWire(parsedDay: string, patch?: QueueDayPatch): {
-    wire: DashboardDayWire; sources: Omit<QueueDaySources, "through">; reusable: ReadonlySet<string>;
+    wire: DashboardDayWire; sources: Omit<QueueDaySources, "through" | "retryConfigFingerprint">; reusable: ReadonlySet<string>;
   } {
     this.#dayBuilds += 1;
     const surfaces: QueueSurfaceWire[] = [];

@@ -1,3 +1,4 @@
+import { CREDENTIALS_UNAVAILABLE } from "../settings-model.js";
 import { profileInitials } from "../../../../models/profiles/profile-identity.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
 import { Fragment } from "react";
@@ -23,7 +24,7 @@ const PROTECTED_DESCRIPTION: Readonly<Record<string, string>> = {
 function CredentialsSection({ editor, profileName, embedded }: { editor: Editor; profileName: string; embedded: boolean }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" contentOnly={embedded} />;
-  if (editor.editor.state === "failed") return <FailureNotice sentence="Credentials unavailable; reopen Settings to try again." />;
+  if (editor.editor.state === "failed") return embedded ? null : <FailureNotice sentence={CREDENTIALS_UNAVAILABLE} />;
   const settingsDocument = editor.editor.document;
   const authority = settingsDocument.protectedSettings;
   const credentials = editor.protectedEditor;

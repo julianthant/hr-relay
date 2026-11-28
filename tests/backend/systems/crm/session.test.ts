@@ -8,6 +8,7 @@ import { type FakeCookie, type FakePageScript } from "../../../support/helpers/b
 const { CONFIG, SSO, NO_SIGN_IN_FORMS, contextFor } = createSystemSessionTestWorld();
 
 const CRM_APP = "https://act-crm.my.site.com/hr/ONB_SearchOnboardings";
+const CRM_HOME = "https://act-crm.my.site.com/hr/";
 const CRM_ENTRY = CONFIG.urls.crm.prod.entry;
 // TritON option values are the verified login-type values.
 const AD_TYPE = "_eventId_authn/PasswordAD";
@@ -57,8 +58,8 @@ describe("authenticated-application proof", () => {
 
 describe("crm login recipe", () => {
   const authenticatedCrm = {
-    elementsByUrl: { [CRM_APP]: NO_SIGN_IN_FORMS },
-    cookiesByUrl: { [CRM_APP]: [SID] },
+    elementsByUrl: { [CRM_HOME]: NO_SIGN_IN_FORMS },
+    cookiesByUrl: { [CRM_HOME]: [SID] },
   } as const;
 
   it("selects Active Directory only when the control disagrees", async () => {
@@ -72,7 +73,7 @@ describe("crm login recipe", () => {
         "sso-password": {},
       },
       ...authenticatedCrm,
-      settlesTo: [CRM_APP],
+      settlesTo: [CRM_HOME],
     });
     assert.equal(await crmLoginRecipe(preselected.context), "logged-in");
     assert.equal(preselected.harness.actions().includes("select:login-type-select"), false);
@@ -88,7 +89,7 @@ describe("crm login recipe", () => {
         "sso-password": {},
       },
       ...authenticatedCrm,
-      settlesTo: [CRM_APP],
+      settlesTo: [CRM_HOME],
     });
     assert.equal(await crmLoginRecipe(wrongType.context), "logged-in");
     assert.equal(wrongType.harness.actions().includes("select:login-type-select"), true);
@@ -104,7 +105,7 @@ describe("crm login recipe", () => {
         "sso-password": {},
       },
       ...authenticatedCrm,
-      settlesTo: [CRM_APP],
+      settlesTo: [CRM_HOME],
     });
     assert.equal(await crmLoginRecipe(absent.context), "logged-in");
   });
@@ -121,7 +122,7 @@ describe("crm login recipe", () => {
         "sso-password": {},
       },
       ...authenticatedCrm,
-      settlesTo: [CRM_APP],
+      settlesTo: [CRM_HOME],
     });
     await assert.rejects(crmLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
@@ -162,7 +163,7 @@ describe("crm login recipe", () => {
     });
     await assert.rejects(crmLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
-      assert.equal(error.step, "credential-fill");
+      assert.equal(error.step, "sso-form");
       return true;
     });
     assert.deepEqual(harness.filled(), []);
@@ -178,8 +179,8 @@ describe("crm login recipe", () => {
         "sso-username": {},
         "sso-password": {},
       },
-      elementsByUrl: { [CRM_APP]: NO_SIGN_IN_FORMS },
-      settlesTo: [CRM_APP],
+      elementsByUrl: { [CRM_HOME]: NO_SIGN_IN_FORMS },
+      settlesTo: [CRM_HOME],
     });
     await assert.rejects(crmLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);

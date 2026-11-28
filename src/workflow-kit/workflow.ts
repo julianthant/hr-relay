@@ -213,7 +213,8 @@ export interface WorkflowDescriptor<
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
   readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   readonly referenceKeys?: (input: z.output<InputSchema>) => readonly string[];
-  readonly plannedOutputs?: (input: z.output<InputSchema>, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
+  readonly plannedOutputs?: (input: z.output<InputSchema>, references: readonly RunWorkbookReference[], omittedSteps?: readonly string[]) => readonly PlannedRunOutput[];
+  readonly requiresOcrProvider?: (input: z.output<InputSchema>) => boolean;
   readonly code: string;
   readonly label: string;
   readonly sessionLabel?: string;
@@ -279,7 +280,7 @@ export interface AnyWorkflowDescriptor {
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
   readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   readonly referenceKeys?: (input: never) => readonly string[];
-  readonly plannedOutputs?: (input: never, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
+  readonly plannedOutputs?: (input: never, references: readonly RunWorkbookReference[], omittedSteps?: readonly string[]) => readonly PlannedRunOutput[];
   readonly code: string;
   readonly label: string;
   readonly sessionLabel?: string;
@@ -559,7 +560,8 @@ function checkChildStartRows(descriptor: AnyWorkflowDescriptor, targets: Readonl
     }
     if (row.target?.workflow === undefined) continue;
     const child = childOf(row.target.workflow);
-    if (!child.stepOmissions.some(({ step }) => step === row.target?.step)) {
+    const manual = child.stepOmissions.find(({ step }) => step === row.target?.step);
+    if (manual === undefined || manual.ownStartOnly === true) {
       throw new Error(`${id}: start row "${row.key}" targets step "${row.target.step}" of child workflow "${row.target.workflow}", which declares no manual entry`);
     }
     targeted.add(`${row.target.workflow}/${row.target.step}`);
@@ -576,7 +578,8 @@ function checkChildStartRows(descriptor: AnyWorkflowDescriptor, targets: Readonl
         }
       }
     }
-    for (const { step } of child.stepOmissions) {
+    for (const { step, ownStartOnly } of child.stepOmissions) {
+      if (ownStartOnly === true) continue;
       if (!targeted.has(`${workflow}/${step}`)) throw new Error(`${id}: step "${step}" of child workflow "${workflow}" takes typed values, but no start row targets it`);
     }
   }
@@ -587,7 +590,8 @@ export interface WorkflowPlanning {
   readonly requiredWorkbookFields: readonly string[];
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
   readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
-  readonly plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
+  readonly plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[], omittedSteps?: readonly string[]) => readonly PlannedRunOutput[];
+  readonly requiresOcrProvider: (parsed: unknown) => boolean;
   readonly parseInput: (raw: unknown) => Readonly<{ input: unknown; lookups: readonly WorkbookReferenceLookup[] }>;
   readonly parseCanonicalInput: (value: unknown) => unknown;
   readonly matchKey: (parsed: unknown) => string;
@@ -641,7 +645,7 @@ interface WorkflowTerminalRun {
     /** The one durable record of what the operator asked for. */
     dryRun: boolean;
     /** The steps this run omitted; an asserted dependency must name one of them. */
-    stepOmissions?: readonly Readonly<{ step: string }>[];
+    stepOmissions?: readonly Readonly<{ step: string; workflow?: string | undefined }>[];
     continuation?: RunContinuation;
   }>;
   readonly input: Readonly<{
@@ -894,6 +898,7 @@ function deriveStepOmissions(
   declared: readonly Readonly<{ key: string; nodes: readonly string[]; selection?: Readonly<{ inputField: string; selectedWhen: boolean }>; manual?: StepManualDeclaration }>[] | undefined,
 ): readonly StepOmissionSpec[] {
   const specs: StepOmissionSpec[] = [];
+  const declaredSteps = new Map(declared?.map((category) => [category.key, category.manual]));
   for (const category of declared ?? []) {
     const manual = category.manual;
     if (manual === undefined) continue;
@@ -916,26 +921,58 @@ function deriveStepOmissions(
       }
     }
     const skips = manual.skips ?? [];
+    if (manual.off !== undefined && (manual.off === "manual") !== (form.fields.length === 0)) {
+      throw new Error(`${id}: ${owner} requires fields exactly when off takes values`);
+    }
     if (new Set(skips).size !== skips.length) throw new Error(`${id}: ${owner} skips a node twice`);
     for (const skipped of skips) {
       if (!members.has(skipped)) throw new Error(`${id}: ${owner} skips node "${skipped}", which is not a member of that step`);
       if (Object.hasOwn(manual.produces, skipped)) throw new Error(`${id}: ${owner} both produces and skips node "${skipped}"`);
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(skipped), owner);
-      if (node.kind !== "task" && node.kind !== "gate" && node.kind !== "transaction") {
+      const routing = manual.off !== undefined && (node.kind === "child-run" || node.kind === "branch");
+      if (!routing && node.kind !== "task" && node.kind !== "gate" && node.kind !== "transaction") {
         throw new Error(`${id}: ${owner} skips ${node.kind} node "${skipped}"; only a task, gate or transaction is ever skipped`);
       }
-      if (node.kind !== "task" && manual.skipsGatesAndTransactions !== true) {
+      if ((node.kind === "gate" || node.kind === "transaction") && manual.skipsGatesAndTransactions !== true) {
         throw new Error(`${id}: ${owner} skips ${node.kind} node "${skipped}"; a gate or transaction always runs`);
       }
       if (node.kind === "task" && node.dryRun === "stop-before-publish") {
         throw new Error(`${id}: ${owner} skips publishing task "${skipped}"; a publishing task always runs`);
       }
+      if (node.kind === "branch") {
+        for (const target of Object.values(node.cases).flat()) {
+          if (skips.some(member => member === target)) continue;
+          const dependent = nodeByIdOrThrow(id, nodes, target, owner);
+          if (manual.orderOnlyReaders?.includes(target) !== true && dependent.dependsOn.some(id => skips.includes(id))) continue;
+          throw new Error(`${id}: ${owner} skips branch "${skipped}" but "${target}" would still run`);
+        }
+      }
     }
     const skipped = new Set(skips);
+    const kept = new Set(manual.keeps);
+    for (const member of kept) {
+      const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), owner);
+      const operatorGate = node.kind === "gate" && node.resolvedBy === "operator" && (node.dependsOn.length === 0
+        || node.when?.of.from === "node" && node.dependsOn.length === 1 && Object.hasOwn(manual.produces, node.when.of.nodeId));
+      const ingressRead = node.kind === "task" && node.dependsOn.length === 0 && node.replay === "always-rerun"
+        && node.uses.subject.kind === "none" && (node.uses.providers?.length ?? 0) > 0 && node.uses.artifacts === undefined
+        && !isPreviewBoundary(node) && nodes.some(candidate => Object.hasOwn(manual.produces, candidate.id) && candidate.dependsOn.includes(node.id));
+      const validation = node.kind === "task" && node.uses.id.startsWith("workflow:") && node.uses.provenance.default === "derived"
+        && node.uses.subject.kind === "none" && node.uses.artifacts === undefined && !isPreviewBoundary(node)
+        && node.dependsOn.some(dependency => Object.hasOwn(manual.produces, dependency));
+      const inputBacked = manual.bindInput !== undefined && (node.kind === "child-run"
+        || node.kind === "task" && !isPreviewBoundary(node) && !node.uses.providers?.length
+          && node.uses.subject.kind === "none");
+      if (manual.off !== "values" || !members.has(member) || skipped.has(member) || Object.hasOwn(manual.produces, member)
+        || !operatorGate && !ingressRead && !validation && !inputBacked) {
+        throw new Error(`${id}: ${owner} can only keep an ingress read, operator gate, local validation, or input-backed reader`);
+      }
+    }
     const switchable = category.selection !== undefined || selectedByOneInputCondition(id, nodes, category.nodes, owner);
     for (const member of category.nodes) {
       if (skipped.has(member) || Object.hasOwn(manual.produces, member)) continue;
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), owner);
+      if (manual.off !== undefined && !kept.has(member)) throw new Error(`${id}: ${owner} leaves "${member}" running when off`);
       const read = node.dependsOn.find((dependency) => skipped.has(String(dependency)));
       if (read !== undefined) throw new Error(`${id}: ${owner} runs node "${member}", which reads skipped node "${String(read)}"`);
       if (switchable && (isPreviewBoundary(node) || node.kind === "gate")) {
@@ -946,6 +983,11 @@ function deriveStepOmissions(
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(reader), owner);
       if (members.has(reader) || !node.dependsOn.some((dependency) => skipped.has(String(dependency)))) {
         throw new Error(`${id}: ${owner} names order-only reader "${reader}", which is not a node of another step that waits on a skipped member`);
+      }
+    }
+    for (const dependent of manual.alsoSkips ?? []) {
+      if (dependent === category.key || declaredSteps.get(dependent) === undefined) {
+        throw new Error(`${id}: ${owner} also skips "${dependent}", which must be another omittable step`);
       }
     }
     for (const field of form.fields) {
@@ -973,10 +1015,16 @@ function deriveStepOmissions(
     }
     specs.push(Object.freeze({
       step: category.key, form, produces: Object.freeze({ ...manual.produces }),
+      ...(manual.off === undefined ? {} : { off: manual.off }),
+      ...(manual.ownStartOnly === undefined ? {} : { ownStartOnly: manual.ownStartOnly }),
       ...(manual.skips === undefined ? {} : { skips: Object.freeze([...manual.skips]) }),
       ...(manual.refine === undefined ? {} : { refine: manual.refine }),
+      ...(manual.bindInput === undefined ? {} : { bindInput: manual.bindInput }),
+      ...(manual.withholdsBoundInput === undefined ? {} : { withholdsBoundInput: manual.withholdsBoundInput }),
+      ...(manual.allowsChildFanOut === undefined ? {} : { allowsChildFanOut: manual.allowsChildFanOut }),
       ...(manual.skipsGatesAndTransactions === undefined ? {} : { skipsGatesAndTransactions: manual.skipsGatesAndTransactions }),
       ...(manual.orderOnlyReaders === undefined ? {} : { orderOnlyReaders: Object.freeze([...manual.orderOnlyReaders]) }),
+      ...(manual.alsoSkips === undefined ? {} : { alsoSkips: Object.freeze([...manual.alsoSkips]) }),
     }));
   }
   return Object.freeze(specs);
@@ -1591,7 +1639,7 @@ export function defineWorkflowDescriptor<
   for (const omission of stepOmissions) {
     for (const member of [...Object.keys(omission.produces), ...omission.skips ?? []]) {
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), `step "${omission.step}" manual entry`);
-      if (node.kind === "gate") continue;
+      if (node.kind === "gate" && omission.off === undefined) continue;
       omissionOfNode.set(member, Object.freeze({ step: omission.step, produced: Object.hasOwn(omission.produces, member) }));
     }
   }
@@ -1650,7 +1698,9 @@ export function defineWorkflowDescriptor<
     requiredWorkbookFields,
     ...(workbookReference === undefined ? {} : { workbookReference }),
     ...(workbookCheck === undefined ? {} : { workbookCheck }),
-    plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => PlannedRunOutputSchema.array().parse(spec.plannedOutputs?.(spec.canonicalInput.parse(parsed), references) ?? []),
+    plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[], omittedSteps?: readonly string[]) =>
+      PlannedRunOutputSchema.array().parse(spec.plannedOutputs?.(spec.canonicalInput.parse(parsed), references, omittedSteps) ?? []),
+    requiresOcrProvider: (parsed: unknown) => spec.requiresOcrProvider?.(spec.canonicalInput.parse(parsed)) ?? false,
     parseInput: (raw: unknown) => {
       const input = spec.flow.input.parse(raw);
       const lookups = workbookReference === undefined ? [] : [workbookReference.mode === "all"
@@ -1858,6 +1908,10 @@ export function defineWorkflowDescriptor<
           if (entry.reason === "step-omitted") {
             if (expected.omittable !== true) {
               throw new Error(`${purpose} dependency ${entry.nodeId} belongs to no omittable step and cannot be marked step-omitted`);
+            }
+            const omission = stepOmissions.find(spec => spec.off !== undefined && spec.skips?.includes(entry.nodeId) === true);
+            if (omission !== undefined && !currentRun.envelope.stepOmissions?.some(entry => entry.workflow === undefined && entry.step === omission.step)) {
+              throw new Error(`${purpose} dependency ${entry.nodeId} is marked step-omitted but this run did not omit "${omission.step}"`);
             }
             outputs[entry.nodeId] = undefined;
             return { state: "not-run", nodeId: entry.nodeId, reason: entry.reason };

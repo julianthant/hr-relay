@@ -1,9 +1,21 @@
 import { CrmDocumentRecordsSchema } from "../../../../models/systems/crm/documents.js";
-import { CrmDocDownloadInput, type CrmDocDownloadInputValue } from "../../../../models/workflows/crm-doc-download/input.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
+import { CrmDocDownloadCanonicalInput, CrmDocDownloadInput, type CrmDocDownloadInputValue } from "../../../../models/workflows/crm-doc-download/input.js";
+import { crmManualDocumentRecordsSchema } from "../../../../models/workflows/crm-doc-download/manual-records.js";
 import { PERSON_LOOKUP_EXAMPLE_EID } from "../../../../models/workflows/person-lookup/input.js";
 import { defineStep, inheritStepProof, reuseTask, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { CrmSearchDocumentRecords } from "../../../../models/systems/crm/search-document-records.js";
+
+export const CRM_DOCUMENT_SEARCH_MANUAL: StepManualDeclaration = {
+  form: { fields: [{ key: "records", label: "CRM records", kind: "text", format: "crm-document-records",
+    help: "Enter CRM record ID | Employee ID | Work email | Personal email for each person in input order. Leave unknown fields blank and separate people with semicolons." }] },
+  produces: {
+    "document-records": ({ facts, scope }) => crmManualDocumentRecordsSchema(
+      CrmDocDownloadCanonicalInput.parse(scope.input).people,
+    ).parse(facts.records),
+  },
+};
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "search-records", label: "Find latest CRM records" }), system: "crm",
@@ -69,11 +81,11 @@ const group = Object.freeze({
   } as const,
 } as const);
 
-export function buildSearchRecords(author: WorkflowAuthor<typeof CrmDocDownloadInput>) {
+export function buildSearchRecords(author: WorkflowAuthor<typeof CrmDocDownloadInput>, allowManual = true) {
   const call = reuseTask(group, { id: "document-records", contract: CrmSearchDocumentRecords, replay: "checkpoint" },
     (input: CrmDocDownloadInputValue) => ({ subjects: input.people }));
   const records = author.task(call.identity, [], call.bind);
-  return { records, steps: [[group, [records]]] as const,
+  return { records, steps: [[allowManual ? author.group(group, { manual: CRM_DOCUMENT_SEARCH_MANUAL }) : group, [records]]] as const,
     result: author.result(CrmDocumentRecordsSchema, [records], ({ outputs }) => outputs["document-records"]) };
 }
 
@@ -83,7 +95,7 @@ export const crmDocumentSearchRecordsDefinition = defineStep({
   proof: { id: "crm-doc-download-search-records", order: 21,
     build: (parent: WorkflowDefinition<typeof CrmDocDownloadInput>) => ({
       ...inheritStepProof(parent), code: "cds", label: group.label, summary: "Proves exact-identity CRM record selection for the complete submitted batch.",
-      steps: buildSearchRecords,
+      steps: (author: WorkflowAuthor<typeof CrmDocDownloadInput>) => buildSearchRecords(author, false),
     }),
   },
 });

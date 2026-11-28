@@ -57,7 +57,7 @@ const TABLE = {
 
 const pin = (sheet = SHEET) => then(loaded, click(`Pin ${sheet}`));
 const tagMenu = (sheet = SHEET) => then(loaded, click(`Add a tag to ${sheet}`));
-type Row = "pin" | "sync" | "link" | "clone" | "rename" | "tags" | "delete" | "download" | "rollback";
+type Row = "pin" | "sync" | "link" | "clone" | "rename" | "tags" | "delete" | "download" | "versions" | "version-new" | "version-rename" | "version-delete";
 const ROW = {
   pin: scene("A spreadsheet pinned with its row pin", { play: pin(), story: { ready: 'ul[aria-label="Pinned"] >> text="Onboarding list.xlsx"' } }),
   sync: scene("Sync now chosen from a row's menu", { play: menu("Sync now", "Department roster.xlsx"), story: { ready: 'text="Synced Department roster.xlsx"' } }),
@@ -67,10 +67,13 @@ const ROW = {
   tags: scene("A row's tag menu", { play: tagMenu(), story: { ready: 'role=menu' } }),
   delete: act("Delete", 'role=dialog'),
   download: scene("A spreadsheet downloaded", { play: menu("Download"), story: { ready: `ul[aria-label="Spreadsheets"]` } }),
-  rollback: scene("A spreadsheet's versions", { play: then(loaded, click(/^Versions of Department roster/)), story: { ready: 'role=dialog' } }),
+  versions: scene("A spreadsheet's versions", { play: then(loaded, click(/^Versions of Department roster/)), story: { ready: 'role=dialog' } }),
+  "version-new": scene("A new version's name and source", { play: then(loaded, click(/^Versions of Department roster/), click("New version")), story: { ready: 'role=dialog' } }),
+  "version-rename": scene("A version's new name", { play: then(loaded, click(/^Versions of Department roster/), click("Rename Original")), story: { ready: 'role=dialog' } }),
+  "version-delete": scene("A version delete confirm", { play: then(loaded, click(/^Versions of Department roster/), click("Delete Original")), story: { ready: 'role=dialog' } }),
 } satisfies Record<Row, Story>;
 
-type Outcome = "cloned" | "clone-refused" | "renamed" | "tagged" | "linked" | "deleted" | "rolled-back" | "refused" | "pending" | "sync-failed" | "synced";
+type Outcome = "cloned" | "clone-refused" | "renamed" | "tagged" | "linked" | "deleted" | "version-used" | "refused" | "pending" | "sync-failed" | "synced";
 const done = (...steps: readonly ((page: Page) => Promise<void>)[]) => then(...steps);
 const OUTCOME = {
   cloned: scene("A clone added", { play: done(menu("Clone"), click("Clone", "button")), story: { ready: 'text=/Cloned/' } }),
@@ -80,7 +83,7 @@ const OUTCOME = {
     story: { ready: `li[aria-label="${TAGLESS}"] >> text="Priority" >> visible=true` } }),
   linked: scene("A SharePoint link added", { play: done(menu("Link to SharePoint…"), async page => { await page.getByPlaceholder("https://…sharepoint.com/…").fill("https://tenant.sharepoint.com/sites/people/Roster.xlsx"); }, click("Link")), story: { ready: 'text=/Linked/' } }),
   deleted: scene("A spreadsheet deleted", { play: done(menu("Delete"), click("Delete spreadsheet")), story: { ready: 'ul[aria-label="Spreadsheets"]' } }),
-  "rolled-back": scene("A version rolled back", { play: done(loaded, click(/^Versions of Department roster/), click(/Version 2|v2/, "radio"), click("Roll back"), click("Roll back")), story: { ready: 'ul[aria-label="Pinned"]' } }),
+  "version-used": scene("A version put in use", { play: done(loaded, click(/^Versions of Department roster/), click(/Version 2|v2/, "radio"), click("Use version"), click("Use version")), story: { ready: 'ul[aria-label="Pinned"]' } }),
   refused: scene("A change the library refused", { server: { action: "refused" }, play: done(pin()), story: { ready: 'text=/Couldn\'t save the change/' } }),
   pending: scene("A change whose result is not yet known", { server: { action: "lost" }, play: done(pin()), story: { ready: 'text=/The library change is not yet confirmed/' } }),
   "sync-failed": scene("A sync the library could not finish", { server: { sync: "fail" }, play: done(menu("Retry sync", "Hiring tracker.xlsx")), story: { ready: "text=/Couldn't sync Hiring tracker.xlsx/" } }),
@@ -137,7 +140,7 @@ const KNOWN_BREAKS = {
    "outcome/pending": ["named-and-focusable", "word-limits"],
    "outcome/refused": ["named-and-focusable"],
    "outcome/renamed": ["named-and-focusable"],
-   "outcome/rolled-back": ["named-and-focusable"],
+   "outcome/version-used": ["named-and-focusable"],
    "outcome/sync-failed": ["named-and-focusable"],
    "outcome/tagged": ["named-and-focusable"],
      "row/download": ["named-and-focusable"],

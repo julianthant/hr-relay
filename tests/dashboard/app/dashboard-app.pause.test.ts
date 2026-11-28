@@ -110,7 +110,7 @@ it("shows a refused sample Pause as one toast and leaves the bell count alone", 
       state: "rejected", commandId: request.commandId, code: "SAMPLE_RUN_REFUSED", message,
     })));
     assert.deepEqual([...document.querySelectorAll('[data-slot="toast"]')].map(toast => toast.textContent), [message]);
-    assert.doesNotMatch(f.host.textContent ?? "", /Pause: rejected/u);
+    assert.doesNotMatch(f.host.textContent ?? "", /Couldn't pause/u);
     assert.equal(bell.getAttribute("aria-label"), previousCount);
   } finally { await f.close(); }
 });

@@ -8,7 +8,8 @@ import { TimelineEventRecordSchema } from "../../../../src/models/events/timelin
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,expect,it,vi } from "vitest";
 import { z } from "zod";
-import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { RUN_SEARCH_FTS_TABLES } from "../../../../src/models/config/authority.js";
 import { runRecordColumns,runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import {
   RUN_SEARCH_EVENTS,
@@ -30,11 +31,12 @@ import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 const databases: DatabaseSync[] = [];
 afterEach(() => { for (const db of databases.splice(0)) db.close(); });
-function fixture(registered = true) {
+function fixture(registered = true, fullText = false) {
   const db = new DatabaseSync(":memory:", { enableForeignKeyConstraints: false }); databases.push(db);
   for (const migration of SQLITE_MIGRATIONS) for (const sql of migration.statements) db.exec(sql);
   db.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,1,0,?,0,'ready',?,?)")
     .run(QUEUED_RUN.createdAt, "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222");
+  if (fullText) db.exec(`PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
   const index = createRunSearchIndex(db); index.installTracking();
   if (registered) index.register([{ workflow: QUEUED_RUN.envelope.workflow, version: 1, contractFingerprint: QUEUED_RUN.envelope.contractFingerprint, subjectProjection: null }], QUEUED_RUN.createdAt);
   const add = (sequence: number, date: string) => {
@@ -95,17 +97,21 @@ describe("native one-row search", () => {
   });
 
   it("freezes declaration identity and serves literal ranked results with full count and keyset order", () => {
-    const f = fixture(); const old = f.add(1, "2026-10-01T12:00:00.000Z"), recent = f.add(2, "2026-10-02T12:00:00.000Z"); f.publish();
+    const f = fixture(true, true); const old = f.add(1, "2026-10-01T12:00:00.000Z"), recent = f.add(2, "2026-10-02T12:00:00.000Z"); f.publish();
     const page = f.index.search(query, 1);
     expect(page.totalMatches).toBe(2);
     expect(page.rows.map(row => row.record.envelope.runId)).toEqual([recent]);
     expect(f.index.search({ ...query, after: { matchRank: 0, enqueuedAt: page.rows[0]?.record.envelope.enqueuedAt, runId: recent } }, 1).rows.map(row => row.record.envelope.runId)).toEqual([old]);
     expect(f.index.search({ ...query, q: "%" }, 1).totalMatches).toBe(0);
     expect(f.index.search({ ...query, q: "_" }, 1).totalMatches).toBe(0);
+    expect(f.index.search({ ...query, q: '" OR *' }, 1).totalMatches).toBe(0);
+    expect(f.index.search({ ...query, q: "0\0nope" }, 1).totalMatches).toBe(0);
+    expect(f.index.search({ ...query, q: "02", scope: "run" }, 1).rows[0]?.record.envelope.runId).toBe(recent);
     expect(f.index.search({ ...query, q: recent, scope: "run" }, 1).rows[0]?.record.envelope.runId).toBe(recent);
     expect(f.index.search({ ...query, facets: { from: "2026-10-02", to: "2026-10-02" } }, 1).totalMatches).toBe(1);
     expect(f.db.prepare("SELECT declaration_json FROM run_search").all()).toHaveLength(2);
-    expect(f.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name LIKE 'run_search%'").all()).toEqual([{ name: "run_search" }]);
+    expect(f.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name LIKE 'run_search%' ORDER BY name").all())
+      .toEqual(["run_search", ...RUN_SEARCH_FTS_TABLES].map(name => ({ name })));
   });
 
   it("preserves the frozen declaration when rebuilding after the current registry is unavailable", () => {

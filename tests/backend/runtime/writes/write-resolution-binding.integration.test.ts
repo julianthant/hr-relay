@@ -327,13 +327,9 @@ describe("write-resolution binding — what a parked write may survive", () => {
       writeIntentId: intent.writeIntentId, intentGeneration: intent.generation }, {});
     assert.equal(h.kernel.execute(command).state, "applied");
     const stored = authority.writeIntents.get(intent.writeIntentId);
-    if (type === "resolve-write-absent") {
-      assert.ok(stored?.status === "retryable");
-      assert.equal(stored.resolution?.writeAttemptId, intent.currentAttemptId);
-    } else {
-      assert.ok(stored?.status === "parked");
-      assert.equal(stored.recheck?.commandId, command.commandId);
-    }
+    assert.ok(stored?.status === "parked");
+    assert.equal(stored.recheck?.commandId, command.commandId);
+    assert.equal(stored.currentAttemptId, intent.currentAttemptId);
     assert.equal(authority.writeAttempts.listByIntent(intent.writeIntentId).length, 1);
     assert.deepEqual(h.world.events, []);
   });
@@ -374,18 +370,18 @@ describe("write-resolution binding — what a parked write may survive", () => {
     assert.deepEqual(h.world.events, []);
   });
 
-  it("settles confirmed absence against the original attempt when the current rule reproduces its fence", async () => {
+  it("requests an absence read against the original attempt when the current rule reproduces its fence", async () => {
     const { world, h, authority, intent, run } = await parkUnderOriginalKey(descriptorWithRetiredKey("current"));
     const command = world.resolutionCommand("resolve-write-absent", {
       runId: intent.runId, expectedVersion: run.version, writeIntentId: intent.writeIntentId, intentGeneration: intent.generation,
     }, {});
     assert.equal(h.kernel.execute(command).state, "applied");
     const resolved = authority.writeIntents.get(intent.writeIntentId);
-    assert.ok(resolved?.status === "retryable");
-    assert.equal(resolved.settlement.state, "operator-confirmed-absent");
+    assert.ok(resolved?.status === "parked");
+    assert.equal(resolved.recheck?.commandId, command.commandId);
     assert.equal(resolved.idempotencyKey, WRITE_FIXTURE_KEY);
-    assert.equal(resolved.resolution?.idempotencyKeyDigest, WRITE_FIXTURE_KEY_DIGEST);
-    assert.equal(resolved.resolution?.writeAttemptId, intent.currentAttemptId);
+    assert.equal(resolved.idempotencyKeyDigest, WRITE_FIXTURE_KEY_DIGEST);
+    assert.equal(resolved.currentAttemptId, intent.currentAttemptId);
     assert.equal(authority.writeAttempts.listByIntent(intent.writeIntentId).length, 1);
     assert.deepEqual(h.world.events, []);
   });

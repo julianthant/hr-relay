@@ -145,7 +145,9 @@ describe("canonical notification producers", () => {
         const event = { ...repeated, failureId, runId };
         const source = { identity: sha256Hex(`notification-occurrence:repeating-failure:${failureId}`), occurredAt: earlier.source.occurredAt };
         await f.inbox.publish(event, source);
-        expect((await read()).observations).toEqual([earlier, { event, source }, ...first.observations.slice(1)]);
+        expect((await read()).observations).toEqual(first.observations);
+        await f.inbox.publish(earlier.event, earlier.source);
+        expect((await read()).observations).toEqual(first.observations.slice(1));
       } finally { await lanes.close(); }
     } finally { await f.close(); }
   });

@@ -25,6 +25,7 @@ import type { NotificationInbox } from "../notifications/inbox.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
+  readonly executeOrdinarySettings?: (command: Extract<CommandRequest, { family: "settings"; type: "apply-settings" }>) => Promise<CommandResult>;
   readonly projection: Pick<RunQueueProjection, "ingestFromTimeline" | "refreshRun">;
   readonly startWorkerCapacity?: RunWorkerCapacity;
   readonly quitAccepted?: () => void;
@@ -136,6 +137,12 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
     }
     if (!parsed.success || parsed.data.type === "recover-run") return executeOne(input);
     const request = parsed.data;
+    if (request.family === "settings" && request.type === "apply-settings" && request.source === "dashboard"
+      && deps.executeOrdinarySettings !== undefined) {
+      const result = await deps.executeOrdinarySettings(request);
+      publish(request, result);
+      return result;
+    }
     const capacity = deps.startWorkerCapacity;
     const key = needsWorkerCapacity(request) ? capacity?.workflowOf(request) : undefined;
     if (request.family === "start") {

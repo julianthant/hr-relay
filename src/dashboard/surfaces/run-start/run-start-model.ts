@@ -6,6 +6,7 @@ import {
   IsoDateFactSchema,
   type StepOmissionField,
   type StepOmissionForm,
+  type StepOmissionInput,
 } from "../../../models/workflow/step-omission.js";
 import { z } from "zod";
 import type { StartPlanWire } from "../../../models/dashboard/start-plan.js";
@@ -427,7 +428,7 @@ export type StepOmissionFactsFold =
   | Readonly<{ state: "facts"; facts: Readonly<Record<string, StepOmissionFactValue>> }>
   | Readonly<{ state: "invalid"; errors: Readonly<Record<string, string>> }>;
 
-export function foldStepOmissionFacts(form: StepOmissionForm, draft: StepOmissionDraft): StepOmissionFactsFold {
+export function foldStepOmissionFacts(form: StepOmissionForm, draft: StepOmissionDraft, input?: StepOmissionInput): StepOmissionFactsFold {
   const errors: Record<string, string> = {};
   const candidate: Record<string, StepOmissionFactValue> = {};
   for (const field of form.fields) {
@@ -435,7 +436,7 @@ export function foldStepOmissionFacts(form: StepOmissionForm, draft: StepOmissio
     if (read.state === "unreadable") errors[field.key] = read.message;
     else candidate[field.key] = read.value;
   }
-  const parsed = stepOmissionFactsSchema(form).safeParse(candidate);
+  const parsed = stepOmissionFactsSchema(form, input).safeParse(candidate);
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
       const key = issue.path.map(String)[0];

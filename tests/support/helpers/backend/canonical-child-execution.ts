@@ -30,6 +30,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined,
   checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord, resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>,
   options?: Readonly<{ poolIndex?: number; workbooks?: StartPlannerDeps["workbooks"]; protectedSecrets?: ProtectedSecretSource;
+    ocrProviderAvailable?: () => boolean;
     resources?(reader: Pick<RunRecordService, "read">, run: RunRecord): Pick<RunExecutorDependencies, "providers" | "artifactProjector" | "taskNotes"> }>) {
   const { clock } = deps;
   const poolIndex = options?.poolIndex ?? 1;
@@ -41,6 +42,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     } });
   const unused = (): never => { throw new Error("unrequested canonical fixture effect"); };
   const kernel = createCommandKernel({ authority: database, lifecycle, clock, ids: { uuid: randomUUID }, appVersion: "0.1.0",
+    ...(options?.ocrProviderAvailable === undefined ? {} : { ocrProviderAvailable: options.ocrProviderAvailable }),
     ensureReceipt: runId => {
       const run = database.authority.runs.get(runId); assert.ok(run);
       const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
@@ -111,16 +113,17 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     kernel, lifecycle, childRuns, step, plans,
     start(descriptor: AnyWorkflowDescriptor, input: unknown, startOptions: Readonly<{ dryRun: boolean; protectedSubmissionBindings?: readonly ProtectedInputBinding[];
       workbookReferences?: readonly z.infer<typeof WorkbookActiveSelectionSchema>[]; selectedStepKeys?: readonly string[];
-      stepOmissions?: readonly Readonly<{ step: string; facts: Readonly<Record<string, unknown>> }>[]; rerunSource?: unknown; warningAcknowledgment?: string }>) {
+      stepOmissions?: readonly Readonly<{ workflow?: string; step: string; facts: Readonly<Record<string, unknown>> }>[]; rerunSource?: unknown; warningAcknowledgment?: string }>) {
       const active = database.authority.runtimeConfig.get();
       assert.ok(active);
       const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors: { resolve },
         ...(options?.workbooks === undefined ? {} : { workbooks: options.workbooks }),
         ...(options?.protectedSecrets === undefined ? {} : { protectedSecrets: options.protectedSecrets }),
+        ...(options?.ocrProviderAvailable === undefined ? {} : { ocrProviderAvailable: options.ocrProviderAvailable }),
         clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: LOCAL_OPERATOR_ACTOR_ID,
         configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId,
         ...(startOptions.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: startOptions.protectedSubmissionBindings }) });
-      const plan = planner.plan({ workflowId: descriptor.id, submissions: [input], dryRun: startOptions.dryRun,
+      const plan = planner.plan({ workflowId: descriptor.id, submissions: input === undefined && startOptions.rerunSource !== undefined ? [] : [input], dryRun: startOptions.dryRun,
         ...(startOptions.workbookReferences === undefined ? {} : { workbookReferences: startOptions.workbookReferences }),
         ...(startOptions.stepOmissions === undefined ? {} : { stepOmissions: startOptions.stepOmissions }),
         ...(startOptions.rerunSource === undefined ? {} : { rerunSource: startOptions.rerunSource, warningAcknowledgment: startOptions.warningAcknowledgment }),

@@ -71,7 +71,7 @@ describe("error catalog", () => {
       DUO_TERMINAL_REFUSAL: "Duo refused the sign-in. Run again; if it repeats, check Fast Duo.",
       UCPATH_MAINTENANCE: "UCPath is down for maintenance. Try again later.",
       UCPATH_SIGN_IN_FAILED: "UCPath sign-in failed.",
-      CRM_SIGN_IN_FAILED: "CRM sign-in failed.",
+      CRM_SIGN_IN_FAILED: "Relay could not identify where CRM sign-in stopped.",
       ONBASE_SIGN_IN_FAILED: "OnBase sign-in failed.",
       KUALI_SIGN_IN_FAILED: "Kuali sign-in failed.",
       SERVICENOW_SIGN_IN_FAILED: "ServiceNow sign-in failed.",

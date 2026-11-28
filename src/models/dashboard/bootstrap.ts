@@ -18,6 +18,7 @@ import { EnqueuePolicySchema, IconNameSchema, WorkflowCodeSchema } from "../work
 import {
   StartRowKindSchema,
   StartRowLockReasonSchema,
+  StartRowOffSchema,
   StartRowMemberSchema,
   StartRowTargetSchema,
   StepOmissionFormSchema,
@@ -88,6 +89,8 @@ export const WorkflowStartWireSchema = z.strictObject({
     label: z.string().min(1),
     includedByDefault: z.boolean(),
     kind: StartRowKindSchema,
+    off: StartRowOffSchema.optional(),
+    startWithValuesAlone: z.literal(true).optional(),
     lockReason: StartRowLockReasonSchema.optional(),
     members: z.array(StartRowMemberSchema).min(1),
     target: StartRowTargetSchema.optional(),

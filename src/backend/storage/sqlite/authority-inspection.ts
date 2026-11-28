@@ -10,6 +10,7 @@ import { readonlyAuthorityImage } from "./readonly-authority-snapshot.js";
 import { execMigrationStatement } from "./worker-custody-migration.js";
 import { withoutNativeRecordReadMemo } from "./run-record-row.js";
 import { createRunSearchIndex } from "./run-search-index.js";
+import { RUN_SEARCH_FTS_MISMATCH_SQL, RUN_SEARCH_FTS_SCHEMA_VERSION } from "./run-search-fts.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { ASSISTANT_HISTORY_MIGRATION } from "./assistant-history.js";
 import { ASSISTANT_GRANT_RETIREMENT_VERSION, RETIRED_ASSISTANT_GRANT_TABLE } from "./assistant-grant-retirement.js";
@@ -82,7 +83,8 @@ export function runSearchDefinitions(version: number): readonly string[] {
   const expected = new DatabaseSync(":memory:");
   try {
     for (const migration of SQLITE_MIGRATIONS) if (migration.version <= version) for (const statement of migration.statements) execMigrationStatement(expected, statement);
-    return z.array(z.strictObject({ sql: z.string() })).parse(expected.prepare("SELECT sql FROM sqlite_schema WHERE tbl_name='run_search' AND sql IS NOT NULL ORDER BY type='table' DESC,type,name").all()).map(row => row.sql);
+    const definitions = z.array(z.strictObject({ sql: z.string() })).parse(expected.prepare("SELECT sql FROM sqlite_schema WHERE tbl_name='run_search' AND sql IS NOT NULL ORDER BY type='table' DESC,type,name").all()).map(row => row.sql);
+    return version >= RUN_SEARCH_FTS_SCHEMA_VERSION ? ["DELETE FROM run_search_fts", ...definitions] : definitions;
   } finally { expected.close(); }
 }
 
@@ -139,6 +141,12 @@ export function checkSqliteIntegrity(database: DatabaseSync): void {
   inspectStoredData(() => QuickCheckRowSchema.parse(quickCheck));
   const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
   if (foreignKeyFailures.length > 0) throw authorityIntegrityError(`authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`);
+}
+
+function assertRunSearchFts(database: DatabaseSync): void {
+  if (database.prepare("SELECT v FROM run_search_fts_config WHERE k='secure-delete'").get()?.v !== 1)
+    throw new Error("run-search-fts-secure-delete-disabled");
+  if (database.prepare(RUN_SEARCH_FTS_MISMATCH_SQL).get() !== undefined) throw new Error("run-search-fts-projection-mismatch");
 }
 
 export function checkInspectionPragmas(database: DatabaseSync, requireOperationalPragmas: boolean): void {
@@ -239,7 +247,10 @@ function verifyNativeAuthority(database: DatabaseSync, expectedSchemaVersion: nu
   inspectStoredData(() => validateNotificationMetadata(database));
   const violations = invariantViolations(database);
   if (violations.length > 0) throw authorityIntegrityError(`authority database invariant validation failed: ${violations.join("; ")}`);
-  if (!missingRunSearch) inspectStoredData(() => createRunSearchIndex(database).validateCoverage(inspectionRunReader(expectedSchemaVersion)));
+  if (!missingRunSearch) inspectStoredData(() => {
+    createRunSearchIndex(database).validateCoverage(inspectionRunReader(expectedSchemaVersion));
+    if (schemaVersion >= RUN_SEARCH_FTS_SCHEMA_VERSION) assertRunSearchFts(database);
+  });
   checkInspectionPragmas(database, requireOperationalPragmas);
   const currentTables = AuthorityCopyInspectionSchema.shape.tables;
   const predecessorTables = [...(expectedSchemaVersion < 10 ? ["explorer_overrides" as const] : []),

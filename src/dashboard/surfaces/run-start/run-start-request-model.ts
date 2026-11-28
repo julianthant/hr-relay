@@ -30,7 +30,7 @@ export function runStartRequestFingerprint(
   { rowIdentity, workbookRows, rowSelectionFresh }: ReturnType<typeof useRunStartWorkbookRows>,
   pdfInput: ReturnType<typeof usePdfRunInput>, rerunSource: RerunLaunchSource | undefined,
   workflowId: string, typedValues: TypedInputDraft, customizeSteps: boolean, dryRun: boolean,
-  captureBrowserScreenshots: boolean, selectedStepKeys: readonly string[], openRows: readonly OpenStepRow[],
+  captureBrowserScreenshots: boolean, selectedStepKeys: readonly string[], openRows: readonly Omit<OpenStepRow, "fold">[],
 ) {
   const { text, browserMode, priority: priorityChoice } = draft;
   const request = startRequestFingerprint({

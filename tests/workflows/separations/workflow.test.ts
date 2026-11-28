@@ -105,22 +105,12 @@ describe("workflow definition public equivalence characterization", () => {
         ],
         surfaces: {
           inputRun: {
-            placeholder: "e.g. 4502; 4510",
+            placeholder: "Separate Kuali IDs with semicolons",
             parser: {
               split: { kind: "delimited", delimiters: [";", "\n"] },
               rules: [{ when: { kind: "pattern", pattern: "document-number" }, emit: "documentNumber" }],
               unmatched: "Kuali ID must contain digits.",
             },
-            examples: [
-              { key: "one-document", label: "One document", text: "4502", note: "the ordinary case — one run for one Kuali separation document" },
-              {
-                key: "two-documents",
-                label: "Two documents",
-                text: "4502; 4510",
-                note: "two runs from one box: each document number starts its own separation, and the "
-                  + "action id for each is resolved from the Kuali Action List at run time",
-              },
-            ],
             supportsDryRun: true,
           },
         },

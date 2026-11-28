@@ -31,6 +31,7 @@ import { lifecycleRun, requireDescriptorMatchesEnvelope, requireRun, resolveDesc
 import { executeBump, executeCancel, executeDelete, executePresentation, executeRetry } from "./run-lifecycle-commands.js";
 import { executeSettings, executeSettingsCommand, type SettingsApplicationExecutor, type SettingsCommitted } from "./settings-command.js";
 import { executeStartRun, readStartPlan, type RunConfigIdentity } from "./start-command.js";
+import { requiresOcrForStart } from "../start/ocr-readiness.js";
 import { executeWorkerPoolCommand, type WorkerPoolRuntimeAdoption, workerPoolSerializationKey } from "./worker-pool-commands.js";
 import { executeWriteResolution, type WriteResolutionExecutor } from "./write-resolution-command.js";
 import type { z } from "zod";
@@ -50,6 +51,8 @@ export interface CommandKernelDependencies {
     resolveReference?(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>, capturedAt: string): SchemaBoundCanonicalValue | Readonly<{ state: "pending" }>;
   }>;
   readonly preflight?: PreflightAdmission;
+  readonly ocrProviderAvailable?: () => boolean;
+  readonly prepareOcrProvider?: (signal: AbortSignal) => Promise<void>;
   readonly applicationQuitAvailable?: boolean;
   readonly authority: CommandAuthority;
   readonly lifecycle: RunRecordService;
@@ -434,9 +437,10 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
           const replayed = admitCommand(request, undefined, assertEffectCurrent);
           if (replayed !== undefined) return replayed;
           admitted = true;
-          const scope = dependencies.authority.withAuthorityTransaction(repositories => {
+          const { scope, needsOcr } = dependencies.authority.withAuthorityTransaction(repositories => {
             const { descriptor, plan } = readStartPlan(dependencies, repositories, request, dependencies.clock.now().toISOString());
-            return workflowPreflightScope(descriptor, plan);
+            return { scope: workflowPreflightScope(descriptor, plan), needsOcr: dependencies.prepareOcrProvider !== undefined
+              && requiresOcrForStart(repositories, descriptor, plan) };
           });
           if (dependencies.preflight !== undefined) {
             try {
@@ -447,6 +451,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             }
             dependencies.preflight.assertReady(scope);
           }
+          if (needsOcr) await dependencies.prepareOcrProvider?.(new AbortController().signal);
         } catch (error) {
           return failCommand(error, request, admitted);
         }

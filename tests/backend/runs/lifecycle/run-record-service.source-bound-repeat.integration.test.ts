@@ -200,6 +200,49 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     assert.deepEqual(h.fresh(source), source);
   });
 
+  it("keeps a parked repeat fenced on business-key absence and refences on occurrence absence", async () => {
+    const h = await harness(); const source = await completed(h);
+    const warning = h.proposal(source); assert.ok(warning.rerun);
+    const repeat = h.start(h.proposal(source, warning.rerun.warningDigest));
+    h.world.probeResults.push({ state: "present", proof: { transactionId: "T123456" } });
+    assert.equal((await h.execute(repeat)).state, "parked-write");
+    const [intent] = h.database.authority.writeIntents.listByRun(repeat.envelope.runId);
+    assert.ok(intent?.status === "parked" && intent.occurrence);
+    const attempts = h.database.authority.writeAttempts.listByIntent(intent.writeIntentId);
+    assert.equal(attempts.length, 1);
+    const now = h.clock.now().toISOString();
+    const absent = absentProbeEvidence(now);
+    assert.equal(absent.evidence.idempotencyKeyDigest, intent.occurrence.businessKeyDigest);
+    assert.notEqual(absent.evidence.idempotencyKeyDigest, intent.idempotencyKeyDigest);
+
+    const requestRead = () => h.kernel.execute({ commandId: h.ids.uuid(), requestedAt: now, requestedBy: "local-operator", source: "dashboard",
+      family: "run", type: "resolve-write-absent", target: { runId: repeat.envelope.runId, expectedVersion: h.fresh(repeat).version,
+        writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId,
+        bindingProofDigest: intent.bindingProofDigest }, payload: { occurrenceKeyDigest: intent.idempotencyKeyDigest } });
+    assert.equal(requestRead().state, "applied");
+    h.world.events.length = 0;
+    h.world.commitOutput = { transactionId: "T345678" };
+    h.world.probeResults.push(absent);
+    const result = await h.execute(h.fresh(repeat));
+
+    assert.deepEqual(h.world.events, ["probe"]);
+    assert.equal(result.state, "parked-write");
+    const held = h.database.authority.writeIntents.get(intent.writeIntentId);
+    assert.ok(held?.status === "parked");
+    assert.equal(held.generation, intent.generation);
+    assert.deepEqual(h.database.authority.writeAttempts.listByIntent(intent.writeIntentId), attempts);
+
+    assert.equal(requestRead().state, "applied");
+    h.world.events.length = 0;
+    h.world.probeResults.push({ ...absent, evidence: { ...absent.evidence, idempotencyKeyDigest: intent.idempotencyKeyDigest } });
+    assert.equal((await h.execute(h.fresh(repeat))).state, "done");
+    assert.equal(h.world.events.filter(event => event.startsWith("commit-click")).length, 1);
+    const saved = h.database.authority.writeIntents.get(intent.writeIntentId);
+    assert.equal(saved?.status, "committed");
+    assert.equal(saved?.generation, intent.generation + 1);
+    assert.equal(h.database.authority.writeAttempts.listByIntent(intent.writeIntentId).length, 2);
+  });
+
   it("retains acknowledgment across changed/cleared non-key values while keeping submitted input authoritative", async () => {
     const h = await sourceBoundHarness(writeFixtureMemoDescriptor, undefined, undefined, undefined, profileFixtures.create); disposers.push(h.dispose);
     const sourceRun = h.start(h.proposal(undefined, undefined, false, undefined, "old memo"));

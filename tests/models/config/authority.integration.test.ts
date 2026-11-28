@@ -1,4 +1,5 @@
 import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
+import { randomUUID } from "node:crypto";
 import { encodeEditableWorkbook, type SavedWorkbook, type WorkbookOperation } from "../../../src/models/dashboard/workbooks.js";
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { createAuthorityAccountingTestWorld } from "../../support/helpers/backend/authority-accounting-world.js";
@@ -12,7 +13,7 @@ import { it } from "vitest";
 import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../../../src/backend/storage/sqlite/storage-records.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../src/models/config/authority.js";
 import { DryRunScenarioResultSchema } from "../../../src/models/trust/dry-run-scenario-result.js";
-import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
+import { IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 
 
 
@@ -106,6 +107,18 @@ afterAll(() => profiles.close());
     assert.equal(record.result.versions[0].name, 'Reviewed original');
   };
   const cases: readonly MutationCase[] = [...authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT }),
+    { table: "assistant_applied_edits", mutate: database => {
+      const committedAt = IsoInstantSchema.parse(CLOCK.now().toISOString());
+      const edits = database.authority.assistantAppliedEdits;
+      const record = edits.insert({
+        id: randomUUID(), actorId: LOCAL_OPERATOR_ACTOR_ID, committedAt, label: "Changed the version name",
+        turn: { conversationId: randomUUID(), messageId: randomUUID(), ordinal: 1, acceptedRevision: 1, acceptedAt: committedAt,
+          profileId: database.getMeta().profileId, epoch: 1, proposalAnswer: null },
+        details: { kind: "spreadsheets", libraryId: "accounting", location: { kind: "version", versionId: "original" },
+          command: "rename-version", ownerRevision: { version: 1, revision: 2 }, prior: "Original version", next: "Reviewed" },
+      });
+      assert.deepEqual(edits.list(committedAt), [record]);
+    } },
     { table: "workbook_library_actions", prepare: prepareAccountingWorkbook, mutate: renameAccountingVersion },
     { table: "workbook_library_state", prepare: prepareAccountingWorkbook, mutate: renameAccountingVersion },
     { table: "workbook_library_snapshots", prepare: database => { accountingLibrary(database); }, mutate: database => {

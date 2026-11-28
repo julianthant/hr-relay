@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, it, onTestFinished } from "vitest";
 import { createProfileFixtureSet } from "../../support/helpers/admission-fixture.js";
 import { createSettingsAuthorityTestWorld } from "../../support/helpers/backend/settings-authority-world.js";
+import { inventoryRowOrder } from "../../support/fixtures/storage/historical-run-schema.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, unlinkSync } from "node:fs";
@@ -296,7 +297,7 @@ it("replays a genuinely completed current intake command after its source bytes 
     const raw = new DatabaseSync(h.path, { readOnly: true });
     try { return raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(({ name }) => {
       if (typeof name !== "string" || !/^[a-z_]+$/u.test(name)) throw new Error("invalid native table name");
-      return { name, rows: raw.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all() };
+      return { name, rows: raw.prepare(`SELECT * FROM ${name} ORDER BY ${inventoryRowOrder(name)}`).all() };
     }); } finally { raw.close(); }
   };
   const before = inventory();

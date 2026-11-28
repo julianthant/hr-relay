@@ -61,8 +61,9 @@ export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 
 
 /** A queued run that already reports what it is doing has begun starting: the row and panel say Starting, not Queued. */
-export function isStarting(surface: Pick<QueueSurfaceWire, "status" | "liveMessage" | "surfaceKind">): boolean {
-  return surface.surfaceKind !== "operation" && dsStatusOf(surface.status) === "queued" && surface.liveMessage.state === "present";
+export function isStarting(surface: Pick<QueueSurfaceWire, "status" | "liveMessage" | "surfaceKind" | "pauseControl">): boolean {
+  // A paused run is queued with a sentence too, but it is held, not starting.
+  return surface.surfaceKind !== "operation" && surface.pauseControl?.state !== "paused" && dsStatusOf(surface.status) === "queued" && surface.liveMessage.state === "present";
 }
 
 export const STARTING_LABEL = "Starting";

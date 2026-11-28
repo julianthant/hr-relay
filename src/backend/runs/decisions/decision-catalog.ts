@@ -35,6 +35,7 @@ const parkedWrite: readonly DeclaredOption[] = [
   { id: "saved", label: "Saved", hint: "Relay verifies first.", send: { via: "action", command: "recheck-write" } },
   { id: "not-saved", label: "Not saved, write it again", send: { via: "action", command: "resolve-write-absent" } },
 ];
+export const READ_BACK_SAVED_LABEL = "Checked by hand, continue";
 
 /** How a parked write of each registered write task is asked about: the record, its system, what Relay clicked, where to check and what Not saved does next. */
 export type ParkedWriteRecord = Readonly<{ record: string; system: string; act: "Submit" | "Save" | "Import"; check: string; again: string;

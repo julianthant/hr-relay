@@ -58,9 +58,12 @@ describe("parkedWriteDecision", () => {
     const decision = parkedWriteDecision({ ...TERMINATION, readBack: true, recordId: "10807012" }, [RECHECK, ABSENT]);
     assert.equal(decision.title, "Termination saved, but the read-back failed");
     assert.equal(decision.context, "UCPath accepted the submit; status unreadable. Check Smart HR Transactions for 10807012.");
-    assert.deepEqual(decision.options.map(({ id, recommended }) => [id, recommended]), [["saved", true], ["not-saved", undefined]], "the same answers; the copy changes, not the commands");
-    assert.deepEqual(parkedWriteDecision({ ...TERMINATION, readBack: true }, [RECHECK, ABSENT, HELD]).options.map(({ id, recommended }) => [id, recommended]),
-      [["check-again", true], ["saved", undefined], ["not-saved", undefined]], "where the held check is served, it is preselected");
+    const ordinary = parkedWriteDecision(TERMINATION, [RECHECK, ABSENT]);
+    assert.deepEqual(decision.options, ordinary.options.map(option => option.id === "saved"
+      ? { ...option, label: "Checked by hand, continue" }
+      : option));
+    assert.deepEqual(parkedWriteDecision({ ...TERMINATION, readBack: true }, [RECHECK, ABSENT, HELD]).options.map(({ id, label, recommended }) => [id, label, recommended]),
+      [["check-again", "Check again", true], ["saved", "Checked by hand, continue", undefined], ["not-saved", "Not saved, file it again", undefined]]);
   });
 
   it("reads the identifier only from the declared key segment, never a date, and refuses a declared key without it", () => {

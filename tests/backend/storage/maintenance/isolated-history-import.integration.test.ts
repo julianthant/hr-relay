@@ -41,7 +41,7 @@ import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { CONFIG_SNAPSHOT, NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { restoreSchema36QueryIndexes } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { dropRunSearchFts, restoreSchema36QueryIndexes } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { preAssistantFullAccessSnapshot, prePanelModeRetirementSnapshot } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { boundProfileAdmission } from "../../../support/helpers/admission-fixture.js";
 import { DESCRIPTOR_SET_HASH, runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -378,6 +378,7 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
   let indexes: string[];
   try {
     indexes = queryIndexes(archive);
+    dropRunSearchFts(archive);
     for (const name of indexes) archive.exec(`DROP INDEX ${name}`);
     archive.exec(`ALTER TABLE run_search DROP COLUMN ocr_subject_terms; ALTER TABLE delegation_dependencies DROP COLUMN parent_run_id;
       DROP TABLE run_requests; DROP TABLE settings_snapshots; DROP TABLE artifacts; UPDATE history_header SET schema_version=39,format=1`);
@@ -389,6 +390,8 @@ it("refreshes imported runs beside copy-created runs and starts the dashboard on
   expect(logs.payload.notes.map(row => row.message)).toContain("Archived step from source");
   expect((await client.activityReport("2026-11-23", "2026-11-23")).totalRuns).toBe(3);
   expect((await client.runDetail(local.envelope.runId)).runId).toBe(local.envelope.runId);
+  const search = await client.searchRuns({ q: sourceRun.envelope.runId.slice(-10), scope: "run", limit: 20 });
+  expect(search.results.map(row => row.runId)).toContain(sourceRun.envelope.runId);
   expect(outbound).toEqual([]);
   expect(spawn).not.toHaveBeenCalled();
   const upgraded = new DatabaseSync(archivePath, { readOnly: true });
@@ -476,7 +479,7 @@ it("keeps imported timeline folds through background polling and recovery", asyn
 it.each([41, 44])("loads every imported dashboard day with delegated runs and failed Lookup start evidence from a schema-%s archive", async version => {
   const sourceWorld = createOcrReviewWorld();
   cleanups.push(() => sourceWorld.cleanup());
-  const source = await sourceWorld.fixture({ coordinator: true, sessions: sessionFactoryHarness({
+  const source = await sourceWorld.fixture({ coordinator: true, record: true, sessions: sessionFactoryHarness({
     ucpath: () => ({ ...healthyUcpathDriver(), async searchPersonOrg() { throw new Error("synthetic-lookup-failure"); } }),
   }) });
   const { database, admission, parentRun, clock: sourceClock } = source;
@@ -504,6 +507,7 @@ it.each([41, 44])("loads every imported dashboard day with delegated runs and fa
   const archivePath = join(copy.stateRoot, "files", "imported-history.sqlite");
   const archive = new DatabaseSync(archivePath);
   try {
+    dropRunSearchFts(archive);
     const update = archive.prepare("UPDATE settings_snapshots SET payload_json=? WHERE id=?");
     const rows = archive.prepare("SELECT payload_json FROM settings_snapshots").all();
     expect(rows.length).toBeGreaterThan(0);

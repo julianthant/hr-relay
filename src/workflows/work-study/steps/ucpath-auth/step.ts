@@ -1,12 +1,46 @@
 import { WorkStudyInput } from "../../../../models/workflows/work-study/input.js";
 import { UcpathReadPayPathPosition } from "../../../../models/systems/ucpath/read-paypath-position.js";
+import { UCPATH_PAYPATH_POSITION_READY } from "../../../../models/ui/ucpath-paypath.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { defineStep, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { PAYPATH_POSITION_NODE, readPayPathPositionCall } from "../../tasks/read-paypath-position.js";
 
 const PAGE = "PayPath Actions";
+const payPathPositionManual: StepManualDeclaration = {
+  form: {
+    fields: [
+      { key: "emplId", label: "Employee ID", kind: "eid", replaces: { nodeId: PAYPATH_POSITION_NODE, path: "emplId" } },
+      { key: "displayedName", label: "Name in UCPath", kind: "text" },
+      { key: "positionNumber", label: "Position number", kind: "text", replaces: { nodeId: PAYPATH_POSITION_NODE, path: "position.positionNumber" } },
+      { key: "effectiveDate", label: "Current position effective date", kind: "us-date", optional: true },
+      { key: "positionChangeReason", label: "Current position change reason", kind: "text", optional: true },
+      { key: "positionPool", label: "Current position pool", kind: "text", optional: true },
+    ],
+  },
+  produces: {
+    [PAYPATH_POSITION_NODE]: ({ facts, scope, assertedAt }) => {
+      if (facts["emplId"] !== WorkStudyInput.parse(scope.input).emplId) {
+        throw new Error("The typed Employee ID is not the run's Employee ID.");
+      }
+      return {
+        pageStateId: UCPATH_PAYPATH_POSITION_READY,
+        emplId: facts["emplId"],
+        displayedName: facts["displayedName"],
+        observedAt: assertedAt,
+        position: {
+          positionNumber: facts["positionNumber"],
+          effectiveDate: facts["effectiveDate"] ?? "",
+          positionChangeReason: facts["positionChangeReason"] ?? "",
+          positionPool: facts["positionPool"] ?? "",
+        },
+      };
+    },
+  },
+};
+
 export const UCPATH_AUTH_STEP = Object.freeze({
-  ...defineWorkflowStep({ key: "ucpath-auth", label: "Sign in to UCPath" }), system: "ucpath" as const, locked: "guard-read" as const,
+  ...defineWorkflowStep({ key: "ucpath-auth", label: "Sign in to UCPath" }), system: "ucpath" as const, manual: payPathPositionManual,
   description: "Open UCPath PayPath Actions for the employee and read who they are and their current position data.",
   operatorFields: [
     { label: "Employee", sources: [{ nodeId: PAYPATH_POSITION_NODE, kind: "output", fieldPath: "displayedName" }], example: "Lee, Jordan" },

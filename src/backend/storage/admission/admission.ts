@@ -3,9 +3,10 @@ import type { inspectProtectedSettingsSource } from "../configuration/protected-
 import { fileModified, fileChanged, fileStatus, descriptorStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { createHash,createHmac,timingSafeEqual,randomUUID } from "node:crypto";
-import { closeSync,constants,existsSync,lstatSync,openSync,readdirSync,readSync,realpathSync,type Stats,type BigIntStats } from "node:fs";
+import { closeSync,constants,existsSync,lstatSync,openSync,read,readdirSync,readSync,realpathSync,type Stats,type BigIntStats } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename,dirname,isAbsolute,join,parse,relative,resolve } from "node:path";
+import { promisify } from "node:util";
 import { z } from "zod";
 import { DuoCredentialRecordSchema } from "../../../models/config/duo-credential-store.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
@@ -1585,7 +1586,17 @@ export class RuntimeAdmission {
     if (this.#pendingLogout !== undefined) throw new Error("profile-pending-logout-copy-delegation-refused");
     return this.#verifiedReadOnlyCopy(path, expectedSha256);
   }
+  async verifiedReadOnlyCopyAsync(path: string, expectedSha256: string): Promise<RuntimeAdmission> {
+    if (this.#pendingLogout !== undefined) throw new Error("profile-pending-logout-copy-delegation-refused");
+    const copy = this.#prepareVerifiedReadOnlyCopy(path, expectedSha256);
+    const witness = await copy.readWitness();
+    return copy.issue(() => copy.verifyBytes(witness));
+  }
   #verifiedReadOnlyCopy(path: string, expectedSha256: string | undefined, snapshot?: ReturnType<typeof createReadonlyAuthoritySnapshot>): RuntimeAdmission {
+    const copy = this.#prepareVerifiedReadOnlyCopy(path, expectedSha256, snapshot);
+    return copy.issue(copy.verifyBytes);
+  }
+  #prepareVerifiedReadOnlyCopy(path: string, expectedSha256: string | undefined, snapshot?: ReturnType<typeof createReadonlyAuthoritySnapshot>) {
     this.assertReadable();
     if (snapshot !== undefined) {
       this.assertPendingLogoutSettlementDatabase(join(this.#stateRoot, "state.db"));
@@ -1622,55 +1633,95 @@ export class RuntimeAdmission {
       || (status.nlink !== 1 && status.nlink !== 1n) || privatePathRejects(canonical, status, "group-write");
     const sameMetadata = (a: Stats | BigIntStats, b: Stats | BigIntStats) => a.dev === b.dev && a.ino === b.ino && a.size === b.size
       && a.mode === b.mode && a.uid === b.uid && a.nlink === b.nlink;
-    const verifyBytes = () => {
+    const sameVersion = (a: Stats | BigIntStats, b: Stats | BigIntStats) =>
+      sameMetadata(a, b) && fileModified(a) === fileModified(b) && fileChanged(a) === fileChanged(b);
+    const observe = () => {
       this.assertReadable(); snapshot?.assertUnchanged();
       const file = fileStatus(canonical);
       if (unsafeShape(file)) {
         throw new Error("runtime-admission: inspected copy has unsafe shape");
       }
-      const descriptor = openSync(canonical, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+      return file;
+    };
+    const openFlags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+    const checkOpened = (opened: Stats | BigIntStats, file: Stats | BigIntStats) => {
+      if (!sameMetadata(opened, file) || unsafeShape(opened)) throw new Error("runtime-admission: inspected copy changed during open");
+    };
+    const checkDigest = (descriptor: number, opened: Stats | BigIntStats, content: { bytes: number; digest: string } | undefined) => {
+      const final = descriptorStatus(descriptor), live = fileStatus(canonical);
+      if (!sameVersion(final, opened) || !sameVersion(live, final) || unsafeShape(live)
+        || content !== undefined && (BigInt(content.bytes) !== BigInt(opened.size) || digest !== undefined && content.digest !== digest)) {
+        throw new Error("runtime-admission: inspected copy digest changed");
+      }
+      digest ??= content?.digest;
+      return final;
+    };
+    const close = (descriptor: number, identity: Stats | BigIntStats, primary: { error: unknown } | undefined) => {
+      try { closeSync(descriptor); }
+      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+        { descriptor: { descriptor, identity } }); }
+      if (primary !== undefined) throw primary.error;
+      this.assertReadable(); snapshot?.assertUnchanged();
+    };
+    const verifyBytes = (witness?: Stats | BigIntStats) => {
+      const file = observe();
+      const descriptor = openSync(canonical, openFlags);
       let primary: { error: unknown } | undefined;
       let descriptorIdentity = file;
       try {
         const opened = descriptorStatus(descriptor); descriptorIdentity = opened;
-        if (!sameMetadata(opened, file) || unsafeShape(opened)) {
-          throw new Error("runtime-admission: inspected copy changed during open");
+        checkOpened(opened, file);
+        if (witness !== undefined) {
+          if (!sameVersion(opened, witness)) throw new Error("runtime-admission: inspected copy digest changed");
+          checkDigest(descriptor, opened, undefined);
+        } else {
+          const hash = createHash("sha256"), buffer = Buffer.allocUnsafe(64 * 1024);
+          let count: number, bytes = 0;
+          while ((count = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) {
+            hash.update(buffer.subarray(0, count)); bytes += count;
+          }
+          checkDigest(descriptor, opened, { bytes, digest: hash.digest("hex") });
         }
-        const hash = createHash("sha256");
-        const buffer = Buffer.allocUnsafe(64 * 1024);
-        let read: number, bytes = 0;
-        while ((read = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) {
-          hash.update(buffer.subarray(0, read));
-          bytes += read;
-        }
-        const final = descriptorStatus(descriptor), live = fileStatus(canonical), observed = hash.digest("hex");
-        if (!sameMetadata(final, opened) || !sameMetadata(live, opened) || unsafeShape(live)
-          || fileModified(final) !== fileModified(opened) || fileChanged(final) !== fileChanged(opened)
-          || fileModified(live) !== fileModified(final) || fileChanged(live) !== fileChanged(final)
-          || BigInt(bytes) !== BigInt(opened.size) || digest !== undefined && observed !== digest) {
-          throw new Error("runtime-admission: inspected copy digest changed");
-        }
-        digest ??= observed;
       } catch (error) { primary = { error }; }
-      try { closeSync(descriptor); }
-      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
-        { descriptor: { descriptor, identity: descriptorIdentity } }); }
-      if (primary !== undefined) throw primary.error;
-      this.assertReadable(); snapshot?.assertUnchanged();
+      close(descriptor, descriptorIdentity, primary);
     };
-    verifyBytes();
-    if (this.#scope === "stopped-control-inventory") return new RuntimeAdmission(issuanceToken,
-      { assertHeld: verifyBytes, readInstallationContext: () => this.readInstallationContext(), release() {} },
-      this.#stateRoot, this.#artifactRoot, [checked], "stopped-control-inventory", this.#mode, this.#locator, this.profileBinding);
-    return new RuntimeAdmission(issuanceToken, { assertHeld: verifyBytes, release() {} },
-      this.#stateRoot, this.#artifactRoot, [checked],
-      this.#readyUpgrade !== undefined ? "profile-ready-upgrade" : this.#scope === "profile-pending-logout-inventory" ? "profile-pending-logout-inventory"
-        : this.#scope === "synthetic" || this.#scope === "synthetic-verified-copy" ? "synthetic-verified-copy" : "verified-copy", this.#mode,
-      this.#pendingLogout === undefined && this.#readyUpgrade === undefined ? undefined : this.#locator,
-      this.#pendingLogout === undefined && this.#readyUpgrade === undefined ? undefined : this.#profileBinding,
-      this.#pendingLogout === undefined && this.#readyUpgrade === undefined ? undefined : this.#profileParent,
-      this.#pendingLogout === undefined ? undefined : { ...this.#pendingLogout, copyPath: checked },
-      this.#readyUpgrade === undefined ? undefined : { ...this.#readyUpgrade, copyPath: checked });
+    const readWitness = async () => {
+      const file = observe();
+      const descriptor = openSync(canonical, openFlags);
+      let descriptorIdentity = file, witness: Stats | BigIntStats | undefined;
+      let primary: { error: unknown } | undefined;
+      try {
+        const opened = descriptorStatus(descriptor); descriptorIdentity = opened;
+        checkOpened(opened, file);
+        const readChunk = promisify(read), hash = createHash("sha256"), buffer = Buffer.allocUnsafe(64 * 1024);
+        let bytes = 0;
+        for (;;) {
+          const { bytesRead } = await readChunk(descriptor, buffer, 0, buffer.length, null);
+          if (bytesRead === 0) break;
+          hash.update(buffer.subarray(0, bytesRead)); bytes += bytesRead;
+        }
+        witness = checkDigest(descriptor, opened, { bytes, digest: hash.digest("hex") });
+      } catch (error) { primary = { error }; }
+      close(descriptor, descriptorIdentity, primary);
+      if (witness === undefined) throw new Error("runtime-admission: inspected copy digest unproved");
+      return witness;
+    };
+    const issue = (assertHeld: () => void) => {
+      assertHeld();
+      if (this.#scope === "stopped-control-inventory") return new RuntimeAdmission(issuanceToken,
+        { assertHeld, readInstallationContext: () => this.readInstallationContext(), release() {} },
+        this.#stateRoot, this.#artifactRoot, [checked], "stopped-control-inventory", this.#mode, this.#locator, this.profileBinding);
+      return new RuntimeAdmission(issuanceToken, { assertHeld, release() {} },
+        this.#stateRoot, this.#artifactRoot, [checked],
+        this.#readyUpgrade !== undefined ? "profile-ready-upgrade" : this.#scope === "profile-pending-logout-inventory" ? "profile-pending-logout-inventory"
+          : this.#scope === "synthetic" || this.#scope === "synthetic-verified-copy" ? "synthetic-verified-copy" : "verified-copy", this.#mode,
+        this.#pendingLogout === undefined && this.#readyUpgrade === undefined ? undefined : this.#locator,
+        this.#pendingLogout === undefined && this.#readyUpgrade === undefined ? undefined : this.#profileBinding,
+        this.#pendingLogout === undefined && this.#readyUpgrade === undefined ? undefined : this.#profileParent,
+        this.#pendingLogout === undefined ? undefined : { ...this.#pendingLogout, copyPath: checked },
+        this.#readyUpgrade === undefined ? undefined : { ...this.#readyUpgrade, copyPath: checked });
+    };
+    return { verifyBytes, readWitness, issue };
   }
 
   resumeProfileAuthorityRestore(operationId: string, restore: OfflineMaintenanceOperation): RuntimeAdmission {

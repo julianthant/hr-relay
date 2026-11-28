@@ -62,9 +62,9 @@ async function schema34Store() {
   return { ...f, raw };
 }
 
-it("converts settings records in migration 35, under the current schema 45", () => {
+it("converts settings records in migration 35, under the current schema 48", () => {
   assert.ok(SQLITE_MIGRATIONS.find(migration => migration.version === 35)?.statements.includes(SEND_SHORTCUT_CONVERSION_MARKER));
-  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 45);
+  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 48);
   assert.deepEqual(migrationTableNames(35), migrationTableNames(34));
 });
 

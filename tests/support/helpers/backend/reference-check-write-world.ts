@@ -21,6 +21,7 @@ import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/
 import { REFERENCE_CHECK_REVIEW_GATE } from "../../../../src/models/processing/workbooks/reference-check-stop.js";
 import { REFERENCE_CHECK, VerifyWorkbookPerson } from "../../../../src/models/processing/workbooks/verify-person.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
+import type { StartPlanRequest } from "../../../../src/models/dashboard/start-plan.js";
 import { CommandRequestSchema, GateArmAnswerRequestSchema } from "../../../../src/rules/commands/commands.js";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { PREFERENCES_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
@@ -70,10 +71,11 @@ export function createReferenceCheckWriteWorld() {
         sheetId: "sheet", expectedVersion: library.read(saved.libraryId).version };
     };
     const start = (input: unknown, picks: readonly z.infer<typeof WorkbookActiveSelectionSchema>[], dryRun = false,
-      extra: Readonly<Pick<Parameters<typeof execution.start>[2], "stepOmissions" | "selectedStepKeys" | "protectedSubmissionBindings">> = {}) =>
+      extra: Readonly<Pick<Parameters<typeof execution.start>[2], "stepOmissions" | "selectedStepKeys" | "protectedSubmissionBindings">
+        & Pick<StartPlanRequest, "rerunSource">> = {}) =>
       execution.start(descriptor, input, { dryRun, ...(picks.length === 0 ? {} : { workbookReferences: picks }), ...extra });
-    const execute = async (run: RunRecord) => {
-      const { run: settled } = await execution.execute(run, world.SIGNAL);
+    const execute = async (run: RunRecord, signal = world.SIGNAL) => {
+      const { run: settled } = await execution.execute(run, signal);
       assert.ok(settled);
       return settled;
     };
@@ -98,7 +100,6 @@ export function createReferenceCheckWriteWorld() {
     };
     const cancel = (run: RunRecord) => command(run, { source: "queue-row", family: "run", type: "cancel", target: { runId: run.envelope.runId, expectedVersion: current(run).version } });
     const retry = (run: RunRecord) => command(run, { source: "queue-row", family: "run", type: "retry", target: { runId: run.envelope.runId, expectedVersion: current(run).version } });
-    const recover = (run: RunRecord) => command(run, { source: "dashboard", family: "run", type: "recover-run", target: { runId: run.envelope.runId, expectedVersion: current(run).version } });
     const events = (run: RunRecord) => database.authority.timelineEvents.page({}).filter(event => event.scope.kind === "run" && event.scope.runId === run.envelope.runId);
     /** The check's observed Logs lines, in the order the run recorded them. */
     const checkLines = (run: RunRecord) => events(run).flatMap(event => event.payload.kind === "span" && event.payload.event.t === "data.observed" && event.payload.event.nodeId === "reference-check"
@@ -111,6 +112,6 @@ export function createReferenceCheckWriteWorld() {
     const gateDeps = { runReader: reader, authority: { listGateResults: (runId: string) => database.authority.gateResults.listByRun(runId) },
       projection: { queueSurface: () => ({ actions: [CANCEL_ROW_ACTION] }) },
       canonical: { reader, database, descriptors: { resolve } } } as unknown as RunDetailQueryDeps;
-    return { database, clock, start, execute, current, continueAnyway, approveIdentity, cancel, retry, recover, events, checkLines, nodeSpans, spreadsheet, gateDeps };
+    return { database, clock, start, execute, current, continueAnyway, approveIdentity, cancel, retry, events, checkLines, nodeSpans, spreadsheet, gateDeps };
   } };
 }

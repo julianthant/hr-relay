@@ -41,9 +41,9 @@ function authorityState(f: Fixture, database = f.database) {
     const repositories = database.authority;
     const runs = ["emergency-contact", "ocr", "emergency-contact-member", "onbase", "ocr-page", "person-lookup", "i9-lookup"]
       .flatMap(workflow => repositories.runs.listByWorkflow(workflow));
-    const review = repositories.ocrReviews.latest(f.run.envelope.runId); assert.ok(review);
+    const review = repositories.ocrReviews.latest(f.run.envelope.runId);
     return { generation: database.getMeta().authorityGeneration, runs,
-      reviews: Array.from({ length: review.revision }, (_, index) => repositories.ocrReviews.revision(f.run.envelope.runId, index + 1)),
+      reviews: Array.from({ length: review?.revision ?? 0 }, (_, index) => repositories.ocrReviews.revision(f.run.envelope.runId, index + 1)),
       snapshots: repositories.ocrReviews.snapshots(f.run.envelope.runId),
       extractions: repositories.ocrExtractions.findBySource(f.reading.input.image.sha256),
       groups: [f.parentRun, f.run].map(run => repositories.dependencies.groups(run.envelope.runId, "retained")),
@@ -53,25 +53,30 @@ function authorityState(f: Fixture, database = f.database) {
   });
 }
 
+function servedQueue(f: Fixture, database = f.database, reader = f.canonical.lifecycle) {
+  const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader),
+    withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries: { ...composeQueueSummaries(database),
+      activity: () => { throw new Error("Unexpected activity read in OCR approval proof"); } } };
+  const projection = createOperatorProjection({ database, stateRoot: f.harness.authority.stateRoot, clock: f.clock,
+    reader: servedReader, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
+    ledger: createTransactionHistory(database.authority), descriptors: { resolve: f.resolve } });
+  projection.ingestFromTimeline();
+  assert.equal(projection.health().state, "live");
+  const wire = projection.buildDashboardDayWire(f.clock.todayLocal());
+  const parent = wire.queueSurfaces.find(row => row.runId === f.parentRun.envelope.runId);
+  const ocr = wire.queueSurfaces.find(row => row.runId === f.run.envelope.runId);
+  assert.ok(parent?.surfaceKind === "operation" && ocr?.surfaceKind === "operation");
+  const deps = createOperatorRunDetail({ database, stateRoot: f.harness.authority.stateRoot, projection, runReader: reader,
+    canonical: { database, reader, descriptors: { resolve: f.resolve } } });
+  return { projection, wire, parent, ocr, deps };
+}
+
 function served(f: Fixture, database = f.database, reader = f.canonical.lifecycle, verifyMemberTargets = false) {
   return database.withAuthorityReadSnapshot(() => {
     const before = authorityState(f, database);
-    const servedReader = { read: reader.read.bind(reader), list: reader.list.bind(reader),
-      withRunTreeSnapshot: reader.withRunTreeSnapshot.bind(reader), summaries: { ...composeQueueSummaries(database),
-        activity: () => { throw new Error("Unexpected activity read in OCR approval proof"); } } };
-    const projection = createOperatorProjection({ database, stateRoot: f.harness.authority.stateRoot, clock: f.clock,
-      reader: servedReader, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
-      ledger: createTransactionHistory(database.authority), descriptors: { resolve: f.resolve } });
-    projection.ingestFromTimeline();
-    assert.equal(projection.health().state, "live");
-    const wire = projection.buildDashboardDayWire(f.clock.todayLocal());
-    const parent = wire.queueSurfaces.find(row => row.runId === f.parentRun.envelope.runId);
-    const ocr = wire.queueSurfaces.find(row => row.runId === f.run.envelope.runId);
-    assert.ok(parent?.surfaceKind === "operation" && ocr?.surfaceKind === "operation");
+    const { projection, wire, parent, ocr, deps } = servedQueue(f, database, reader);
     assert.equal(parent.availableSections.includes("review"), true);
     assert.equal(ocr.availableSections.includes("review"), true);
-    const deps = createOperatorRunDetail({ database, stateRoot: f.harness.authority.stateRoot, projection, runReader: reader,
-      canonical: { database, reader, descriptors: { resolve: f.resolve } } });
     const parentDetail = buildRunDetail(deps, parent.runId), ocrDetail = buildRunDetail(deps, ocr.runId);
     const review = buildOcrReviewSection(deps, ocr.runId); assert.equal(review.section, "review");
     if (review.section !== "review") assert.fail("Missing OCR review");
@@ -341,18 +346,27 @@ it("keeps failed OCR pages on their own Logs, on the host row too, while hiding 
   assert.equal(f.database.authority.runs.listByWorkflow("emergency-contact-member").length, 0);
 });
 
-it("shows a hosted OCR whose every page failed as failed pages on the Emergency Contact row, not as Reading", async () => {
+it("links failed OCR page logs from the terminal Emergency Contact row", async () => {
   const f = await world.fixture({ coordinator: true, record: true, pageCount: 1, failManualPageOnce: 1, stopAfterPageFailure: true });
-  const resumed = await f.canonical.execute(f.parentRun, new AbortController().signal);
-  assert.deepEqual(resumed.outcomes.map(outcome => outcome.state), ["parked-gate"]);
-  const view = served(f, f.database, f.canonical.lifecycle, true);
-  assert.equal(view.ocrDetail.gate.state, "open");
-  assert.equal(view.review.ocr?.revision.records.length, 0);
-  const [failed] = f.database.authority.runs.listChildren(f.run.envelope.runId).filter(run => run.envelope.workflow === "ocr-page");
-  assert.ok(failed?.lifecycle.state === "terminal" && failed.lifecycle.outcome === "failed");
-  assert.deepEqual(view.parent.recordMembers?.members.map(member => ({ kind: member.kind, title: member.title, statusLabel: member.statusLabel,
-    runId: member.target.runId, section: member.target.section })), [
-    { kind: "page-failure", title: "Page 1", statusLabel: "Failed", runId: failed.envelope.runId, section: "logs" },
-  ]);
-  assert.equal(view.logsChecked[0], 1, "the Emergency Contact row opens the failed page's own served log");
+  const signal = new AbortController().signal;
+  assert.equal((await f.canonical.step(f.parentRun, signal)).outcome.state, "failed");
+  assert.equal((await f.canonical.step(f.parentRun, signal)).outcome.state, "failed");
+  f.database.withAuthorityReadSnapshot(() => {
+    const before = authorityState(f);
+    const { deps, parent, ocr } = servedQueue(f);
+    assert.equal(parent.status, "failed");
+    assert.equal(ocr.status, "failed");
+    assert.equal(buildRunDetail(deps, ocr.runId).gate.state, "absent");
+    assert.equal(parent.availableSections.includes("review"), false);
+    assert.equal(ocr.availableSections.includes("review"), false);
+    const [failed] = f.database.authority.runs.listChildren(f.run.envelope.runId).filter(run => run.envelope.workflow === "ocr-page");
+    assert.ok(failed?.lifecycle.state === "terminal" && failed.lifecycle.outcome === "failed");
+    const members = parent.recordMembers?.members; assert.ok(members);
+    assert.deepEqual(members.map(member => ({ kind: member.kind, title: member.title, statusLabel: member.statusLabel,
+      runId: member.target.runId, section: member.target.section })), [
+      { kind: "page-failure", title: "Page 1", statusLabel: "Failed", runId: failed.envelope.runId, section: "logs" },
+    ]);
+    assert.equal(assertMemberLogsServed(deps, members), 1, "the Emergency Contact row opens the failed page's own served log");
+    assert.deepEqual(authorityState(f), before);
+  });
 });

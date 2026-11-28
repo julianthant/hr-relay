@@ -31,6 +31,7 @@ import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/f
 import { COMMITTED_OUTCOME, CONFIG_SNAPSHOT, HASH_A, LATER, LATEST, LEDGER_PAYLOAD, NOW, SPAN_OUTBOX_PAYLOAD, UUID_1, UUID_3, UUID_5, UUID_6, UUID_7, UUID_8, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { absentProbeEvidence } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 import { NOW as NOW_m2, foundationFixture as baseFoundationFixture_m2, failure as failure_m2, id as id_m2, terminalizeFixtureFailure } from "../../../support/helpers/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
@@ -221,38 +222,59 @@ async function fixture(faultStep?:string) {
     target:{runId:run.envelope.runId,expectedVersion:5,writeIntentId:parked.writeIntentId,intentGeneration:1,
       writeAttemptId:parked.currentAttemptId,bindingProofDigest:parked.bindingProofDigest},
     payload:{occurrenceKeyDigest:parked.idempotencyKeyDigest}};
-  const settlement={state:"operator-confirmed-absent" as const,writeIntentId:parked.writeIntentId,generation:1,
+  const historicalSettlement={state:"operator-confirmed-absent" as const,writeIntentId:parked.writeIntentId,generation:1,
     operator:"local-operator",confirmedAt:LATER};
   const {parkedCode:_code,message:_message,authorityReason:_reason,status:_status,...base}=parked;
-  const settled=WriteIntentRecordSchema.parse({...base,status:"retryable",settlement,resolvedAt:LATER,updatedAt:LATER,version:3,resolution});
+  const historical=WriteIntentRecordSchema.parse({...base,status:"retryable",settlement:historicalSettlement,resolvedAt:LATER,updatedAt:LATER,version:3,resolution});
+  const recheck={commandId:command.commandId,auditId:resolution.auditId,expectedRunVersion:5,requestedAt:LATER,nodeId:"termination"};
+  const requested=WriteIntentRecordSchema.parse({...parked,recheck,version:3,updatedAt:LATER});
   const audit={auditId:UUID_6,request:command,result:{state:"applied",commandId:UUID_5,affectedTargets:[{family:"run",runId:run.envelope.runId}]},
-    completedAt:LATER,versionChanges:[{target:{family:"run",runId:run.envelope.runId},before:5,after:6}],affectedDependencyIds:[],writeResolution:settled};
+    completedAt:LATER,versionChanges:[{target:{family:"run",runId:run.envelope.runId},before:5,after:6}],affectedDependencyIds:[],writeResolution:requested};
+  const historicalAudit={...audit,writeResolution:historical};
+  const settlement={...historicalSettlement,evidence:{...absentProbeEvidence(LATER).evidence,idempotencyKeyDigest:parked.idempotencyKeyDigest}};
+  const requestRead=(request=recheck)=>{
+    const intent=db.authority.writeIntents.requestRecheck({writeIntentId:parked.writeIntentId,generation:1,expectedVersion:2,recheck:request});
+    const service=new RunRecordService({database:db,clock:capturedInstantClock(LATER),ids:sequentialIdFactory("b"),publishQueued:()=>{}});
+    const resumed=runContinuationPort(service).transition({commandId:lifecycleCommandId("write-recheck",request.commandId),
+      runId:run.envelope.runId,expectedVersion:5,lifecycle:{state:"queued"},startAt:"termination",
+      writeResolution:{kind:"recheck",commandId:request.commandId,writeIntentId:parked.writeIntentId,generation:1,
+        writeAttemptId:original.writeAttemptId,bindingProofDigest:parked.bindingProofDigest}});
+    if(resumed.state !== "applied")throw new Error("fixture continuation failed");
+    return {run:resumed.run,intent};
+  };
+  const claimRead=(now=LATER)=>{
+    const {claim}=writeFenceFixtureInput(db,{intent:{...WRITE_INTENT_ATTEMPTING,fencedAt:now},attempt:{...WRITE_ATTEMPT,fencedAt:now}});
+    const running=db.authority.runs.get(run.envelope.runId);
+    if(running?.lifecycle.state !== "running")throw new Error("fixture read claim failed");
+    const active=db.authority.runs.transition({runId:run.envelope.runId,expectedVersion:running.version,claim,now,
+      lifecycle:{...running.lifecycle,currentNodeId:"termination"}});
+    if(active.state !== "applied")throw new Error("fixture node transition failed");
+    return {run:active.run,claim};
+  };
   const apply=(fault?:"audit"|"intent"|"run")=>db.withAuthorityTransaction(repositories=>{
     repositories.commands.insert(command);repositories.commandAudits.insert(audit);
     if(fault === "audit")throw new Error("resolution-fault");
-    const result=db.settleResolvedParkedAbsence({writeIntentId:parked.writeIntentId,generation:1,expectedIntentVersion:2,settlement,resolution});
-    if(fault === "intent")throw new Error("resolution-fault");
-    const service=new RunRecordService({database:db,clock:capturedInstantClock(LATER),ids:sequentialIdFactory(),publishQueued:()=>{}});
-    const resumed=runContinuationPort(service).transition({commandId:UUID_7,runId:run.envelope.runId,expectedVersion:5,
-      lifecycle:{state:"queued"},startAt:"termination",writeResolution:{kind:"operator",binding:resolution}});
-    if(resumed.state !== "applied")throw new Error("fixture continuation failed");
+    requestRead();
     if(fault === "run")throw new Error("resolution-fault");
-    expect(result).toEqual(settled);return resumed.run;
+    const active=claimRead();
+    const result=db.settleResolvedParkedAbsence({writeIntentId:parked.writeIntentId,generation:1,expectedIntentVersion:3,settlement,resolution,claim:active.claim});
+    if(fault === "intent")throw new Error("resolution-fault");
+    expect(result).toEqual({...base,status:"retryable",settlement,resolvedAt:LATER,updatedAt:LATER,version:4,resolution});
+    return active.run;
   });
   const rawMutation=(work:(raw:DatabaseSync)=>void)=>{const raw=new DatabaseSync(path);try{work(raw);}finally{raw.close();}};
   const inspect=()=>{const raw=new DatabaseSync(path,{readOnly:true});try{return inspectNormalAuthority(raw);}finally{raw.close();}};
   const restart=()=>{
     detachBoundFixtureWorkers(db);db.close();closed=true;db=open();closed=false;bindWorkers();
   };
-  return {path,get db(){return db;},run,parked,original,command,audit,settlement,resolution,apply,rawMutation,inspect,setFault:(step:string)=>{activeFault=step;},restart};
+  return {path,get db(){return db;},run,parked,original,command,audit,historicalAudit,historicalSettlement,settlement,resolution,
+    recheck,requestRead,claimRead,apply,rawMutation,inspect,setFault:(step:string)=>{activeFault=step;},restart};
 }
 function positive(f:Awaited<ReturnType<typeof fixture>>) {
   const resolution={...f.resolution,decision:"present" as const};
   const proof=LEDGER_PAYLOAD.proof;
   const command={...f.command,type:"recheck-write",payload:{occurrenceKeyDigest:f.parked.idempotencyKeyDigest}};
-  const recheck={commandId:command.commandId,auditId:resolution.auditId,expectedRunVersion:5,requestedAt:LATER,nodeId:"termination"};
-  const requested=WriteIntentRecordSchema.parse({...f.parked,recheck,version:3,updatedAt:LATER});
-  const audit={...f.audit,request:command,writeResolution:requested};
+  const audit={...f.audit,request:command};
   const outcome={...COMMITTED_OUTCOME,proofSource:"recovery-probe"};
   const transaction={...LEDGER_PAYLOAD,traceId:f.run.envelope.traceId,proofSource:"recovery-probe"};
   const committedSpan={...SPAN_OUTBOX_PAYLOAD,traceId:f.run.envelope.traceId,outcome};
@@ -263,45 +285,29 @@ function positive(f:Awaited<ReturnType<typeof fixture>>) {
   const commit={writeIntentId:f.parked.writeIntentId,generation:1,completionProof:proof,confirmedAt:LATER,outcome,transaction,committedSpan};
   const apply=()=>f.db.withAuthorityTransaction(repositories=>{
     repositories.commands.insert(command);repositories.commandAudits.insert(audit);
-    repositories.writeIntents.requestRecheck({writeIntentId:f.parked.writeIntentId,generation:1,expectedVersion:2,recheck});
-    const service=new RunRecordService({database:f.db,clock:capturedInstantClock(LATER),ids:sequentialIdFactory(),publishQueued:()=>{}});
-    const resumed=runContinuationPort(service).transition({commandId:lifecycleCommandId("write-recheck",command.commandId),runId:f.run.envelope.runId,expectedVersion:5,
-      lifecycle:{state:"queued"},startAt:"termination",writeResolution:{kind:"recheck",commandId:command.commandId,
-        writeIntentId:f.parked.writeIntentId,generation:1,writeAttemptId:f.original.writeAttemptId,bindingProofDigest:f.parked.bindingProofDigest}});
-    if(resumed.state !== "applied")throw new Error("fixture continuation failed");
+    f.requestRead();
     const {claim}=writeFenceFixtureInput(f.db,{intent:WRITE_INTENT_ATTEMPTING,attempt:WRITE_ATTEMPT});
     const report=f.db.commitRecheckedParkedWrite({commit,checkpoint,expectedIntentVersion:3,resolution,claim});
     const running=repositories.runs.get(f.run.envelope.runId)!;
     repositories.runs.transition({runId:f.run.envelope.runId,expectedVersion:running.version,claim,lifecycle:{state:"queued"},now:LATER});
     return report;
   });
-  return {apply,command,audit,checkpoint,transaction,committedSpan,commit,recheck,requested};
+  return {apply,command,audit,checkpoint,transaction,committedSpan,commit};
 }
 function kernel(f:Awaited<ReturnType<typeof fixture>>,fault?:"audit"|"mismatch",present=false) {
   let preparations=0;
   const unused=():never=>{throw new Error("unused offline port");};
   const prepare=(repositories:typeof f.db.authority,context:WriteResolutionContext)=>{
     preparations+=1;
-    const positiveResult=present ? positive(f) : undefined;
-    const resolution={...f.resolution,auditId:context.auditId,decision:present ? "present" as const : "absent" as const};
-    const recheck=positiveResult === undefined ? undefined : {...positiveResult.recheck,auditId:context.auditId};
-    const intent=WriteIntentRecordSchema.parse(positiveResult === undefined ? {...f.audit.writeResolution,resolution}
-      : {...positiveResult.requested,recheck});
+    const recheck={...f.recheck,auditId:context.auditId};
+    const intent=WriteIntentRecordSchema.parse({...f.audit.writeResolution,recheck});
     const run=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,startAt:"termination"},lifecycle:{state:"queued"},version:6,updatedAt:LATER});
     expect(repositories.commandAudits.get(context.auditId)).toBeUndefined();
     return {outcome:{run,intent},applyAfterAudit:()=>{
       expect(repositories.commandAudits.get(context.auditId)).toBeDefined();
       if(fault === "audit")throw new Error("kernel-after-audit-fault");
-      const actualIntent=positiveResult === undefined
-        ? f.db.settleResolvedParkedAbsence({writeIntentId:f.parked.writeIntentId,generation:1,expectedIntentVersion:2,settlement:f.settlement,resolution})
-        : repositories.writeIntents.requestRecheck({writeIntentId:f.parked.writeIntentId,generation:1,expectedVersion:2,recheck});
-      const service=new RunRecordService({database:f.db,clock:capturedInstantClock(LATER),ids:sequentialIdFactory("b"),publishQueued:()=>{}});
-      const actual=runContinuationPort(service).transition({commandId:positiveResult === undefined ? UUID_7 : lifecycleCommandId("write-recheck",context.command.commandId),runId:f.run.envelope.runId,expectedVersion:5,
-        lifecycle:{state:"queued"},startAt:"termination",writeResolution:positiveResult === undefined ? {kind:"operator",binding:resolution}
-          : {kind:"recheck",commandId:context.command.commandId,writeIntentId:f.parked.writeIntentId,generation:1,
-            writeAttemptId:f.original.writeAttemptId,bindingProofDigest:f.parked.bindingProofDigest}});
-      if(actual.state !== "applied")throw new Error("fixture continuation failed");
-      return {run:fault === "mismatch" ? RunRecordSchema.parse({...actual.run,displayName:"mismatched actual result"}) : actual.run,intent:actualIntent};
+      const actual=f.requestRead(recheck);
+      return {run:fault === "mismatch" ? RunRecordSchema.parse({...actual.run,displayName:"mismatched actual result"}) : actual.run,intent:actual.intent};
     }};
   };
   const lifecycle=new RunRecordService({database:f.db,clock:capturedInstantClock(LATER),ids:sequentialIdFactory("b"),publishQueued:()=>{}});
@@ -366,6 +372,28 @@ afterEach(_afterEachFixture0);
 describe("native immutable parked absence settlement",()=>{
 afterEach(_afterEachFixture0);
 
+  it("refuses a new absence settlement with only a historical operator audit",async ()=>{
+    const f=await fixture();
+    expect(()=>f.db.withAuthorityTransaction(repositories=>{
+      repositories.commands.insert(f.command);repositories.commandAudits.insert(f.historicalAudit);
+      f.db.settleResolvedParkedAbsence({writeIntentId:f.parked.writeIntentId,generation:1,expectedIntentVersion:2,
+        settlement:f.historicalSettlement,resolution:f.resolution});
+    })).toThrow();
+    expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.parked);
+    expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);
+  });
+
+  it("decodes a historical operator-only audit after restart",async ()=>{
+    const f=await fixture();
+    f.db.withAuthorityTransaction(repositories=>{
+      repositories.commands.insert(f.command);repositories.commandAudits.insert(f.historicalAudit);
+    });
+    f.restart();
+    const audit=f.db.authority.commandAudits.get(UUID_6);
+    expect(authenticateAuditedParkedWriteResolution(f.original,f.db.authority.commands.get(UUID_5),audit).intent)
+      .toEqual(f.historicalAudit.writeResolution);
+  });
+
   it.each(["audit","intent","run"] as const)("rolls back the complete command and run after %s",async fault=>{
     const f=await fixture();const generation=f.db.getMeta().authorityGeneration;
     expect(()=>f.apply(fault)).toThrow("resolution-fault");
@@ -374,24 +402,40 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);
     expect(f.db.authority.runs.get(f.run.envelope.runId)).toEqual(f.run);expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
-  it("requires the genuine final audit and admission CAS before settling",async ()=>{
-    const f=await fixture();expect(()=>f.db.settleResolvedParkedAbsence({writeIntentId:f.parked.writeIntentId,generation:1,expectedIntentVersion:2,
-      settlement:f.settlement,resolution:f.resolution})).toThrow(/authority-missing/u);
-    expect(()=>f.db.withAuthorityTransaction(repositories=>{repositories.commands.insert(f.command);repositories.commandAudits.insert(f.audit);
-      f.db.settleResolvedParkedAbsence({writeIntentId:f.parked.writeIntentId,generation:1,expectedIntentVersion:2,settlement:f.settlement,
-        resolution:{...f.resolution,expectedRunVersion:3}});})).toThrow(/run-cas-mismatch/u);
+  it("requires the audited read, its current claim and fresh evidence before settling",async ()=>{
+    const f=await fixture();
+    f.db.withAuthorityTransaction(repositories=>{
+      repositories.commands.insert(f.command);
+      expect(()=>f.requestRead()).toThrow();
+      repositories.commandAudits.insert(f.audit);
+      f.requestRead();
+    });
+    const {claim}=f.claimRead(LATEST);
+    const request={writeIntentId:f.parked.writeIntentId,generation:1,expectedIntentVersion:3,claim,
+      settlement:{...f.settlement,confirmedAt:LATEST,evidence:{...f.settlement.evidence,observedAt:LATEST}},
+      resolution:{...f.resolution,resolvedAt:LATEST}};
+    expect(()=>f.db.settleResolvedParkedAbsence({...request,claim:undefined})).toThrow(/claim/u);
+    expect(()=>f.db.settleResolvedParkedAbsence({...request,settlement:f.historicalSettlement})).toThrow(/evidence/u);
+    expect(()=>f.db.settleResolvedParkedAbsence({...request,claim:{...claim,claimGeneration:claim.claimGeneration - 1}}))
+      .toThrow(/worker-execution-lost/u);
+    expect(()=>f.db.settleResolvedParkedAbsence({...request,settlement:{...request.settlement,evidence:f.settlement.evidence}}))
+      .toThrow(/absence-proof-mismatch/u);
+    expect(()=>f.db.settleResolvedParkedAbsence({...request,resolution:{...request.resolution,expectedRunVersion:3}}))
+      .toThrow(/recheck-settlement-mismatch/u);
+    expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)).toEqual(f.audit.writeResolution);
     expect(f.db.authority.writeAttempts.get(f.original.writeAttemptId)).toEqual(f.original);
   });
   it("retains and authenticates the original resolution after later run advancement and a real fresh N+1 fence",async ()=>{
     const f=await fixture();const resumed=f.apply();
-    f.db.authority.runs.advanceRevision({runId:resumed.envelope.runId,expectedVersion:5,now:LATEST});
+    const advanced=f.db.authority.runs.advanceRevision({runId:resumed.envelope.runId,expectedVersion:resumed.version,now:LATEST});
+    expect(advanced.state).toBe("applied");
     const proof={...WRITE_INTENT_ATTEMPTING.bindingProof,proofId:UUID_7,observedAt:LATEST};const digest=deriveWriteBindingProofDigest(proof);
     const intent={...WRITE_INTENT_ATTEMPTING,currentAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,
-      fencedAt:LATEST,version:4,updatedAt:LATEST};
+      fencedAt:LATEST,version:5,updatedAt:LATEST};
     const attempt={...WRITE_ATTEMPT,writeAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,fencedAt:LATEST,recordedAt:LATEST};
-    f.db.authority.writeIntents.refenceRetryable({...writeFenceFixtureInput(f.db,{intent,attempt}),expectedVersion:3});
+    f.db.authority.writeIntents.refenceRetryable({...writeFenceFixtureInput(f.db,{intent,attempt}),expectedVersion:4});
     f.restart();
-    expect(f.db.authority.runs.get(f.run.envelope.runId)?.version).toBe(9);
+    expect(f.db.authority.runs.get(f.run.envelope.runId)?.version).toBe(resumed.version + 1);
     expect(f.db.authority.writeIntents.get(f.parked.writeIntentId)?.generation).toBe(2);
     expect(canonicalJsonStringify(f.db.authority.writeAttempts.get(f.original.writeAttemptId))).toBe(canonicalJsonStringify(f.original));
     const audit=f.db.authority.commandAudits.get(UUID_6);
@@ -518,9 +562,9 @@ afterEach(_afterEachFixture0);
     const f=await fixture();f.apply();
     const proof={...WRITE_INTENT_ATTEMPTING.bindingProof,proofId:UUID_7,observedAt:LATER};const digest=deriveWriteBindingProofDigest(proof);
     const intent={...WRITE_INTENT_ATTEMPTING,currentAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,
-      fencedAt:LATER,version:4,updatedAt:LATER};
+      fencedAt:LATER,version:5,updatedAt:LATER};
     const attempt={...WRITE_ATTEMPT,writeAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,fencedAt:LATER,recordedAt:LATER};
-    f.db.authority.writeIntents.refenceRetryable({...writeFenceFixtureInput(f.db,{intent,attempt}),expectedVersion:3});
+    f.db.authority.writeIntents.refenceRetryable({...writeFenceFixtureInput(f.db,{intent,attempt}),expectedVersion:4});
     const outcome={...COMMITTED_OUTCOME,confirmedAt:LATEST};
     const transaction={...LEDGER_PAYLOAD,traceId:f.run.envelope.traceId,intentGeneration:2,bindingProofDigest:digest,fencedAt:LATER,confirmedAt:LATEST};
     const committedSpan={...SPAN_OUTBOX_PAYLOAD,traceId:f.run.envelope.traceId,intentGeneration:2,bindingProofDigest:digest,occurredAt:LATEST,outcome};
@@ -540,9 +584,9 @@ afterEach(_afterEachFixture0);
     const f=await fixture();f.apply();
     const proof={...WRITE_INTENT_ATTEMPTING.bindingProof,proofId:UUID_7,observedAt:LATER};const digest=deriveWriteBindingProofDigest(proof);
     const intent={...WRITE_INTENT_ATTEMPTING,currentAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,
-      fencedAt:LATER,version:4,updatedAt:LATER};
+      fencedAt:LATER,version:5,updatedAt:LATER};
     const attempt={...WRITE_ATTEMPT,writeAttemptId:UUID_8,generation:2,bindingProof:proof,bindingProofDigest:digest,fencedAt:LATER,recordedAt:LATER};
-    f.db.authority.writeIntents.refenceRetryable({...writeFenceFixtureInput(f.db,{intent,attempt}),expectedVersion:3});
+    f.db.authority.writeIntents.refenceRetryable({...writeFenceFixtureInput(f.db,{intent,attempt}),expectedVersion:4});
     const outcome={...COMMITTED_OUTCOME,confirmedAt:LATEST};
     const transaction={...LEDGER_PAYLOAD,traceId:f.run.envelope.traceId,intentGeneration:2,bindingProofDigest:digest,fencedAt:LATER,confirmedAt:LATEST};
     const committedSpan={...SPAN_OUTBOX_PAYLOAD,traceId:f.run.envelope.traceId,intentGeneration:2,bindingProofDigest:digest,occurredAt:LATEST,outcome};

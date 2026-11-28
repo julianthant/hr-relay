@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it, vi } from "vitest";
+import { createOperatorProjection } from "../../../src/backend/app/composition/dashboard/queue.js";
+import { createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/run-detail.js";
 import { createCommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
+import { buildRunDetail } from "../../../src/backend/runs/queries/run-detail.js";
+import { buildRunLogsWhole } from "../../../src/backend/runs/queries/run-logs.js";
 import { createWriteResolutionExecutor } from "../../../src/backend/runtime/writes/write-recovery.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { createWriteSequencer } from "../../../src/backend/runtime/writes/write-sequencer.js";
@@ -9,11 +13,13 @@ import { createNoteTimelineWriter } from "../../../src/backend/storage/events/no
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/systems/ucpath/driver/fake.js";
 import { deterministicPayPathOperations } from "../../../src/backend/systems/ucpath/driver/paypath-fake.js";
+import { projectRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.js";
+import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
 import { UcpathPayPathReadSchema } from "../../../src/models/ui/ucpath-paypath.js";
 import { UcpathTransactionFindingSchema } from "../../../src/models/ui/ucpath-transaction-findings.js";
 import { WorkStudyResultSchema } from "../../../src/models/workflows/work-study/result.js";
-import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
+import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 import type { Clock } from "../../../src/rules/time/clock.js";
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { workStudyWorkflow } from "../../../src/workflows/work-study/workflow.js";
@@ -53,8 +59,10 @@ const filed = (overrides: Readonly<Record<string, string>> = {}) => UcpathTransa
   displayedName: "Lee, Jordan", submittedAt: "08/02/26 09:00:00.000000AM", detailVerified: true, ...overrides,
 });
 
-async function workStudyRun(options: Parameters<typeof deterministicPayPathOperations>[0] & { dryRun?: boolean } = {}) {
-  const { dryRun, ...paypathOptions } = options;
+type StartSelection = Pick<Parameters<ReturnType<typeof canonicalChildExecution>["start"]>[2], "selectedStepKeys" | "stepOmissions">;
+
+async function workStudyRun(options: Parameters<typeof deterministicPayPathOperations>[0] & { dryRun?: boolean; selection?: StartSelection } = {}) {
+  const { dryRun, selection, ...paypathOptions } = options;
   const paypath = deterministicPayPathOperations({ read, ...paypathOptions });
   const sessions = sessionFactoryHarness({ ucpath: () => ({
     ...createDeterministicUcpathPersonOrgDriver(), ...paypath, readTransactionFindings: paypath.readTransactionFindings, read: paypath.read,
@@ -68,12 +76,12 @@ async function workStudyRun(options: Parameters<typeof deterministicPayPathOpera
   const execution = canonicalChildExecution({ ...h.deps, taskNotes, writeSequencer: sequencer }, database, path,
     id => id === compiled.descriptor.id ? compiled.descriptor : undefined);
   const runOnce = async (runDryRun: boolean) => {
-    const run = execution.start(compiled.descriptor, INPUT, { dryRun: runDryRun });
-    await execution.execute(run, world.SIGNAL);
+    const run = execution.start(compiled.descriptor, INPUT, { dryRun: runDryRun, ...selection });
+    const { run: settled } = await execution.execute(run, world.SIGNAL);
     const runId = run.envelope.runId;
     return {
       runId, failures: database.authority.failures.listByRun(runId), intents: database.authority.writeIntents.listByRun(runId),
-      stored: database.authority.runResults.get(runId), lifecycle: database.authority.runs.get(runId)?.lifecycle.state,
+      stored: database.authority.runResults.get(runId), lifecycle: settled?.lifecycle.state,
     };
   };
   const first = await runOnce(dryRun ?? false);
@@ -82,8 +90,56 @@ async function workStudyRun(options: Parameters<typeof deterministicPayPathOpera
     const date = clock.now().toISOString().slice(0, 10);
     return createTransactionHistory(database.authority).query({ from: date, to: date, runId }).rows;
   };
-  return { ...first, clock, database, execution, paypath, commits, history, again: () => runOnce(false) };
+  return { ...first, clock, database, execution, paypath, commits, history, stateRoot: h.authority.stateRoot, again: () => runOnce(false) };
 }
+
+it("records the transaction as done outside Relay with no PayPath prepare or write intent", async () => {
+  const { descriptor } = compiled;
+  const f = await workStudyRun({ selection: { selectedStepKeys: ["ucpath-auth", "reference-check"], stepOmissions: [{ step: "transaction", facts: {} }] } });
+  assert.deepEqual(f.failures.map(failure => failure.summary), []);
+  assert.deepEqual(f.paypath.events, ["read:paypath:10000001"]);
+  assert.deepEqual(f.intents, []);
+  assert.deepEqual(f.stored?.result.value, { state: "omitted", step: "transaction" });
+
+  const { database, stateRoot, clock, runId } = f;
+  const reader = f.execution.lifecycle;
+  const descriptors = { resolve: (id: string) => id === descriptor.id ? descriptor : undefined };
+  const projection = createOperatorProjection({ database, stateRoot, clock, reader, appVersion: "0.1.0",
+    descriptorSetHash: FingerprintSchema.parse("a".repeat(64)), ledger: createTransactionHistory(database.authority), descriptors });
+  projection.ingestFromTimeline();
+  const deps = createOperatorRunDetail({ database, stateRoot, projection, runReader: reader, canonical: { database, reader, descriptors } });
+  const detail = buildRunDetail(deps, runId);
+  const run = database.authority.runs.get(runId);
+  assert.ok(run);
+  const section = buildRunLogsWhole(deps, runId, projection.runFold(runId), run);
+  const projected = projectRunLogs({ detail, logs: section.payload, sections: [], unavailableEvidence: [] }, { artifactUrl: () => "unused" });
+  const transaction = projected.steps.find(step => step.title === "Submit work-study transaction");
+  assert.ok(transaction);
+  assert.match(logPlainText([transaction]), /Done outside Relay/u);
+});
+
+it("uses the typed PayPath values to plan and file without the automatic position read", async () => {
+  const facts = { emplId: INPUT.emplId, displayedName: "Fixture, PayPath", positionNumber: "40012346",
+    effectiveDate: "07/02/2026", positionChangeReason: null, positionPool: "A" };
+  const f = await workStudyRun({ observedName: facts.displayedName, selection: {
+    selectedStepKeys: ["reference-check", "transaction"], stepOmissions: [{ step: "ucpath-auth", facts }],
+  } });
+  assert.deepEqual(f.failures.map(failure => failure.summary), []);
+  assert.equal(f.paypath.events.some(event => event.startsWith("read:paypath:")), false);
+  assert.equal(f.commits(), 1);
+  assert.deepEqual(WorkStudyResultSchema.parse(f.stored?.result.value).plan, { ...PLAN, name: "Fixture, PayPath",
+    current: { effectiveDate: "07/02/2026", positionChangeReason: "", positionPool: "A", positionNumber: "40012346" } });
+  assert.equal(f.intents[0]?.idempotencyKey, "ucpath:paypath-work-study|10000001|08/03/2026|40012346");
+});
+
+it("refuses a typed PayPath Employee ID for a different employee before any UCPath call", async () => {
+  const f = await workStudyRun({ selection: { selectedStepKeys: ["reference-check", "transaction"], stepOmissions: [{ step: "ucpath-auth",
+    facts: { emplId: "10000002", displayedName: "Fixture, Other", positionNumber: "40012346", effectiveDate: null, positionChangeReason: null, positionPool: null },
+  }] } });
+  assert.match(f.failures[0]?.summary ?? "", /typed Employee ID is not the run's Employee ID/u);
+  assert.deepEqual(f.paypath.events, []);
+  assert.deepEqual(f.intents, []);
+});
 
 it("work-study/planned-transaction — with Dry run on, reads PayPath, plans and fills the transaction, and saves nothing", async () => {
   const f = await workStudyRun({ dryRun: true });
@@ -174,7 +230,7 @@ function requestPayPathRecheck(database: AuthorityDatabase, clock: Clock, parked
     authority: database, lifecycle: testRunService(database, clock), clock, ids, appVersion: "0.1.0",
     descriptors, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS, workerRuntime: { pool: unusedWorkerPool() },
-    writeResolution: createWriteResolutionExecutor({ authority: database, ids, descriptors,
+    writeResolution: createWriteResolutionExecutor({ ids, descriptors,
       continuation: testRunContinuation(database, clock) }),
   });
   const result = kernel.execute({

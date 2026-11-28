@@ -37,24 +37,22 @@ function objectExpression(node: ts.Expression): boolean {
 
 function isContractSource(path: string, source: ts.SourceFile, checker: ts.TypeChecker): boolean {
   if (path === FACTORY_OWNER) return true;
-  let contract = false;
-  function visit(node: ts.Node): void {
-    if (ts.isCallExpression(node) && canonicalFactory(checker, node.expression)) contract = true;
-    if (ts.isPropertyAssignment(node) && node.name.getText(source) === "__sealed") contract = true;
+  function visit(node: ts.Node): true | undefined {
+    if (ts.isCallExpression(node) && canonicalFactory(checker, node.expression)) return true;
+    if (ts.isPropertyAssignment(node) && node.name.getText(source) === "__sealed") return true;
     if ((ts.isAsExpression(node) || ts.isTypeAssertionExpression(node) || ts.isSatisfiesExpression(node))
       && objectExpression(node.expression)
       && (/\b(?:Sealed\w*Contract|(?:Read|Prepare|Commit|Any)TaskContract)\b/u.test(node.type.getText(source)) || node.type.getText(source).includes("__sealed")
-        || ts.isTypeReferenceNode(node.type) && /Contract$/u.test(taskSymbol(checker, node.type.typeName)?.name ?? ""))) contract = true;
+        || ts.isTypeReferenceNode(node.type) && /Contract$/u.test(taskSymbol(checker, node.type.typeName)?.name ?? ""))) return true;
     if (ts.isVariableDeclaration(node) && node.initializer !== undefined && objectExpression(node.initializer) && node.type !== undefined
-      && ts.isTypeReferenceNode(node.type) && /Contract$/u.test(taskSymbol(checker, node.type.typeName)?.name ?? "")) contract = true;
+      && ts.isTypeReferenceNode(node.type) && /Contract$/u.test(taskSymbol(checker, node.type.typeName)?.name ?? "")) return true;
     if (ts.isObjectLiteralExpression(node)) {
       const names = new Set(node.properties.filter(ts.isPropertyAssignment).map(property => property.name.getText(source)));
-      if (["id", "effect", "input", "output", "errorCodes"].every(name => names.has(name))) contract = true;
+      if (["id", "effect", "input", "output", "errorCodes"].every(name => names.has(name))) return true;
     }
-    ts.forEachChild(node, visit);
+    return ts.forEachChild(node, visit);
   }
-  visit(source);
-  return contract;
+  return visit(source) === true;
 }
 
 function stringLiteralValue(node: ts.Node | undefined): string | undefined {
@@ -124,7 +122,11 @@ function contractAstIssues(path: string, source: ts.SourceFile): readonly string
 function auditTaskContractSources(root: string, census?: string[]): readonly string[] {
   const issues: string[] = [];
   const files = walkFiles(resolve(root, "src"), { missing: "planned-empty" });
-  const program = createGuardProgram(files, { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, skipLibCheck: true });
+  // All app sources are roots, so the checker can follow local aliases without loading dependency declarations.
+  const program = createGuardProgram(files, {
+    target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    noResolve: true, noLib: true, types: [],
+  });
   const checker = program.getTypeChecker();
   const sources = new Map(files.map((file) => {
     const path = relative(root, file).replaceAll("\\", "/");
@@ -378,6 +380,10 @@ it("follows canonical factory aliases and reexports and rejects future forged de
     writeFileSync(bridge, 'export { defineTaskContract as define } from "./task-contract.js";');
     writeFileSync(model, 'import { define as factory } from "../../task/bridge.js"; const alias = factory; export const contract = alias({ id: "future/read", effect: "read", input: 1, output: 1, errorCodes: [] });');
     assert.deepEqual(auditTaskContractSources(root), []);
+    writeFileSync(model, 'import * as contracts from "../../task/bridge.js"; export const contract = contracts.define({});');
+    const census: string[] = [];
+    assert.deepEqual(auditTaskContractSources(root, census), []);
+    assert.ok(census.includes("src/models/systems/future/task.ts"));
     for (const source of [
       'export const forged = { __sealed: true };',
       'export const forged = {} as ReadTaskContract;',

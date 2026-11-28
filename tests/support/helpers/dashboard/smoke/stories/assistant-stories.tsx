@@ -19,10 +19,11 @@ function scene(title: string, props: AssistantHostProps = {}, story: Partial<Sto
   return { title, render: () => <AssistantHost props={props} />, ready: PANEL, ...story };
 }
 
-const send = async (page: Page): Promise<void> => {
-  await page.locator("textarea[name=message]").fill(ASSISTANT_STORY_PROMPT);
+const sendMessage = async (page: Page, message: string): Promise<void> => {
+  await page.locator("textarea[name=message]").fill(message);
   await page.getByRole("button", { name: "Send message", exact: true }).click();
 };
+const send = (page: Page) => sendMessage(page, ASSISTANT_STORY_PROMPT);
 const press = (name: string) => async (page: Page): Promise<void> => { await page.getByRole("button", { name, exact: true }).first().click(); };
 const then = (...steps: readonly ((page: Page) => Promise<void>)[]) => async (page: Page): Promise<void> => { for (const step of steps) await step(page); };
 const approvalProps = { modelPreference: { slug: "gpt-6.1-sol", effort: "medium" }, fullAccess: true } satisfies AssistantHostProps;
@@ -58,11 +59,16 @@ const TURN = {
 } satisfies Record<Exclude<AssistantTurn["state"], "cancelled" | "unknown">, Story>;
 
 const reply = (script: AssistantReplyScript): AssistantHostProps => ({ client: { reply: script } });
+const edit = (title: string, script: "spreadsheet-edit" | "settings-edit" | "undo-edit", message: string): Story =>
+  scene(title, { ...reply(script), modelChoices: true, modelPreference: { slug: "gpt-6.1-sol", effort: "medium" } }, { ready: 'text="Edit applied"', play: page => sendMessage(page, message) });
 const REPLY = {
   answer: after("A short answer", {}, 'text="10101010"'),
   "answer-long": after("A long answer", reply("answer-long"), 'text=/Each of these records/'),
   proposal: after("A proposal waiting on a typed yes", reply("proposal"), 'text="Reply yes to file it, or tell me what to change."'),
   "proposal-many": after("Several rows proposed", reply("proposal-many"), 'text=/Reply yes to save all 3/'),
+  "spreadsheet-edit": edit("A spreadsheet edit", "spreadsheet-edit", "Rename the spreadsheet to Summer tracker."),
+  "settings-edit": edit("A settings edit", "settings-edit", "Turn headless browser mode off."),
+  "undo-edit": edit("A spreadsheet edit undone", "undo-edit", "Undo the tracker change."),
   "answered-yes": after("A typed yes that started a session", reply("answered-yes"), '.reply-session'),
   "full-access-dry-run": scene("A dry run started with Full access", { ...approvalProps, ...reply("full-access-dry-run") },
     { play: then(pickFullAccess, async page => { await page.getByRole("textbox", { name: "Message Relay" }).fill("Start a Separations dry run."); }, press("Send message")), ready: '.reply-session' }),
@@ -116,6 +122,7 @@ const AUDIT_FIXES = "#532";
 const BREAK_SETS = {
   /** The composer's approval picker is switched off while no model preference is served, and its Send button is not painted the accent. */
   COMPOSER: ["no-dead-disabled-control", "primary-button-accent"],
+  MODEL_COMPOSER: ["named-and-focusable", "primary-button-accent"],
   /** COMPOSER, and a control in the open panel (the message box, or a button in the transcript) shows no visible focus ring. */
   COMPOSER_FOCUS: ["named-and-focusable", "no-dead-disabled-control", "primary-button-accent"],
   /** COMPOSER_FOCUS, and the history skeleton is drawn from the loading flag while no read is held. */
@@ -142,7 +149,7 @@ const KNOWN_BREAKS = {
   "history/failed": BREAK_SETS.COMPOSER_FOCUS,
   "history/notice": BREAK_SETS.COMPOSER_FOCUS,
   "history/ready": BREAK_SETS.COMPOSER_FOCUS,
-  "menu/model": ["named-and-focusable", "primary-button-accent"],
+  "menu/model": BREAK_SETS.MODEL_COMPOSER,
   "plan/enabled": BREAK_SETS.COMPOSER_FOCUS,
   "refusal/plan-off": BREAK_SETS.COMPOSER_FOCUS,
   "refusal/rate-limited": BREAK_SETS.COMPOSER_FOCUS,
@@ -151,6 +158,9 @@ const KNOWN_BREAKS = {
   "reply/proposal": BREAK_SETS.COMPOSER_FOCUS,
   "reply/proposal-many": BREAK_SETS.COMPOSER_FOCUS,
   "reply/answered-yes": BREAK_SETS.COMPOSER_FOCUS,
+  "reply/spreadsheet-edit": BREAK_SETS.MODEL_COMPOSER,
+  "reply/settings-edit": BREAK_SETS.MODEL_COMPOSER,
+  "reply/undo-edit": BREAK_SETS.MODEL_COMPOSER,
   "reply/full-access-dry-run": ["named-and-focusable", "primary-button-accent"],
   "turn/failed": BREAK_SETS.COMPOSER_FOCUS,
   "turn/idle": BREAK_SETS.COMPOSER_FOCUS,
