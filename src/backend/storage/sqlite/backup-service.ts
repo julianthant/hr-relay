@@ -33,6 +33,7 @@ import { type Clock, systemClock } from "../../../rules/time/clock.js";
 import { inspectOpenDatabase, inspectVerifiedBackupCopyReadOnly, type AuthorityBackupSourceReadOnly, type BackupCopyInspection } from "./backup-inspection.js";
 import { inspectAuthorityBackupOffThread } from "./backup-inspection-worker.js";
 import { startLogWriter } from "../events/log-writer.js";
+import { LOG_DATABASE_NAMES, PROFILE_LOG_FILES } from "../events/log-mutations.js";
 import { isCurrentAuthoritySchemaVersion } from "./migrations.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
@@ -117,8 +118,9 @@ export async function verifyBackupBytesAtPath(
   }
 }
 
-export const BACKUP_LOG_NAMES = Object.freeze(["timeline", "dashboard"] as const);
-export const backupLogPaths = (backupPath: string) => BACKUP_LOG_NAMES.map(name => `${backupPath}.${name}.db`);
+export const backupLogPaths = (backupPath: string) => LOG_DATABASE_NAMES.map(name => `${backupPath}.${name}.db`);
+export const verifiedBackupFiles = ({ backupPath, manifest }: VerifiedBackup) =>
+  [backupPath, ...(manifest.logFiles === undefined ? [] : backupLogPaths(backupPath))];
 
 export async function verifyBackupLogFile(path: string, expected: Readonly<{ byteSize: number; sha256: string }>): Promise<void> {
   const metadata = fileStatus(path);
@@ -129,7 +131,7 @@ export async function verifyBackupLogFile(path: string, expected: Readonly<{ byt
 
 export async function verifyBackupLogFiles(backupPath: string, manifest: Pick<AuthorityBackupManifest, "logFiles">): Promise<void> {
   if (manifest.logFiles === undefined) return;
-  for (const name of BACKUP_LOG_NAMES) {
+  for (const name of LOG_DATABASE_NAMES) {
     await verifyBackupLogFile(`${backupPath}.${name}.db`, manifest.logFiles[name]);
   }
 }
@@ -170,13 +172,7 @@ export function readVerifiedBackupManifestAtPath<T>(admissionInput: RuntimeAdmis
   }
   assertExpectedBackupSource(source, manifest);
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);
-  if (manifest.logFiles !== undefined) {
-    for (const name of BACKUP_LOG_NAMES) {
-      const path = `${backupPath}.${name}.db`, metadata = fileStatus(path);
-      if (!metadata.isFile() || BigInt(metadata.nlink) !== 1n || privatePathRejects(path, metadata, "owner")) throw new Error("backup-log-file-unsafe");
-      assertSnapshotBytes(path, manifest.logFiles[name]);
-    }
-  }
+  assertBackupLogFiles(backupPath, manifest);
   const copy = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256);
   try {
     const { inspection, value } = withAuthorityDatabaseReadOnly(copy, backupPath, database => {
@@ -207,6 +203,16 @@ function assertSnapshotBytes(path: string, manifest: Readonly<{ byteSize: number
     }
   } finally { closeSync(descriptor); }
   if (count !== manifest.byteSize || hash.digest("hex") !== manifest.sha256) throw new Error("authority-backup-snapshot-digest-mismatch");
+}
+
+function assertBackupLogFiles(backupPath: string, manifest: Pick<AuthorityBackupManifest, "logFiles">): void {
+  if (manifest.logFiles === undefined) return;
+  for (const name of LOG_DATABASE_NAMES) {
+    const path = `${backupPath}.${name}.db`, metadata = fileStatus(path);
+    if (!metadata.isFile() || BigInt(metadata.nlink) !== 1n || privatePathRejects(path, metadata, "owner")
+      || ["-wal", "-shm", "-journal"].some(suffix => existsSync(path + suffix))) throw new Error("backup-log-file-unsafe");
+    assertSnapshotBytes(path, manifest.logFiles[name]);
+  }
 }
 
 async function verifyManifest(
@@ -287,6 +293,10 @@ function verifyStoppedManifest(manifestPath: string, expected: AuthorityBackupEx
   if (expected.kind === "profile" && manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity(expected)) throw new Error("profile-maintenance-backup-source-mismatch");
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);
   assertPath(backupPath);
+  if (manifest.manifestVersion === 4) {
+    if (manifest.logFiles !== undefined) backupLogPaths(backupPath).forEach(assertPath);
+    assertBackupLogFiles(backupPath, manifest);
+  }
   const snapshot = createReadonlyAuthoritySnapshot(backupPath);
   let result: VerifiedBackup | undefined;
   const failures: unknown[] = [];
@@ -435,7 +445,7 @@ function reconcileAbandonedBackups(root: string, assertHeld: () => void, readUpg
 
 function removeBackupLogStage(root: string, assertHeld: () => void): void {
   const identity = statDirectory(root, "log backup staging", 0o700);
-  const owned = new Set(BACKUP_LOG_NAMES.flatMap(name => ["", "-wal", "-shm", "-journal"].map(suffix => `${name}.db${suffix}`)));
+  const owned = new Set(PROFILE_LOG_FILES);
   const files = readdirSync(root).map(name => {
     const file = owned.has(name) ? abandonedFile(root, name) : undefined;
     if (file === undefined) throw new Error("abandoned-backup-log-stage-unsafe");
@@ -597,7 +607,7 @@ export class AuthorityBackupService {
       renameSync(temporaryBackupPath, finalBackupPath);
       finalPaths.push(finalBackupPath);
       if (withLogs) {
-        const publish = async (name: typeof BACKUP_LOG_NAMES[number]) => {
+        const publish = async (name: typeof LOG_DATABASE_NAMES[number]) => {
           const source = join(temporaryLogRoot, `${name}.db`), target = `${finalBackupPath}.${name}.db`;
           fsyncPath(source);
           const byteSize = statSync(source).size, sha256 = await sha256File(source);

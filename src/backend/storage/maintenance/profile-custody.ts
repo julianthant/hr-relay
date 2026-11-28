@@ -1,4 +1,5 @@
 import { fileStatus } from "../file-identity.js";
+import { PROFILE_LOG_FILES } from "../events/log-mutations.js";
 import type { StoppedBrowserRoot } from "../browser-root-contract.js";
 import { dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
 import { ProfileBrowserRootRefusalError,requireRuntimeAdmission } from "../admission/admission-identity.js";
@@ -53,7 +54,7 @@ export function assertRetainedProfileBrowserRoot(admissionInput: RuntimeAdmissio
 function assertBrowserRoot(root: string, path: string): void {
   const child = relative(root, path);
   if (!isAbsolute(path) || resolve(path) !== path || child === "" || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child)) throw new ProfileBrowserRootRefusalError();
-  if (["credentials", "backups", "artifacts", "logs", "scratch", "state.db", "state.db-wal", "state.db-shm"].includes(child.split(sep)[0] ?? "")) throw new ProfileBrowserRootRefusalError();
+  if (["credentials", "backups", "artifacts", "logs", "scratch", "state.db", "state.db-wal", "state.db-shm", ...PROFILE_LOG_FILES].includes(child.split(sep)[0] ?? "")) throw new ProfileBrowserRootRefusalError();
   for (let current = path;; current = dirname(current)) {
     const info = fileStatus(current, true);
     if (info !== undefined && (!info.isDirectory() || info.isSymbolicLink() || privatePathRejects(current, info, "group-write"))) throw new ProfileBrowserRootRefusalError();

@@ -181,7 +181,7 @@ function startHeartbeat(input: Readonly<{
     stopped = true;
     handle.cancel();
   };
-  const renew = async (): Promise<void> => {
+  const tick = async (): Promise<void> => {
     if (stopped) return;
     try {
       if (input.beforeConfirmedWrite !== undefined) await input.beforeConfirmedWrite();
@@ -197,14 +197,13 @@ function startHeartbeat(input: Readonly<{
         return;
       }
       requireLifecycleApplied(outcome);
-      handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
+      handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, () => { void tick(); });
     } catch (error) {
       stop();
       input.onFailure(error);
     }
   };
-  const tick = () => { void renew(); };
-  handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, tick);
+  handle = input.scheduler.schedule(input.clock.monotonicMs() + input.intervalMs, () => { void tick(); });
   return Object.freeze({ stop });
 }
 

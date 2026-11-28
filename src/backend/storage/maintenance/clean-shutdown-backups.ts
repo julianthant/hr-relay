@@ -10,7 +10,8 @@ import type { RuntimeAdmission } from "../admission/admission.js";
 import { noSymlinkAncestry, readPrivateFile, removeExactPath } from "../configuration/credential-safe-file.js";
 import { fsyncPath, privatePathRejects } from "../private-path.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { BACKUP_LOG_NAMES, backupLogPaths, parseBackupManifestFile, verifyBackupBytesAtPath, verifyBackupLogFile, verifyBackupLogFiles, type VerifiedBackup } from "../sqlite/backup-service.js";
+import { LOG_DATABASE_NAMES } from "../events/log-mutations.js";
+import { backupLogPaths, parseBackupManifestFile, verifyBackupBytesAtPath, verifyBackupLogFile, verifyBackupLogFiles, type VerifiedBackup } from "../sqlite/backup-service.js";
 import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 
 const ShutdownManifest = /^authority-g\d+-\d+-[0-9a-f-]{36}\.shutdown\.sqlite\.manifest\.json$/u;
@@ -87,7 +88,7 @@ export async function resumeShutdownBackupRetirement(input: RuntimeAdmission, cl
       || current.filter(value => newerFirst(value.manifest, manifest) < 0).length < 3) throw new Error("shutdown-backup-retirement-unproved");
     const backupPath = join(directory, manifest.backupFileName);
     if (manifest.logFiles !== undefined) {
-      for (const name of BACKUP_LOG_NAMES) {
+      for (const name of LOG_DATABASE_NAMES) {
         const companion = `${backupPath}.${name}.db`;
         if (!existsSync(companion)) continue;
         const before = inventoryFileIdentity(companion);

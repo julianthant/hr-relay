@@ -2,6 +2,10 @@ import { z } from "zod";
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { RunIdSchema } from "../../../rules/identity/ids.js";
 
+export const LOG_DATABASE_NAMES = Object.freeze(["timeline", "dashboard"] as const);
+export const PROFILE_LOG_FILES = Object.freeze(LOG_DATABASE_NAMES.flatMap(name =>
+  ["", "-wal", "-shm", "-journal"].map(suffix => `${name}.db${suffix}`)));
+
 export const MirrorLogRecordSchema = TimelineEventRecordSchema.refine(
   record => record.payload.kind !== "operation-confirmed",
   { message: "operation-confirmed is state evidence" },

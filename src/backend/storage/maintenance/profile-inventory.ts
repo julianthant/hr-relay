@@ -21,7 +21,8 @@ import { CredentialLockRecordSchema,readPrivateFile,withOperationProof } from ".
 import { privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError,hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { verifyStoppedBackupManifestAtPath } from "../sqlite/backup-service.js";
+import { verifiedBackupFiles, verifyStoppedBackupManifestAtPath } from "../sqlite/backup-service.js";
+import { PROFILE_LOG_FILES } from "../events/log-mutations.js";
 import { countProfileCredentialLoginRows } from "../sqlite/profile-local-databases.js";
 import { proveProfileRootsUnused } from "./process-closure.js";
 import { assertCredentialCopyResourcesClosed,configuredBrowserRoots,retainedBrowserProfiles,type BrowserProfileCustody,type BrowserRegistryMembership } from "./profile-custody.js";
@@ -338,7 +339,7 @@ function restoreBrowserCensus(admission: RuntimeAdmission, scope: "browser-roots
   };
   if (scope === "profile-root") {
     for (const entry of children(admission.stateRoot)) {
-      if (entry.isFile() && ["state.db", "state.db-wal", "state.db-shm", "state.db-journal"].includes(entry.name)) continue;
+      if (entry.isFile() && ["state.db", "state.db-wal", "state.db-shm", "state.db-journal", ...PROFILE_LOG_FILES].includes(entry.name)) continue;
       if (!entry.isDirectory() || !["browsers", "credentials", "backups", "artifacts", "logs", "scratch", "files"].includes(entry.name)) throw new ProfileRestoreBrowserCustodyUnprovedError();
     }
   } else inspect(admission.stateRoot);
@@ -452,6 +453,10 @@ function enumerateCredentialMembership<Custody extends CredentialMembershipCusto
       const entry = inventoryFileIdentity(path);
       identities.push(entry);
       const local = relative(root, path), parts = local.split(sep), top = parts[0];
+      if (!flat && PROFILE_LOG_FILES.includes(local)) {
+        if (entry.directory) throw new Error("profile-inventory-log-database-unsafe");
+        return;
+      }
       if (flat && (local === ".runtime-owner.json" || local === "artifacts/.runtime-owner.json" || local === "locks")) return;
       if (top === "files") {
         if (entry.directory) for (const name of readdirSync(path).sort()) visit(join(path, name));
@@ -556,7 +561,8 @@ function readStoppedProfileInventory(input: Parameters<typeof readStoppedProfile
   const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, input.browserClosure);
   if (purpose === "manual" && membership.unsupported.length !== 0) throw new Error("profile-stopped-upgrade-copy-custody-unproved");
   const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path));
-  if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))
+  const expectedBackupFiles = new Set(backups.flatMap(verifiedBackupFiles));
+  if (membership.backupPaths.length !== expectedBackupFiles.size || membership.backupPaths.some(path => !expectedBackupFiles.has(path))
     || backups.some(backup => backup.manifest.installationId !== admission.profileBinding.installationId
       || backup.manifest.profileId !== admission.profileBinding.profileId)) throw new Error("profile-stopped-upgrade-backup-membership-unproved");
   const login = countProfileCredentialLoginRows(membership.loginDataPaths);

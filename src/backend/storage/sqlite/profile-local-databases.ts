@@ -489,7 +489,10 @@ export function openLogDatabases(statePath: string, root: string) {
 }
 
 export function restoreLogDatabases(statePath: string, root: string): void {
-  const logs = openLogDatabases(statePath, root);
-  try { logs.reconcile(true); }
-  finally { logs.close(); }
+  const snapshot = createReadonlyAuthoritySnapshot(statePath);
+  try {
+    const logs = openLogDatabases(snapshot.path, root);
+    try { logs.reconcile(true); }
+    finally { logs.close(); }
+  } finally { snapshot.dispose(); }
 }

@@ -18,7 +18,7 @@ import { closeSync, constants, lstatSync, openSync, readSync, type BigIntStats, 
 import { basename, dirname, join } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { countProfileCredentialLoginRows } from "../../profiles/credential-inventory.js";
-import { verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
+import { verifiedBackupFiles, verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
 import { withAuthorityDatabaseReadOnly } from "../../storage/sqlite/readonly-authority-snapshot.js";
 import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
 import { requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "../../storage/admission/installation.js";
@@ -268,7 +268,8 @@ export function composeStoppedControlCredentialInventory(input: Readonly<{ claim
         if (browserPlan.roots.some(row => row.profileId === source.binding.profileId && (row.launch.state !== "closed" || row.native?.phase !== "observed"))) throw new Error("profile-control-upgrade-browser-closure-unproved");
         const membership = enumerateProfileCredentialMembership(admission, facts, config.paths.browserProfileRoot, profileBrowserClosure, undefined, stages);
         const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path));
-        if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("credential-maintenance-backup-membership-unproved");
+        const expectedBackupFiles = new Set(backups.flatMap(verifiedBackupFiles));
+        if (membership.backupPaths.length !== expectedBackupFiles.size || membership.backupPaths.some(path => !expectedBackupFiles.has(path))) throw new Error("credential-maintenance-backup-membership-unproved");
         const currentRecord = join(admission.stateRoot, "credentials", "chatgpt-account.json");
         const assessment = assessProfileCredentialCopies(admission, { ...membership, copies: membership.copies.filter(path => path !== currentRecord) }, backups, copies,
           { kind: "stopped-control", claim: input.claim }, backupScans);
