@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createAssistantM1Service, type AssistantM1ServiceOptions } from "../../../src/backend/assistant/service.js";
 import { ChatGptResourceClosureUnprovedError } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { assistantPersonBinding, resolveAssistantReply } from "../../../src/backend/assistant/replies.js";
-import { AssistantToolRefusal, referenceSchema, type AssistantReadTool } from "../../../src/backend/assistant/plugins/plugin.js";
+import { AssistantChangeOutput, AssistantToolRefusal, referenceSchema, type AssistantChangeTool, type AssistantReadTool } from "../../../src/backend/assistant/plugins/plugin.js";
 import { sessionsPlugin } from "../../../src/backend/assistant/plugins/sessions/index.js";
 import { assistantWorkflowFacts } from "../../../src/backend/assistant/plugins/workflows/facts.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
@@ -35,6 +35,7 @@ async function world() {
   account.service.setDebugEvents(writer);
   const script: Step[] = [], bodies: z.infer<typeof Wire>[] = [], tokens = new Set<string>();
   let current = true, profileId = storage.profileId(), personLabel = `Person ${EXECUTOR_EID}`, onPost: (() => void) | undefined, onBindings: (() => void) | undefined;
+  let editTool: AssistantChangeTool | undefined;
   let sessions: AssistantM1Sessions | undefined, sessionTools = false, typed = typedProposalFixture(storage, timestamp);
   let failLog: Error | undefined, usageAttempts = 0, tools = 0, facts = 0, catalogs = 0, refuseTool = false, historyFault: "read" | "write" | undefined, failIssue = false;
   const history = { ...storage.history,
@@ -58,7 +59,7 @@ async function world() {
     owner: () => ({ profileId, epoch: storage.epoch() }), assertComposition() { if (profileId !== storage.profileId()) throw new AssistantToolRefusal("ASSISTANT_CONTEXT_STALE"); },
     selectedModel: () => ({ preference: { slug: "gpt-6.1-sol", effort: "medium" }, assertCurrent() { if (!current) throw new Error("model changed"); } }),
     facts: () => { facts++; return assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup")); }, runReferenceLabel: () => "Lookup",
-    tools: () => ({ plugins: [{ domain: "fixture", tools: [tool] }, typed.owner.plugin, ...(sessionTools ? [sessionsPlugin()] : [])], ...(sessions === undefined ? {} : { sessions }), bindings(table) { onBindings?.(); return [...tokens].map(token => assistantPersonBinding(table, token, row)); } }),
+    tools: () => ({ plugins: [{ domain: "fixture", tools: [tool, ...(editTool === undefined ? [] : [editTool])] }, typed.owner.plugin, ...(sessionTools ? [sessionsPlugin()] : [])], ...(sessions === undefined ? {} : { sessions }), bindings(table) { onBindings?.(); return [...tokens].map(token => assistantPersonBinding(table, token, row)); } }),
     debugEvents: { emit(event) { if (event.area === "assistant-usage") usageAttempts++; if (failLog !== undefined) throw failLog; writer.emit(event); } } };
   let service = createAssistantM1Service(options);
   const create = () => { const id = randomUUID(); assert.equal(service.history({ operation: "create", conversationId: id, title: "Chat" }).state, "saved"); return id; };
@@ -70,6 +71,7 @@ async function world() {
     typed: () => typed, restartOwner() { typed = typedProposalFixture(storage, timestamp); service = createAssistantM1Service(options); },
     onPost(hook: () => void) { onPost = hook; }, onBindings(hook: () => void) { onBindings = hook; },
     failHistory(operation: "read" | "write") { historyFault = operation; }, failIssue() { failIssue = true; },
+    offerEdit(candidate: AssistantChangeTool) { editTool = candidate; },
     changeModel() { current = false; }, offerSessions(owner?: AssistantM1Sessions) { sessionTools = true; sessions = owner; }, changeOwner() { profileId = randomUUID(); }, refuseTool() { refuseTool = true; },
     personLabel(value: string) { personLabel = value; },
     logFailure(error: Error) { failLog = error; }, changeRevision() { row = RunRecordSchema.parse({ ...row, version: row.version + 1 }); },
@@ -133,6 +135,31 @@ it("rejects miscomposed change tools before catalog/provider and records actual 
     const refusal = result(await w.send()); assert.equal(refusal.state, "no-reply"); if (refusal.state !== "no-reply") assert.fail();
     assert.equal(refusal.canRetry, false); assert.deepEqual(refusal.turn?.usage, { state: "measured", callCount: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0 });
     assert.equal(w.counts().catalogs, 0); assert.equal(w.counts().posts, 0); assert.equal(w.counts().usageAttempts, 1);
+  } finally { await w.close(); }
+});
+it("rolls back a local edit if the same turn cannot save its reply", async () => {
+  const w = await world();
+  try {
+    const { database } = w.storage;
+    database.exec("CREATE TABLE edit_fixture (value TEXT NOT NULL); INSERT INTO edit_fixture VALUES ('before')");
+    let attempted = false;
+    w.offerEdit({ kind: "change", tier: "write-local", name: "change_fixture", description: "Change the test value.",
+      parameters: z.strictObject({ value: z.literal("after") }), output: AssistantChangeOutput, privacy: [],
+      async change() {
+        return () => {
+          attempted = true;
+          database.exec("UPDATE edit_fixture SET value='after'");
+          return { kind: "text", runs: [{ kind: "value", previous: "before", value: "after" }] };
+        };
+      },
+    });
+    w.script.push(call("change_fixture", { value: "after" }));
+    w.failHistory("write");
+    const reply = await w.send();
+    assert.equal(reply.kind, "delivery");
+    assert.equal(attempted, true);
+    assert.equal(database.prepare("SELECT value FROM edit_fixture").get()?.value, "before");
+    assert.equal(w.counts().posts, 1);
   } finally { await w.close(); }
 });
 for (const fault of ["revision", "foreign", "unknown"] as const) it(`refuses ${fault} binding facts without guessing/downgrading a target`, async () => {

@@ -1,6 +1,6 @@
 import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
 import type { RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
-import type { StartRowKind, StartRowLockReason, StepOmissionField, StepOmissionForm } from "../../../models/workflow/step-omission.js";
+import type { StartRowKind, StartRowLockReason, StepOmissionField, StepOmissionForm, StepOmissionInput } from "../../../models/workflow/step-omission.js";
 import { SYSTEM_NAME, type BrowserSystemId } from "../shared/status/system-chip-model.js";
 import { foldStepOmissionFacts, type StepOmissionDraft, type StepOmissionFactDraft, type StepOmissionFactsFold, type StepOmissionFactValue } from "./run-start-model.js";
 
@@ -76,7 +76,8 @@ export function startRowsOf(source: StepRowSource): readonly StepRow[] {
     const own = row.target !== undefined && row.target.workflow === undefined ? row.target.step : undefined;
     const systems = systemNote([...new Set(row.members.flatMap(member => member.workflow === undefined ? stepOf(member.step)?.systems ?? [] : []))]);
     const forces = row.manual?.forces ?? [];
-    const note = row.kind === "switch" ? forcesNote(forces) ?? systems
+    const cascadeNote = row.off !== undefined && forces.length > 0 ? `Also skips: ${forces.map(labelOf).join(", ")}` : forcesNote(forces);
+    const note = row.kind === "switch" ? cascadeNote ?? systems
       : row.lockReason === undefined ? systems ?? "Automatic" : LOCK_NOTE[row.lockReason];
     return {
       key: row.key, label: row.label, kind: row.kind, note, includedByDefault: row.includedByDefault, forces, selectable: row.selection !== undefined,
@@ -188,12 +189,17 @@ function rowSourceNodes(row: StepRow, snapshot: RerunValuesSnapshot) {
   });
 }
 
+function isSettledManualOmission(nodes: ReturnType<typeof rowSourceNodes>): boolean {
+  const manuallyOmitted = (node: (typeof nodes)[number]) => node.reason === "step-omitted" || node.reason === "operator-asserted";
+  return nodes.some(manuallyOmitted) && nodes.every(node => node.state === "completed" || manuallyOmitted(node));
+}
+
 /** The source outcome Rerun preselection reads: a condition-skipped step counts as not run and nothing reads Cancelled, so the badge never moves the restart point. */
 export function preselectionBadge(row: StepRow, snapshot: RerunValuesSnapshot): Exclude<SourceBadge, "cancelled"> | undefined {
   const nodes = rowSourceNodes(row, snapshot);
   if (nodes.length === 0) return undefined;
   if (nodes.some(node => node.state === "failed")) return "failed";
-  if (nodes.every(node => node.reason === "step-omitted" || node.reason === "operator-asserted")) return "skipped";
+  if (isSettledManualOmission(nodes)) return "skipped";
   return nodes.every(node => node.state === "completed" && node.reason !== "condition-skipped") ? "completed" : "not-started";
 }
 
@@ -201,7 +207,7 @@ export function sourceBadge(row: StepRow, snapshot: RerunValuesSnapshot): Source
   const nodes = rowSourceNodes(row, snapshot);
   if (nodes.length === 0) return undefined;
   if (nodes.some(node => node.state === "failed")) return "failed";
-  if (nodes.every(node => node.reason === "step-omitted" || node.reason === "operator-asserted")) return "skipped";
+  if (isSettledManualOmission(nodes)) return "skipped";
   if (nodes.every(node => node.state === "completed")) return "completed";
   return snapshot.source.outcome === "cancelled" && nodes.some(node => node.reason === "incomplete-execution") ? "cancelled" : "not-started";
 }
@@ -213,8 +219,8 @@ export function sourceTypedFacts(row: StepRow, snapshot: RerunValuesSnapshot): R
   return snapshot.typed?.find(entry => entry.step === target.step && entry.workflow === target.workflow)?.facts;
 }
 
-export function rowOpenFold(row: StepRow, form: StepOmissionForm, draft: StepOmissionDraft): OpenStepRow {
-  return { row, form, draft, fold: foldStepOmissionFacts(form, draft) };
+export function rowOpenFold(row: StepRow, form: StepOmissionForm, draft: StepOmissionDraft, input?: StepOmissionInput): OpenStepRow {
+  return { row, form, draft, fold: foldStepOmissionFacts(form, draft, input) };
 }
 
 /** A served or typed value as the field shows it: dates read MM/DD/YYYY, a list one per line. */
