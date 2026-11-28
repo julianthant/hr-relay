@@ -134,10 +134,14 @@ export function useActivityWiring(client: ActivityClient | undefined, range: Act
     if (kept !== undefined && resource.snapshot().value !== kept.selection) resource.accept(kept.selection);
     if (kept !== undefined && kept.version === version && systemClock.monotonicMs() - kept.readAt < kept.lifetimeMs) return;
     const controller = new AbortController();
-    const readAt = systemClock.monotonicMs();
-    void resource.read(signal => client.activityPopulation(request.from, request.to, signal), "DASHBOARD_READ_FAILED", undefined, controller.signal).then(next => {
-      keptRanges.keep(client, owner, rangeKey, { value: { selection: next, version, readAt, lifetimeMs: Date.parse(next.snapshot.expiresAt) - Date.parse(next.snapshot.generatedAt) }, at: version });
-    }, () => resource.snapshot());
+    queueMicrotask(() => {
+      // Strict Mode releases its probe mount before the request can start.
+      if (controller.signal.aborted) return;
+      const readAt = systemClock.monotonicMs();
+      void resource.read(signal => client.activityPopulation(request.from, request.to, signal), "DASHBOARD_READ_FAILED", undefined, controller.signal).then(next => {
+        keptRanges.keep(client, owner, rangeKey, { value: { selection: next, version, readAt, lifetimeMs: Date.parse(next.snapshot.expiresAt) - Date.parse(next.snapshot.generatedAt) }, at: version });
+      }, () => resource.snapshot());
+    });
     return () => controller.abort();
   }, [client, enabled, request, resource, version, authority, rangeKey]);
   useEffect(() => {
