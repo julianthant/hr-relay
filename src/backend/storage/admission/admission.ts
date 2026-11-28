@@ -464,7 +464,7 @@ export class RuntimeAdmission {
     if (this.#scope !== "stopped-control-inventory" || this.#stoppedControlInventory === undefined) return false;
     const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory.claim), directory = source.backupDirectory;
     return isAbsolute(path) && resolve(path) === path && (path === directory || dirname(path) === directory
-      && /^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite(?:\.manifest\.json)?)$/u.test(basename(path)));
+      && /^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite(?:\.manifest\.json|\.(?:timeline|dashboard)\.db)?)$/u.test(basename(path)));
   }
   assertAuthorityBackupWrite(path: string): void {
     if (this.#scope === "stopped-control-inventory") {

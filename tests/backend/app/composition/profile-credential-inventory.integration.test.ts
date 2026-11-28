@@ -224,6 +224,30 @@ it("assesses a current verified backup with paired SQLite logs", async () => {
   } finally { await f.cleanup(); }
 });
 
+it.each(["dashboard.db", "timeline.db-journal"])("refuses a credential copy in live %s", async name => {
+  const f = await stoppedFixture(CURRENT_AUTHORITY_SCHEMA_VERSION);
+  try {
+    const path = join(f.profileRoot, name), secret = historicalIncompleteProfileFields.password;
+    const clean = f.inspect();
+    f.revalidate(clean);
+    if (name === "dashboard.db") {
+      assert.ok(f.archive);
+      copyFileSync(`${f.archive.path}.dashboard.db`, path);
+      const encoded = [...secret].map(character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+      {
+        using db = new DatabaseSync(path);
+        const now = f.clock.now().toISOString();
+        db.prepare("INSERT INTO debug_events (id, occurred_at, recorded_at, retention_date, payload_json, pinned) VALUES (?, ?, ?, ?, ?, 0)")
+          .run(randomUUID(), now, now, now.slice(0, 10), `{"message":"${encoded}"}`);
+      }
+      assert.equal(scanProfileCredentialCopy(path, [secret]).containsSecret, false);
+    } else writeFileSync(path, secret, { mode: 0o600 });
+    const retained = readFileSync(path);
+    assert.throws(() => f.inspect(), error => causeHas(error, "credential-maintenance-live-authority-copy-present"));
+    assert.deepEqual(readFileSync(path), retained);
+  } finally { await f.cleanup(); }
+});
+
 for (const mutation of ["forged-source-version", "missing-source-table", "extra-source-table"] as const) it(`rejects ${mutation} before accepting a backup into credential inventory`, async () => {
   const f = await fixture();
   try {

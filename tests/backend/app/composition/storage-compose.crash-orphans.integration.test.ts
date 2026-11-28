@@ -177,6 +177,12 @@ it.skipIf(process.platform === "win32").each(crashPoints)("restarts after a hard
       restoreStage = join(profile.stateRoot, name);
       assert.equal(existsSync(restoreJournal), true);
     } else if (stage === "restore stage") {
+      const scratch = join(profile.stateRoot, "scratch");
+      const logStage = readdirSync(scratch).find(name => /^\.restore-.+\.logs$/u.test(name));
+      assert.ok(logStage);
+      assert.deepEqual(readdirSync(join(scratch, logStage)).sort(), ["dashboard.db", "timeline.db"]);
+      assert.equal(existsSync(restoreJournal), false);
+      stages.push(join(scratch, logStage));
       const unknown = join(profile.stateRoot, ".restore-unknown.sqlite.tmp");
       writeFileSync(unknown, "unproved restore stage", { mode: 0o600 }); retain(unknown);
     }

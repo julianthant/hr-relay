@@ -11,7 +11,7 @@ import { backupRegisteredPeopleAtCleanShutdown, detachedShutdownBackup, initiali
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { AuthorityBackupService, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { AuthorityBackupService, backupLogPaths, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
@@ -35,6 +35,10 @@ it("keeps three verified shutdown backups for a signed-out person and preserves 
     for (let index = 0; index < 5; index++) { clock.advanceWall(1000); await backupRegisteredPeopleAtCleanShutdown(f.workspace, f.lifetime, clock); }
     const names = readdirSync(directory).filter(name => name.endsWith(".manifest.json"));
     assert.equal(names.length, 4); assert.equal(names.filter(name => name.endsWith(".shutdown.sqlite.manifest.json")).length, 3);
+    assert.deepEqual(readdirSync(directory).sort(), names.flatMap(manifest => {
+      const name = manifest.slice(0, -".manifest.json".length);
+      return [manifest, name, ...backupLogPaths(name)];
+    }).sort());
     assert.deepEqual(readFileSync(join(directory, manifest.backupFileName)), originalBackup);
     assert.deepEqual(readFileSync(join(directory, `${manifest.backupFileName}.manifest.json`)), originalManifest);
     assert.deepEqual(readFileSync(f.path), source); assert.deepEqual(readFileSync(credentialsPath), credentials);

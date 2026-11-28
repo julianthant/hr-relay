@@ -368,6 +368,7 @@ const BackupStageName = new RegExp(`^\\.authority-${BackupAttemptToken}\\.(?:sql
 const BackupLogStageName = new RegExp(`^\\.authority-${BackupAttemptToken}\\.logs\\.tmp$`, "u");
 const FinalBackupName = new RegExp(`^authority-g\\d+-\\d{17}-${BackupAttemptToken}(?:\\.shutdown|\\.session)?\\.sqlite$`, "u");
 const RestoreStageName = new RegExp(`^(\\.restore-${BackupAttemptToken}\\.sqlite\\.tmp)(?:-(?:journal|wal|shm))?$`, "u");
+const RestoreLogStageName = new RegExp(`^\\.restore-${BackupAttemptToken}\\.logs$`, "u");
 
 export function reconcileBackupsAfterBrowserClosure(browserClosure: ProfileBrowserClosure, machine: RuntimeAdmission,
   operation: OfflineMaintenanceOperation): ProfileBrowserClosure {
@@ -405,7 +406,9 @@ export function reconcileStartupAuthorityStages(machine: RuntimeAdmission, profi
     const file = abandonedFile(root, name);
     return file === undefined ? [] : [file];
   });
-  if (restores.length > 0) assertMaintenanceCustodyAvailable("restore");
+  const scratch = join(root, "scratch");
+  const logRestores = noSymlinkAncestry(scratch, ancestry) ? readdirSync(scratch).filter(name => RestoreLogStageName.test(name)) : [];
+  if (restores.length > 0 || logRestores.length > 0) assertMaintenanceCustodyAvailable("restore");
   const backups = reconcileAbandonedBackups(root, assertHeld, () => {
     if (!machine.readStartupProfileIds().includes(id)) throw new Error("profile-startup-registration-required");
     const binding = { installationId: context.locator.installationId, profileId: id };
@@ -416,7 +419,12 @@ export function reconcileStartupAuthorityStages(machine: RuntimeAdmission, profi
         .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
     });
   });
-  return backups + removeAbandonedFiles(root, ancestry, restores, assertHeld, "restore-stage-custody-changed");
+  for (const stage of logRestores) removeLogStage(join(scratch, stage), () => {
+    assertHeld();
+    noSymlinkAncestry(scratch, ancestry);
+  });
+  if (logRestores.length > 0) fsyncPath(scratch);
+  return backups + logRestores.length + removeAbandonedFiles(root, ancestry, restores, assertHeld, "restore-stage-custody-changed");
 }
 
 function reconcileAbandonedBackups(root: string, assertHeld: () => void, readUpgrades: () => readonly AuthorityUpgradeRecord[]): number {
@@ -459,26 +467,27 @@ function reconcileAbandonedBackups(root: string, assertHeld: () => void, readUpg
     return file;
   });
   const removed = removeAbandonedFiles(directory, ancestry, abandoned, assertHeld, "abandoned-backup-file-changed");
-  for (const stage of logStages) removeBackupLogStage(join(directory, stage), assertHeld);
+  for (const stage of logStages) removeLogStage(join(directory, stage), assertHeld);
   if (logStages.length > 0) fsyncPath(directory);
   return removed + logStages.length;
 }
 
-function removeBackupLogStage(root: string, assertHeld: () => void): void {
-  const identity = statDirectory(root, "log backup staging", 0o700);
+function removeLogStage(root: string, assertHeld: () => void): void {
+  assertHeld();
+  const identity = statDirectory(root, "log staging", 0o700);
   const owned = new Set(PROFILE_LOG_FILES);
   const files = readdirSync(root).map(name => {
     const file = owned.has(name) ? abandonedFile(root, name) : undefined;
-    if (file === undefined) throw new Error("abandoned-backup-log-stage-unsafe");
+    if (file === undefined) throw new Error("abandoned-log-stage-unsafe");
     return file;
   });
   for (const file of files) {
     assertHeld();
-    if (!sameDirectory(statDirectory(root, "log backup staging", 0o700), identity)) throw new Error("abandoned-backup-log-stage-changed");
-    removeExactPath(file.path, file, false, "abandoned-backup-log-stage-changed");
+    if (!sameDirectory(statDirectory(root, "log staging", 0o700), identity)) throw new Error("abandoned-log-stage-changed");
+    removeExactPath(file.path, file, false, "abandoned-log-stage-changed");
   }
   assertHeld();
-  if (!sameDirectory(statDirectory(root, "log backup staging", 0o700), identity)) throw new Error("abandoned-backup-log-stage-changed");
+  if (!sameDirectory(statDirectory(root, "log staging", 0o700), identity)) throw new Error("abandoned-log-stage-changed");
   rmdirSync(root);
 }
 
@@ -641,7 +650,7 @@ export class AuthorityBackupService {
           return { byteSize, sha256 };
         };
         logFiles = { timeline: await publish("timeline"), dashboard: await publish("dashboard") };
-        removeBackupLogStage(temporaryLogRoot, () => this.#admission.assertAuthorityBackupWrite(this.#directory));
+        removeLogStage(temporaryLogRoot, () => this.#admission.assertAuthorityBackupWrite(this.#directory));
       }
       const stats = statSync(finalBackupPath);
       this.#admission.assertAuthorityBackupWrite(this.#directory);
@@ -699,7 +708,7 @@ export class AuthorityBackupService {
     if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw primary.error;
     const cleanupFailures: unknown[] = [];
     try {
-      if (existsSync(temporaryLogRoot)) removeBackupLogStage(temporaryLogRoot, () => this.#admission.assertAuthorityBackupWrite(this.#directory));
+      if (existsSync(temporaryLogRoot)) removeLogStage(temporaryLogRoot, () => this.#admission.assertAuthorityBackupWrite(this.#directory));
     } catch (error) { cleanupFailures.push(error); }
     if (primary !== undefined) {
       try { if (finalManifestPath !== undefined && existsSync(finalManifestPath)) rmSync(finalManifestPath); }

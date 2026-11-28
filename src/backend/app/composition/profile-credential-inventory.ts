@@ -9,6 +9,7 @@ import { inventoryFileIdentity, enumerateProfileCredentialMembership, probeRetai
 import { assertRetainedProfileBrowserRoot, assertCredentialCopyResourcesClosed, assertLogoutResourcesClosed, assertShutdownResourcesClosed, retainedBrowserProfiles } from "../../storage/maintenance/profile-custody.js";
 import { migrationTableNames } from "../../storage/sqlite/migrations.js";
 import { readLocalDebugLog } from "../../storage/events/local-debug-log.js";
+import { PROFILE_LOG_FILES } from "../../storage/events/log-mutations.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { createHash } from "node:crypto";
@@ -101,6 +102,20 @@ export function scanProfileCredentialCopy(path: string, capturedSecrets: readonl
 /** Verdicts of one assessment's backup scans, reused only while a backup keeps the exact file identity it was scanned under. */
 type BackupCredentialScans = Map<string, Readonly<{ identity: string; digest: string; containsSecret: boolean }>>;
 
+function scanRows(fields: Pick<StoppedCredentialCopyInspection, "capturedSecrets" | "containsKey">, tables: readonly string[]) {
+  return (database: Parameters<Parameters<typeof withReadonlyAuthoritySnapshot<boolean>>[1]>[0]) => {
+    const bytes = credentialSearchBytes(fields.capturedSecrets);
+    for (const table of tables) for (const row of database.prepare(`SELECT * FROM ${table}`).iterate()) {
+      for (const [column, value] of Object.entries(row)) {
+        if (fields.containsKey(value)) return true;
+        if (containsCredentialValue(typeof value === "string" && column.endsWith("_json") ? JSON.parse(value) : value, fields.capturedSecrets)) return true;
+        if (value instanceof Uint8Array && bytes.some(secret => secret.length > 0 && Buffer.from(value).includes(secret))) return true;
+      }
+    }
+    return false;
+  };
+}
+
 type CredentialMaintenancePurpose = Readonly<{ kind: "ordinary" }> | Readonly<{ kind: "stopped-control"; claim: StoppedControlProfileInventory }>;
 
 function assessProfileCredentialCopies(admission: RuntimeAdmission, before: ReturnType<typeof enumerateProfileCredentialMembership>,
@@ -113,17 +128,6 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
     if (issued.binding.profileId !== admission.profileBinding.profileId || issued.stateRoot !== root) throw new Error("profile-control-upgrade-inventory-owner-mismatch");
   }
   const pairedLogs = new Map(backups.flatMap(verifiedBackupLogs).map(log => [log.path, log]));
-  const scanRows = (tables: readonly string[]) => (database: Parameters<Parameters<typeof withReadonlyAuthoritySnapshot<boolean>>[1]>[0]) => {
-    const bytes = credentialSearchBytes(fields.capturedSecrets);
-    for (const table of tables) for (const row of database.prepare(`SELECT * FROM ${table}`).iterate()) {
-      for (const [column, value] of Object.entries(row)) {
-        if (fields.containsKey(value)) return true;
-        if (containsCredentialValue(typeof value === "string" && column.endsWith("_json") ? JSON.parse(value) : value, fields.capturedSecrets)) return true;
-        if (value instanceof Uint8Array && bytes.some(secret => secret.length > 0 && Buffer.from(value).includes(secret))) return true;
-      }
-    }
-    return false;
-  };
       for (const path of [...before.copies, ...before.backupPaths]) {
         const backup = backups.find(value => value.backupPath === path);
         const pairedLog = pairedLogs.get(path);
@@ -180,11 +184,11 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
           const copyAdmission = admission.verifiedReadOnlyCopy(path, digest);
           try {
             const schemaVersion = backup?.manifest.schemaVersion ?? AuthorityDatabase.inspectExistingReadOnly(copyAdmission, path).schemaVersion;
-            containsSecret ||= withAuthorityDatabaseReadOnly(copyAdmission, path, scanRows(migrationTableNames(schemaVersion)));
+            containsSecret ||= withAuthorityDatabaseReadOnly(copyAdmission, path, scanRows(fields, migrationTableNames(schemaVersion)));
           } finally { copyAdmission.release(); }
         }
         if (pairedLog !== undefined && reused === undefined) {
-          containsSecret ||= withReadonlyAuthoritySnapshot(path, scanRows([pairedLog.table]));
+          containsSecret ||= withReadonlyAuthoritySnapshot(path, scanRows(fields, [pairedLog.table]));
           if (canonicalJsonStringify(inventoryFileIdentity(path)) !== identity) throw new Error("profile-inventory-backup-changed");
         }
         if (digest !== undefined) backupScans.set(path, { identity, digest: scanned.digest, containsSecret });
@@ -285,9 +289,15 @@ export function composeStoppedControlCredentialInventory(input: Readonly<{ claim
         const login = countProfileCredentialLoginRows(membership.loginDataPaths);
         if (login === "unreadable" || typeof login === "number" && login > 0) throw new Error("credential-maintenance-login-copy-present");
         const database = join(admission.stateRoot, "state.db");
-        for (const suffix of ["", "-wal", "-shm"]) {
-          const path = `${database}${suffix}`;
+        for (const name of ["state.db", "state.db-wal", "state.db-shm", ...PROFILE_LOG_FILES]) {
+          const path = join(admission.stateRoot, name);
           if (lstatSync(path, { throwIfNoEntry: false }) !== undefined && scanProfileCredentialCopy(path, copies.capturedSecrets, copies).containsSecret) throw new Error("credential-maintenance-live-authority-copy-present");
+        }
+        for (const [name, table] of [["timeline.db", "timeline_events"], ["dashboard.db", "debug_events"]] as const) {
+          const path = join(admission.stateRoot, name);
+          if (lstatSync(path, { throwIfNoEntry: false }) !== undefined && withReadonlyAuthoritySnapshot(path, scanRows(copies, [table]))) {
+            throw new Error("credential-maintenance-live-authority-copy-present");
+          }
         }
         withAuthorityDatabaseReadOnly(admission, database, db => {
           for (const table of migrationTableNames(source.schemaVersion)) for (const row of db.prepare(`SELECT * FROM ${table}`).iterate()) {

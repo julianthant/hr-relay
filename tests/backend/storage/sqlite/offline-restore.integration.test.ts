@@ -2,7 +2,7 @@ import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/p
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
@@ -52,15 +52,28 @@ describe("corruption → degraded → automatic restore → rebuild", () => {
 
       const operation = admission.acquireOfflineMaintenance();
       const manifest = backup.manifests[0]; expect(manifest).toBeDefined();
-      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot}, async (stagedPath, restoreAdmission) => { const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission); try { const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission, { path: stagedPath, busyTimeoutMs: 250, migrationOwner: "notification-projection-proof" }, f.clock); staged.close(); } finally { stagedAdmission.release(); } }, f.clock, undefined, boundProfileCredentials(admission));
       assert.ok(manifest.manifestVersion === 4 && manifest.logFiles !== undefined);
       const backupLogs = backupLogPaths(join(f.root, "backups", "authority", manifest.backupFileName));
+      let tamperDuringStaging = false;
+      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: f.path, suspectDirectory: join(f.root, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.input.processLockRoot}, async (stagedPath, restoreAdmission) => { const stagedAdmission = admission.stoppedRestoreProjection(stagedPath, restoreAdmission); try { const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission, { path: stagedPath, busyTimeoutMs: 250, migrationOwner: "notification-projection-proof" }, f.clock); staged.close(); } finally { stagedAdmission.release(); } }, f.clock, {
+        copyFile(source, target) {
+          copyFileSync(source, target);
+          if (tamperDuringStaging && target.endsWith(".sqlite.tmp")) writeFileSync(backupLogs[0], "damaged during staging");
+        },
+        atomicReplace: renameSync,
+      }, boundProfileCredentials(admission));
       const manifestPath = join(root, "backups", "authority", `${manifest.backupFileName}.manifest.json`);
       const originalAuthority = readFileSync(path);
       const originalBackupLog = readFileSync(backupLogs[0]);
       writeFileSync(backupLogs[0], "damaged backup");
       await assert.rejects(restore.restore({ manifestPath }, operation), /backup-log-file-unverified/u);
       assert.deepEqual(readFileSync(path), originalAuthority);
+      writeFileSync(backupLogs[0], originalBackupLog);
+      tamperDuringStaging = true;
+      await assert.rejects(restore.restore({ manifestPath }, admission.acquireOfflineMaintenance()), /backup-log-file-unverified/u);
+      assert.equal(existsSync(join(profile.workspace, ".tracker", "control", "journal.json")), false);
+      assert.deepEqual(readFileSync(path), originalAuthority);
+      tamperDuringStaging = false;
       writeFileSync(backupLogs[0], originalBackupLog);
       for (const name of ["timeline", "dashboard"]) {
         writeFileSync(join(root, `${name}.db`), "damaged live log", { mode: 0o600 });

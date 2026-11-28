@@ -458,6 +458,7 @@ export class OfflineAuthorityRestoreService {
             verified.manifest,
             `staged restore ${basename(stagedPath)}`,
           );
+          restoreLogs = await stageRestoreLogs(verified, admission.stateRoot, token);
           stagedAdmission = admission.stoppedStagedAuthority(stagedPath);
           const beforeProjection = inspectAuthorityBackupReadOnly(
             stagedAdmission,
@@ -513,7 +514,6 @@ export class OfflineAuthorityRestoreService {
           proofs.dispose();
           admission.beginAuthorityRestore(restoreBinding, restoreAdmission);
           restoreJournalHeld = true;
-          restoreLogs = await stageRestoreLogs(verified, admission.stateRoot, token);
           const displacedCompanions: DisplacedCompanion[] = [];
           let authorityReplaced = false;
           let replacementAttempted = false;
