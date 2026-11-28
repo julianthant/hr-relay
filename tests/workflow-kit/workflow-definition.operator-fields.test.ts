@@ -6,8 +6,10 @@ import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow
 
 it("validates exact operator paths through collection members and confines sources to their step", () => {
   const compiled = compileWorkflow(personLookupWorkflow);
-  assert.equal(compiled.descriptor.timeline[0].system, "ucpath");
-  assert.equal(compiled.descriptor.timeline[0].operatorFields?.[0].label, "Employee ID");
+  const search = compiled.descriptor.timeline.find(group => group.key === "searching");
+  assert.ok(search);
+  assert.equal(search.system, "ucpath");
+  assert.equal(search.operatorFields?.[0].label, "Employee ID");
   const steps = personLookupWorkflow.steps;
   for (const source of [
     { nodeId: "searching", kind: "output" as const, fieldPath: "results.missing" },
@@ -15,8 +17,8 @@ it("validates exact operator paths through collection members and confines sourc
     { nodeId: "active-status", kind: "output" as const, fieldPath: "state" },
   ]) {
     assert.throws(() => compileWorkflow({ ...personLookupWorkflow,
-      steps: steps.map(([group, entries], index) =>
-        [index === 0 ? { ...group, operatorFields: [{ label: "Invalid field", sources: [source] }] } : group, entries] as const),
+      steps: steps.map(([group, entries]) =>
+        [group.key === "searching" ? { ...group, operatorFields: [{ label: "Invalid field", sources: [source] }] } : group, entries] as const),
     }), /operator field/u);
   }
 });
@@ -34,6 +36,6 @@ it("validates logs-only field visibility without creating a second source declar
   const field = { label: "Drop reason", visibility: "logs", sources: [{ nodeId: "matching", kind: "output", fieldPath: "dropped.reason" }] };
   assert.equal(WorkflowOperatorFieldSchema.safeParse(field).success, true);
   assert.equal(WorkflowOperatorFieldSchema.safeParse({ ...field, visibility: "unknown" }).success, false);
-  const group = compileWorkflow(personLookupWorkflow).descriptor.timeline[0];
-  assert.deepEqual(group.operatorFields?.find(field => field.label === "Drop reason"), field);
+  const group = compileWorkflow(personLookupWorkflow).descriptor.timeline.find(candidate => candidate.key === "searching");
+  assert.deepEqual(group?.operatorFields?.find(field => field.label === "Drop reason"), field);
 });

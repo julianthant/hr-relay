@@ -1,6 +1,6 @@
 import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
 import { createWorkbookLibraryAdapter } from "../../../../src/backend/processing/providers/workbook-library-adapter.js";
-import { REFERENCE_CHECK } from "../../../../src/models/processing/workbooks/verify-person.js";
+import { REFERENCE_CHECK_ID } from "../../../../src/models/processing/workbooks/reference-fields.js";
 import { ocrModule } from "../registered-workflows.js";
 import type { SpanEmitter } from "../../../../src/backend/logs/span-emitter.js";
 import type { createRetainedApprovedRecordReader } from "../../fixtures/ocr/retained-approved-records.js";
@@ -186,7 +186,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
           const needsPlanEvidence = notes !== undefined && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction");
           return { ...(!needsPlanEvidence ? {} : { taskNotes: notes }), providers: { configSnapshots: database.authority.configSnapshots,
           idFactory: { next: () => randomUUID() }, adapters: { "ocr.extract": provider, ...(options.checks === undefined ? {} : { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
-            references: { runId: run.envelope.runId, write: () => { throw new Error("the reference check must not write a reference"); }, verifyPerson: command => runWorkbooks.verifyPerson(run, command) } }) }),
+            references: { runId: run.envelope.runId, write: () => { throw new Error("the reference check must not write a reference"); }, readFields: command => runWorkbooks.readReferenceFields(run, command) } }) }),
             "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({clock,
             reader: options.approvedReader === undefined
               ? createApprovedOcrRecordReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime()})
@@ -290,7 +290,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
                 const extra = workbooks.create({ name: check.name, themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: check.sheet, width: check.fields.length, hidden: [], headerRow: 1,
                   columnBindings: check.fields.map((fieldId, index) => ({ id: `check-${String(index)}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
                   rows: [{ id: "header", cells: check.fields.map(value => ({ value })) }, ...check.rows.map((cells, index) => ({ id: `row-${String(index)}`, cells: cells.map(value => ({ value })) }))] }] });
-                return { entry: 1, typeId: REFERENCE_CHECK.id, libraryId: extra.libraryId, versionId: workbooks.libraryVersion(extra.libraryId).version.id,
+                return { entry: 1, typeId: REFERENCE_CHECK_ID, libraryId: extra.libraryId, versionId: workbooks.libraryVersion(extra.libraryId).version.id,
                   sheetId: "sheet", expectedVersion: workbooks.read(extra.libraryId).version };
               })];
       const submission = coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, ...(options.fileName === undefined ? {} : { fileName: options.fileName }), readingId: request.readingId, roster: request.roster, reading: request.reading,

@@ -6,7 +6,6 @@ import { EmergencyContactMemberResultSchema } from "../../../../models/workflows
 import { defineStep,defineStepEntries,inheritStepProof,type WorkflowAuthor,type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { CONTACT_PLAN_INCLUDED, buildContactPlan } from "../contact-plan/step.js";
-import type { buildReferenceCheck } from "../reference-check/step.js";
 
 export const CONTACT_PREVIEW_MANUAL: StepManualDeclaration = {
   off: "manual", ownStartOnly: true, form: { fields: [] }, produces: {}, skips: ["contact-preview"], skipsGatesAndTransactions: true,
@@ -124,14 +123,13 @@ export const CONTACT_PREVIEW_STEP = Object.freeze({ ...defineWorkflowStep({ key:
 });
 const entry = defineStepEntries(CONTACT_PREVIEW_STEP).transaction("contact-preview", { label: "Prepare ordered primary contact changes",
   prepare: UcpathStageEmergencyContact, commit: UcpathSaveEmergencyContact, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 45_000 });
-/** `reference` is the composition's reference-check review; the Save waits for it so a stop comes before anything is saved. */
 export function buildContactPreview(author: WorkflowAuthor<typeof EmergencyContactMemberInputSchema>, upstream: ReturnType<typeof buildContactPlan>,
-  reference?: ReturnType<typeof buildReferenceCheck>) {
-  const preview = author.transaction(entry, reference === undefined ? [upstream.plan] : [upstream.plan, reference.review], {
+  contactPlanSwitch = false) {
+  const preview = author.transaction(entry, [upstream.plan], {
     prepareBind: ({ outputs }) => outputs["contact-plan"].target,
     commitBind: ({ outputs }) => outputs["contact-plan"].target,
   });
-  const group = reference === undefined ? CONTACT_PREVIEW_STEP : author.group(CONTACT_PREVIEW_STEP, {
+  const group = !contactPlanSwitch ? CONTACT_PREVIEW_STEP : author.group(CONTACT_PREVIEW_STEP, {
     review: { ...CONTACT_PREVIEW_STEP.review, when: [CONTACT_PLAN_INCLUDED] },
   });
   return { steps: [[group, [preview]]] as const, result: author.result(EmergencyContactMemberResultSchema, [preview], ({ outputs }) => {

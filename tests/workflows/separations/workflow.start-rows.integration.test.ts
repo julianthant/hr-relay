@@ -1,3 +1,4 @@
+import { expectedReferenceStages } from "../../support/fixtures/reference-check-graph.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { planStepOmissions, StepOmissionsSchema } from "../../../src/models/workflow/step-omission.js";
@@ -5,6 +6,7 @@ import { projectStartRows, projectStartSteps, resolveStartStepOmissions, StartSt
 import { SeparationsVerifyTerminationReceipt } from "../../../src/models/workflows/separations/verify-termination-receipt.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 
+const referenceStages = expectedReferenceStages(["start", "document", "subject", "job-summary", "approval"]);
 const descriptor = separationsDescriptor;
 const allSteps = () => projectStartSteps(descriptor).map(step => step.key);
 
@@ -54,11 +56,11 @@ it("all switches on plans no omission and keeps today's steps and node ids", () 
   const plan = planStepOmissions(descriptor, []);
   assert.deepEqual([plan.asserted.size, plan.omitted.size, plan.refusals.length], [0, 0, 0]);
   assert.deepEqual(descriptor.timeline.map(({ key, nodes }) => [key, nodes.map(({ id }) => String(id))]), [
+    ["reference-check", referenceStages.flatMap(stage => stage.ids)],
     ["kuali-extraction", ["resolve-action", "document", "plan", "termination-type"]],
     ["identity-check", ["name-search", "subject", "job-summary", "employment", "department-option"]],
     ["kronos-timecard", ["timecard-search", "timecard", "dates"]],
     ["identity-review", ["comparison", "identity-approval", "approval"]],
-    ["reference-check", ["reference-check", "reference-stop", "reference-check-review"]],
     ["pending-termination", ["pending-set", "clear-pending"]],
     ["ucpath-transaction", ["file-termination", "receipt"]],
     ["kuali-finalization", ["filing-presence", "finalize-kuali"]],

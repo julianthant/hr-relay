@@ -123,11 +123,11 @@ describe("workflow descriptor registry", () => {
   it("keeps separations steps inside its one timeline", () => {
     const separations = DESCRIPTORS[1];
     expect(separations?.timeline.map(({ key, label }) => [key, label])).toEqual([
+      ["reference-check", "Reference spreadsheets"],
       ["kuali-extraction", "Kuali extraction"],
       ["identity-check", "Identity check"],
       ["kronos-timecard", "Kronos timecard"],
       ["identity-review", "Identity approval"],
-      ["reference-check", "Check reference spreadsheets"],
       ["pending-termination", "Pending terminations"],
       ["ucpath-transaction", "UCPath transaction"],
       ["kuali-finalization", "Kuali finalization"],

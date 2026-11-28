@@ -11,8 +11,8 @@ it("serves a switch for every Emergency Contact member Start row", () => {
   assert.deepEqual(projectStartRows(descriptor).map(({ key, kind, lockReason, off }) => [
     key, kind, lockReason ?? null, off,
   ]), [
-    ["contact-plan", "switch", null, "values"],
     ["reference-check", "switch", null, "values"],
+    ["contact-plan", "switch", null, "values"],
     ["contact-preview", "switch", null, "manual"],
     ["onbase-filing", "switch", null, "manual"],
   ]);

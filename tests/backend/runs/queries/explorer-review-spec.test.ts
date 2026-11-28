@@ -49,9 +49,10 @@ it("serves every readable definition with its ordered steps and every declared t
 it("derives run options from Start run declarations only", () => {
   assert.deepEqual(workflow("onboarding").reviewSpec.options.map(option => [option.id, option.label, option.initial]),
     [["mode", "Hire mode", "new-hire"], ["dry-run", "Dry run", "false"],
+      ["skip-reference-check", "Reference spreadsheets", "run"],
       ["skip-crm-data", "Read and validate hire data", "run"], ["skip-ucpath-search", "Check UCPath duplicates", "run"],
       ["skip-i9-search", "Search I-9 profiles", "run"], ["skip-hire-review", "Review UCPath hire findings", "run"],
-      ["skip-reference-check", "Check reference spreadsheets", "run"], ["skip-i9-creation", "Create or reuse the I-9 record", "run"],
+      ["skip-i9-creation", "Create or reuse the I-9 record", "run"],
       ["skip-ucpath-hire", "File and verify the UCPath hire", "run"], ["skip-master-results", "Fill verified master results", "run"]]);
   assert.deepEqual(workflow("work-study").reviewSpec.options.map(option => option.id), ["dry-run", "skip-ucpath-auth", "skip-transaction"]);
   assert.deepEqual(workflow("ocr-page").reviewSpec.options, [{
@@ -108,8 +109,8 @@ it("derives sample values from contract examples and follows a decision's outcom
 it("rejects forged gates, values, initial outcomes and missing failures without throwing", () => {
   const entry = workflow("person-lookup");
   const spec = entry.reviewSpec;
-  const [first, ...rest] = spec.steps; assert.ok(first);
-  const withFirst = (step: typeof first) => ({ ...spec, steps: [step, ...rest] });
+  const first = spec.steps.find(step => step.id === "searching"); assert.ok(first);
+  const withFirst = (step: typeof first) => ({ ...spec, steps: spec.steps.map(candidate => candidate === first ? step : candidate) });
   assert.equal(ExplorerReviewSpecSchema.safeParse(spec).success, true);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: [{ unknown: ["x"] }] })).success, false);
   assert.equal(ExplorerReviewSpecSchema.safeParse(withFirst({ ...first, when: [{ mode: ["sideways"] }] })).success, false);
@@ -130,7 +131,7 @@ it("rejects forged gates, values, initial outcomes and missing failures without 
   const dropped = withBlocks(first.blocks.map(block => block.kind === "decision" ? { ...block, outcomes: block.outcomes.filter(outcome => outcome.value !== "PERSON_LOOKUP_UCPATH_SEARCH_FAILED") } : block));
   assert.equal(ExplorerReviewSpecSchema.safeParse(dropped).success, true);
   assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...entry, reviewSpec: dropped }).success, false);
-  assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...entry, reviewSpec: { ...spec, steps: rest } }).success, false);
+  assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...entry, reviewSpec: { ...spec, steps: spec.steps.filter(step => step !== first) } }).success, false);
 });
 
 it("refuses a Search by option whose choice no review row reads", () => {
