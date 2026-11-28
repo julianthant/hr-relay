@@ -27,8 +27,8 @@ const lookupManual: StepManualDeclaration = {
       (issue.code === "unrecognized_keys" ? issue.keys : [String(issue.path[0] ?? "i9Status")])
         .map(field => ({ field, message: "Enter the values required for the selected I-9 status." })));
   },
-  skips: ["lookup-source"],
-  produces: { lookup: ({ facts }) => I9SignerOutputSchema.parse(typedSigner(facts)) },
+  keeps: ["lookup"],
+  produces: { "lookup-source": ({ facts }) => I9SignerOutputSchema.parse(typedSigner(facts)) },
 };
 
 export const I9_LOOKUP_STEP = Object.freeze({

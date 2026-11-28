@@ -39,9 +39,12 @@ it("uses the typed lookup result without opening I-9 Complete", async () => {
   const retained = database.authority.runResults.get(run.envelope.runId);
   assert.ok(retained);
   assert.deepEqual(retained.result.value, signer);
-  assert.ok(retained.dependencies.some(dependency => dependency.nodeId === "lookup" && dependency.state === "asserted"));
-  const { receipt } = deriveRunEvidenceReceipt({ descriptor, run: settled, result: retained,
-    checkpoints: database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId) });
+  const checkpoints = database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId);
+  const typed = checkpoints.find(checkpoint => checkpoint.nodeId === "lookup-source");
+  assert.equal(typed?.assertion?.step, "lookup");
+  assert.deepEqual(typed?.output.value, signer);
+  assert.ok(retained.dependencies.some(dependency => dependency.nodeId === "lookup" && dependency.state === "resolved"));
+  const { receipt } = deriveRunEvidenceReceipt({ descriptor, run: settled, result: retained, checkpoints });
   assert.ok(receipt.output.some(fact => fact.field === "i9Status"));
 
   const detail = projectTypedSteps(settled, descriptor).get("lookup")?.typedValues;
