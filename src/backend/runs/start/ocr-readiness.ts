@@ -1,5 +1,5 @@
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { chatGptConnectionCurrent, chatGptOcrAvailable, type ChatGptAccountStatus } from "../../../models/dashboard/chatgpt-account.js";
+import { chatGptOcrAvailable } from "../../../models/dashboard/chatgpt-account.js";
 import type { RunContinuation } from "../../../models/run/continuation.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { StartPlanRecord } from "../../../models/run/start-plan.js";
@@ -9,21 +9,20 @@ import { evaluateNodeCondition } from "../../../models/workflow/node-condition.j
 import { PreflightAdmissionRefusal } from "../../../rules/preflight/preflight-admission.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { descriptorRuntimeNodes, workflowDelegatedDescriptor, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import type { Clock } from "../../../rules/time/clock.js";
 import type { ChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { captureRunContinuation, retainedCheckpoint, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 
 const OCR_EDGES: ReadonlySet<string> = new Set(["document-ocr", "i9-documents", "ocr-pages"]);
 
-export function createOcrStartReadiness(account: Pick<ChatGptAccountService, "checkStatus" | "readStatus">, clock: Pick<Clock, "nowMs">) {
-  const current = (status: ChatGptAccountStatus) => chatGptOcrAvailable(status) && chatGptConnectionCurrent(status.connection, clock.nowMs());
+export function createOcrStartReadiness(account: Pick<ChatGptAccountService, "checkStatus" | "checkedModelAvailable">, model: string) {
+  const ocrProviderAvailable = () => account.checkedModelAvailable(model);
   return {
-    ocrProviderAvailable: () => current(account.readStatus()),
+    ocrProviderAvailable,
     async prepareOcrProvider(signal: AbortSignal): Promise<void> {
       const status = await account.checkStatus(AbortSignal.any([signal, AbortSignal.timeout(30_000)]), { fresh: true })
         .catch((cause: unknown) => { throw new PreflightAdmissionRefusal("unavailable", ERROR_CATALOG.PROVIDER_UNAVAILABLE.text, { cause }); });
-      if (!current(status)) throw new PreflightAdmissionRefusal("blocked", ERROR_CATALOG.PROVIDER_UNAVAILABLE.text);
+      if (!chatGptOcrAvailable(status) || !ocrProviderAvailable()) throw new PreflightAdmissionRefusal("blocked", ERROR_CATALOG.PROVIDER_UNAVAILABLE.text);
     },
   };
 }

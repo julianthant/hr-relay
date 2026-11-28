@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { createOcrStartReadiness } from "../../../../src/backend/runs/start/ocr-readiness.js";
+import { CHATGPT_OCR_MODEL } from "../../../../src/backend/processing/providers/chatgpt-ocr-adapter.js";
 import { StartStepOmissionRefusedError } from "../../../../src/backend/runs/start/step-selection.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -302,7 +303,7 @@ it.each(["revoked session", "missing OCR model"] as const)("checks Emergency Con
   const account = await chatGptFixture(undefined, profileFixtures.create);
   try {
     let library: WorkbookLibraryService | undefined;
-    const ocrReadiness = createOcrStartReadiness(account.service, account.clock);
+    const ocrReadiness = createOcrStartReadiness(account.service, CHATGPT_OCR_MODEL);
     const h = await harnessFor(descriptor, undefined, true, database => library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK, sync: unexpectedWorkbookSync }), ocrReadiness);
     assert.ok(library);
     library.putType({ id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null });

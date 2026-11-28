@@ -209,7 +209,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   startupCleanups.push(() => applicationLifecycle.dispose());
   // The kernel is made before the hub, so its ordinary settings commits reach the hub through this source.
   const settingsChanges = new Set<() => void>();
-  const ocrReadiness = createOcrStartReadiness(chatGptAccount, clock);
+  const ocrReadiness = createOcrStartReadiness(chatGptAccount, CHATGPT_OCR_MODEL);
   const nativeKernel = createCommandKernel({
     commandNotices: notificationInbox,
     ensureReceipt: runId => trustReads.trust.ensureReceipt(runId),
