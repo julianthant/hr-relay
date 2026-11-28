@@ -142,10 +142,13 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
       throw launchPlanIdentityMismatch();
     }
     if ((request.workbookReferences ?? []).some(selection => selection.entry > request.submissions.length)) throw launchPlanIdentityMismatch();
+    const retained = request.submissions.length === 0 && request.rerunSource !== undefined;
+    const entryCount = retained ? 1 : request.submissions.length;
     const refusedEntries = plan.refused.map(refusal => refusal.entry);
     if (new Set(refusedEntries).size !== refusedEntries.length
-      || refusedEntries.some(entry => entry < 1 || entry > request.submissions.length)
-      || plan.planned.length + refusedEntries.length !== request.submissions.length) throw launchPlanIdentityMismatch();
+      || refusedEntries.some(entry => entry < 1 || entry > entryCount)
+      || plan.planned.length + refusedEntries.length !== entryCount) throw launchPlanIdentityMismatch();
+    if (retained) return plan;
     const acceptedEntries = request.submissions.flatMap((_, index) => refusedEntries.includes(index + 1) ? [] : [index + 1]);
     if (plan.planned.some((planned, index) => {
       const selections = (request.workbookReferences ?? []).filter(selection => selection.entry === acceptedEntries[index]);

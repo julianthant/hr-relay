@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown, Plus, Table2, X } from "lucide-react";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, SearchInput, Select, dsIcon } from "../../ds/ui.js";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuItemCopy, DropdownMenuTrigger, IconButton, SearchInput, Select, Tooltip, TooltipProvider, dsIcon } from "../../ds/ui.js";
 import { DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "../../ds/primitives/dropdown-menu.js";
 import { RunHeading, RunList, RunListRow } from "../../ds/primitives/run-list.js";
 import { formatMonthDay } from "../../lib/date-format.js";
@@ -25,13 +25,15 @@ export function SpreadsheetPicker({ label, options, busy, onPick }: {
     <DropdownMenuTrigger asChild><Button variant="secondary" disabled={busy} icon={<Plus aria-hidden className={dsIcon.md} />}>{label}</Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end" className="max-h-80 w-80 overflow-y-auto">
       <div className="p-1" onKeyDown={event => { if (!["Escape", "ArrowDown", "ArrowUp"].includes(event.key)) event.stopPropagation(); }}>
-        <SearchInput variant="field" aria-label="Find a spreadsheet" placeholder="Find a spreadsheet" value={query} onChange={event => setQuery(event.target.value)} autoComplete="off" spellCheck={false} />
+        <SearchInput aria-label="Find a spreadsheet" placeholder="Find a spreadsheet" value={query} onChange={event => setQuery(event.target.value)} autoComplete="off" spellCheck={false} />
       </div>
       {needle === "" && found.length > 0 && <DropdownMenuGroup><DropdownMenuLabel>Pinned</DropdownMenuLabel></DropdownMenuGroup>}
       {found.length === 0 && <p className="m-0 p-2 text-body text-ui-muted">{needle === "" ? GUIDANCE : "No spreadsheets match."}</p>}
-      {found.map(option => <DropdownMenuItem key={option.libraryId} disabled={option.disabled} onClick={() => onPick(option.libraryId)}>
-        <DropdownMenuItemCopy title={option.name} description={option.description} />
-      </DropdownMenuItem>)}
+      {found.length > 0 && <TooltipProvider>{found.map(option => <Tooltip key={option.libraryId} content={option.name} side="left" variant="wrap"><div role="group" aria-label={option.name}>
+        <DropdownMenuItem disabled={option.disabled} onClick={() => onPick(option.libraryId)}>
+          <DropdownMenuItemCopy title={option.name} description={option.description} />
+        </DropdownMenuItem>
+      </div></Tooltip>)}</TooltipProvider>}
     </DropdownMenuContent>
   </DropdownMenu>;
 }
@@ -50,7 +52,7 @@ function WorksheetMenu({ owner, worksheets, picked, mode, disabled, max, onChang
       className="ds-menu-trigger max-w-48 min-w-0" iconAfter={<ChevronDown aria-hidden className={dsIcon.sm} />}><span className="min-w-0 truncate">{text}</span></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end" className="w-64">
       <div className="p-1" onKeyDown={event => { if (!["Escape", "ArrowDown", "ArrowUp"].includes(event.key)) event.stopPropagation(); }}>
-        <SearchInput variant="field" aria-label="Find a worksheet" placeholder="Find a worksheet" value={query} onChange={event => setQuery(event.target.value)} autoComplete="off" spellCheck={false} />
+        <SearchInput aria-label="Find a worksheet" placeholder="Find a worksheet" value={query} onChange={event => setQuery(event.target.value)} autoComplete="off" spellCheck={false} />
       </div>
       <DropdownMenuGroup aria-label={`${owner} worksheets`} className="max-h-56 overflow-y-auto">
         {mode === "one"
@@ -74,8 +76,11 @@ export function SpreadsheetRow({ name, versions, versionId, note, worksheets, pi
 }) {
   return <RunListRow title={name} description={note} lead={<Table2 aria-hidden className={`${dsIcon.md} shrink-0 text-ui-muted`} />}>
     <WorksheetMenu owner={name} worksheets={worksheets} picked={picked} mode={mode} disabled={busy || !worksheetsReady} max={max} onChange={onWorksheets} />
-    <Select aria-label={`${name} version`} variant="toolbar" className="!border-transparent !bg-transparent !text-ui-muted tabular-nums" disabled={busy} value={versionId} onChange={event => onVersion(event.target.value)}>
-      {versions.map(version => <option key={version.id} value={version.id}>{`${version.name} · ${formatMonthDay(version.savedAt, undefined, "short")}`}</option>)}
+    <Select aria-label={`${name} version`} variant="toolbar" className="min-w-0 max-w-52 !border-transparent !bg-transparent !text-ui-muted tabular-nums" disabled={busy} value={versionId} onChange={event => onVersion(event.target.value)}>
+      {versions.map(({ id, name, savedAt }) => {
+        const label = `${name} · ${formatMonthDay(savedAt, undefined, "short")}`;
+        return <option key={id} value={id}><span className="block min-w-0 truncate" title={label}>{label}</span></option>;
+      })}
     </Select>
     <IconButton size="xs" label={`Remove ${name}`} disabled={locked} icon={<X aria-hidden className={dsIcon.md} />} onClick={onRemove} />
   </RunListRow>;

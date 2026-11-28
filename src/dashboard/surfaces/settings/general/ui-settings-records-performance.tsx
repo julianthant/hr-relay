@@ -1,13 +1,13 @@
 import { SettingsSectionSkeleton } from "../settings-loading.js";
 import { Form } from "@heroui/react";
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
-import { BodySection, Field, FormGroup, PageHeading, UnitField, Notice } from "../../../ds/ui.js";
+import { BodySection, Field, FormGroup, PageHeading, UnitField, Notice, FailureNotice } from "../../../ds/ui.js";
 import { settingInput } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { performancePresentation, performanceSectionGroups, type PerformanceGroup } from "./settings-performance-model.js";
 import { settingNote, settingTitle } from "../settings-presentation.js";
 import { timeoutSetting } from "./settings-timeouts-model.js";
-import { SettingsValueControl } from "../editor/settings-controls.js";
+import { SavingMark, SettingsValueControl } from "../editor/settings-controls.js";
 
 import { SettingsSearchDisclosure } from "../navigation/settings-search-disclosure.js";
 import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
@@ -43,6 +43,7 @@ function PerformanceRow({ editor, leaf }: { editor: Editor; leaf: EditableSettin
       </Field>
       : <div className="settings-performance-fallback"><SettingsValueControl leaf={leaf} operation={operation} error={error} disabled={editor.locked} update={(rawValue, immediate) => editor.update(leaf.path, rawValue, immediate)} />
         </div>}
+    <SavingMark editor={editor} path={leaf.path} />
     {leaf.validity === "unset" && <p className="settings-performance-hazard">Not set</p>}
     {leaf.hazard !== undefined && <p className="settings-performance-hazard">{leaf.hazard}</p>}
   </div>;
@@ -51,10 +52,10 @@ function PerformanceRow({ editor, leaf }: { editor: Editor; leaf: EditableSettin
 export function PerformanceSettingsSection({ editor }: { editor: Editor }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="performance" />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings unavailable" description="Reopen Settings to try again." />;
+  if (editor.editor.state === "failed") return <FailureNotice sentence="Settings unavailable; reopen Settings to try again." />;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "performance");
-  if (section === undefined) return <Notice tone="danger" title="Performance unavailable" />;
+  if (section === undefined) return <FailureNotice sentence="Performance unavailable." />;
   const groups = performanceSectionGroups(section.leaves);
   const primary = groups.filter(group => ["Navigation", "Work", "Sign-in & Duo"].includes(group.title));
   const additional = groups.filter(group => !primary.includes(group));

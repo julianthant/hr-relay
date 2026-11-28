@@ -20,7 +20,7 @@ const CREDENTIAL_IDS: Readonly<Record<ProtectedSettingsName, string>> = {
   sharepointOnboardingRosterUrl: "a3333333-3333-4333-8333-333333333333",
 };
 
-/** How the page's first read of the editable settings goes. `fail-once` fails the first read and answers every later one; `hold-later` answers the first and never the rest. */
+/** How the page's first read of the editable settings goes. `fail-once` fails the first read and answers every later one; `hold-later` answers the first and holds every later one until the page calls `releaseSettingsRead`. */
 export type SettingsRead = "answer" | "never" | "fail" | "fail-once" | "hold-later";
 /** What the page's next save command comes back as. `restart` lands and says Relay must restart; `replayed` says it was already saved. */
 export type SettingsSave = "applied" | "restart" | "replayed" | "conflict" | "rejected" | "lost" | "never";
@@ -55,6 +55,7 @@ export function settingsStoryServer(options: SettingsStoryServerOptions = {}): S
   let credentialRevision = 2;
   const stored = new Map<ProtectedSettingsName, string>(credentials === "saved" ? [["ucpathUserId", "jordan.lee"], ["ucpathPassword", "story-password"]] : []);
   let reads = 0;
+  let answered = false;
   const commands: unknown[] = [];
   const rows = createRowStore();
 
@@ -88,7 +89,8 @@ export function settingsStoryServer(options: SettingsStoryServerOptions = {}): S
       reads += 1;
       if (read === "never") return never();
       if (read === "fail" || (read === "fail-once" && reads === 1)) return json({ code: "SETTINGS_READ_UNAVAILABLE" }, 500);
-      if (read === "hold-later" && reads > 1) return never();
+      if (read === "hold-later" && answered) return new Promise<Response>(answer => { Reflect.set(globalThis, "releaseSettingsRead", () => { answer(json(document())); }); });
+      answered = true;
       return json(document());
     }
     if (pathname === "/api/v1/commands" && typeof init?.body === "string") {
@@ -122,5 +124,6 @@ export function settingsStoryServer(options: SettingsStoryServerOptions = {}): S
     }
     return json({ code: "NOT_SERVED" }, 404);
   };
+  if (read === "answer" || read === "hold-later") rows.apply([{ model: "settings", key: "editable", value: { state: "available", value: document() } }]);
   return { client: createDashboardClient({ baseUrl: BASE_URL, fetchImpl }), commands, rows };
 }

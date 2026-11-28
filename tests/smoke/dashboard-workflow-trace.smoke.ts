@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { COMPOSITION_EID } from "../support/helpers/separations-composition-fixtures.js";
 import { appliedRunIds } from "../support/fixtures/operator-command-fixtures.js";
 import { RunDetailWireSchema } from "../../src/models/dashboard/run-detail.js";
+import { DashboardStreamEnvelopeSchema } from "../../src/models/dashboard/subscription.js";
+import { createDashboardTransport } from "../../src/dashboard/client/transport.js";
 import type { SeededServer } from "../support/helpers/dashboard/served-fixtures/seeded-bff.js";
 import { SEEDED_PREFERENCE_WRITE } from "../support/helpers/dashboard/smoke/smoke-fixtures.js";
 import readXlsxFile from "read-excel-file/node";
@@ -160,7 +162,7 @@ test("Person Lookup: Rerun starts one new run, a second press while pending send
   expect(appliedRunIds(await started.result()).filter(id => id !== runId)).toHaveLength(1);
 });
 
-test("Work-Study: Retry after a failed step runs it again and writes once", async ({ dashboard, seeded, page, failures }) => {
+test("Work-Study: Rerun after a failed step opens the dialog and writes once", async ({ dashboard, seeded, page, failures }) => {
   const request = seededRequestOver(seeded.baseUrl);
   failures.allow(SEEDED_PREFERENCE_WRITE, "Choosing a workflow saves a preference; the seeded backend wires no settings executor.");
   await dashboard.open();
@@ -174,22 +176,21 @@ test("Work-Study: Retry after a failed step runs it again and writes once", asyn
   await expect(row).toContainText("Failed");
   expect(seeded.scripted.writes()).toHaveLength(0);
 
-  // The failed run's retry control is Recover completed steps: it queues a new run for the unfinished steps.
   await dashboard.clearToasts();
-  const recover = await dashboard.holdCommands("recover-run");
-  await page.getByRole("button", { name: "Recover completed steps" }).click();
-  const confirm = page.getByRole("dialog", { name: "Recover completed steps?" });
-  const recoverButton = confirm.getByRole("button", { name: "Recover", exact: true });
-  await recoverButton.click();
-  await expect.poll(recover.sent, { message: "the held Recover reached the server" }).toBe(1);
-  await dashboard.pressAgain(recoverButton);
-  recover.release();
-  expect(recover.sent(), "a second press while pending sent a second command").toBe(1);
-  await dashboard.expectNoToast();
-  const queuedByRetry = appliedRunIds(await recover.result()).filter(id => id !== runId);
+  const rerun = await dashboard.holdCommands("start-run");
+  await row.getByRole("button", { name: "Rerun", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Rerun", exact: true });
+  await dialog.getByRole("button", { name: "Next", exact: true }).click();
+  const start = dialog.getByRole("button", { name: "Start live run" });
+  await start.click();
+  await expect.poll(rerun.sent, { message: "the held Rerun reached the server" }).toBe(1);
+  await dashboard.pressAgain(start);
+  rerun.release();
+  expect(rerun.sent(), "a second press while pending sent a second command").toBe(1);
+  const queuedByRetry = appliedRunIds(await rerun.result()).filter(id => id !== runId);
   expect(queuedByRetry).toHaveLength(1);
   const [retried] = queuedByRetry;
-  if (retried === undefined) throw new Error("the Recover queued no run");
+  if (retried === undefined) throw new Error("the Rerun queued no run");
   failures.allow(abortedRead(retried), ABORTED_READ_REASON);
   const again = await seeded.scripted.drive(retried);
   await expect(page.locator(`[data-demo-row-id="${retried}"]`)).toContainText("Running");
@@ -587,7 +588,27 @@ test("Onboarding: a failed first read shows Failed on the row and writes nothing
   expect(seeded.scripted.writes()).toHaveLength(0);
 });
 
+async function holdDayCursor(seeded: SeededServer): Promise<Record<string, string>> {
+  const { promise, resolve, reject } = Promise.withResolvers<Record<string, string>>();
+  let generation: number | undefined;
+  const stream = createDashboardTransport({ baseUrl: seeded.baseUrl }).openStream(`/events/v1?topics=dashboard-day:${seeded.day}`, {
+    onMessage: ({ data }) => {
+      const envelope = DashboardStreamEnvelopeSchema.parse(JSON.parse(data));
+      if (envelope.type === "hello") generation = envelope.projectionGeneration;
+      if (envelope.type === "snapshot") {
+        if (generation === undefined) throw new Error("day snapshot preceded its stream hello");
+        resolve({ "last-event-id": envelope.cursor, "dashboard-projection-generation": String(generation) });
+      }
+    },
+  });
+  void stream.done.then(() => reject(new Error("day stream ended before its snapshot")), reject);
+  try { return await promise; }
+  finally { stream.close(); }
+}
+
 test("Onboarding: a hire submit whose answer is lost parks the run and is asked for once", async ({ dashboard, seeded, page, failures }) => {
+  // Queuing the hire changes the day counts and publishes a snapshot above this cursor.
+  const resume = await holdDayCursor(seeded);
   const { request, runId } = await onboardingStarted({ dashboard, seeded, page, failures });
   const first = await seeded.scripted.drive(runId);
   let position = first.position;
@@ -600,6 +621,9 @@ test("Onboarding: a hire submit whose answer is lost parks the run and is asked 
   expect(await run.advance()).toEqual({ at: "step", nodeId: "hire-create" });
   expect(await run.parkWrite()).toMatchObject({ at: "settled", outcome: { state: "parked-write" } });
   await expect.poll(async () => RunDetailWireSchema.parse(await request(`/api/v1/runs/${runId}`)).header.status, { message: "the parked write is not Done" }).toBe("blocked");
+  const resumed = await fetch(`${seeded.baseUrl}/events/v1?topics=dashboard-day:${seeded.day},run:${runId}`, { headers: resume });
+  try { expect(resumed.status, "resuming across the queue snapshot opens a fresh stream").toBe(200); }
+  finally { await resumed.body?.cancel(); }
   await dashboard.openRun(runId);
   await dashboard.reloadRun(runId);
   await expect(page.locator(`[data-demo-row-id="${runId}"]`)).toContainText("Write parked");

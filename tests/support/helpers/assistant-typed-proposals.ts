@@ -18,7 +18,7 @@ export function typedProposalFixture(storage: ReturnType<typeof assistantM1Histo
   const knobs: { configFingerprint: string; workbookVersion: number; submit?: (command: CommandRequest) => unknown } = { configFingerprint: hex("b"), workbookVersion: 1 };
   const clock = manualClock(new Date(at));
   let plans = 0;
-  const run = () => { const runId = randomUUID(); runs.set(runId, personLookupQueuedRun({ runId, itemId: randomUUID() })); return RunRecordSchema.parse(runs.get(runId)); };
+  const run = (dryRun?: boolean) => { const runId = randomUUID(); runs.set(runId, personLookupQueuedRun({ runId, itemId: randomUUID(), dryRun })); return RunRecordSchema.parse(runs.get(runId)); };
   const ports: AssistantTypedProposalPorts = { store: storage.proposals(), descriptors: { resolve: id => DESCRIPTORS.find(descriptor => descriptor.id === id) }, served: () => true,
     plans: { plan(input) {
       const request = input as { workflowId: StartPlanWire["workflowId"]; dryRun: boolean; submissions: unknown[]; browserMode: "headless" | "headed"; captureBrowserScreenshots: boolean; rerunSource?: unknown };

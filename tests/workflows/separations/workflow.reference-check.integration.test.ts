@@ -4,17 +4,19 @@ import { dataOriginViewsOf } from "../../../src/backend/app/composition/dashboar
 import { stepProofModuleOf } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { buildRunGate } from "../../../src/backend/runs/queries/run-detail/gate-park.js";
 import { projectObservedOperatorFields } from "../../../src/backend/runs/queries/run-logs.js";
+import { readRerunValues } from "../../../src/backend/runs/start/rerun-values.js";
 import { readRunCheckpoint } from "../../../src/backend/storage/sqlite/run-continuation.js";
 import { previewRerunWarnings } from "../../../src/backend/runs/start/rerun.js";
 import { referenceCheckStop } from "../../../src/models/processing/workbooks/reference-check-stop.js";
 import { MatchIdentityOutputSchema } from "../../../src/models/workflows/separations/match-identity.js";
 import { SeparationsReadReferenceStop } from "../../../src/models/workflows/separations/read-reference-stop.js";
 import { GateDecisionWireSchema } from "../../../src/models/dashboard/run-detail.js";
-import type { RunRecord } from "../../../src/models/run/record.js";
+import { runClaim, type RunRecord } from "../../../src/models/run/record.js";
 import { projectFailureForOperator } from "../../../src/models/trust/failure.js";
 import { separationsWorkflow } from "../../../src/workflows/separations/workflow.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { createReferenceCheckWriteWorld } from "../../support/helpers/backend/reference-check-write-world.js";
+import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
 import { registeredModule, separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../../src/backend/systems/kuali/driver/fake.js";
@@ -132,7 +134,7 @@ describe("Separations composition with a reference spreadsheet", () => {
   const REFERENCE_GATE = "reference-check-review";
   const OMIT_KRONOS = [{ step: "kronos-timecard", facts: { lastDayWorked: "06/12/2026", separationDate: "06/19/2026" } }];
 
-  async function composition(options: Readonly<{ documentEid?: string; searchOutcome?: PersonOrgSearchPageOutcome; kualiDiesAfterFiling?: true }> = {}) {
+  async function composition(options: Readonly<{ documentEid?: string; searchOutcome?: PersonOrgSearchPageOutcome; beforeKualiFinalization?: () => void }> = {}) {
     const clock = manualClock(new Date(COMPOSITION_NOW));
     const kuali = createKualiFakeWorld({ actionId: COMPOSITION_ACTION_ID, documentNumber: COMPOSITION_DOCUMENT, displayedEid: COMPOSITION_EID });
     kuali.separationForm = { formType: KUALI_SEPARATION_FORM_TYPE, employeeName: COMPOSITION_DOCUMENT_NAME, eid: options.documentEid ?? COMPOSITION_EID, employeeType: "Student",
@@ -143,7 +145,13 @@ describe("Separations composition with a reference spreadsheet", () => {
     const ucpath = createUcpathSmartHrFakeWorld({ emplId: COMPOSITION_EID, displayedName: COMPOSITION_UCPATH_NAME, nextTransactionId: COMPOSITION_RECEIPT });
     const searches: Parameters<ReturnType<typeof createDeterministicUcpathPersonOrgDriver>["searchPersonOrg"]>[0][] = [];
     const sessions = sessionFactoryHarness({
-      kuali: () => createDeterministicKualiDriver(kuali, clock),
+      kuali: () => {
+        const driver = createDeterministicKualiDriver(kuali, clock);
+        return { ...driver, stageSeparationFinalization: (input: Parameters<typeof driver.stageSeparationFinalization>[0]) => {
+          options.beforeKualiFinalization?.();
+          return driver.stageSeparationFinalization(input);
+        } };
+      },
       ucpath: () => {
         const person = createDeterministicUcpathPersonOrgDriver(FINALIZATION_NAME_SEARCH_OUTPUT, FINALIZATION_JOB_SUMMARY_READ);
         const filing = createDeterministicUcpathSmartHrWorldDriver(ucpath, () => clock.now());
@@ -152,11 +160,7 @@ describe("Separations composition with a reference spreadsheet", () => {
         // The person-org fake owns the search screens; the Smart HR world owns the transaction pages.
         return { ...person, scanTerminationTransactions: filing.scanTerminationTransactions, stageTermination: filing.stageTermination,
           stagePendingTerminationSweep: filing.stagePendingTerminationSweep,
-          commit: async (...args: Parameters<typeof filing.commit>) => {
-            const committed = await filing.commit(...args);
-            if (options.kualiDiesAfterFiling === true) kuali.openThrows = new Error("the Kuali page closed");
-            return committed;
-          },
+          commit: filing.commit,
           searchPersonOrg: (input: typeof searches[number]) => {
             searches.push(input);
             const outcome = options.searchOutcome;
@@ -305,18 +309,33 @@ describe("Separations composition with a reference spreadsheet", () => {
     assert.ok(plan.warnings.some(warning => warning.nodeId === "file-termination"), JSON.stringify(plan.warnings));
   });
 
-  it("recovers a run that failed after filing with the pending sweep done by hand, without filing again", async () => {
-    const c = await composition({ kualiDiesAfterFiling: true });
-    const failed = await c.execute(c.begin([], false, [...OMIT_KRONOS, { step: "pending-termination", facts: {} }]));
-    assert.ok(failed.lifecycle.state === "terminal" && failed.lifecycle.outcome === "failed", JSON.stringify(failed.lifecycle));
-    assert.deepEqual(c.nodeSpans(failed, "clear-pending"), [["skipped", "step-omitted"]]);
+  it("reruns unfinished steps after an interruption with the pending sweep done by hand, without filing again", async () => {
+    const abort = new AbortController();
+    const c = await composition({ beforeKualiFinalization: () => abort.abort() });
+    const active = await c.execute(c.begin([], false, [...OMIT_KRONOS, { step: "pending-termination", facts: {} }]), abort.signal);
+    assert.ok(abort.signal.aborted);
+    assert.deepEqual(c.nodeSpans(active, "clear-pending"), [["skipped", "step-omitted"]]);
     assert.deepEqual(c.commits(), ["commit:ucpath.smart-hr.save-and-submit-button"]);
-    delete c.kuali.openThrows;
-    const recovered = c.recover(failed);
-    assert.ok(recovered.state === "applied", JSON.stringify(recovered));
-    const successorId = recovered.affectedTargets.flatMap(target => target.family === "run" && target.runId !== failed.envelope.runId ? [target.runId] : [])[0];
-    const successor = successorId === undefined ? undefined : c.database.authority.runs.get(successorId);
-    assert.ok(successor?.envelope.continuation !== undefined);
+    const claim = runClaim(active);
+    assert.ok(claim, JSON.stringify(active.lifecycle));
+    const endedAt = c.clock.now().toISOString();
+    const interrupted = c.database.authority.runs.transition({
+      runId: active.envelope.runId, expectedVersion: active.version,
+      claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, now: endedAt,
+      lifecycle: { state: "terminal", outcome: "interrupted", endedAt },
+    });
+    assert.ok(interrupted.state === "applied", JSON.stringify(interrupted));
+    const source = { runId: interrupted.run.envelope.runId, expectedVersion: interrupted.run.version };
+    const values = readRerunValues({ database: c.database, reader: testRunService(c.database, c.clock),
+      descriptors: { resolve: id => id === separationsDescriptor.id ? separationsDescriptor : undefined } }, source);
+    assert.ok(values.state === "available" && values.snapshot.retainedSteps !== undefined, JSON.stringify(values));
+    const retained = new Set(values.snapshot.retainedSteps.map(step => step.key));
+    const selectedStepKeys = separationsDescriptor.timeline.map(step => step.key).filter(key => !retained.has(key));
+    assert.ok(selectedStepKeys.includes("kuali-finalization"));
+    const successor = c.start(undefined, [], values.snapshot.source.dryRun, {
+      selectedStepKeys, rerunSource: { ...source, intent: "rerun", selectedStepKeys },
+    });
+    assert.ok(successor.envelope.continuation !== undefined);
     const done = await c.execute(successor);
     assert.ok(done.lifecycle.state === "terminal" && done.lifecycle.outcome === "done", JSON.stringify(done.lifecycle));
     assert.deepEqual(c.commits(), ["commit:kuali.rrss-document.save-button", "commit:ucpath.smart-hr.save-and-submit-button"], "the termination is filed once");

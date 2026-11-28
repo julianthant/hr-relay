@@ -619,7 +619,7 @@ for (const [system, recipe] of [
       });
       if (unverifiedEntry) {
         await assert.rejects(signing, error => error instanceof BrowserLoginError
-          && error.system === "crm" && error.code === "CRM_SIGN_IN_FAILED" && error.step === "credential-fill"
+          && error.system === "crm" && error.code === "CRM_SIGN_IN_FAILED" && error.step === "sso-form"
           && error.observedUrl === kronosSso && error.cause instanceof Error && error.cause.message === "UCSD_SSO_SCOPE");
       } else await assert.rejects(signing);
       assert.equal(servedForm, true);
@@ -630,15 +630,17 @@ for (const [system, recipe] of [
   });
 }
 
-it.each(["pinned destination", "wrong destination"] as const)("signs in to ACT CRM through the UCSD SSO POST route only at the pinned destination (%s)", async scenario => {
+it.each(["pinned destination", "wrong destination", "credentials unavailable"] as const)("signs in to ACT CRM through the UCSD SSO POST route only at the pinned destination (%s)", async scenario => {
   const browserContext = await guardedContext();
   try {
     const page = await browserContext.newPage();
     const { context, evidence } = await contextFor({ url: "about:blank" }, undefined, "crm");
     const entry = "https://crm.ucsd.edu/hr";
     const sso = kronosSso + "?execution=fixture";
-    const application = "https://act-crm.my.site.com/hr/s/";
-    const destination = scenario === "pinned destination" ? sso : SSO;
+    const application = "https://act-crm.my.site.com/hr/";
+    const redirect = "https://act-crm.my.site.com/hr/fixture-sso-redirect";
+    const wrongDestination = scenario === "wrong destination";
+    const destination = wrongDestination ? SSO : sso;
     const posts: string[] = [];
     let credentialReads = 0;
     await browserContext.addCookies([{ url: application, name: "sid", value: "fixture" }]);
@@ -649,18 +651,24 @@ it.each(["pinned destination", "wrong destination"] as const)("signs in to ACT C
         posts.push(url);
         if (url !== sso) return route.abort();
         return route.fulfill({ contentType: "text/html",
-          body: `<meta http-equiv="refresh" content="1; url=${application}">` });
+          body: `<meta http-equiv="refresh" content="1; url=${redirect}">` });
       }
       if (url === entry) return route.fulfill({ contentType: "text/html",
         body: `<meta http-equiv="refresh" content="0; url=${sso}">` });
       if (url === sso) return route.fulfill({ contentType: "text/html",
         body: form(destination) + '<select id="authtype"><option value="_eventId_authn/PasswordAD" selected>Active Directory</option></select>' });
+      if (url === redirect) return route.fulfill({ contentType: "text/html",
+        body: `<meta http-equiv="refresh" content="2; url=${application}">` });
       if (url === application) return route.fulfill({ contentType: "text/html", body: "<main>Onboarding</main>" });
       return route.abort();
     });
     const signing = crmLoginRecipe({
       ...context, page,
-      get credentials() { credentialReads++; return context.credentials; },
+      get credentials() {
+        credentialReads++;
+        if (scenario === "credentials unavailable") throw new Error("fixture credential read refused");
+        return context.credentials;
+      },
     });
     if (scenario === "pinned destination") {
       assert.equal(await signing, "logged-in");
@@ -669,9 +677,9 @@ it.each(["pinned destination", "wrong destination"] as const)("signs in to ACT C
       assert.equal(evidence()[0]?.url, application);
     } else {
       await assert.rejects(signing, error => error instanceof BrowserLoginError
-        && error.code === "CRM_SIGN_IN_FAILED" && error.step === "credential-fill"
-        && error.cause instanceof Error && error.cause.message === "UCSD_SSO_FIELDS");
-      assert.equal(credentialReads, 0);
+        && error.code === "CRM_SIGN_IN_FAILED" && error.step === (wrongDestination ? "sso-form" : "credential-fill")
+        && error.cause instanceof Error && error.cause.message === (wrongDestination ? "UCSD_SSO_FIELDS" : "fixture credential read refused"));
+      assert.equal(credentialReads, wrongDestination ? 0 : 1);
       assert.deepEqual(posts, []);
       assert.equal(await page.locator("#ssopassword").inputValue(), "");
     }

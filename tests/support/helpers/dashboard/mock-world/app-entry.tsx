@@ -8,6 +8,7 @@ import { createRoot } from "react-dom/client";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import { DashboardApp } from "../../../../../src/dashboard/app/dashboard-app.js";
+import { mockParam } from "../../../../../src/dashboard/app/mock-surfaces.js";
 import { productWorkflowComposition } from "../../../../../src/dashboard/app/workflow-sources.js";
 import { MOCK_WORKFLOW_COMPOSITION, servedLogsComposition } from "./workflow-composition.js";
 import { ToastProvider } from "../../../../../src/dashboard/ds/ui.js";
@@ -29,7 +30,8 @@ const composition = fixture === "product-workflows" || Reflect.get(window, "rela
   ? servedLogsComposition
   : MOCK_WORKFLOW_COMPOSITION;
 const theme: unknown = Reflect.get(window, "relayMockTheme");
-const preferences = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: theme === "light" ? "light" : "dark", animations: Reflect.get(window, "relayMockMotion") !== false });
+const preferences = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: theme === "light" ? "light" : "dark",
+  animations: Reflect.get(window, "relayMockMotion") !== false, assistantFullAccess: mockParam("assistantFullAccess") === "1" });
 const accountPort = createServedChatGptAccountPort(client, { open: () => ({ navigate: () => undefined, close: () => undefined }) });
 createRoot(container).render(<PersonPreferencesContext.Provider value={preferences}>{ControlPreview ? <ToastProvider><Suspense fallback={<p role="status">Loading control preview…</p>}><ControlPreview /></Suspense></ToastProvider> : <StrictMode><DashboardClientProvider client={client}>
   <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} previewPreferences={personAppearance ? undefined : preferences} /></ChatGptAccountContext.Provider>

@@ -62,9 +62,9 @@ async function schema34Store() {
   return { ...f, raw };
 }
 
-it("converts settings records in migration 35, under the current schema 44", () => {
+it("converts settings records in migration 35, under the current schema 48", () => {
   assert.ok(SQLITE_MIGRATIONS.find(migration => migration.version === 35)?.statements.includes(SEND_SHORTCUT_CONVERSION_MARKER));
-  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 44);
+  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 48);
   assert.deepEqual(migrationTableNames(35), migrationTableNames(34));
 });
 
@@ -92,7 +92,7 @@ it("upgrades a schema-34 store: every stored snapshot gains the Enter send short
       const record = ConfigSnapshotRecordSchema.parse(snapshot);
       const { [RETIRED_PANEL_MODE]: retired, ...prior } = ObjectSchema.parse(priorSnapshots[index]?.preferences);
       assert.equal(retired, "floating");
-      assert.deepEqual(record.preferences, { ...prior, sendShortcut: "enter" });
+      assert.deepEqual(record.preferences, { ...prior, sendShortcut: "enter", assistantFullAccess: false });
       assert.equal(canonicalJsonStringify({ ...record, preferences: null, preferencesFingerprint: null }), canonicalJsonStringify({ ...priorSnapshots[index], preferences: null, preferencesFingerprint: null }));
     }
     assert.throws(() => f.raw.exec("UPDATE settings_snapshots SET revision=revision+1"), /retained-evidence-immutable/u);

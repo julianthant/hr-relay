@@ -20,3 +20,8 @@
 .settings-takeover .ds-result-row-side { align-self: center; }
 .settings-data-section table thead th { height: var(--ds-row-head-h); padding-block: 0; }
 .settings-data-section table tbody :is(th, td) { height: var(--ds-row-h-1); padding-block: var(--ds-row-pad-y-1); }
+
+/* The saving spinner is the last item of its own row, inside the card; the row's control makes room while it shows. */
+.settings-takeover [data-settings-path]:has(> .settings-row-saving) { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--ds-space-base); }
+.settings-takeover [data-settings-path]:has(> .settings-row-saving) > :first-child { min-width: 0; flex: 1; }
+.settings-row-saving { flex: none; width: 0.75rem; height: 0.75rem; }

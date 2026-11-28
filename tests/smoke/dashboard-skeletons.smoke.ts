@@ -378,7 +378,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
         const libraryId = await seedRoster(page, seeded.baseUrl);
         await dashboard.openDataPage("Spreadsheets");
         const open = page.getByRole("listitem", { name: SHEET_NAME });
-        const versions = page.getByRole("button", { name: "Versions, now v1" });
+        const versions = page.getByRole("button", { name: "Versions, now Original version" });
         const loading = `[aria-label="Opening ${SHEET_NAME}"]`;
         const hold = await holdDashboardSkeletonRead(page, { pathname: `/api/v1/workbooks/${encodeURIComponent(libraryId)}` });
         await measure(page, open, async () => {
@@ -389,7 +389,7 @@ for (const viewport of DESKTOP_VIEWPORTS) {
           await expect(versions).toBeFocused();
         }, {
           pendingRegion: loading, bounds: { pending: loading, settled: `${SHEETS} section[aria-label="Preview"]` },
-          keep: { selector: `${SHEETS} h1`, text: SHEET_NAME }, focus: `${SHEETS} [aria-label="Versions, now v1"]`,
+          keep: { selector: `${SHEETS} h1`, text: SHEET_NAME }, focus: `${SHEETS} [aria-label="Versions, now Original version"]`,
         }, hold);
       });
 

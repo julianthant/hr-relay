@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AssistantFailureCode, AssistantProposalOptions, AssistantProposalRow, AssistantToolTier } from "../../../models/dashboard/assistant.js";
+import type { AssistantAcceptedTurn, AssistantFailureCode, AssistantReplyPart, AssistantProposalOptions, AssistantProposalRow, AssistantToolTier } from "../../../models/dashboard/assistant.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { AssistantReferenceKind, AssistantReferenceTable } from "../references.js";
 
@@ -13,6 +13,7 @@ export interface AssistantToolContext {
   readonly conversationId: string;
   /** This turn's masked operator message; typed names and links must appear in it verbatim. */
   readonly operatorText: string;
+  readonly editReads?: Map<string, string>;
   assertCurrent(): void;
   /** The turn's captured authority (composition, model policy, account) without its request signal. */
   assertRetainedCurrent(): void;
@@ -44,7 +45,17 @@ export interface AssistantProposalTool extends Omit<AssistantReadTool, "kind" | 
   readonly kind: "proposal";
   prepare(argumentsValue: unknown, context: AssistantToolContext): Promise<AssistantProposalDraft>;
 }
-export type AssistantTool = AssistantReadTool | AssistantSessionTool | AssistantProposalTool;
+export interface AssistantChangeContext extends AssistantToolContext {
+  readonly acceptedTurn: AssistantAcceptedTurn;
+  readonly editReads: Map<string, string>;
+}
+/** Prepares a reversible edit. Only the turn settlement transaction calls the returned function. */
+export interface AssistantChangeTool extends Omit<AssistantReadTool, "kind" | "invoke"> {
+  readonly kind: "change";
+  change(argumentsValue: unknown, context: AssistantChangeContext): Promise<() => AssistantReplyPart>;
+}
+export const AssistantChangeOutput = z.strictObject({ status: z.literal("applied") });
+export type AssistantTool = AssistantReadTool | AssistantSessionTool | AssistantProposalTool | AssistantChangeTool;
 export interface AssistantPlugin {
   readonly domain: string;
   readonly tools: readonly AssistantTool[];

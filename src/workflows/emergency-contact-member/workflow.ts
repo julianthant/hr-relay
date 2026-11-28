@@ -2,7 +2,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js
 import { EmergencyContactMemberCanonicalInput,EmergencyContactMemberInputSchema } from "../../models/workflows/emergency-contact-member/input.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
-import { contactPlanDefinition } from "./steps/contact-plan/step.js";
+import { CONTACT_PLAN_MANUAL, contactPlanDefinition } from "./steps/contact-plan/step.js";
 import { contactPreviewDefinition } from "./steps/contact-preview/step.js";
 import { onbaseFilingDefinition } from "./steps/onbase-filing/step.js";
 import { emergencyContactMemberReferenceCheckDefinition } from "./steps/reference-check/step.js";
@@ -31,8 +31,9 @@ export const emergencyContactMemberWorkflow = defineWorkflow({
     { nodeId: "onbase-filing", purpose: "File the record's first source page to OnBase through one child once the Save settles." },
   ],
   steps: author => {
-    const plan = contactPlanDefinition.build(author), reference = emergencyContactMemberReferenceCheckDefinition.build(author, plan);
-    const preview = contactPreviewDefinition.build(author, plan, reference), filing = onbaseFilingDefinition.build(author);
+    const plan = contactPlanDefinition.build(author, CONTACT_PLAN_MANUAL), reference = emergencyContactMemberReferenceCheckDefinition.build(author, plan);
+    const preview = contactPreviewDefinition.build(author, plan, reference);
+    const filing = onbaseFilingDefinition.build(author, { contactPlanSwitch: true });
     return { steps: [...plan.steps, ...reference.steps, ...preview.steps, ...filing.steps], result: preview.result };
   },
 });

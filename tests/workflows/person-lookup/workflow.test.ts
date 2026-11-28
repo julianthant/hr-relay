@@ -110,7 +110,6 @@ describe("workflow definition public equivalence characterization", () => {
       "enabled": [
         "retry",
         "restart",
-        "recover-run",
         "cancel",
         "bump",
         "rename",

@@ -75,7 +75,7 @@ describe("failed-run single-field rerun", () => {
 it("serves only the declared durable failure and carries its provenance through the normal rerun owner", () => {
   const { run, failure, request } = fixture();
   // In-memory read ports exercise the actual planner and projection without native admission.
-  const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
+  const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run }, failures: { get: () => failure },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
     timelineEvents: debugTimelineFixture().repository,
     runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
@@ -107,7 +107,7 @@ it("replans a missing Kuali document as the corrected item, preserving lineage a
     code: "DOCUMENT_NOT_IN_ACTION_LIST" });
   const request = StartPlanIngressSchema.parse({ ...priorRequest, submissions: [{ documentNumber: "4502" }],
     rerunSource: { ...priorRequest.rerunSource, failureCorrection: { failureId: failure.failureId, inputField: "documentNumber" } } });
-  const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run, listByItem: () => [] },
+  const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run, listByItem: () => [] }, failures: { get: () => failure },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
     timelineEvents: debugTimelineFixture().repository,
     runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
@@ -167,7 +167,7 @@ it.each(["employee-id-absent", "employee-id-no-match"] as const)("refuses a manu
   assert.ok(subject?.kind === "task");
   const failure = FailureRecordSchema.parse({ ...employeeAbsent, nodeId: "subject", taskId: subject.uses.id, code: failureCodeFromTaskCode(code),
     causeChain: [{ ...employeeAbsent.causeChain[0], code: failureCodeFromTaskCode(code) }] });
-  const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
+  const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run }, failures: { get: () => failure },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
     timelineEvents: debugTimelineFixture().repository,
     runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;
@@ -183,7 +183,7 @@ it("prefills an entered Employee ID UCPath does not know, and serves it nowhere 
   const { original, run: source, failure, request } = fixture();
   const typed = "10800002";
   const run = RunRecordSchema.parse({ ...source, input: { ...source.input, parsed: { ...source.input.parsed, value: { ...original, operatorEmployeeId: typed } } } });
-  const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run },
+  const repositories = { deletedRuns: { get: () => undefined }, runs: { get: () => run }, failures: { get: () => failure },
     writeIntents: { listAttemptingByItem: () => [], listByRun: () => [], listByBusinessKey: () => [] },
     timelineEvents: debugTimelineFixture().repository,
     runCheckpoints: { listByItem: () => [], listByRunAttempt: () => [] }, gateResults: { listByRun: () => [] } } as unknown as AuthorityRepositories;

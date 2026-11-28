@@ -137,6 +137,7 @@ export function authenticateStartPlanRun(repositories: AuthorityRepositories, ru
   if (matches.length !== 1 || matches[0] === undefined) throw new Error("delegation-root-plan-membership-unavailable");
   const { entry, index } = matches[0];
   const envelope = run.envelope;
+  const { continuation, ...binding } = plan.rerun ?? {};
   if (session.workflow !== envelope.workflow || plan.workflowId !== envelope.workflow
     || plan.descriptorVersion !== envelope.descriptorVersion || plan.descriptorFingerprint !== envelope.contractFingerprint
     || plan.configFingerprint !== envelope.configFingerprint || plan.configSnapshotId !== envelope.configSnapshotId
@@ -146,7 +147,7 @@ export function authenticateStartPlanRun(repositories: AuthorityRepositories, ru
     || !same(plan.requestedInstance, envelope.requestedInstance) || !same(plan.resolvedInstance, envelope.resolvedInstance)
     || !same(plan.browserMode, envelope.browserMode) || !same(plan.captureBrowserScreenshots, envelope.captureBrowserScreenshots)
     || !same(plan.recovery, envelope.recovery) || !same(plan.stepOmissions, envelope.stepOmissions)
-    || !same(envelope.sourceBound, plan.rerun === undefined ? undefined : { ...plan.rerun, confirmationCommandId: command.commandId })) {
+    || !same(envelope.sourceBound, plan.rerun === undefined ? undefined : { ...binding, confirmationCommandId: command.commandId })) {
     throw new Error("delegation-root-plan-binding-mismatch");
   }
   const createId = lifecycleCommandId("operator-create", { commandId: command.commandId, entry: index });
@@ -163,7 +164,7 @@ export function authenticateStartPlanRun(repositories: AuthorityRepositories, ru
   const source = plan.rerun === undefined ? undefined : repositories.runs.get(plan.rerun.source.runId);
   validateRunContinuation(repositories, run.envelope);
   const expectedRetry = source?.envelope.itemId === entry.itemId ? source.envelope.runId : undefined;
-  if (request.continuation !== undefined
+  if (!same(request.continuation, continuation) || !same(creation.result.continuation, continuation)
     || request.commandId !== createId || request.sessionId !== session.sessionId
     || !same(request.input, valueFreeProtectedData(run.input, retainedRunProtectedBindings(run)))
     || request.matchKey !== entry.matchKey || request.retryOf !== expectedRetry

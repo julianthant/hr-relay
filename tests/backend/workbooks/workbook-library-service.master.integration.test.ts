@@ -15,6 +15,7 @@ import { IsoInstantSchema } from '../../../src/rules/identity/ids.js';
 import { importWorkbook } from '../../../src/rules/spreadsheets/workbook-io.js';
 import { moveWorkbookPayloads } from '../../support/fixtures/storage/historical-run-schema.js';
 const at = IsoInstantSchema.parse('2026-11-02T00:00:00.000Z');
+const runId = '10000000-0000-4000-8000-000000000001';
 const roots: string[] = [], databases: DatabaseSync[] = [];
 afterEach(() => { databases.splice(0).forEach(db => db.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
 function open(path = ':memory:', initialize = true) {
@@ -40,7 +41,7 @@ function fixture(path?: string) {
   const rosterType = f.repository.types().find(type => type.id === 'roster');
   if (!rosterType) throw new Error('roster type missing from fixture');
   f.repository.putType({ ...rosterType, defaultWorkbookId: saved.libraryId });
-  const operation = (operationId: string, change: WorkbookOperation['change']): WorkbookOperation => ({ operationId, at, source: { kind: 'run', runId: '10000000-0000-4000-8000-000000000001' }, change });
+  const operation = (operationId: string, change: WorkbookOperation['change']): WorkbookOperation => ({ operationId, at, source: { kind: 'run', runId }, change });
   const patch = (operationId: string, key: string, note: string) => operation(operationId, { kind: 'patch', key, values: { 'roster.notes': note } });
   return { ...f, id: saved.libraryId, patch, operation };
 }
@@ -222,17 +223,20 @@ it('settles an oversized add without changing content or ownership and drains th
       fieldId: i === 0 ? 'eid' : i === 1 ? 'roster.notes' : null, basis: i < 2 ? 'manual' : 'unmapped' })),
     rows: Array.from({ length: 250 }, (_, row) => ({ id: `row-${row}`, cells: Array.from({ length: 1000 }, (_, column) => ({ value: column === 0 ? row === 0 ? 'EID' : `person-${row}` : row === 1 && column === 1 ? null : 'retained' })) })),
   }] });
-  f.service.operatorOperation(saved.libraryId, 'wide-type', { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'roster', sharePoint: null } });
-  const before = f.service.read(saved.libraryId), owners = () => f.database.prepare('SELECT ownership_json FROM workbook_library WHERE id=?').get(saved.libraryId);
-  const beforeOwners = owners();
+  const typed = f.service.operatorOperation(saved.libraryId, 'wide-type', { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'roster', sharePoint: null } });
+  expect(typed.state).toBe('applied');
+  const persisted = f.database.prepare('SELECT payload_json, ownership_json FROM workbook_library WHERE id=?');
+  const before = persisted.get(saved.libraryId);
+  expect(before).toBeDefined();
+  const receipt = () => f.repository.runOperations(runId).at(-1)?.receipt;
   const oversized = f.repository.enqueue(saved.libraryId, f.operation('too-large', { kind: 'add', sheetId: 'wide', rowId: 'extra', key: 'new-person', values: { 'roster.notes': 'unsafe' } }));
   f.repository.drain(saved.libraryId);
-  expect(f.repository.journal(saved.libraryId).at(-1)).toMatchObject({ sequence: oversized, state: 'refused', reason: 'invalid', version: before.version, changes: [] });
-  expect(f.service.read(saved.libraryId)).toEqual(before); expect(owners()).toEqual(beforeOwners);
+  expect(receipt()).toMatchObject({ sequence: oversized, state: 'refused', reason: 'invalid', version: typed.version, changes: [] });
+  expect(persisted.get(saved.libraryId)).toEqual(before);
   const following = f.repository.enqueue(saved.libraryId, f.patch('after-oversized', 'person-1', 'good'));
   f.repository.drain(saved.libraryId);
   expect(following).toBeGreaterThan(oversized);
-  expect(f.repository.journal(saved.libraryId).at(-1)).toMatchObject({ sequence: following, state: 'applied', version: before.version + 1 });
+  expect(receipt()).toMatchObject({ sequence: following, state: 'applied', version: typed.version + 1 });
   expect(f.service.read(saved.libraryId).workbook.sheets[0].rows[1].cells[1].value).toBe('good');
   expect(f.database.prepare('SELECT COUNT(*) AS n FROM workbook_operations WHERE workbook_id=? AND receipt_json IS NULL').get(saved.libraryId)?.n).toBe(0);
 });

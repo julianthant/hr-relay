@@ -7,7 +7,7 @@ import { PinButton, SheetMenu, SyncStatus, TagMenu, TagsFit, V2Button, type Menu
 
 export interface RowActions { open: (id: string) => void; version: (id: string) => void; menu: (id: string, action: MenuAction) => void; logs: (sheet: Sheet) => void; tags: (id: string, tags: readonly string[]) => void; bank: readonly string[] }
 
-const COLS = 'grid items-center gap-x-4 grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_150px_56px_64px]';
+const COLS = 'grid items-center gap-x-4 grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_150px_112px_64px]';
 const LINK = 'inline-flex max-w-full items-center gap-1 hover:text-ui-primary hover:underline';
 function SourceCell({ sheet }: { sheet: Sheet }) {
   if (sheet.sharePoint) return <>
@@ -28,7 +28,7 @@ export function SheetRow({ sheet, actions }: { sheet: Sheet; actions: RowActions
     </div>
     <TagsFit sheet={sheet} after={<TagMenu name={sheet.name} tags={sheet.tags} bank={actions.bank} onChange={tags => actions.tags(sheet.id, tags)} />} />
     <div className="min-w-0 text-ui-muted"><SourceCell sheet={sheet} /></div>
-    <div onClick={stop}><V2Button look="plain" className="-ml-3 tabular-nums" aria-label={`Versions of ${sheet.name}, now v${sheet.version}`} onClick={() => actions.version(sheet.id)}>v{sheet.version}</V2Button></div>
+    <div className="min-w-0" onClick={stop}><V2Button look="plain" className="-ml-3 max-w-full tabular-nums" aria-label={`Versions of ${sheet.name}, now ${sheet.versionName}`} onClick={() => actions.version(sheet.id)}><span className="min-w-0 truncate">{sheet.versionName}</span></V2Button></div>
     <div className="flex justify-end" onClick={stop}><PinButton sheet={sheet} onClick={() => actions.menu(sheet.id, 'pin')} /><SheetMenu sheet={sheet} label={sheet.name} onAction={action => actions.menu(sheet.id, action)} /></div>
   </li>;
 }

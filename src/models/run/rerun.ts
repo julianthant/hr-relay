@@ -7,6 +7,7 @@ import { sha256Hex } from "../../rules/validation/sha256.js";
 import type { SchemaBoundCanonicalValue } from "../validation/schema-bound-value.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { ValueFieldPathSchema } from "../workflow/rerun-values.js";
+import { RunContinuationSchema } from "./continuation.js";
 
 /** Refusals of the source-bound plan service, shared with its HTTP consumer. */
 export const RerunPlanRefusalCodeSchema = z.enum(["target-deleted", "target-not-found", "source-stale", "invalid-state", "schema-mismatch", "invalid-value"]);
@@ -20,7 +21,7 @@ export const RerunSourceSchema = z.strictObject({
   failureCorrection: z.strictObject({ failureId: z.string().min(1), inputField: z.string().min(1) }).optional(),
   /** Restarts a run parked at this gate with one typed input; that start supersedes the parked run. Exclusive with `failureCorrection`. */
   gateCorrection: z.strictObject({ gateId: z.string().min(1), inputField: z.string().min(1) }).optional(),
-  selectedStepKeys: z.array(z.string().min(1)).min(1),
+  selectedStepKeys: z.array(z.string().min(1)),
   copiedFrom: z.array(z.strictObject({
     nodeId: NodeIdSchema,
     fieldPath: ValueFieldPathSchema,
@@ -40,7 +41,7 @@ export const RepeatWarningSchema = z.strictObject({
 });
 export type RepeatWarning = z.infer<typeof RepeatWarningSchema>;
 
-export const RerunPlanSchema = z.strictObject({
+const RerunBindingSchema = z.strictObject({
   source: RerunSourceSchema,
   warnings: z.array(RepeatWarningSchema),
   warningDigest: FingerprintSchema,
@@ -48,20 +49,22 @@ export const RerunPlanSchema = z.strictObject({
   protectedBindings: ProtectedInputBindingsSchema.optional(),
 });
 export type RerunPlan = z.infer<typeof RerunPlanSchema>;
+export const RerunPlanSchema = RerunBindingSchema.extend({ continuation: RunContinuationSchema.optional() });
 
 /** Private consent retains natural keys; the browser receives only the permitted reference. */
-export const PublicRerunPlanSchema = RerunPlanSchema.extend({
+export const PublicRerunPlanSchema = RerunBindingSchema.extend({
   warnings: z.array(RepeatWarningSchema.extend({ businessKeyDigest: PublicTransactionKeyDigestSchema })),
 });
 export function projectRerunPlanForOperator(plan: RerunPlan): z.infer<typeof PublicRerunPlanSchema> {
   const withheld = plan.protectedBindings?.some(({ inputPath }) => inputPath !== "timekeeperName") === true;
-  return PublicRerunPlanSchema.parse({ ...plan, warnings: plan.warnings.map((warning) => ({ ...warning,
+  const { continuation: _continuation, ...binding } = plan;
+  return PublicRerunPlanSchema.parse({ ...binding, warnings: plan.warnings.map((warning) => ({ ...warning,
     businessKeyDigest: publicTransactionKeyDigest(warning.businessKeyDigest, withheld) })) });
 }
 
 /** Only final plan consumption stamps a command-bound execution authorization. */
 export const SourceBoundRunSchema = z.strictObject({
-  ...RerunPlanSchema.shape,
+  ...RerunBindingSchema.shape,
   confirmationCommandId: CommandIdSchema,
 });
 export const RepeatOccurrenceSchema = z.strictObject({

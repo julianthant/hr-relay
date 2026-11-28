@@ -6,9 +6,18 @@ import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import type { z } from "zod";
 import { ReadWorkbookReference } from "../../../../models/processing/workbooks/read-reference.js";
 import { CrmDocumentRecordsSchema } from "../../../../models/systems/crm/documents.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { ONBOARDING_ROSTER_TYPE_ID } from "../../../../models/workflows/onboarding/roster.js";
 import { crmDocumentReferenceKeys } from "../../../../rules/crm-doc-download/reference.js";
 import { buildSearchRecords } from "../search-records/step.js";
+
+export const CRM_DOCUMENT_REFERENCE_MANUAL: StepManualDeclaration = {
+  form: { fields: [{ key: "worksheetRows", label: "Selected worksheet rows", kind: "text",
+    help: "Enter the worksheet names and row numbers you chose outside Relay." }] },
+  produces: {},
+  skips: ["workbook-reference", "document-rows", CRM_DOCUMENT_ROW_CHOICE_GATE_ID],
+  skipsGatesAndTransactions: true,
+};
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "reference", label: "Resolve worksheet rows" }), system: "local",
@@ -67,7 +76,7 @@ const group = Object.freeze({
 } as const);
 const entries = defineStepEntries(group);
 
-export function buildReference(author: WorkflowAuthor<typeof CrmDocDownloadInput>, search: ReturnType<typeof buildSearchRecords>) {
+export function buildReference(author: WorkflowAuthor<typeof CrmDocDownloadInput>, search: ReturnType<typeof buildSearchRecords>, allowManual = true) {
   const call = reuseTask(group, { id: "workbook-reference", contract: ReadWorkbookReference, replay: "checkpoint" },
     (input: z.output<typeof CrmDocumentRecordsSchema>) => ({ typeId: ONBOARDING_ROSTER_TYPE_ID, keys: crmDocumentReferenceKeys(input) }));
   const reference = author.task(call.identity, [search.records], ({ outputs }) => call.bind({ input: outputs["document-records"] }));
@@ -80,7 +89,7 @@ export function buildReference(author: WorkflowAuthor<typeof CrmDocDownloadInput
   const choice = author.gate({ ...entries.operatorGate(CRM_DOCUMENT_ROW_CHOICE_GATE_ID, { label: "Choose worksheet rows", result: CrmDocumentRowChoiceSchema }),
     when: { kind: "equals", of: { from: "node", nodeId: "document-rows", path: "state" }, value: "resolve-required" },
   }, [rows]);
-  return { reference, rows, choice, steps: [[group, [reference, rows, choice]]] as const,
+  return { reference, rows, choice, steps: [[allowManual ? author.group(group, { manual: CRM_DOCUMENT_REFERENCE_MANUAL }) : group, [reference, rows, choice]]] as const,
     result: author.result(CrmDocumentRowsSchema, [rows, choice], ({ outputs }) => {
       const selected = outputs[CRM_DOCUMENT_ROW_CHOICE_GATE_ID] ?? outputs["document-rows"];
       return CrmDocumentRowsSchema.parse({ referenceDigest: selected.referenceDigest, sourceDigests: selected.sourceDigests,
@@ -99,7 +108,7 @@ export const crmDocumentReferenceDefinition = defineStep({
     build: (parent: WorkflowDefinition<typeof CrmDocDownloadInput>) => ({
       ...inheritStepProof(parent), code: "cdr", label: group.label, summary: "Proves run-bound reference reads and explicit worksheet row resolution.",
       steps: (author: WorkflowAuthor<typeof CrmDocDownloadInput>) => {
-        const search = buildSearchRecords(author), reference = buildReference(author, search);
+        const search = buildSearchRecords(author, false), reference = buildReference(author, search, false);
         return { steps: [...search.steps, ...reference.steps], result: reference.result };
       },
     }),

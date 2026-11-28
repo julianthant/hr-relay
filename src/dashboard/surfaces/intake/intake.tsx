@@ -60,7 +60,7 @@ TH,
 THead,
 TR,
 useDsEnterTransition,
-Well, Notice,
+Well, Notice, FailureNotice,
 } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { useIntakeClient as useDashboardClient } from "./intake-client.js";
@@ -124,10 +124,10 @@ function Arriving({ children }: { children: ReactNode }) {
 }
 
 function ProblemNotice({ problem }: { problem: CommandProblem }) {
-  if (problem.kind === "rejected") return <Notice tone="danger" title="Request refused" description={problem.message} />;
+  if (problem.kind === "rejected") return <FailureNotice sentence={problem.message} />;
   if (problem.kind === "confirmation-required") return <Notice tone="warning" title="Confirmation required" description={problem.message} />;
   if (problem.kind === "conflict") return <Notice tone="warning" title="Session changed" description={problem.message} />;
-  return <Notice tone="danger" title="Result not confirmed" description={problem.message} />;
+  return <FailureNotice sentence={problem.message} />;
 }
 
 /** Why a picker cannot act now; a locked picker shows its value and this reason instead of a switched-off control. */
@@ -1288,7 +1288,7 @@ function IntakeSessionWorkspace({
     }
     if (resource.state === "failed") {
       return (
-        <Notice sticky tone="danger" title="Session not readable" description="Reload and try again." />
+        <FailureNotice sentence="Session not readable; reload and try again." />
       );
     }
     const session = resource.session;

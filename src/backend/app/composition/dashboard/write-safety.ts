@@ -73,14 +73,11 @@ const runDetailLane = defineRunDetailLaneRead(import.meta.url, ({ native, histor
 });
 
 export function prepareWriteSafety(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "admission" | "lifecycle" | "descriptors" | "ids">) {
-  const { database, admission, lifecycle, descriptors, ids } = input;
-  // Ref write-safety's typed operator resolutions, over the SAME AuthorityDatabase
-  // instance as the kernel transaction (the executor's documented requirement).
+  const { admission, lifecycle, descriptors, ids } = input;
 
   const writeResolution: WriteResolutionExecutor = createWriteResolutionExecutor({
     continuation: runContinuationPort(lifecycle),
     descriptors,
-    authority: database,
     ids,
   });
 

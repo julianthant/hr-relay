@@ -62,6 +62,9 @@ export const laneBackgroundBarrier = defineLaneRead(import.meta.url, "lane-backg
 export const laneSearch = defineLaneRead(import.meta.url, "lane-search", { lane: "search", priority: "interactive", args: SleepSchema,
   run: (_context, args) => sleep(args) });
 
+export const laneSearchBarrier = defineLaneRead(import.meta.url, "lane-search-barrier", { lane: "search", priority: "interactive",
+  args: BarrierSchema, run: (_context, args) => barrier(args) });
+
 /** Joins only with an equal process revision. */
 export const laneFacts = defineLaneRead(import.meta.url, "lane-facts", { lane: "navigation", priority: "interactive", args: SleepSchema,
   processFacts: true, run: (context, args) => ({ ...sleep(args), facts: context.processFacts }) });

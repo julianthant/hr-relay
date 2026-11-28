@@ -17,7 +17,7 @@ const RUN_LIFECYCLE_COMMANDS_PATH = "src/backend/runs/commands/run-lifecycle-com
 
 const COMMAND_EXECUTOR_EXPORTS = new Map<string, readonly string[]>([
   [REPLAY_PATH, ["replay"]],
-  [RUN_LIFECYCLE_COMMANDS_PATH, ["executeRecover", "executeRetry", "executeCancel", "executeDelete", "executeBump", "executePresentation"]],
+  [RUN_LIFECYCLE_COMMANDS_PATH, ["executeRetry", "executeCancel", "executeDelete", "executeBump", "executePresentation"]],
   [SETTINGS_COMMAND_PATH, ["executeSettings"]],
   [WORKER_COMMANDS_PATH, ["executeWorkerPoolCommand"]],
   ["src/backend/runs/commands/start-command.ts", ["executeStartRun"]],
@@ -474,7 +474,7 @@ function withoutDelegationAuditReads(content: string, path: string, commandSourc
     if (!isStopHeldCancelAdmission(worker)) return content;
     const selection = calls[0].parent;
     if (!ts.isConditionalExpression(selection) || selection.whenTrue !== calls[0]
-      || selection.condition.getText(kernel).replace(/\s+/gu, "") !== 'request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel"||request.type==="resume")') return content;
+      || selection.condition.getText(kernel).replace(/\s+/gu, "") !== 'request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="cancel"||request.type==="resume")') return content;
     let callback: ts.Node | undefined = calls[0].parent;
     while (callback !== undefined && !ts.isArrowFunction(callback)) callback = callback.parent;
     if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isCallExpression(callback.parent)
@@ -829,7 +829,7 @@ const EXPECTED_ACTIVE = {
     "resume-worker", "refresh-browser", "reopen-browser",
   ],
   run: [
-    "recover-run", "pause", "resume",
+    "pause", "resume",
     "retry",
     "cancel", "bump", "rename",
 
@@ -854,7 +854,7 @@ describe("control-command-single-path", () => {
     assert.deepEqual(PHASE1_ACTIVE_COMMAND_ARMS, EXPECTED_ACTIVE);
     const partitioned = Object.entries(EXPECTED_ACTIVE).flatMap(([family, actions]) => actions.map((action) => `${family}/${action}`));
     const registry = COMMAND_FAMILY_REGISTRY.flatMap(({ family, actions }) =>
-      actions.map((action) => `${family}/${action}`));
+      actions.filter(action => action !== "recover-run").map((action) => `${family}/${action}`));
     assert.deepEqual([...partitioned].sort(), [...registry].sort());
     assert.equal(new Set(partitioned).size, partitioned.length);
   });

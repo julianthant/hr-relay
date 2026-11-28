@@ -111,7 +111,8 @@ afterEach(_afterEachFixture0);
       assert.equal(editor.settingsFingerprint, f.initial.settingsFingerprint);
       assert.deepEqual(editor.runtimeStatus, { state: "current", identity: f.active });
       const leaves = editor.sections.flatMap((section) => section.leaves);
-      assert.equal(leaves.length, 67);
+      assert.equal(leaves.length, 68);
+      assert.equal(leaves.find(leaf => leaf.path === "preferences.assistantFullAccess")?.effectiveValue, false);
       assert.equal(leaves.some(leaf => leaf.path === "paths.browserProfileRoot" || leaf.path === "paths.duoCredential"), false);
     }
     assert.equal(existsSync(join_m0(f.root, "settings")), false);

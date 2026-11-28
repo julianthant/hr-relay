@@ -6,6 +6,7 @@ import { createCommandKernel } from "../../../../src/backend/runs/commands/comma
 import { RunRecordService, runContinuationPort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
+import { WriteParkedError } from "../../../../src/backend/runtime/execution/run-execution-write.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
@@ -193,7 +194,7 @@ function resolutionKernel(h: WriteHarness, descriptor: AnyWorkflowDescriptor) {
     configIdentity: { configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint },
     intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
     workerRuntime: { pool: unusedWorkerPool(unused) },
-    writeResolution: createWriteResolutionExecutor({ authority: h.database, continuation: runContinuationPort(lifecycle), descriptors, ids: h.ids }),
+    writeResolution: createWriteResolutionExecutor({ continuation: runContinuationPort(lifecycle), descriptors, ids: h.ids }),
   });
 }
 
@@ -241,7 +242,7 @@ describe("parked write resolution under another build", () => {
     assert.deepEqual(effects(h.world.events), []);
   });
 
-  it("settles an unchanged key as retryable, then refuses the next write before a click", async () => {
+  it("reads an unchanged key under another build while keeping the write parked", async () => {
     const h = await harness();
     const { run, intent } = await parkUnknownWrite(h);
     build.id = BUILD_Y;
@@ -255,17 +256,18 @@ describe("parked write resolution under another build", () => {
       payload: { occurrenceKeyDigest: intent.idempotencyKeyDigest },
     }));
     assert.equal(resolved.state, "applied");
-    assert.equal(h.database.authority.writeIntents.get(intent.writeIntentId)?.status, "retryable");
+    assert.equal(h.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
     const current = h.database.authority.runs.get(run.envelope.runId);
     assert.ok(current);
     assert.equal(current.lifecycle.state, "queued");
     assert.equal(current.envelope.buildId, BUILD_X);
     const claimed = await claimQueued(h);
+    h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
     await assert.rejects(
       h.execute(contextFor(claimed.run, claimed.claim)),
-      (error: unknown) => error instanceof TaskError && error.code === "WRITE_BUILD_CHANGED",
+      WriteParkedError,
     );
-    assert.equal(effects(h.world.events).some(event => event.startsWith("commit-click:")), false);
-    assert.equal(h.database.authority.writeIntents.get(intent.writeIntentId)?.status, "retryable");
+    assert.deepEqual(effects(h.world.events), ["probe"]);
+    assert.equal(h.database.authority.writeIntents.get(intent.writeIntentId)?.status, "parked");
   });
 });

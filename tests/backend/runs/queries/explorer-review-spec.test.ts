@@ -48,9 +48,16 @@ it("serves every readable definition with its ordered steps and every declared t
 
 it("derives run options from Start run declarations only", () => {
   assert.deepEqual(workflow("onboarding").reviewSpec.options.map(option => [option.id, option.label, option.initial]),
-    [["mode", "Hire mode", "new-hire"], ["dry-run", "Dry run", "false"]]);
-  assert.deepEqual(workflow("work-study").reviewSpec.options.map(option => option.id), ["dry-run"]);
-  assert.deepEqual(workflow("ocr-page").reviewSpec.options, []);
+    [["mode", "Hire mode", "new-hire"], ["dry-run", "Dry run", "false"],
+      ["skip-crm-data", "Read and validate hire data", "run"], ["skip-ucpath-search", "Check UCPath duplicates", "run"],
+      ["skip-i9-search", "Search I-9 profiles", "run"], ["skip-hire-review", "Review UCPath hire findings", "run"],
+      ["skip-reference-check", "Check reference spreadsheets", "run"], ["skip-i9-creation", "Create or reuse the I-9 record", "run"],
+      ["skip-ucpath-hire", "File and verify the UCPath hire", "run"], ["skip-master-results", "Fill verified master results", "run"]]);
+  assert.deepEqual(workflow("work-study").reviewSpec.options.map(option => option.id), ["dry-run", "skip-ucpath-auth", "skip-transaction"]);
+  assert.deepEqual(workflow("ocr-page").reviewSpec.options, [{
+    id: "skip-read-page", label: "Read source page", initial: "run",
+    choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }],
+  }]);
   const separations = workflow("separations").reviewSpec;
   assert.deepEqual(separations.options.filter(option => option.id.startsWith("skip-")).map(option => [option.id, option.label, option.initial]),
     [["skip-kuali-extraction", "Kuali extraction", "run"], ["skip-identity-check", "Identity check", "run"],
@@ -66,7 +73,9 @@ it("derives run options from Start run declarations only", () => {
 it("serves session chips for delegated runs from the delegating step", () => {
   assert.deepEqual(workflow("ocr").reviewSpec.sessions.map(session => session.system), ["ucpath", "crm", "i9"]);
   assert.deepEqual(workflow("ocr-page").reviewSpec.sessions, []);
-  assert.deepEqual(workflow("onbase").reviewSpec.sessions, [{ system: "onbase" }]);
+  assert.deepEqual(workflow("onbase").reviewSpec.sessions, [{
+    system: "onbase", when: [{ "skip-source-page": ["run"] }, { "skip-import-document": ["run"] }],
+  }]);
   const deps = explorerQueryDeps(clock, hash);
   assert.throws(() => readFixtureExplorer({ ...deps, modules: deps.modules.filter(module => module.descriptor.id === "ocr") }), /absent from the catalog/u);
 });

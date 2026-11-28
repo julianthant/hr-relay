@@ -81,8 +81,12 @@ it("refuses a replayed request and an expired request without running them", asy
 it("replies with a handler's catalog code, INTERNAL_FAILURE otherwise, and fails loud on a malformed message", async () => {
   const c = channel({ closeForRemoval: async () => { throw new WorkerPoolError("WORKER_BUSY"); },
     reopenBrowser: async () => { throw new Error("private detail"); } });
+  const waitingDuringRemoval = c.child.watchForWork();
   const coded = c.request({ type: "close-for-removal" }); await flush();
+  assert.equal(waitingDuringRemoval.aborted, true);
+  const waitingDuringReopen = c.child.watchForWork();
   const plain = c.request({ type: "reopen-browser", browserSessionId: randomUUID() }); await flush();
+  assert.equal(waitingDuringReopen.aborted, true);
   assert.equal(c.refusal(coded), "WORKER_BUSY");
   assert.equal(c.refusal(plain), "INTERNAL_FAILURE");
   assert.equal(JSON.stringify(c.sent).includes("private detail"), false);

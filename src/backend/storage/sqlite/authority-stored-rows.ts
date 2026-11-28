@@ -389,6 +389,10 @@ export function validateStoredRow(context: StoredRowContext, table: AuthorityTab
           if (row.snapshot_json.profileId !== readMetaRow(database).profile_id) throw authorityIntegrityError("assistant-proposal-profile-mismatch");
         }
         else if (table === "assistant_proposal_rows") AUTHORITY_RECORD_SCHEMA_REGISTRY[table].parse(raw);
+        else if (table === "assistant_applied_edits") {
+          const row = AUTHORITY_RECORD_SCHEMA_REGISTRY[table].parse(raw);
+          if (row.payload_json.turn.profileId !== readMetaRow(database).profile_id) throw authorityIntegrityError("assistant-edit-profile-mismatch");
+        }
         else if (table === "assistant_session_claims") {
           const row = AUTHORITY_RECORD_SCHEMA_REGISTRY[table].parse(raw);
           if (row.claim_json.acceptedTurn.profileId !== readMetaRow(database).profile_id) throw authorityIntegrityError("assistant-session-claim-profile-mismatch");

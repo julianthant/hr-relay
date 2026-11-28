@@ -38,6 +38,7 @@ import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { parseTypedDate, type TypedDateControl } from "../../../models/workflow/ingress.js";
 import { z } from "zod";
 import { workbookInputBinding } from "../workbooks.js";
+import { assertStartStepOmissionInputs } from "./step-selection.js";
 
 
 export interface StartPlannerDeps {
@@ -58,6 +59,7 @@ export interface StartPlanRequest {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly protectedSubmissionBindings?: readonly ProtectedInputBinding[];
   readonly retainedInputs?: readonly SchemaBoundCanonicalValue[];
+  readonly interruptedRun?: RunRecord;
   /** Raw submissions in the operator's order; entry numbers are 1-based. */
   readonly submissions: readonly unknown[];
   readonly requestedInstance?: InstanceSelection;
@@ -154,8 +156,9 @@ function applyTypedDates(descriptor: AnyWorkflowDescriptor, submissions: readonl
 }
 
 export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): StartPlanRecord {
-  const { descriptor } = request;
+  const { descriptor, interruptedRun } = request;
   const selections = WorkbookActiveSelectionSchema.array().parse(request.workbookReferences ?? []);
+  const omittedSteps = request.stepOmissions?.filter(omission => omission.workflow === undefined).map(omission => omission.step);
   if (selections.some(selection => selection.entry > request.submissions.length)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
 
   const rawSubmissions: JsonValue[] = [];
@@ -176,10 +179,10 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     }
   }
   const typedDates = applyTypedDates(descriptor, rawSubmissions);
-  const admittedSubmissions = admitProtectedInput(descriptor, "submissions" in typedDates ? typedDates.submissions : rawSubmissions,
-    deps.protectedSecrets, request.retainedInputs, request.protectedSubmissionBindings);
+  const admittedSubmissions = interruptedRun === undefined
+    ? admitProtectedInput(descriptor, "submissions" in typedDates ? typedDates.submissions : rawSubmissions,
+      deps.protectedSecrets, request.retainedInputs, request.protectedSubmissionBindings) : [];
   const planning = workflowPlanning(descriptor);
-  const inputBinding = workbookInputBinding(descriptor.canonicalInput);
   const now = IsoInstantSchema.parse(deps.clock.now().toISOString());
   const ingressSchemaHash = deriveSchemaHash(descriptor.input, "input");
   const canonicalSchemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
@@ -188,23 +191,18 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
   const planned: PlannedRun[] = [];
   const refused: StartRefusal[] = [];
   const seenItemIds = new Set<string>();
-  const captureReference = deps.workbooks?.createReferenceCapture();
+  const captureReference = interruptedRun === undefined ? deps.workbooks?.createReferenceCapture() : undefined;
+  const inputBinding = workbookInputBinding(descriptor.canonicalInput);
 
-  for (const [index, rawInput] of rawSubmissions.entries()) {
-    const entry = PositiveIntSchema.parse(index + 1);
-    const refuse = (code: StartRefusal["code"], message: string): void => {
-      refused.push({ entry, rawInput, code, message });
+  function planInput(index: number, entry: number, rawInput: JsonValue, refuse: (code: StartRefusal["code"], message: string) => void) {
+    if (interruptedRun !== undefined) return {
+      input: { ...interruptedRun.input.parsed, schemaHash: canonicalSchemaHash },
+      workbookReferences: interruptedRun.input.workbookReferences ?? [],
     };
-
-    if (request.dryRun && !supportsDryRun(descriptor)) {
-      refuse("dry-run-unsupported", dryRunRefusalMessage(descriptor));
-      continue;
-    }
     if ("refusal" in typedDates) {
       refuse("input-invalid", typedDates.refusal);
-      continue;
+      return;
     }
-
     let parsed: unknown;
     let canonicalInput: unknown;
     let lookups: readonly WorkbookReferenceLookup[];
@@ -216,7 +214,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       lookups = admitted.lookups;
     } catch (error) {
       refuse("input-invalid", admittedSubmissions[index].bindings.length > 0 ? "workflow input is invalid" : errorText(error));
-      continue;
+      return;
     }
 
     const references = selections.filter(selection => selection.entry === entry);
@@ -225,19 +223,19 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     const requiredPicks = references.filter(selection => !checkPicks.includes(selection));
     if (lookups.length !== (requirement === undefined ? 0 : 1)
       || lookups.some(lookup => lookup.typeId !== requirement?.id)) {
-      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
+      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); return;
     }
     if (requirement !== undefined && requiredPicks.length === 0) {
-      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text); continue;
+      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text); return;
     }
     if ((requirement === undefined ? requiredPicks.length !== 0 : requiredPicks.length > MAX_SELECTED_WORKBOOK_SOURCES)
       || requiredPicks.some(selection => selection.typeId !== undefined && selection.typeId !== requirement?.id)
       || checkPicks.some(selection => selection.selectedRow !== undefined)) {
-      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
+      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); return;
     }
     let workbookReferences: SchemaBoundCanonicalValue[] | undefined, checkReferences: SchemaBoundCanonicalValue[] = [];
     if (references.length > 0) {
-      if (captureReference === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); continue; }
+      if (captureReference === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); return; }
       try {
         const capturedSources = new Set<string>();
         const capture = (sheetId: string, request: unknown) => {
@@ -280,7 +278,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
         });
       } catch (error) {
         if (!(error instanceof WorkbookLibraryError)) throw error;
-        refuse("capability-unavailable", error.message); continue;
+        refuse("capability-unavailable", error.message); return;
       }
     }
     try {
@@ -288,10 +286,31 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
         ? parsed : inputBinding.bind(parsed, workbookReferences, now));
     } catch (error) {
       refuse("input-invalid", admittedSubmissions[index].bindings.length > 0 ? "workflow input is invalid" : errorText(error));
+      return;
+    }
+
+    return {
+      input: { schemaHash: canonicalSchemaHash, value: canonicalInput,
+        protectedBindings: admittedSubmissions[index].bindings },
+      workbookReferences: [...workbookReferences ?? [], ...checkReferences],
+    };
+  }
+
+  for (const [index, rawInput] of (interruptedRun === undefined ? rawSubmissions : [interruptedRun.input.raw]).entries()) {
+    const entry = PositiveIntSchema.parse(index + 1);
+    const refuse = (code: StartRefusal["code"], message: string): void => {
+      refused.push({ entry, rawInput, code, message });
+    };
+    if (request.dryRun && !supportsDryRun(descriptor)) {
+      refuse("dry-run-unsupported", dryRunRefusalMessage(descriptor));
       continue;
     }
 
-    const bindings = admittedSubmissions[index].bindings;
+    const plannedInput = planInput(index, entry, rawInput, refuse);
+    if (plannedInput === undefined) continue;
+    const { input, workbookReferences } = plannedInput;
+    const { value: canonicalInput, protectedBindings: bindings = [] } = input;
+    assertStartStepOmissionInputs(descriptor, request.stepOmissions, canonicalInput);
     const protectedSubject = hasProtectedSubject(bindings);
     const matchKey = protectedSubject ? protectedSubjectMatchKey(bindings, canonicalInput) : planning.matchKey(canonicalInput);
     const itemId = deriveItemId(descriptor.id, matchKey);
@@ -314,19 +333,18 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
 
     const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(canonicalInput), subtitle: planning.subtitle(canonicalInput) }));
     // A dry run publishes nothing, so it plans no outputs.
-    const outputs = request.dryRun ? [] : planning.plannedOutputs(canonicalInput, (workbookReferences ?? []).map(reference => parseRunWorkbookReference(reference)));
-    const capturedReferences = [...workbookReferences ?? [], ...checkReferences];
+    const outputs = request.dryRun ? [] : planning.plannedOutputs(canonicalInput, workbookReferences.map(parseRunWorkbookReference)
+      .filter(reference => reference.request.typeId === planning.workbookReference?.id), omittedSteps);
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
       ...(outputs.length === 0 ? {} : { outputs }),
-      ...(capturedReferences.length === 0 ? {} : { workbookReferences: capturedReferences }),
+      ...(workbookReferences.length === 0 ? {} : { workbookReferences }),
       ...(descriptor.enqueue !== "supersede-active" && request.supersedeRunId === undefined ? {} : { supersedeTargets: startSupersedeTargets(itemRuns) }),
       itemId,
       ...display,
       rawInput,
-      input: { schemaHash: canonicalSchemaHash, value: canonicalInput,
-        protectedBindings: admittedSubmissions[index].bindings },
-      canonicalInputDigest: deriveCanonicalInputDigest(canonicalInput, admittedSubmissions[index].bindings),
+      input,
+      canonicalInputDigest: deriveCanonicalInputDigest(canonicalInput, bindings),
       matchKey,
     }));
   }

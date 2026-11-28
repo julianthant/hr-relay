@@ -25,7 +25,7 @@ describe("decision catalog", () => {
     const registered = new Set(COMMAND_FAMILY_REGISTRY.flatMap(family => family.actions.map(action => `${family.family}/${action}`)));
     for (const [type, declaration] of Object.entries(DECISION_CATALOG)) {
       for (const { id, send } of declaration.options) {
-        if (send.via === "action" || send.via === "row-action") {
+        if ("command" in send) {
           assert.ok(ActionCommandKeySchema.safeParse(send.command).success, `${type}/${id}`);
         }
         if (send.via === "command") assert.ok(registered.has(`${send.family}/${send.type}`), `${type}/${id}`);

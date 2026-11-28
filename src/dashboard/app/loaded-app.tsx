@@ -487,8 +487,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     }));
   }, [setRoute, day, dayWire, leaveSettings]);
 
-  const executeShell = useCallback(async (request: RetainedCommandRequest, label: string, plan?: BulkVerbPlan, replay = false): Promise<void> => {
+  const executeShell = useCallback(async (request: RetainedCommandRequest, label: string, plan?: BulkVerbPlan, replay = false): Promise<boolean> => {
     if (!commandLabels.current.has(request.commandId)) commandLabels.current.set(request.commandId, label);
+    let confirmed = false;
     const options: CommandExecutionOptions = {
       scope: commandScope,
       readback: (child, reply) => {
@@ -497,6 +498,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         return verifyShellCommandEffect(client, originalDayRequest.day, child, reply);
       },
       publish: outcome => {
+        confirmed = outcome.kind === "confirmed";
         refreshCommandRecovery(value => value + 1);
         commandFeedback(outcome);
         if ("targets" in request && outcome.kind === "refused" && outcome.feedback.code === "SAMPLE_RUN_REFUSED") return;
@@ -540,6 +542,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const execution = replay ? executor.replay(request.commandId, options) : executor.execute(request, options);
     refreshCommandRecovery(value => value + 1);
     await execution;
+    return confirmed;
   }, [commandScope, commandFeedback, executor, client, dayWire, workflowLabelOf, activeWorkflowId, clock, toast, setRoute]);
 
   const pausedRuns = application?.targets.filter(target => target.pause?.state === "paused") ?? [];
@@ -549,7 +552,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     const targets = pausedRuns.map(({ runId, expectedVersion }) => ({ runId, expectedVersion }));
     const plan: BulkVerbPlan = { verb: "resume", label: "Resume", eligible: targets.map(target => ({ ...target,
       title: dayWire?.queueSurfaces.find(row => row.runId === target.runId)?.title ?? target.runId })), skipped: [], unavailable: [] };
-    void executeShell(BulkRunCommandRequestSchema.parse({ ...envelope, bulkCommandId: envelope.commandId, family: "run", type: "resume", targets, mode: "best-effort" }), "Resume all runs", plan).then(lifecycle.refresh);
+    void executeShell(BulkRunCommandRequestSchema.parse({ ...envelope, bulkCommandId: envelope.commandId, family: "run", type: "resume", targets, mode: "best-effort" }), "Resume all runs", plan).then(() => lifecycle.refresh());
   };
 
   const quitApplication = () => {
@@ -562,7 +565,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
   const dispatchCommand = useCallback((action: CommandAction, target: ActionTarget, answers: {
     renameAnswer?: string; source?: "queue" | "run-detail"; commandId?: string; requestedAt?: string;
-  } = {}): Promise<void> => {
+  } = {}): Promise<boolean | void> => {
     const retained = executor.retainedAttempts().find(attempt => attempt.scope.actorId === commandScope.actorId && attemptUnresolved(attempt)
       && !("targets" in attempt.request) && (attempt.request.family === "run" || attempt.request.family === "gate")
       && attempt.request.target.runId === target.runId && attempt.request.type === action.command);
@@ -577,7 +580,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [commandScope.actorId, clock, executor, executeShell, toast]);
 
   const runAction = useCallback(
-    (action: ActionDescriptorWire, target: ActionTarget, source: "queue" | "run-detail" = "queue"): Promise<void> | void => {
+    (action: ActionDescriptorWire, target: ActionTarget, source: "queue" | "run-detail" = "queue"): Promise<void | boolean> | void => {
       if (action.kind === "navigation") {
         if (action.navigate.kind === "rerun") {
           const row = dayWire?.queueSurfaces.find(entry => String(entry.runId) === target.runId);
@@ -639,7 +642,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const confirmLogDecision = useCallback<RunWiringConfirm>((pending, onConfirmed) => setPendingCommand({ ...pending, scope: commandScope, onConfirmed }), [commandScope]);
 
   const runQueueAction = useCallback(
-    (action: ActionDescriptorWire, target: ActionTarget): Promise<void> | void => runAction(action, target, "queue"),
+    (action: ActionDescriptorWire, target: ActionTarget): Promise<void | boolean> | void => runAction(action, target, "queue"),
     [runAction],
   );
   const freshLogRunId = selectedRow?.runId;

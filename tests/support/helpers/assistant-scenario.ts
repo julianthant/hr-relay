@@ -9,12 +9,14 @@ import { composeAssistant } from "../../../src/backend/app/composition/dashboard
 import { CommandResultSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
 import { createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
-import { AssistantInferenceRequestSchema, AssistantM1RespondEnvelopeSchema, type AssistantM1RespondEnvelope, type AssistantSessionClaim, type AssistantSessionOutcome } from "../../../src/models/dashboard/assistant.js";
+import { AssistantInferenceRequestSchema, AssistantM1RespondEnvelopeSchema, type AssistantM1Request, type AssistantM1RespondEnvelope, type AssistantSessionClaim, type AssistantSessionOutcome } from "../../../src/models/dashboard/assistant.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import type { JsonValue } from "../../../src/rules/validation/canonical-json.js";
 import { createBoundProfileFixture } from "./admission-fixture.js";
+import { createSettingsAuthorityTestWorld } from "./backend/settings-authority-world.js";
 import { assistantM1HistoryFixture } from "./assistant-m1-history-fixture.js";
 import { typedProposalFixture } from "./assistant-typed-proposals.js";
 import { completedResponseStream, partialTextStream } from "./chatgpt-response-stream.js";
@@ -47,6 +49,9 @@ export interface AssistantScenario {
     message: string;
     provider: readonly ProviderStep[];
     changePlan?: boolean;
+    approvalMode?: AssistantM1Request["approvalMode"];
+    fullAccess?: boolean;
+    revokeAtEffect?: boolean;
     check(observation: TurnObservation): void;
   }>[];
 }
@@ -92,6 +97,7 @@ export function assertScenarioBudget(name: string, budget: Budget, measured: Mea
 
 export async function runAssistantScenario(scenario: AssistantScenario): Promise<Measurement> {
   const profile = await createBoundProfileFixture();
+  const world = createSettingsAuthorityTestWorld();
   try {
     const clock = manualClock(new Date(`${DAY}T12:00:00.000Z`)), at = clock.now().toISOString();
     const { admission, stateRoot } = profile;
@@ -129,6 +135,15 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
       try {
         const owner = () => ({ profileId: store.profileId(), epoch: store.epoch() });
         const proposals = typedProposalFixture(store, at), proposalStore = store.proposals();
+        const settings = scenario.turns.some(turn => turn.approvalMode === "full-access") ? await world.fixture() : undefined;
+        const saveFullAccess = (enabled: boolean) => {
+          assert.ok(settings);
+          const patch = { "preferences.assistantFullAccess": { set: enabled } };
+          assert.equal(settings.execute({ family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: at, requestedBy: "local-operator",
+            source: "settings-surface", target: { expectedRevision: settings.database.authority.settingsCurrent.get()?.revision ?? 1 },
+            payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }).state, "applied");
+        };
+        let revokeAtEffect = false;
         const personRun = RunRecordSchema.parse(personLookupQueuedRun({ runId: randomUUID(), itemId: randomUUID() }));
         const personQuery = z.strictObject({ query: z.string().min(1) });
         const readPerson: AssistantReadTool = {
@@ -142,27 +157,30 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
             return { person };
           },
         };
-        // The dashboard composition over the fixture's storage: only the start plans and the active browser setting are faked.
+        // The Full access scenarios join the assistant fixture to a real Settings command store.
         const authority = { assistantProposals: proposalStore, assistantHistory: store.history,
           startPlans: { get: (id: string) => { const planned = proposals.ports.plannedInputs(id); return planned === undefined ? undefined : { plannedAt: planned.capturedAt, planned: planned.runs }; } },
-          runtimeConfig: { get: () => ({ configSnapshotId: "scenario", configFingerprint: "scenario" }) },
-          configSnapshots: { get: () => ({ fingerprint: "scenario", config: { browser: { headless: true } } }) } };
+          settingsCurrent: settings?.database.authority.settingsCurrent, commands: settings?.database.authority.commands, commandAudits: settings?.database.authority.commandAudits,
+          runtimeConfig: settings?.database.authority.runtimeConfig ?? { get: () => ({ configSnapshotId: "scenario", configFingerprint: "scenario" }) },
+          configSnapshots: settings?.database.authority.configSnapshots ?? { get: () => ({ fingerprint: "scenario", config: { browser: { headless: true } } }) } };
         const starts = { ...proposals.ports, submit(command: CommandRequest, attribution: unknown) {
+          if (revokeAtEffect) saveFullAccess(false);
           composed.assertEffect(command.commandId, command);
           proposals.submitted.push({ command, attribution });
-          const runIds = command.family === "start" ? [proposals.run().envelope.runId] : command.family === "run" ? [command.target.runId] : [];
+          const dryRun = proposalStore.sessions.byCommand(command.commandId)?.claim.dryRun;
+          const runIds = command.family === "start" ? [proposals.run(dryRun).envelope.runId] : command.family === "run" ? [command.target.runId] : [];
           return Promise.resolve(CommandResultSchema.parse({ state: "applied", commandId: command.commandId, affectedTargets: runIds.map(runId => ({ family: "run", runId })) }));
         } };
         const composed = composeAssistant({ database: { authority, withAuthorityReadSnapshot: (work: () => unknown) => work(), withAuthorityTransaction: (work: (repositories: unknown) => unknown) => work(authority) } as unknown as Parameters<typeof composeAssistant>[0]["database"], starts,
           readPlugins: () => [{ domain: "people", tools: [readPerson] }],
           service: { account, clock, actorId: "local-operator", owner,
             selectedModel: () => ({ preference: { slug: MODEL, effort: "medium" }, assertCurrent() {} }),
-            facts: () => assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup")),
+            facts: () => assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup" || settings !== undefined && descriptor.id === "separations")),
             runReferenceLabel: () => "Lookup", debugEvents: { emit() {} } } });
         const service = composed.assistant;
         const conversationId = randomUUID(), signal = new AbortController().signal;
         assert.equal(service.history({ operation: "create", conversationId, title: scenario.name }).state, "saved");
-        const respond = (request: { expectedRevision: number; messageId: string; message: string }) =>
+        const respond = (request: Pick<AssistantM1Request, "expectedRevision" | "messageId" | "message" | "approvalMode">) =>
           service.respond({ ...request, conversationId }, signal);
         const privateValues = new Set<string>([SCENARIO_PERSON.name, SCENARIO_PERSON.eid, personRun.envelope.runId]);
 
@@ -170,10 +188,12 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
           const view = service.conversation(conversationId);
           assert.ok(view);
           if (turn.changePlan) proposals.knobs.configFingerprint = "f".repeat(64);
+          if (turn.fullAccess !== undefined) saveFullAccess(turn.fullAccess);
+          revokeAtEffect = turn.revokeAtEffect ?? false;
           pending = [...turn.provider];
           const firstRequest = requests.length;
           const envelope = AssistantM1RespondEnvelopeSchema.parse(await respond({
-            expectedRevision: view.revision, messageId: randomUUID(), message: turn.message,
+            expectedRevision: view.revision, messageId: randomUUID(), message: turn.message, approvalMode: turn.approvalMode,
           }));
           if (transportError !== undefined) throw new Error("Synthetic provider transport failed", { cause: transportError });
           assert.equal(pending.length, 0, `${scenario.name} has unused provider answers for a turn`);
@@ -192,5 +212,5 @@ export async function runAssistantScenario(scenario: AssistantScenario): Promise
         return measure(requests);
       } finally { store.database.close(); }
     } finally { await account.close(); }
-  } finally { await profile.close(); }
+  } finally { await world.cleanup(); await profile.close(); }
 }

@@ -204,6 +204,11 @@ the lower-level repository arm throws. The loop awaits the claimed run before po
 next eligibility instant. Retry backoff uses `not_before`; a worker does not retain an active run
 while waiting for its retry time.
 
+After the dashboard commits a new run, it sends one work-available IPC hint to the workflow's live,
+unpaused pool members. The hint interrupts an idle wait and the worker repeats its ordinary claim.
+The configured idle repoll still checks for work if a hint is lost. Preflight refusal backoff and
+active-run control polling keep their own cadence.
+
 ## 4. Browser ownership and reuse
 
 Manual workbook Sync uses `runtime/browser/command-browser.ts` with a genuine profile-bound command

@@ -2,6 +2,7 @@ import { default as assert } from "node:assert/strict";
 import { describe } from "vitest";
 import { it } from "vitest";
 import { vi } from "vitest";
+import { SettingsPatchSchema } from "../../../src/models/config/settings.js";
 import { EditableSettingsWireSchema } from "../../../src/models/dashboard/settings-editor.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../support/helpers/dashboard/mock-world/fixture-settings.js";
 import { fixtureSettingsDocument } from "../../support/fixtures/dashboard/fixture-settings.js";
@@ -13,6 +14,19 @@ import { EditableSettingsLeafWireSchema } from "../../../src/models/dashboard/se
 {
 
 describe("complete Settings catalog projection", () => {
+  it("validates an ordinary value shared by effective, default and active fields once", () => {
+    const document = fixtureSettingsDocument();
+    const label = document.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "actor.label");
+    assert.ok(label);
+    const value = "Operator";
+    const verify = vi.spyOn(SettingsPatchSchema, "safeParse");
+    try {
+      EditableSettingsLeafWireSchema.parse({ ...label, source: "default", settingsValue: undefined,
+        effectiveValue: value, defaultValue: value, activeValue: value });
+      assert.equal(verify.mock.calls.length, 1);
+    } finally { verify.mockRestore(); }
+  });
+
   for (const mutation of ["missing", "duplicate", "legacy-catalog", "wrong-section", "wrong-type", "wrong-control", "wrong-current-year", "legacy-readback"] as const) {
     it(`rejects ${mutation} payloads`, () => {
       const document = fixtureSettingsDocument();

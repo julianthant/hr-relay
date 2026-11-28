@@ -148,6 +148,7 @@ describe("bootstrap start-surface block", () => {
           })),
           rows: projectStartRows(descriptor).map((row) => ({
             key: row.key, label: row.label, includedByDefault: row.includedByDefault, kind: row.kind,
+            ...(row.off === undefined ? {} : { off: row.off }),
             ...(row.lockReason === undefined ? {} : { lockReason: row.lockReason }),
             members: row.members.map((member) => ({ ...member })),
             ...(row.target === undefined ? {} : { target: { ...row.target } }),

@@ -1,15 +1,26 @@
 import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
 import { OnboardingMatchHireSubject } from "../../../../models/workflows/onboarding/match-hire-subject.js";
 import { SearchPersonMatch } from "../../../../models/systems/ucpath/search-person-match.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import type { HireEmployee } from "../../../../models/people/hire-employee.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof, reuseTask } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { buildCrmData } from "../crm-data/step.js";
 
+export const UCPATH_SEARCH_MANUAL: StepManualDeclaration = {
+  off: "values",
+  form: { fields: [
+    { key: "match", label: "UCPath match result", kind: "enum", values: ["Found", "No match", "Unresolved"] },
+    { key: "emplId", label: "Matched employee ID", kind: "eid", optional: true, withheld: true, requiredWhen: { field: "match", equals: "Found" } },
+  ] },
+  produces: {},
+  skips: ["ucpath-source", "hire-subject"],
+};
+
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "ucpath-search", label: "Check UCPath duplicates" }),
-  locked: "guard-read" as const,
+  manual: UCPATH_SEARCH_MANUAL,
   operatorFields: [
     { label: "Hire match", visibility: "logs", sources: [{ nodeId: "hire-subject", kind: "output", fieldPath: "state" }],
       display: { cases: [{ value: "new-hire", text: "New hire" }, { value: "existing-person", text: "Existing person" }, { value: "review-required", text: "Review required" }] } },

@@ -72,9 +72,38 @@ export function withCurrentWorkbookLayout<T>(database: DatabaseSync, work: () =>
   }
 }
 
+/** Removes the empty edit table to construct a populated schema-46 copy. */
+export function restoreSchema46AssistantEdits(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  assert.equal(database.prepare("SELECT count(*) AS count FROM assistant_applied_edits").get()?.count, 0);
+  database.exec("DROP TABLE assistant_applied_edits; UPDATE database_states SET schema_version=46; PRAGMA user_version=46");
+}
+
+export function dropRunSearchFts(database: DatabaseSync): void {
+  database.exec(`DROP TRIGGER run_search_fts_insert; DROP TRIGGER run_search_fts_delete; DROP TRIGGER run_search_fts_update;
+    DROP TABLE run_search_fts`);
+}
+
+export function inventoryRowOrder(table: string): string {
+  if (table === "run_search_fts_idx") return "segid,term";
+  if (table === "run_search_fts_config") return "k";
+  return "rowid";
+}
+
+/** Steps an authority back to schema 45, before the derived full-text index. */
+export function restoreSchema45RunSearch(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === CURRENT_AUTHORITY_SCHEMA_VERSION) restoreSchema46AssistantEdits(database);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 46);
+  dropRunSearchFts(database);
+  database.exec("UPDATE database_states SET schema_version=45; PRAGMA user_version=45");
+}
+
 /** Steps an authority back to schema 43: every unrecorded text-part message is stored as `{text}` again. */
 export function restoreSchema43AssistantPayloads(database: DatabaseSync): void {
-  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 44);
+  const current = database.prepare("PRAGMA user_version").get()?.user_version;
+  if (typeof current === "number" && current >= 46) restoreSchema45RunSearch(database);
+  const version = database.prepare("PRAGMA user_version").get()?.user_version;
+  assert.ok(version === 44 || version === 45); // The Settings-only step has the same physical layout.
   database.exec(`DROP TRIGGER assistant_messages_settle_only;
     UPDATE assistant_messages SET payload_json=json_object('text',COALESCE(json_extract(payload_json,'$.parts[0].runs[0].text'),''))
       WHERE json_extract(payload_json,'$.recording.kind')='unrecorded';
@@ -83,7 +112,8 @@ export function restoreSchema43AssistantPayloads(database: DatabaseSync): void {
 
 /** Removes the empty phase-1 assistant tables and restores the schema-42 message trigger. */
 export function restoreSchema42AssistantStorage(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 44) restoreSchema43AssistantPayloads(database);
+  const version = database.prepare("PRAGMA user_version").get()?.user_version;
+  if (typeof version === "number" && version >= 44) restoreSchema43AssistantPayloads(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 43);
   for (const table of ["assistant_session_claims", "assistant_proposal_rows", "assistant_proposals"]) {
     assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
@@ -266,6 +296,7 @@ export function removeEmptySchema26AssistantHistory(database: DatabaseSync): voi
 /** Returns a current store to the schema-22 worker custody DDL, keeping each worker slot in its predecessor row shape; the schema version is left to the caller. */
 export function restoreSchema22WorkerCustodyFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
+  dropRunSearchFts(database);
   database.exec("ALTER TABLE run_search DROP COLUMN ocr_subject_terms");
   // The dependency table goes back to its old DDL in place, so the comparison below keeps its rows.
   dropListIndexObjects(database);

@@ -2,6 +2,7 @@ import { AssistantM1NativeCommandAuditSchema, convertAssistantCommandPairToM1 } 
 import { CURRENT_RUN_SETTLEMENT_SQL } from "./run-settlement-row.js";
 import { CHANGE_LOG_SCHEMA_VERSION } from "./authority-change-log.js";
 import { OCR_SEARCH_TERMS_SCHEMA_VERSION } from "./migrations.js";
+import { RUN_SEARCH_FTS_SCHEMA_VERSION } from "./run-search-fts.js";
 import { RUN_REFERENCES_TABLE } from "../../../models/config/authority.js";
 import { hash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
@@ -122,6 +123,16 @@ function safeSubject(database: DatabaseSync, run: PredecessorRunRecord, declarat
 const OCR_SUBJECT_STRENGTH = deepFreeze({ exact: 0, prefix: 1, contains: 2 });
 const OCR_UNFINISHED_OUTCOMES = deepFreeze(["cancelled", "discarded", "superseded"]);
 const OCR_UNFINISHED_SQL = OCR_UNFINISHED_OUTCOMES.map(outcome => `'${outcome}'`).join(",");
+const FTS_FIELDS = { all: "{run_id trace workflow subject actor}", run: "run_id", trace: "trace",
+  workflow: "workflow", subject: "subject", actor: "actor" } as const;
+
+function ftsSubjectMatch(field: string, query: string, ocrDigest: string | undefined): string | undefined {
+  // shortcut: shorter than a trigram uses the exact predicate, revisit if short searches become a bottleneck.
+  const phrase = query.split("\0").find(part => [...part].length >= 3);
+  if (phrase === undefined) return undefined;
+  const plain = `${field}:"${phrase.replaceAll('"', '""')}"`;
+  return ocrDigest === undefined ? plain : `(${plain} OR ocr_subject_terms:"|${ocrDigest}|")`;
+}
 
 function ocrSubjectDigest(term: string): string {
   return hash("sha256", Buffer.from(`relay:run-search-ocr-subject:v1\0${term}`, "utf16le"), "base64url");
@@ -252,9 +263,9 @@ function nextRunSearchState(state: RunSearchState, event: RunSearchEvent): RunSe
 export function createRunSearchIndex(database: DatabaseSync) {
   const schemaVersion = z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version;
   const hasOcrSubjects = schemaVersion >= OCR_SEARCH_TERMS_SCHEMA_VERSION;
-  const searchRows = `(SELECT run_id AS id,workflow,trace,local_day,state,shape,dry_run,enqueued_ms,
-    subject,actor_id AS actor,descriptor_version AS version,failure_code AS failure,has_receipt AS receipt,
-    has_diagnostic AS diagnostic,systems_json AS systems,metadata_json AS payload_json${hasOcrSubjects ? ",ocr_subject_terms" : ""} FROM run_search) s`;
+  const searchColumns = `r.run_id AS id,r.workflow,r.trace,r.local_day,r.state,r.shape,r.dry_run,r.enqueued_ms,
+    r.subject,r.actor_id AS actor,r.descriptor_version AS version,r.failure_code AS failure,r.has_receipt AS receipt,
+    r.has_diagnostic AS diagnostic,r.systems_json AS systems,r.metadata_json AS payload_json${hasOcrSubjects ? ",r.ocr_subject_terms" : ""}`;
   const prepareTemporaryState = () => {
     database.exec("CREATE TEMP TABLE IF NOT EXISTS search_actor_dirty(run_id TEXT PRIMARY KEY) WITHOUT ROWID");
     database.exec("CREATE TEMP TABLE IF NOT EXISTS search_ocr_dirty(run_id TEXT PRIMARY KEY) WITHOUT ROWID");
@@ -490,14 +501,16 @@ export function createRunSearchIndex(database: DatabaseSync) {
       if (next !== "published" && next !== "building") throw new Error(`run-search-rebuild-result-invalid: ${next}`);
       return publish({ state: next, sourceGeneration, afterRun: selected.at(-1) ?? prior.afterRun, rowCount: (restart ? 0 : prior.rowCount) + selected.length }, now);
     },
-    search(input: unknown, sourceGeneration: number) {
+    search(input: unknown, sourceGeneration: number, includeHistory = false) {
       const request = RunSearchReadRequestSchema.parse(input);
       nextRunSearchState(runSearchStateOf(publicationState(), sourceGeneration), "search");
       const clauses: string[] = [], parameters: (string | number)[] = [];
       const add = (sql: string, ...values: (string | number)[]) => { clauses.push(sql); parameters.push(...values); };
       const { facets, q, scope } = request;
       const fields = { run: "s.id", trace: "s.trace", workflow: "s.workflow", subject: "s.subject", actor: "lower(s.actor)" };
-      add("NOT (s.workflow='ocr' AND EXISTS(SELECT 1 FROM runs r WHERE r.id=s.id AND r.parent_id IS NOT NULL))");
+      const stores = includeHistory ? ["main", "history"] : ["main"];
+      const childRuns = stores.map(store => `SELECT 1 FROM ${store}.runs r WHERE r.id=s.id AND r.parent_id IS NOT NULL`).join(" UNION ALL ");
+      add(`NOT (s.workflow='ocr' AND EXISTS(${childRuns}))`);
       for (const [field, value] of Object.entries({ workflow: facets.workflow, state: facets.state, shape: facets.shape, actor: facets.actor, version: facets.version, failure: facets.failure })) if (value !== undefined) add(`s.${field}=?`, value);
       if (facets.from !== undefined) add("s.local_day>=?", facets.from);
       if (facets.to !== undefined) add("s.local_day<=?", facets.to);
@@ -511,6 +524,20 @@ export function createRunSearchIndex(database: DatabaseSync) {
 
       const ocrDigest = hasOcrSubjects && q.length > 0 && (scope === "all" || scope === "subject") ? ocrSubjectDigest(q) : undefined;
       const ocrMatch = "instr(s.ocr_subject_terms,?)>0";
+      let searchRows = `SELECT ${searchColumns} FROM run_search r`;
+      const searchParameters: string[] = [];
+      if (schemaVersion >= RUN_SEARCH_FTS_SCHEMA_VERSION) {
+        const facet = facets.subject?.toLowerCase();
+        const match = [ftsSubjectMatch(FTS_FIELDS[scope], q, ocrDigest),
+          facet === undefined ? undefined : ftsSubjectMatch("subject", facet, ocrSubjectDigest(facet))]
+          .filter(part => part !== undefined).join(" AND ");
+        if (match !== "") {
+          // CROSS JOIN keeps the FTS matches outermost even for a small local store.
+          searchRows = stores.map(store => `SELECT ${searchColumns} FROM ${store}.run_search_fts f
+            CROSS JOIN ${store}.run_search r ON r.run_id=f.run_id WHERE f.run_search_fts MATCH ?`).join(" UNION ALL ");
+          searchParameters.push(...stores.map(() => match));
+        }
+      }
       if (q.length > 0) {
         const scopedFields = scope === "all" ? Object.values(fields) : [fields[scope]];
         const conditions = scopedFields.map(field => `instr(${field},?)>0`);
@@ -540,8 +567,8 @@ export function createRunSearchIndex(database: DatabaseSync) {
         return [`WHEN ${condition} THEN ${String(rank)}`];
       });
       const rank = q.length === 0 ? "0" : `CASE ${rankClauses.join(" ")} ELSE NULL END`;
-      const bindings = q.length === 0 ? parameters : [...rankParameters, ...parameters];
-      const matched = `WITH ranked AS (SELECT id,payload_json,subject,actor,enqueued_ms,${rank} AS match_rank FROM ${searchRows} WHERE ${where})`;
+      const bindings = [...(q.length === 0 ? [] : rankParameters), ...searchParameters, ...parameters];
+      const matched = `WITH ranked AS (SELECT id,payload_json,subject,actor,enqueued_ms,${rank} AS match_rank FROM (${searchRows}) s WHERE ${where})`;
       const after = request.after;
       const afterSql = after === undefined ? "" : "AND (match_rank>? OR (match_rank=? AND enqueued_ms<?) OR (match_rank=? AND enqueued_ms=? AND id>?))";
       const cursorBindings = after === undefined ? [] : [after.matchRank, after.matchRank, Date.parse(after.enqueuedAt), after.matchRank, Date.parse(after.enqueuedAt), after.runId];

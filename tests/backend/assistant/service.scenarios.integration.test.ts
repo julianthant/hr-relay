@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { assertScenarioBudget, runAssistantScenario } from "../../support/helpers/assistant-scenario.js";
 import { personLookup, scenarios } from "./scenarios/conversations.js";
+import { fullAccess } from "./scenarios/full-access.js";
 
-it.each(scenarios)("$name", async scenario => {
+it.each([...scenarios, fullAccess])("$name", async scenario => {
   const measured = await runAssistantScenario(scenario);
   console.info(`assistant-scenario | ${scenario.name} | ${measured.largestRequest} | ${measured.total}`);
   assertScenarioBudget(scenario.name, scenario.budget, measured);

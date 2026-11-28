@@ -561,7 +561,7 @@ try {
       configIdentity: { configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId },
       intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
       descriptors: { resolve: id => id === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined },
-      writeResolution: createWriteResolutionExecutor({ authority: database, continuation: testRunContinuation(database, clock),
+      writeResolution: createWriteResolutionExecutor({ continuation: testRunContinuation(database, clock),
         descriptors: { resolve: id => id === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined },
         ids: { uuid: randomUUID }  }),
       workerRuntime: { pool: unusedWorkerPool(unused) } });

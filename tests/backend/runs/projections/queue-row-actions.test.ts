@@ -81,13 +81,12 @@ it("serves footer pause/resume only from the projected control with its exact CA
   }
 });
 
-it("offers one crash Rerun through checkpoint recovery and keeps Delete", () => {
-  const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed", { crashed: true, recoverySource: "failed" }));
-  assert.deepEqual(actions.filter(action => action.placement.includes("footer")).map(action => [action.label, action.kind]), [["Rerun", "command"], ["Delete run", "command"]]);
+it("offers one failed-run Rerun through the dialog and keeps Delete", () => {
+  const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed"));
+  assert.deepEqual(actions.filter(action => action.placement.includes("footer")).map(action => [action.label, action.kind]), [["Rerun", "navigation"], ["Delete run", "command"]]);
   const rerun = actions.find(action => action.label === "Rerun");
-  assert.ok(rerun?.kind === "command");
-  assert.equal(rerun.command, "recover-run");
-  assert.ok(rerun.confirm);
+  assert.ok(rerun?.kind === "navigation");
+  assert.deepEqual(rerun.navigate, { kind: "rerun", expectedVersion: 7 });
 });
 
 /** The whole row, so the wire's own CAS/uniqueness refinement is the assertion. */
@@ -392,19 +391,9 @@ describe("queue-row action descriptors — every served verb has a command behin
   });
 });
 
-it("offers explicit checkpoint recovery only from canonical failed/interrupted facts, alongside ordinary Rerun", () => {
-  for (const recoverySource of ["failed", "interrupted"] as const) {
-    const facts = { ...factsFor("failed"), recoverySource };
-    const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, facts);
-    assert.ok(actions.some(action => action.key === "rerun" && action.kind === "navigation"));
-    const recover = actions.find(action => action.key === "recover-run");
-    assert.ok(recover?.kind === "command");
-    assert.equal(recover.command, "recover-run");
-    assert.equal(recover.expectedVersion, facts.rowRevision);
-    assert.equal(recover.confirm?.confirmLabel, "Recover");
-    assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, { ...facts, parkedWrite: true }).some(action => action.key === "recover-run"), false);
-    assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, { ...facts, isChild: true }).some(action => action.key === "recover-run"), false);
-  }
-  assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("done")).some(action => action.key === "recover-run"), false);
-  assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("partial")).some(action => action.key === "recover-run"), false);
+it("offers Rerun for a blocked row only when it is interrupted and can run on its own", () => {
+  assert.ok(keysFor("blocked", { interrupted: true }).includes("rerun"));
+  assert.ok(!keysFor("blocked").includes("rerun"));
+  assert.ok(!keysFor("blocked", { interrupted: true, parkedWrite: true }).includes("rerun"));
+  assert.ok(!keysFor("blocked", { interrupted: true, isChild: true }).includes("rerun"));
 });

@@ -120,7 +120,7 @@ describe("canonical Settings navigation", () => {
   it("reports a credential read failure instead of leaving its loading spinner", async () => {
     const page = await mountFailedRead("credentials");
     assert.ok(page.textContent?.includes("Credentials unavailable"), page.textContent ?? "");
-    assert.ok(page.textContent?.includes("Reopen Settings to try again."), page.textContent ?? "");
+    assert.ok(page.textContent?.includes("reopen Settings to try again"), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Couldn't load settings."), page.textContent ?? "");
     assert.ok(![...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
     assert.ok(!page.textContent?.includes("Reading settings authorities"), page.textContent ?? "");

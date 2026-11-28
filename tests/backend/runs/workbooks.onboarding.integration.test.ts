@@ -1,3 +1,4 @@
+import { recordHistoricalRecover } from "../../support/helpers/backend/record-historical-recover.js";
 import { createOnboardingRunWorld } from "../../support/helpers/backend/onboarding-run-world.js";
 import { readRunCheckpoint, continuationEvidenceDigest, validateRunContinuation } from "../../../src/backend/storage/sqlite/run-continuation.js";
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
@@ -543,7 +544,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(root.envelope.runId), []);
     f.execution.lifecycle.admitDelegation = admit;
     const failed = f.database.authority.runs.get(root.envelope.runId); assert.ok(failed);
-    const recoveredResult = f.kernel.execute({ commandId: runWorld.nextCommandId(), requestedAt: f.clock.now().toISOString(),
+    const recoveredResult = recordHistoricalRecover({ ...f, lifecycle: f.rawExecution.lifecycle }, f.descriptor, { commandId: runWorld.nextCommandId(), requestedAt: f.clock.now().toISOString(),
       requestedBy: "local-operator", source: "run-detail", family: "run", type: "recover-run",
       target: { runId: root.envelope.runId, expectedVersion: failed.version } });
     assert.equal(recoveredResult.state, "applied");
@@ -688,7 +689,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     let candidate: RunRecord;
     if (capturedAssertion) {
       assert.deepEqual(row.assertion, { step: "ucpath-search", assertedAt: row.writtenAt });
-      const result = f.kernel.execute({ commandId: runWorld.nextCommandId(), requestedAt: f.clock.now().toISOString(),
+      const result = recordHistoricalRecover({ ...f, lifecycle: f.rawExecution.lifecycle }, f.descriptor, { commandId: runWorld.nextCommandId(), requestedAt: f.clock.now().toISOString(),
         requestedBy: "local-operator", source: "run-detail", family: "run", type: "recover-run",
         target: { runId: failed.envelope.runId, expectedVersion: failed.version } });
       assert.equal(result.state, "applied", JSON.stringify({ state: result.state,

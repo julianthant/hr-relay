@@ -27,9 +27,9 @@ function schema35Store() {
 const rows = (database: DatabaseSync) => database.prepare('SELECT * FROM workbook_library_state ORDER BY id').all().map(row => ({ ...row }));
 const upgrade = (database: DatabaseSync) => applyAuthorityMigrationsAfter(database, 35, { now: '2026-11-18T00:00:00.000Z', captureFile: () => { throw new Error('no capture expected'); } });
 
-it('is schema version 36, under the current schema 44, and adds no table', () => {
+it('is schema version 36, under the current schema 48, and adds no table', () => {
   expect(WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION.version).toBe(36);
-  expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(44);
+  expect(CURRENT_AUTHORITY_SCHEMA_VERSION).toBe(48);
   expect(migrationTableNames(36)).toEqual(migrationTableNames(35));
 });
 

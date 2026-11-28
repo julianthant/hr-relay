@@ -10,7 +10,7 @@ import { scriptedEnvelope, type AssistantReplyPartInput as AssistantReplyPart, t
 export const ASSISTANT_STORY_PROMPT = "Look up Avery Sample in Person Lookup.";
 
 /** What the next message comes back as. `never` is a reply still being prepared; `lost` is a reply that never arrived. */
-export type AssistantReplyScript = "answer" | "answer-long" | "proposal" | "proposal-many" | "answered-yes" | "never" | "lost" | { readonly refused: AssistantFailureCode };
+export type AssistantReplyScript = "answer" | "answer-long" | "proposal" | "proposal-many" | "answered-yes" | "spreadsheet-edit" | "settings-edit" | "undo-edit" | "full-access-dry-run" | "never" | "lost" | { readonly refused: AssistantFailureCode };
 export type AssistantStageScript = "staged" | "lost" | { readonly refused: AssistantFailureCode };
 
 export interface AssistantStoryClientOptions {
@@ -33,9 +33,15 @@ const person = (name: string, employeeId: string): AssistantInline[] => [value(n
 const ANSWERED_YES: AssistantReplyPart[] = [say(plain("Started Person Lookup for "), value("Sample, Avery"), plain(".")),
   { kind: "session", runId: ID, label: "Checking UCPath…", meta: "Person Lookup · Sample, Avery" },
   { kind: "answered", attribution: { kind: "assistant", requestedBy: "local-operator", profileId: ID, conversationId: ID, acceptedMessageId: ID, binding: { kind: "proposal", proposalId: ID, rowId: ID } }, at: "2026-11-26T09:31:00.000Z" }];
+const edit = (label: string, previous: string, next: string): AssistantReplyPart => ({ kind: "text", editId: ID,
+  runs: [plain(label), { kind: "value", previous, value: next }, plain(".")] });
 const REPLIES: Readonly<Record<Exclude<AssistantReplyScript, "never" | "lost" | { readonly refused: AssistantFailureCode }>, readonly AssistantReplyPart[]>> = {
+  "spreadsheet-edit": [edit("Renamed the spreadsheet to ", "Spring tracker", "Summer tracker")],
+  "settings-edit": [edit("Changed Headless browser to ", "On", "Off")],
+  "undo-edit": [edit("Changed Separations tracker, worksheet 1, row 2, column 1 back: ", "04/24/2031", "04/23/2031")],
   answer: ANSWER, "answer-long": LONG, proposal: proposal([person("Sample, Avery", "10101010")]),
   "proposal-many": proposal([person("Sample, Avery", "10101010"), person("Vega, Morgan", "20202020"), person("Rivera, Alex", "30303030")]), "answered-yes": ANSWERED_YES,
+  "full-access-dry-run": [say(plain("Started the Separations dry run.")), { kind: "session", runId: ID, label: "Separations dry run", meta: "queued" }],
 };
 const never = <Value,>(): Promise<Value> => new Promise<Value>(() => undefined);
 
@@ -48,7 +54,8 @@ export function assistantStoryClient(options: AssistantStoryClientOptions = {}):
     return { state: "answered", parts: REPLIES[reply] };
   };
   return {
-    assistantRespond: async input => scriptedEnvelope(input, await respond()),
+    assistantRespond: async input => scriptedEnvelope(input, reply === "full-access-dry-run" && input.approvalMode !== "full-access"
+      ? { state: "no-reply", reason: "ASSISTANT_PROPOSAL_REFUSED" } : await respond()),
     assistantStageAttachment: async (_chat, file): Promise<AssistantStageResult> => {
       if (stage === "lost") throw new TypeError("Failed to fetch");
       if (typeof stage === "object") return { state: "refused", code: stage.refused };

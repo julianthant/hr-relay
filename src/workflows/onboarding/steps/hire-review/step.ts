@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
 import { OnboardingReadI9ProfilePlan } from "../../../../models/workflows/onboarding/read-i9-profile-plan.js";
 import { OnboardingReadWritePlan, OnboardingWriteApprovalSchema, ONBOARDING_WRITE_REVIEW_GATE } from "../../../../models/workflows/onboarding/read-write-plan.js";
@@ -13,6 +14,7 @@ import { UcpathReadHireFindings } from "../../../../models/systems/ucpath/read-h
 import { UcpathReadHireReceipt } from "../../../../models/systems/ucpath/read-hire-receipt.js";
 import { ReadWorkbookResult } from "../../../../models/processing/workbooks/read-result.js";
 import { DRY_RUN_I9_PROFILE_ID, DryRunSampleSchema, type DryRunScope } from "../../../../models/workflow/dry-run.js";
+import { OmittedStepResultArmSchema, type StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
@@ -22,7 +24,18 @@ import { buildUcpathSearch } from "../ucpath-search/step.js";
 import { buildI9Search } from "../i9-search/step.js";
 import type { buildReferenceCheck } from "../reference-check/step.js";
 
+export const HIRE_REVIEW_MANUAL: StepManualDeclaration = {
+  off: "values",
+  form: { fields: [
+    { key: "decision", label: "Hire review decision", kind: "enum", values: ["New hire", "Existing person", "Undecided"] },
+    { key: "emplId", label: "Reviewed employee ID", kind: "eid", optional: true, withheld: true, requiredWhen: { field: "decision", equals: "Existing person" } },
+  ] },
+  produces: {},
+  skips: ["hire-findings", ONBOARDING_WRITE_REVIEW_GATE],
+  skipsGatesAndTransactions: true,
+};
 const review = Object.freeze({ ...defineWorkflowStep({ key: "hire-review", label: "Review UCPath hire findings" }), system: "ucpath" as const,
+  manual: HIRE_REVIEW_MANUAL,
   operatorFields: [
     { label: "Scan completeness", example: "Complete", sources: [{ nodeId: "hire-findings", kind: "output" as const, fieldPath: "state" }] },
     { label: "Observed at", example: "09/01/2026 11:00 AM", sources: [{ nodeId: "hire-findings", kind: "output" as const, fieldPath: "observedAt" }] },
@@ -150,7 +163,13 @@ const review = Object.freeze({ ...defineWorkflowStep({ key: "hire-review", label
       ], cancellation: { label: "Reject and cancel run", then: "Cancels the run before any I-9 or UCPath change is saved." } }],
   } as const,
 });
+export const I9_CREATION_MANUAL: StepManualDeclaration = {
+  off: "manual",
+  form: { fields: [] }, produces: {}, skips: ["write-plan", "i9-route", "i9-profile-plan", "i9-profile-save", "i9-remote-create"],
+  skipsGatesAndTransactions: true,
+};
 const group = Object.freeze({ ...defineWorkflowStep({ key: "i9-creation", label: "Create or reuse the I-9 record" }), system: "i9" as const,
+  manual: I9_CREATION_MANUAL,
   review: {
     pages: [
       {
@@ -270,7 +289,13 @@ const group = Object.freeze({ ...defineWorkflowStep({ key: "i9-creation", label:
     ]
   } as const,
 });
+export const UCPATH_HIRE_MANUAL: StepManualDeclaration = {
+  off: "manual",
+  form: { fields: [] }, produces: {}, skips: ["hire-create", "hire-receipt", "concurrent-hire-create", "concurrent-hire-receipt"],
+  skipsGatesAndTransactions: true,
+};
 const hireGroup = Object.freeze({ ...defineWorkflowStep({ key: "ucpath-hire", label: "File and verify the UCPath hire" }), system: "ucpath" as const,
+  manual: UCPATH_HIRE_MANUAL,
   review: {
     pages: [
       {
@@ -595,7 +620,12 @@ const hireGroup = Object.freeze({ ...defineWorkflowStep({ key: "ucpath-hire", la
     branchLabels: []
   } as const,
 });
+export const MASTER_RESULTS_MANUAL: StepManualDeclaration = {
+  off: "manual",
+  form: { fields: [] }, produces: {}, skips: ["master-results", "concurrent-master-results"],
+};
 const masterGroup = Object.freeze({ ...defineWorkflowStep({ key: "master-results", label: "Fill verified master results" }), system: "local" as const,
+  manual: MASTER_RESULTS_MANUAL,
   review: {
     when: [{ "dry-run": ["false"] }],
     pages: [
@@ -637,6 +667,15 @@ const masterGroup = Object.freeze({ ...defineWorkflowStep({ key: "master-results
   } as const,
 });
 const reviewEntries = defineStepEntries(review), entries = defineStepEntries(group), hireEntries = defineStepEntries(hireGroup), masterEntries = defineStepEntries(masterGroup);
+const HireWriteResultSchema = OnboardingResultSchema.extend({
+  state: z.enum(["filed", "master-review-required", "completed-with-manual-steps"]),
+  subject: z.union([OnboardingResultSchema.shape.subject, OmittedStepResultArmSchema]),
+  i9: z.union([OnboardingResultSchema.shape.i9, OmittedStepResultArmSchema]),
+  hireWrite: z.union([OnboardingResultSchema.shape.hireWrite, OmittedStepResultArmSchema]),
+  rosterAccess: z.union([OnboardingResultSchema.shape.rosterAccess, OmittedStepResultArmSchema]),
+}).refine(result => result.state === "completed-with-manual-steps" ? result.rosterAccess.state === "omitted"
+  : OnboardingResultSchema.safeParse(result).success, "Verified completion needs its verified hire and roster results");
+const omitted = (step: string) => ({ state: "omitted" as const, step });
 
 function previewProfile(dryRun: DryRunScope | undefined) {
   const source = dryRun?.transactions.find(step => step.nodeId === "i9-profile-save");
@@ -721,18 +760,27 @@ export function buildHireWrites(author: WorkflowAuthor<typeof OnboardingInput>, 
     onboardingMasterResults(outputs["write-plan"], outputs["concurrent-hire-receipt"], null));
   return { steps: [[group, [plan, route, notRequired, profile, remote]],
     [hireGroup, [hire, receipt, concurrentHire, concurrentReceipt]], [masterGroup, [master, concurrentMaster]]] as const,
-  result: author.result(OnboardingResultSchema, [crm.plan, plan, approval, hire, receipt, remote, master, concurrentHire, concurrentReceipt, concurrentMaster], ({ outputs }) => {
-    const existing = outputs["write-plan"].hire.mode === "rehire";
+  result: author.result(HireWriteResultSchema, [crm.plan, plan, approval, hire, receipt, remote, master, concurrentHire, concurrentReceipt, concurrentMaster], ({ outputs }) => {
+    const writePlan = outputs["write-plan"];
+    if (writePlan === undefined) return {
+      state: "completed-with-manual-steps" as const, plan: outputs["hire-plan"], subject: omitted(group.key), i9: omitted(group.key),
+      hireWrite: omitted(hireGroup.key), rosterAccess: omitted(masterGroup.key),
+    };
+    const existing = writePlan.hire.mode === "rehire";
     const filled = existing ? outputs["concurrent-master-results"] : outputs["master-results"];
     const filed = existing ? outputs["concurrent-hire-create"] : outputs["hire-create"];
     const proof = existing ? outputs["concurrent-hire-receipt"] : outputs["hire-receipt"];
-    return {
-      state: filled.state === "recorded" && filled.receiptState === "applied" ? "filed" as const : "master-review-required" as const,
-      plan: outputs["hire-plan"], subject: outputs["write-plan"].subject,
+    const hireWrite = filed === undefined && proof === undefined
+      ? omitted(hireGroup.key)
+      : OnboardingResultSchema.shape.hireWrite.parse({ state: "verified", disposition: filed?.disposition, receipt: proof });
+    const result = {
+      plan: outputs["hire-plan"], subject: writePlan.subject,
       i9: existing ? { state: "not-required" as const }
         : { state: "verified" as const, ...I9RemoteProofSchema.parse(outputs["i9-remote-create"].output.receipt) },
-      hireWrite: { state: "verified" as const, disposition: filed.disposition, receipt: proof }, rosterAccess: filled,
+      hireWrite,
     };
+    if (filled === undefined) return { ...result, state: "completed-with-manual-steps" as const, rosterAccess: omitted(masterGroup.key) };
+    return { ...result, state: filled.state === "recorded" && filled.receiptState === "applied" ? "filed" as const : "master-review-required" as const, rosterAccess: filled };
   }) };
 }
 

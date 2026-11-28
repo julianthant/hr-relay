@@ -13,6 +13,7 @@ import { createDashboardClient,createRowStore,type DashboardClient,type RowStore
 import { StreamRowSchema } from "../../../../src/models/dashboard/subscription.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
+import { ProtectedPencilRow } from "../../../../src/dashboard/surfaces/settings/providers/protected-pencil-row.js";
 import { SettingsPage, SettingsRefreshMark } from "../../../../src/dashboard/surfaces/settings/settings.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -375,6 +376,150 @@ it("publishes a failed refresh while retaining the verified document and unsaved
   assert.match(current().readProblem ?? "", /Settings could not refresh\. Your drafts are kept\./u);
   assert.deepEqual(current().draft, retained);
   assert.equal(current().dirtyCount, 1);
+});
+
+/** The Settings page over providers that stay mounted, so closing and opening it again is a re-read of the kept document. */
+function mountReopenable(client: DashboardClient, page?: () => ReturnType<typeof createElement>): (open: boolean) => Promise<void> {
+  host = document.createElement("div"); document.body.append(host);
+  const element = host;
+  return async open => { await act(async () => {
+    root ??= createRoot(element);
+    root.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client,
+      children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso: "2026-08-28T18:00:00.000Z",
+        children: open ? page?.() ?? createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: () => undefined, section: "general", actorId: "local-operator", descriptorFingerprint: "d".repeat(64), onSection: () => undefined }) : null }) }) }));
+  }); await act(async () => undefined); };
+}
+
+it("keeps the real Settings fields enabled over a held re-read and keeps an edit when a distinct response lands", async () => {
+  const authority = await syntheticSettingsAuthority(); authorities.push(authority);
+  const first = authority.read();
+  authority.apply({ "actor.label": { set: "Distinct served label" } });
+  const distinct = authority.read();
+  let calls = 0;
+  let land: (() => void) | undefined;
+  const client = { editableSettings: () => ++calls === 1 ? Promise.resolve(first) : new Promise(resolve => { land = () => resolve(distinct); }),
+  } as unknown as DashboardClient;
+  const render = mountReopenable(client);
+  await render(true); await render(false); await render(true);
+  await vi.waitFor(() => { assert.equal(calls, 2); });
+  assert.ok(host);
+  const rows = [...host.querySelectorAll("[data-settings-path]")];
+  assert.ok(rows.length > 0);
+  const disabled = rows.flatMap(row => [...row.querySelectorAll<HTMLElement>("input, button, select, [role='switch'], [role='spinbutton']")].filter(control => control.matches(":disabled, [aria-disabled='true']"))).length;
+  assert.equal(disabled, 0, "no served field is disabled while the re-read is held");
+  const date = host.querySelector<HTMLElement>('[data-settings-path$=".jobEndDate"] [role="spinbutton"]');
+  assert.ok(date);
+  const toggle = host.querySelector<HTMLInputElement>('[data-settings-path="preferences.preventSleepWhileRunning"] input');
+  assert.ok(toggle);
+  const before = toggle.checked;
+  await act(async () => toggle.click());
+  assert.notEqual(toggle.checked, before, "the edit shows at once");
+  await act(async () => { land?.(); });
+  assert.notEqual(host.querySelector<HTMLInputElement>('[data-settings-path="preferences.preventSleepWhileRunning"] input')?.checked, before, "the edit stays visible after the distinct response lands");
+});
+
+it("keeps an explicit username Save visible and unsent until the held re-read lands", async () => {
+  const authority = await syntheticSettingsAuthority(); authorities.push(authority);
+  const doc = authority.read();
+  let calls = 0;
+  const writes: unknown[] = [];
+  const client = { editableSettings: () => ++calls === 1 ? Promise.resolve(doc) : new Promise(() => undefined),
+    executeCommand: (request: unknown) => { writes.push(request); return Promise.reject(new Error("held")); } } as unknown as DashboardClient;
+  function PencilProbe() {
+    const editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) });
+    return createElement(ProtectedPencilRow, { editor, name: "ucpathUserId", label: "Username", thing: "UCPath username", description: "Login name." });
+  }
+  const render = mountReopenable(client, () => createElement(PencilProbe));
+  await render(true); await render(false); await render(true);
+  await vi.waitFor(() => { assert.equal(calls, 2); });
+  assert.ok(host);
+  await act(async () => (host?.querySelector('button[aria-label="Edit UCPath username"]') as HTMLButtonElement | null)?.click());
+  const input = document.body.querySelector<HTMLInputElement>('[role="dialog"] input[name="ucpathUserId"]');
+  assert.ok(input);
+  await act(async () => { // eslint-disable-next-line @typescript-eslint/unbound-method
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (setter === undefined) throw new Error("input setter unavailable");
+    Reflect.apply(setter, input, ["held-username"]); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => overlayButton("Save").click());
+  assert.equal(writes.length, 0, "nothing is sent over a held read");
+  assert.match(host.querySelector('[data-settings-path="protected.ucpathUserId"]')?.textContent ?? "", /held-username/u);
+});
+
+it("keeps a refused username off the closed row and unsent when the Password editor is opened and canceled", async () => {
+  const authority = await syntheticSettingsAuthority(); authorities.push(authority);
+  const served = authority.read();
+  const stored = served.protectedSettings.state === "available" ? served.protectedSettings.entries.ucpathUserId?.value : undefined;
+  assert.equal(typeof stored, "string");
+  const writes: unknown[] = [];
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
+    if (url.endsWith("/settings/editable")) return new Response(JSON.stringify(served), { status: 200 });
+    if (url.endsWith("/commands") && typeof init?.body === "string") {
+      const request = JSON.parse(init.body) as { commandId: string };
+      writes.push(request);
+      return new Response(JSON.stringify({ state: "rejected", commandId: request.commandId, code: "not-editable", message: "This setting cannot be changed." }), { status: 422 });
+    }
+    throw new Error("unexpected-settings-editor-request");
+  } });
+  function TwoRows() {
+    const editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) });
+    return createElement("div", null,
+      createElement(ProtectedPencilRow, { editor, name: "ucpathUserId", label: "Username", thing: "UCPath username", description: "Login name." }),
+      createElement(ProtectedPencilRow, { editor, name: "ucpathPassword", label: "Password", thing: "UCPath password", description: "Secret." }));
+  }
+  const render = mountReopenable(client, () => createElement(TwoRows));
+  await render(true);
+  const row = () => host?.querySelector('[data-settings-path="protected.ucpathUserId"]')?.textContent ?? "";
+  const pencil = (label: string) => host?.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  await vi.waitFor(() => { assert.ok(pencil("Edit UCPath username")); });
+  await act(async () => pencil("Edit UCPath username")?.click());
+  const input = document.body.querySelector<HTMLInputElement>('[role="dialog"] input[name="ucpathUserId"]');
+  assert.ok(input);
+  await act(async () => { // eslint-disable-next-line @typescript-eslint/unbound-method
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (setter === undefined) throw new Error("input setter unavailable");
+    Reflect.apply(setter, input, ["refused-username"]); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => overlayButton("Save").click());
+  await vi.waitFor(() => { assert.equal(writes.length, 1); });
+  await vi.waitFor(() => { assert.match(row(), new RegExp(String(stored))); });
+  await act(async () => pencil("Edit UCPath password")?.click());
+  await act(async () => overlayButton("Cancel").click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 2000)); });
+  assert.equal(writes.length, 1, "canceling Password sends no command");
+  assert.doesNotMatch(row(), /refused-username/u);
+  assert.match(row(), new RegExp(String(stored)));
+});
+
+it("shows a spinner on the credential row whose entry is being saved, and no other row", async () => {
+  const applied: unknown[] = [];
+  const transport = await settingsClient(applied, "held");
+  host = await mountSettingsPage(transport.client, "credentials");
+  const input = host.querySelector<HTMLInputElement>('input[name="ucpathUserId"]');
+  assert.ok(input);
+  await act(async () => { // eslint-disable-next-line @typescript-eslint/unbound-method
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (setter === undefined) throw new Error("input setter unavailable");
+    Reflect.apply(setter, input, ["spinner-username"]); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => { host?.querySelector("form")?.requestSubmit(); });
+  await vi.waitFor(() => { assert.equal(applied.length, 1); });
+  assert.equal(host.querySelector('[data-settings-path="protected.ucpathUserId"] [aria-label="Saving"]') === null, false);
+  assert.equal(host.querySelectorAll('[aria-label="Saving"]').length, 1, "the password row shows no spinner");
+  await act(async () => { transport.release(); });
+});
+
+it("shows a spinner only on the row whose own command is held", async () => {
+  const applied: unknown[] = [];
+  const transport = await settingsClient(applied, "held");
+  host = await mountSettingsPage(transport.client, "general");
+  const toggle = host.querySelector<HTMLInputElement>('[data-settings-path="preferences.preventSleepWhileRunning"] input');
+  assert.ok(toggle);
+  const row = toggle.closest("[data-settings-path]");
+  assert.ok(row);
+  await act(async () => toggle.click());
+  await vi.waitFor(() => { assert.equal(applied.length, 1); });
+  assert.equal(row.querySelectorAll('[aria-label="Saving"]').length, 1);
+  assert.equal(host.querySelectorAll('[aria-label="Saving"]').length, 1, "no other row shows a spinner");
+  await act(async () => { transport.release(); });
+  await vi.waitFor(() => { assert.equal(host?.querySelectorAll('[aria-label="Saving"]').length, 0); });
 });
 
 for (const section of ["general", "performance"]) for (const mode of ["failed", "hung"]) {

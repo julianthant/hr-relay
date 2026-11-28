@@ -92,7 +92,7 @@ export function useAssistantPanel({ conversationPort, ports, served }: { served:
       for (const file of value.files) if (file.workbook) await ports.onRegisterSpreadsheet?.(file);
       if (identity === generation.current && authority === currentAuthority.current) {
         served.onAction({ type: 'edit', value: value.text });
-        served.onAction({ type: 'send', attachments, staged: value.files.filter(file => file.stage?.state === 'staged').map(file => file.id) }); dispatched = true;
+        served.onAction({ type: 'send', approvalMode: value.approvalMode, attachments, staged: value.files.filter(file => file.stage?.state === 'staged').map(file => file.id) }); dispatched = true;
       }
       return { ...conversation, files: [...conversation.files, ...value.files] };
     });

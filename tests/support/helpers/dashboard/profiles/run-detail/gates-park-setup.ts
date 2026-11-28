@@ -152,7 +152,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
       {
         key: "resolve-write-absent",
         label: "I confirmed it is NOT there",
-        detail: "Allows one more attempt.",
+        detail: "Relay checks the system before filing again.",
         intent: "primary",
         icon: "resolve",
         placement: ["banner", "footer"],
@@ -161,7 +161,7 @@ FIXTURE_IDS: typeof FixtureQueueTypes.FIXTURE_IDS;
         expectedVersion: PARKED_WRITE_REVISION,
         confirm: {
           title: "Confirm the transaction is absent",
-          body: `If it is in ${PARKED_WRITE_SYSTEM}, the retry submits it a second time.`,
+          body: `Relay reads ${PARKED_WRITE_SYSTEM} again and files only if the write is absent.`,
           confirmLabel: "It is not there",
           tone: "destructive",
         },

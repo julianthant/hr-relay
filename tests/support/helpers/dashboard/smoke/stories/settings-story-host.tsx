@@ -14,6 +14,8 @@ import { FrontendBootstrapWireSchema } from "../../../../../../src/models/dashbo
 import { ActorIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import type { DashboardAuthority } from "../../../../../../src/dashboard/app/dashboard-app-model.js";
 import { LOADING } from "../../../../../../src/dashboard/state/async-resource.js";
+import { PersonPreferencesContext } from "../../../../../../src/dashboard/lib/person-preferences.js";
+import { createPersonPreferences } from "../../../../../../src/dashboard/state/person-preferences-model.js";
 import bootstrapJson from "../../../../fixtures/dashboard/settings-story-bootstrap.json" with { type: "json" };
 import { useEditableSettings } from "../../../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { SettingsPage } from "../../../../../../src/dashboard/surfaces/settings/settings.js";
@@ -29,6 +31,7 @@ const BOOTSTRAP = FrontendBootstrapWireSchema.parse(bootstrapJson);
 function StoryCommandBinding({ children, rows }: { children: ReactNode; rows: RowStoreWriter }) {
   const client = useDashboardClient();
   const executor = useDashboardCommandExecutor();
+  const preferences = useMemo(() => createPersonPreferences("person"), [client]);
   const binding = useMemo(() => {
     const epoch = Object.freeze({ client, bootstrap: BOOTSTRAP });
     const request = Object.freeze({ client, revision: 0 });
@@ -37,7 +40,8 @@ function StoryCommandBinding({ children, rows }: { children: ReactNode; rows: Ro
       selection: { route: { start: false }, workflowId: "" } });
     return Object.freeze({ authority, executor, scope: Object.freeze({ actorId: ActorIdSchema.parse(ACTOR), client, authority: epoch, dayRequest: request }), feedback: noop });
   }, [client, executor, rows]);
-  return <DashboardCommandBindingProvider binding={binding}>{children}</DashboardCommandBindingProvider>;
+  useEffect(() => preferences.connect(client, binding, () => binding), [client, binding, preferences]);
+  return <DashboardCommandBindingProvider binding={binding}><PersonPreferencesContext.Provider value={preferences}>{children}</PersonPreferencesContext.Provider></DashboardCommandBindingProvider>;
 }
 
 /** Raises the toasts `DashboardApp` raises from Settings' save callbacks. */

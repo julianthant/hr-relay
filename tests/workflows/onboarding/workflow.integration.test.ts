@@ -182,10 +182,24 @@ describe("onboarding workflow", () => {
     assert.equal(result.i9.state, "verified");
     assert.equal(derive({ ...outputs, "master-results": { ...outputs["master-results"], receiptState: "resolve-required" } }).state, "master-review-required");
     assert.throws(() => OnboardingResultSchema.parse(terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: { ...outputs, "hire-receipt": null } })));
-    assert.deepEqual(descriptor.outcomeProjection?.cases.map(value => value.value), ["filed", "master-review-required"]);
+    const { "master-results": _filled, ...withoutMaster } = outputs;
+    const masterOmitted = terminal.parseResult(terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: withoutMaster }));
+    assert.deepEqual(masterOmitted, {
+      ...result, state: "completed-with-manual-steps", rosterAccess: { state: "omitted", step: "master-results" },
+    });
+    const writesOmitted = terminal.parseResult(terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: { "hire-plan": plan } }));
+    assert.deepEqual(writesOmitted, {
+      state: "completed-with-manual-steps", plan,
+      subject: { state: "omitted", step: "i9-creation" }, i9: { state: "omitted", step: "i9-creation" },
+      hireWrite: { state: "omitted", step: "ucpath-hire" }, rosterAccess: { state: "omitted", step: "master-results" },
+    });
+    assert.deepEqual(descriptor.outcomeProjection?.cases.map(value => value.value), ["filed", "master-review-required", "completed-with-manual-steps"]);
     assert.ok(descriptor.details.some(detail => "kind" in detail.source && detail.source.kind === "result" && detail.source.fieldPath === "hireWrite.state"));
     for (const workflow of ["onboarding", "onboarding-hire-writes"]) {
-      for (const leaf of evidenceLeaves(result)) classifyEvidenceLeaf({ kind: "workflow-result", workflowId: WorkflowIdSchema.parse(workflow) }, leaf.path);
+      const scope = { kind: "workflow-result" as const, workflowId: WorkflowIdSchema.parse(workflow) };
+      for (const output of [result, masterOmitted, writesOmitted]) {
+        for (const leaf of evidenceLeaves(output)) classifyEvidenceLeaf(scope, leaf.path);
+      }
     }
   });
 
@@ -287,6 +301,23 @@ for (const role of ["profile", "remote"] as const) it(`parks an UNKNOWN ${role} 
   assert.ok(repeated.lifecycle.state === "terminal" && repeated.lifecycle.outcome === "failed");
   assert.equal(h.driver.events.filter(event => event.startsWith("commit:")).length, clicks);
   assert.equal(h.database.authority.writeIntents.findByPermanentKey("i9", key)?.generation, 1);
+});
+
+for (const role of ["profile", "remote"] as const) it(`preserves an UNKNOWN ${role} fence during a preview`, async () => {
+  const h = await harness({ [role === "profile" ? "profileSubmitFailure" : "remoteSubmitFailure"]: new Error("synthetic lost submit response") });
+  const initial = await h.run();
+  assert.ok(initial.lifecycle.state === "parked-write");
+  const intent = h.database.authority.writeIntents.get(initial.lifecycle.writeIntentId);
+  assert.ok(intent?.status === "parked");
+  const original = h.database.authority.writeAttempts.get(intent.currentAttemptId);
+  assert.ok(original?.outcome.state === "parked");
+  const events = h.driver.events.slice();
+
+  const preview = await h.run(true, role === "profile" ? h.example : { ...h.example, existingProfileId: "900001" });
+  assert.ok(preview.lifecycle.state === "terminal" && preview.lifecycle.outcome === "failed");
+  assert.deepEqual(h.driver.events, events);
+  assert.deepEqual(h.database.authority.writeIntents.get(intent.writeIntentId), intent);
+  assert.deepEqual(h.database.authority.writeAttempts.listByIntent(intent.writeIntentId), [original]);
 });
 
 it("keeps the unresolved I-9 profile fence after an email correction", async () => {

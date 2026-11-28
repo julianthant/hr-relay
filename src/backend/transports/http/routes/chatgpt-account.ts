@@ -4,7 +4,7 @@ import type { Clock } from "../../../../rules/time/clock.js";
 import { ChatGptAccountError, type ChatGptAccountService, type ChatGptAuthorization } from "../../../accounts/chatgpt-account-service.js";
 import { ChatGptCredentialError } from "../../../storage/configuration/chatgpt-credential-repository.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
-import { ChatGptAccountStatusSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptEmptyRequestSchema,
+import { ChatGptAccountStatusSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptConnectionCheckRequestSchema, ChatGptEmptyRequestSchema,
   ChatGptOcrTestResultSchema, ChatGptSignInCompletionSchema, ChatGptSignOutResultSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema,
   type ChatGptAccountStatus, type ChatGptSignInCompletion } from "../../../../models/dashboard/chatgpt-account.js";
 import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
@@ -12,7 +12,12 @@ import type { DashboardApp } from "./api-types.js";
 import type { ShellRouteDeps } from "./shell-types.js";
 import { wireError } from "./failure-status.js";
 
-export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "checkStatus" | "signIn" | "signOut" | "readStatus">; readonly chatGptOcrTest?: ChatGptOcrTestService }
+export interface ChatGptAccountRouteDeps {
+  readonly debugEvents?: ShellRouteDeps["debugEvents"];
+  readonly chatGptAccount?: Pick<ChatGptAccountService, "checkStatus" | "signIn" | "signOut" | "readStatus">;
+  readonly chatGptOcrModel?: string;
+  readonly chatGptOcrTest?: ChatGptOcrTestService;
+}
 function failure(error: unknown, dispatched = false, unknownCode: ErrorCatalogCode = "CHATGPT_AUTH_UNAVAILABLE") {
   const known = error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError;
   const code: ErrorCatalogCode = known ? error.code : unknownCode;
@@ -70,8 +75,10 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
     return c.json(await statusBody(async () => {
       let input: unknown;
       try { input = await c.req.json(); } catch { throw new ChatGptAccountError("CHATGPT_AUTH_INVALID"); }
-      if (!ChatGptEmptyRequestSchema.safeParse(input).success) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
-      return service().checkStatus(c.req.raw.signal);
+      const parsed = ChatGptConnectionCheckRequestSchema.safeParse(input);
+      if (!parsed.success) throw new ChatGptAccountError("CHATGPT_AUTH_INVALID");
+      const ocrModel = parsed.data.fresh === true ? deps.chatGptOcrModel : undefined;
+      return service().checkStatus(c.req.raw.signal, { ...parsed.data, ...(ocrModel === undefined ? {} : { ocrModel }) });
     }));
   });
   app.post("/api/v1/settings/chatgpt-account/sign-in", async c => {

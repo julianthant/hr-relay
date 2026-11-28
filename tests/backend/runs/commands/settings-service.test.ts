@@ -28,6 +28,7 @@ type State = { commands: Map<string, CommandRequest>; audits: Map<string, z.infe
 function fixture(failAt?: "audit" | "insert") {
   let durable: State = { commands: new Map(), audits: new Map(), snapshots: new Map() };
   let privateCommits = 0;
+  let ordinaryIdentityAdmissions = 0;
   let privateRecord: ProtectedStoreRecord | undefined;
   let nextId = 1;
   let admission: "open" | "draining" = "open";
@@ -35,14 +36,19 @@ function fixture(failAt?: "audit" | "insert") {
   const authority: CommandAuthority = { withAuthorityTransaction: (work) => {
     const state: State = { commands: new Map(durable.commands), audits: new Map(durable.audits),
       snapshots: new Map(durable.snapshots), current: durable.current, active: durable.active };
+    const assertIdentity = (input: unknown) => {
+      const command = CommandRequestSchema.parse(input);
+      if (command.family === "settings" && command.type === "apply-settings") ordinaryIdentityAdmissions += 1;
+      const existing = state.commands.get(command.commandId);
+      if (existing !== undefined) assert.deepEqual(existing, command);
+    };
     const repositories = {
       runs: { admission: () => ({ state: admission }) },
       commands: {
-        assertIdentity(input: unknown) { const command = CommandRequestSchema.parse(input);
-          const existing = state.commands.get(command.commandId);
-          if (existing !== undefined) assert.deepEqual(existing, command); },
+        assertIdentity,
         get: (id: string) => state.commands.get(id), getSettingsHistory: (id: string) => state.commands.get(id),
         insert(input: unknown) { if (failAt === "insert") throw new Error("injected journal failure");
+          assertIdentity(input);
           const command = CommandRequestSchema.parse(input); const existing = state.commands.get(command.commandId);
           if (existing !== undefined) return { state: "existing", record: existing };
           state.commands.set(command.commandId, command); return { state: "inserted", record: command }; },
@@ -95,7 +101,7 @@ function fixture(failAt?: "audit" | "insert") {
       payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } };
   };
   return { execute, ordinary, authority, durable: () => durable,
-    privateCommits: () => privateCommits,
+    privateCommits: () => privateCommits, ordinaryIdentityAdmissions: () => ordinaryIdentityAdmissions,
     holdAdmission: () => { admission = "draining"; },
     loseCurrent: () => { durable.current = undefined; } };
 }
@@ -128,6 +134,7 @@ it("applies the first ordinary save before its own journal row becomes history; 
   assert.deepEqual(readSettings(f.authority.withAuthorityTransaction(repositories => repositories)), initialSettingsFileRecord());
   const applied = f.execute(f.ordinary());
   assert.equal(applied.state, "applied");
+  assert.equal(f.ordinaryIdentityAdmissions(), 1);
   assert.equal(f.durable().commands.size, 1);
   assert.equal(f.durable().audits.size, 1);
   assert.equal(f.durable().snapshots.size, 1);

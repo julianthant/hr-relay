@@ -2,19 +2,20 @@ import type { EvidenceSchemaReader } from "../../../models/storage/evidence-sche
 import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
 import { assertCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
-import { prepareDelegationRetry } from "../../storage/sqlite/delegation-authority.js";
+import { authenticateDelegationGroup, currentDelegationManifests, prepareDelegationRetry } from "../../storage/sqlite/delegation-authority.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { CanonicalRecoverRunRequestSchema, CanonicalRetrySourceRequestSchema } from "../../storage/sqlite/run-store-contracts.js";
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
 import { delegationEvidenceOutput } from "../../../models/run/result.js";
-import { readRunCheckpoint, readContinuationGate, validateRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
+import { readRunCheckpoint, readContinuationGate, retainedCheckpoint, validateRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { captureRunContinuation, continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import { orderOnlyOmission } from "../../../models/workflow/step-omission.js";
 import { runWorkbookReferenceTypeIds } from "../../../models/dashboard/workbooks.js";
-import { RerunRefusedError, validateRerunSourcePlan } from "./rerun.js";
+import { RerunRefusedError, validateRerunSourcePlan } from "./rerun-source.js";
 import { RunRecoveryPlanSchema } from "../../../models/run/recovery-plan.js";
 import type { RunRecord } from "../../../models/run/record.js";
+import type { RunContinuation } from "../../../models/run/continuation.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-repositories.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -37,6 +38,46 @@ export function assertRunRecoveryCommandScope(repositories: AuthorityRepositorie
 export function planRunRecovery(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord, sourceCommandId?: string, schemaReader?: EvidenceSchemaReader) {
   assertRunRecoveryCommandScope(repositories, sourceCommandId);
   return planCheckpointContinuation(repositories, descriptor, run, "recover", schemaReader);
+}
+
+export function isInterruptedRerunSource(repositories: Pick<AuthorityRepositories, "failures">, run: RunRecord): boolean {
+  const state = run.lifecycle;
+  return state.state === "terminal" && (state.outcome === "interrupted" || state.outcome === "failed"
+    && state.failureId !== undefined && repositories.failures.get(state.failureId)?.code === "RUN_INTERRUPTED_BY_CRASH");
+}
+
+export function planInterruptedRerun(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord, schemaReader?: EvidenceSchemaReader) {
+  if (run.envelope.parent !== undefined) throw new RerunRefusedError("invalid-state", "Rerun a delegated member from its parent.");
+  const { continuation } = planCheckpointContinuation(repositories, descriptor, run, "recover", schemaReader);
+  const visited = new Set<string>();
+  const assertChildrenSettled = (owner: RunRecord): void => {
+    if (visited.has(owner.envelope.runId)) return;
+    visited.add(owner.envelope.runId);
+    if (owner.lifecycle.state === "parked-write" || repositories.writeIntents.listByRun(owner.envelope.runId)
+      .some(intent => intent.status === "attempting" || intent.status === "parked")) {
+      throw new RerunRefusedError("invalid-state", "An uncertain write is still parked.");
+    }
+    for (const child of repositories.runs.listChildren(owner.envelope.runId)) assertChildrenSettled(child);
+  };
+  for (const source of [run, ...validateRunContinuation(repositories, run.envelope)]) assertChildrenSettled(source);
+  return { continuation, retainedSteps: interruptedRetainedSteps(repositories, descriptor, run, continuation) };
+}
+
+export function interruptedRetainedSteps(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor,
+  run: RunRecord, continuation: RunContinuation = captureRunContinuation(repositories, run)) {
+  const delegated = new Map<string, boolean>();
+  for (const source of [run, ...validateRunContinuation(repositories, run.envelope)]) {
+    for (const manifest of currentDelegationManifests(repositories, source.envelope.runId)) {
+      const { invocation, children } = authenticateDelegationGroup(repositories, manifest);
+      if (!delegated.has(invocation.nodeId)) delegated.set(invocation.nodeId,
+        children.every(({ child }) => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "done"));
+    }
+  }
+  const complete = new Set([...continuation.checkpoints, ...continuation.gates].map(row => String(row.nodeId)));
+  const asserted = new Set(continuation.checkpoints.filter(reference => retainedCheckpoint(repositories, run.envelope, reference).assertion !== undefined)
+    .map(row => String(row.nodeId)));
+  return descriptor.timeline.flatMap(step => step.nodes.every(({ id }) => complete.has(id) || delegated.get(id) === true)
+    ? [{ key: step.key, repeatable: !step.nodes.some(({ id }) => delegated.has(id) || asserted.has(id)) }] : []);
 }
 
 export function planDelegatedRetry(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord, sourceCommandId: string | undefined,

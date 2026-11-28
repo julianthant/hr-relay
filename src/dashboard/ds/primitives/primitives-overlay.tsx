@@ -106,15 +106,13 @@ export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 
-export type DsDialogSize = "sm" | "md" | "lg" | "xl";
+export type DsDialogSize = "sm" | "md" | "lg";
 
-/** sm 520, md 560, lg 880. `lg` is the Start run frame: a 73px divided header and a 57px recessed footer.
- * `xl` is Review records' own size and is not a general width. */
+/** sm 520, md 560, lg 880. `lg` is the Start run frame: a 73px divided header and a 57px recessed footer. */
 const DIALOG_SIZE: Record<DsDialogSize, string> = {
   sm: "max-w-[520px]",
   md: "max-w-[560px]",
   lg: "max-w-[880px]",
-  xl: "max-w-[min(94vw,1100px)]",
 };
 
 /** The backdrop. `slow` matches a DRAWER's own `--ds-dur-4` slide */
@@ -459,8 +457,8 @@ export function Tooltip({
   children,
 }: {
   content: ReactNode;
-  /** `card` is the rich-content surface (256px card, 12px corners) instead of the one-line hint. */
-  variant?: "card";
+  /** `card` is the rich-content surface (256px card, 12px corners) instead of the one-line hint; `wrap` is the hint with its text wrapped, for names of any length. */
+  variant?: "card" | "wrap";
   /** The key chord, drawn as a chip after the text. */
   shortcut?: ReactNode;
   side?: "top" | "right" | "bottom" | "left";
@@ -478,7 +476,7 @@ export function Tooltip({
           sideOffset={8}
           collisionBoundary={collisionBoundary}
           collisionPadding={8}
-          className={cn("ds-tooltip", variant === "card" && "ds-tooltip--card", dsLayer.tooltip)}
+          className={cn("ds-tooltip", variant === "card" && "ds-tooltip--card", variant === "wrap" && "ds-tooltip--wrap", dsLayer.tooltip)}
         >
           {content}{shortcut && <kbd className="ds-tooltip-key">{shortcut}</kbd>}
         </TooltipPrimitive.Content>

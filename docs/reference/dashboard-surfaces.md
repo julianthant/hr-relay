@@ -164,7 +164,7 @@ The focus toolbar adds no selection toggle. The batch footer keeps stable sessio
 Its single footer also uses `FooterActions` for the explicitly selected person's exact attempt and
 served revision. An accessible person/attempt name and tooltip identify the action scope. With no
 person selected it exposes no run action; it never chooses a representative or claims a batch mutation. Cancel,
-Pause/Resume, Rerun/Recover and Delete retain their existing confirmation and command paths when
+Pause/Resume, Rerun and Delete use their existing dialogs and command paths when
 served. There is no grouping toggle. Queue bands and the finished digest count drawn
 rows; status-filter controls, calendar and Analytics retain their run-based populations.
 
@@ -301,7 +301,8 @@ choice, with no fresh text-entry alternative. [Run reference planning](frontend-
 owns entry admission, partial refusals and independent run creation.
 
 Rerun prefills safe source identity fields in Values, using the declared input parser. Protected
-values and identities that no longer satisfy the current input stay uncopied. Onboarding Rerun remains
+values and identities that no longer satisfy the current input stay uncopied. Interrupted Rerun
+uses the source run's retained input and workbook references. Ordinary Onboarding Rerun remains
 one source input with a fresh visible library/version lookup, without a selected-row picker or retained
 source selector. Its [trusted input projection](workflow-model.md#56-recovery-and-rerun) removes server-owned roster data.
 
@@ -787,7 +788,7 @@ trace and other actions. A recorded pause uses the outline Queued style with a P
 remain Pausing until recorded. Logs marks the corresponding timeline boundary. The queue toolbar
 pauses every run in the application lifecycle snapshot, including runs outside the selected day.
 When every target is paused it offers Resume all, retaining each command outcome. A single Resume,
-Retry or Recover shows the queued-run worker warning instead of the confirmed toast when that result
+Retry shows the queued-run worker warning instead of the confirmed toast when that result
 carries worker startup. Resume all keeps the confirmed toast and adds one warning naming how many
 runs have no worker, including when another run keeps the batch from confirming. While a workflow
 has unpaused queued runs and every one of its workers has stopped, a sticky warning names how the
@@ -800,7 +801,7 @@ the Cancelled pill credits the operator only for their own cancel and otherwise 
 “Pause all and quit?” with Keep working and confirmation, without a run list. A pending quit shows a
 banner until the runtime settles; no submit is interrupted. Unavailable authority disables controls,
 and unknown closure never becomes a completed pause or clean shutdown. Exact command recovery keeps
-the original targets and request identity. Crash-failed rows offer one checkpoint Rerun and Delete.
+the original targets and request identity. Interrupted runs open Rerun with unfinished steps selected.
 
 ### UCPath found transactions presentation
 

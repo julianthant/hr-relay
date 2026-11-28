@@ -54,7 +54,7 @@ async function mountRecovery() {
   } });
   function Harness() {
     binding = originalBindingHook();
-    controller = useProtectedSettings({ actorId: "local-operator", readReady: true, document: documentWire,
+    controller = useProtectedSettings({ actorId: "local-operator", readReady: true, editable: true, document: documentWire,
       refresh: async () => authority.read(), readCurrent: async () => authority.read(),
       acceptReadback: value => { documentWire = value; }, onSaveProblem: problem => { problems.push(problem.title); } });
     return createElement("div", null, controller.save.state);

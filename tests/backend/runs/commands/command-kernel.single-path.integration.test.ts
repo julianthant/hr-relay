@@ -2,6 +2,7 @@ import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { failedSourceReadDescriptor, sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
 import { RunRecordService, lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { recordHistoricalRecover } from "../../../support/helpers/backend/record-historical-recover.js";
 import { admitFixtureSlot } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 import { seedSyntheticRuntimeConfig,singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
@@ -215,6 +216,7 @@ describe("control-command-single-path", () => {
     for (const fixture of CURRENT_COMMAND_FIXTURES) {
       // Refusals are journaled, so each arm needs its own command id.
       const parsed = { ...CommandRequestSchema.parse(fixture), commandId: nextCommandId() };
+      if (parsed.type === "recover-run") continue;
       const request = parsed.family === "worker-browser" && "workflowId" in parsed.target
         ? { ...parsed, target: { ...parsed.target, workflowId: "fixture-graph" } } : parsed;
       const key = `${request.family}/${request.type}`;
@@ -231,12 +233,12 @@ describe("control-command-single-path", () => {
       }
     }
     const registry = COMMAND_FAMILY_REGISTRY.flatMap(({ family, actions }) =>
-      actions.map((action) => `${family}/${action}`));
+      actions.filter(action => action !== "recover-run").map((action) => `${family}/${action}`));
     assert.deepEqual([...new Set(seen)].sort(), [...registry].sort(), "the fixture corpus must cover every current family/action");
   });
 
 
-  it("journals explicit recovery of a genuine failed source through the canonical command arm", async () => {
+  it("refuses new Recover commands and reads historical Recover authority", async () => {
     const h = await sourceBoundHarness(failedSourceReadDescriptor, world => sourceBoundReadStores(world, [2]));
     try {
       const source = h.start(h.proposal());
@@ -248,7 +250,10 @@ describe("control-command-single-path", () => {
         requestedBy: "local-operator", source: "dashboard", family: "run", type: "recover-run",
         target: { runId: failed.envelope.runId, expectedVersion: failed.version } });
       const generation = h.database.getMeta().authorityGeneration;
-      const result = h.kernel.execute(request);
+      assert.throws(() => h.kernel.execute(request), /Open Rerun/u);
+      assert.equal(h.database.getMeta().authorityGeneration, generation);
+      assert.equal(h.database.authority.commands.get(request.commandId), undefined);
+      const result = recordHistoricalRecover(h, h.descriptor, request);
       assert.equal(h.database.getMeta().authorityGeneration, generation + 2);
       assert.ok(result.state === "applied");
       assert.equal(result.affectedTargets.length, 2);
@@ -261,7 +266,7 @@ describe("control-command-single-path", () => {
       assert.deepEqual(h.database.authority.commands.get(request.commandId), request);
       const audit = h.database.authority.commandAudits.findByCommand(request.commandId); assert.ok(audit);
       assert.deepEqual(audit.request, request); assert.equal(audit.result.state, "applied");
-      assert.equal(h.kernel.execute(request).state, "already-applied");
+      assert.throws(() => h.kernel.execute(request), /Open Rerun/u);
       assert.equal((await h.execute(recovered)).state, "done");
       assert.deepEqual(h.fresh(failed), failed);
       assert.deepEqual(h.database.authority.runCheckpoints.listByItem(failed.envelope.workflow, failed.envelope.itemId)

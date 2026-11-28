@@ -1,6 +1,12 @@
 import { existsSync, realpathSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("node:fs/promises", async importOriginal => {
+  const fs = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...fs, rm: vi.fn(fs.rm) };
+});
 
 vi.mock("node:worker_threads", async () => {
   const { EventEmitter } = await import("node:events");
@@ -32,7 +38,7 @@ const outcome = (promise: Promise<unknown>) => promise.then(value => ({ value })
 const reset = () => { StubWorker.started.length = 0; };
 
 describe("backup inspection worker", () => {
-  it("returns the worker's inspection and runs one worker at a time, the next only after the previous thread exits", async () => {
+  it("returns the inspection and holds the next worker until asynchronous scratch cleanup completes", async () => {
     reset();
     const first = inspectBackupFileOffThread("/backups/a.sqlite", 22);
     const second = inspectBackupFileOffThread("/backups/b.sqlite", 22);
@@ -43,9 +49,21 @@ describe("backup inspection worker", () => {
     expect(inspection).toEqual(verdict);
     expect(Object.isFrozen(inspection.invariants)).toBe(true);
     expect(StubWorker.started).toHaveLength(1);
-    worker.emit("exit", 0);
+    const cleanup = Promise.withResolvers<void>();
+    const filesystem = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    vi.mocked(rm).mockImplementationOnce(async (path, options) => {
+      await cleanup.promise;
+      await filesystem.rm(path, options);
+    });
+    try {
+      worker.emit("exit", 0);
+      expect(rm).toHaveBeenLastCalledWith(worker.options.env.TMPDIR, { recursive: true, force: true, maxRetries: 3 });
+      expect(existsSync(worker.options.env.TMPDIR)).toBe(true);
+      expect(StubWorker.started).toHaveLength(1);
+    } finally { cleanup.resolve(); }
     const next = await started(2);
     expect(next.previousExited).toBe(true);
+    expect(existsSync(worker.options.env.TMPDIR)).toBe(false);
     next.emit("message", { kind: "inspected", inspection: verdict }); next.emit("exit", 0);
     await expect(second).resolves.toEqual(verdict);
   });

@@ -2,7 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Command } from "cmdk";
 import { ChartNoAxesColumn, Circle, CircleAlert, CircleCheck, Clock, FileSpreadsheet, ListTree, LoaderCircle, Play, Settings, Table2, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Kbd, Skeleton } from "../../../ds/ui.js";
+import { Kbd, SearchInput, Skeleton } from "../../../ds/ui.js";
 import { workflowIcon } from "../../workflows/workflow-icons.js";
 import { dsLayer } from "../../../ds/theme/tokens.js";
 import { cn } from "../../../lib/utils.js";
@@ -32,6 +32,7 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
   const sections = useMemo(() => paletteSections({ query, filter, runs, runsMatched, workflows, sheets }), [query, filter, runs, runsMatched, workflows, sheets]);
   useEffect(() => { if (!open) setFilter("all"); }, [open]);
   const list = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLInputElement>(null);
   // A Runs list that fits without scrolling can never fire a scroll, so it asks for the next page itself.
   useEffect(() => { const el = list.current; if (open && filter === "runs" && onMoreRuns && el && el.scrollHeight <= el.clientHeight) onMoreRuns(); }, [open, filter, onMoreRuns, sections]);
   // cmdk leaves aria-activedescendant unset until the selection first moves
@@ -54,11 +55,11 @@ export function SearchPalette({ open, onOpenChange, query, onQuery, runs, runsMa
   return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className={cn("search-palette-scrim", dsLayer.modal)} />
-      <DialogPrimitive.Content aria-describedby={undefined} className={cn("search-palette ds-menu-surface font-ui", dsLayer.modal)} onCloseAutoFocus={onCloseAutoFocus}
+      <DialogPrimitive.Content aria-describedby={undefined} className={cn("search-palette ds-menu-surface font-ui", dsLayer.modal)} onOpenAutoFocus={event => { event.preventDefault(); field.current?.focus(); }} onCloseAutoFocus={onCloseAutoFocus}
         onEscapeKeyDown={event => { if (query !== "") { event.preventDefault(); onQuery(""); } }}>
         <DialogPrimitive.Title className="sr-only">Search Relay</DialogPrimitive.Title>
         <Command ref={watchSelection} shouldFilter={false} loop label="Search Relay" className="flex min-h-0 flex-1 flex-col">
-          <Command.Input autoFocus aria-label="Search Relay" placeholder="Search Relay" value={query} onValueChange={onQuery} className="search-palette-input" />
+          <div className="search-palette-field"><Command.Input asChild value={query} onValueChange={onQuery}><SearchInput ref={field} aria-label="Search Relay" placeholder="Search Relay" onClear={() => onQuery("")} /></Command.Input></div>
           <Command.List ref={list} label="Results" className="search-palette-list" onScroll={event => { const list = event.currentTarget; if (onMoreRuns && list.scrollHeight - list.scrollTop - list.clientHeight < list.clientHeight) onMoreRuns(); }}>
             {sections.length === 0 && !loading && <p role="status" className="search-palette-empty">No matches</p>}
             {sections.map(section => <Command.Group key={section.id} aria-label={section.label}>

@@ -1,12 +1,38 @@
 import { ReadApprovedOcrRecord } from "../../../../models/processing/ocr/read-approved-record.js";
 import { UcpathReadEmergencyContacts } from "../../../../models/systems/ucpath/read-emergency-contacts.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { EmergencyContactMemberInputSchema } from "../../../../models/workflows/emergency-contact-member/input.js";
 import { MapApprovedEmergencyContact } from "../../../../models/workflows/emergency-contact-member/read-approved-contact.js";
 import { PlanApprovedEmergencyContact } from "../../../../models/workflows/emergency-contact-member/read-contact-plan.js";
+import { approvedEmergencyContact } from "../../../../rules/ucpath/emergency-contact.js";
 import { defineStep,inheritStepProof,type WorkflowAuthor,type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 
-export const CONTACT_PLAN_STEP = Object.freeze({ ...defineWorkflowStep({ key: "contact-plan", label: "Review approved contact plan" }), locked: "bound-read" as const, operatorFields: [
+export const CONTACT_PLAN_MANUAL: StepManualDeclaration = {
+  off: "values",
+  ownStartOnly: true,
+  form: { fields: [{ key: "emplId", label: "Employee ID", kind: "eid", withheld: true, replaces: { nodeId: "map-contact", path: "emplId" } }] },
+  refine: ({ emplId }, submission) => {
+    const parsed = EmergencyContactMemberInputSchema.safeParse(submission);
+    return parsed.success && emplId !== parsed.data.record.assertedEid
+      ? [{ field: "emplId", message: "Enter the Employee ID on the approved contact record." }] : [];
+  },
+  produces: {
+    // The reference read uses the typed ID. The Save still requires an observed contact plan.
+    "map-contact": ({ facts, scope }) => {
+      const { record } = ReadApprovedOcrRecord.output.parse(scope.outputs["approved-record"]);
+      if (facts.emplId !== record.assertedEid) throw new Error("Typed Employee ID differs from the approved contact record");
+      return { ...approvedEmergencyContact(record), emplId: facts.emplId };
+    },
+  },
+  skips: ["read-contacts", "contact-plan"],
+  keeps: ["approved-record"],
+  alsoSkips: ["onbase-filing"],
+};
+
+export const CONTACT_PLAN_INCLUDED = { "skip-contact-plan": ["run"] } as const;
+
+export const CONTACT_PLAN_STEP = Object.freeze({ ...defineWorkflowStep({ key: "contact-plan", label: "Review approved contact plan" }), operatorFields: [
   { label: "Existing primary change", sources: [{ nodeId: "contact-plan", kind: "output", fieldPath: "demotionLine" }] },
   { label: "Approved contact", sources: [{ nodeId: "contact-plan", kind: "output", fieldPath: "contactLine" }] },
 ] as const, system: "ucpath" as const,
@@ -68,13 +94,14 @@ export const CONTACT_PLAN_STEP = Object.freeze({ ...defineWorkflowStep({ key: "c
     ],
   } as const,
 });
-export function buildContactPlan(author: WorkflowAuthor<typeof EmergencyContactMemberInputSchema>) {
+export function buildContactPlan(author: WorkflowAuthor<typeof EmergencyContactMemberInputSchema>, manual?: StepManualDeclaration) {
   const approved = author.task({ id: "approved-record", label: "Authenticate OCR release", contract: ReadApprovedOcrRecord, replay: "always-rerun" }, [], ({ input }) => ({ approval: input.approval, record: input.record }));
   const mapped = author.task({ id: "map-contact", label: "Map approved contact fields", contract: MapApprovedEmergencyContact, replay: "always-rerun" }, [approved], ({ input, outputs }) =>
     ({ ...input, record: outputs["approved-record"].record }));
   const contacts = author.task({ id: "read-contacts", label: "Read complete saved contact set", contract: UcpathReadEmergencyContacts, replay: "always-rerun" }, [mapped, approved], ({ outputs }) => ({ emplId: outputs["map-contact"].emplId, expectedName: outputs["map-contact"].expectedName }));
   const plan = author.task({ id: "contact-plan", label: "Declare ordered primary changes", contract: PlanApprovedEmergencyContact, replay: "always-rerun" }, [mapped, contacts], ({ outputs }) => ({ contact: outputs["map-contact"], contacts: outputs["read-contacts"].contacts }));
-  return { plan, mapped, steps: [[CONTACT_PLAN_STEP, [approved, mapped, contacts, plan]]] as const };
+  const group = manual === undefined ? CONTACT_PLAN_STEP : author.group(CONTACT_PLAN_STEP, { manual });
+  return { plan, mapped, steps: [[group, [approved, mapped, contacts, plan]]] as const };
 }
 export const contactPlanDefinition = defineStep({ group: CONTACT_PLAN_STEP, build: buildContactPlan,
   proof: { id: "emergency-contact-member-contact-plan", order: 28,

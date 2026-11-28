@@ -4,6 +4,7 @@ import { describe,expect,it } from "vitest";
 import { acceptsRecheckTransactionId,authenticateAuditedParkedWriteResolution,authenticateParkedWriteResolution } from "../../../src/rules/write-safety/parked-resolution.js";
 import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/write-authority-reason.js";
 import { HASH_A,HASH_B,LATER,NOW,UUID_5,UUID_6,WRITE_ATTEMPT,WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { absentProbeEvidence } from "../../support/fixtures/write-sequencer-fixtures.js";
 const reason=deriveWriteAuthorityReason("recovery-probe-unknown","probe","offline indeterminate probe");
 const attempt={...WRITE_ATTEMPT,outcome:{state:"parked",code:"unknown",message:"offline indeterminate probe",authorityReason:reason},recordedAt:NOW};
 const binding={commandId:UUID_5,auditId:UUID_6,writeIntentId:attempt.writeIntentId,writeAttemptId:attempt.writeAttemptId,
@@ -43,6 +44,12 @@ describe("authenticated immutable parked resolution",()=>{
       generation:binding.generation,operator:"local-operator",confirmedAt:LATER},resolvedAt:LATER,version:3,updatedAt:LATER,resolution:absentBinding};
     expect(authenticateParkedWriteResolution(absentIntent,attempt,absentCommand,{...audit,completedAt:LATER,request:absentCommand,writeResolution:absentIntent}).attempt).toEqual(attempt);
     expect(()=>authenticateParkedWriteResolution({...absentIntent,settlement:{...absentIntent.settlement,confirmedAt:"2026-01-01T00:00:00.000Z"}},attempt,absentCommand,{...audit,completedAt:LATER,request:absentCommand,writeResolution:absentIntent})).toThrow(/audit-acknowledgement-mismatch/u);
+    const readAudit = { ...audit, request: absentCommand };
+    expect(() => authenticateParkedWriteResolution(absentIntent, attempt, absentCommand, readAudit)).toThrow(/absence-proof-mismatch/u);
+    const evidence = { ...absentProbeEvidence(LATER).evidence, idempotencyKeyDigest: binding.idempotencyKeyDigest };
+    const checked = { ...absentIntent, settlement: { ...absentIntent.settlement, evidence } };
+    expect(authenticateParkedWriteResolution(checked, attempt, absentCommand, readAudit).attempt).toEqual(attempt);
+    expect(() => authenticateParkedWriteResolution(checked, attempt, command, audit)).toThrow(/absence-proof-mismatch/u);
   });
 });
 

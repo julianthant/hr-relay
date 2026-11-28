@@ -2,7 +2,11 @@ import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
+import { createOcrStartReadiness } from "../../../../src/backend/runs/start/ocr-readiness.js";
+import { CHATGPT_OCR_MODEL } from "../../../../src/backend/processing/providers/chatgpt-ocr-adapter.js";
 import { StartStepOmissionRefusedError } from "../../../../src/backend/runs/start/step-selection.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -25,6 +29,10 @@ import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-co
 import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { parseRunWorkbookReference } from "../../../../src/models/dashboard/workbooks.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
+import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { chatGptFixture } from "../../../support/helpers/chatgpt-account-fixtures.js";
+import { unusedWorkerPool } from "../../../support/helpers/backend/unused-worker-pool.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -42,7 +50,8 @@ afterEach(async () => {
 });
 
 async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start", initialize = true,
-  workbooksFor?: (database: AuthorityDatabase) => Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion" | "types" | "createReferenceCapture">) {
+  workbooksFor?: (database: AuthorityDatabase) => Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion" | "types" | "createReferenceCapture">,
+  ocrReadiness?: ReturnType<typeof createOcrStartReadiness>) {
   const profile = await profileFixtures.create(); profiles.push(profile);
   const database = AuthorityDatabase.open(profile.admission,
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, CLOCK,
@@ -63,6 +72,7 @@ async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart
     },
     authorityRead: database,
     ...(workbooksFor === undefined ? {} : { workbooks: workbooksFor(database) }),
+    ...ocrReadiness,
     descriptors: {
       resolve: (workflowId) => (workflowId === String(descriptor.id) ? descriptor : undefined),
     },
@@ -288,22 +298,59 @@ it("rolls a canonical plan back with its enclosing transaction and retains the e
   assert.ok(h.database.authority.startPlans.get(accepted.startPlanId));
 });
 
-it("plans one dry-run Emergency Contact PDF start against a header-only ocr-roster", async () => {
+it.each(["revoked session", "missing OCR model"] as const)("checks Emergency Contact OCR at planning and confirmation and refuses a %s", async fault => {
   const descriptor = compileWorkflow(emergencyContactWorkflow).descriptor;
-  let library: WorkbookLibraryService | undefined;
-  const h = await harnessFor(descriptor, undefined, true, database => library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK, sync: unexpectedWorkbookSync }));
-  assert.ok(library);
-  library.putType({ id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null });
-  const roster = library.create({ name: "OCR roster", themes: [], hasFormulas: false, sheets: [{ id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
-    columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
-    rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }] }] });
-  library.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
-  const wire = h.service.plan({ workflowId: descriptor.id, dryRun: true, selectedStepKeys: descriptor.timeline.map(step => step.key),
-    submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" }, onbaseFiling: "file" }],
-    workbookReferences: [{ entry: 1, libraryId: roster.libraryId, versionId: library.libraryVersion(roster.libraryId).version.id, sheetId: "people",
-      expectedVersion: library.read(roster.libraryId).version }] });
-  assert.equal(wire.refused.length, 0, JSON.stringify(wire.refused));
-  assert.equal(wire.planned.length, 1);
+  const account = await chatGptFixture(undefined, profileFixtures.create);
+  try {
+    let library: WorkbookLibraryService | undefined;
+    const ocrReadiness = createOcrStartReadiness(account.service, CHATGPT_OCR_MODEL);
+    const h = await harnessFor(descriptor, undefined, true, database => library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK, sync: unexpectedWorkbookSync }), ocrReadiness);
+    assert.ok(library);
+    library.putType({ id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null });
+    const roster = library.create({ name: "OCR roster", themes: [], hasFormulas: false, sheets: [{ id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
+      columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
+      rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }] }] });
+    library.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
+    const workbookReferences = [{ entry: 1, libraryId: roster.libraryId, versionId: library.libraryVersion(roster.libraryId).version.id, sheetId: "people",
+      expectedVersion: library.read(roster.libraryId).version }];
+    const start = (extractWithOcr: boolean) => ({ workflowId: descriptor.id, dryRun: true, selectedStepKeys: descriptor.timeline.map(step => step.key),
+      submissions: [{ document: OCR_INPUT_EXAMPLE.document, fileName: "scan.pdf", readingId: OCR_INPUT_EXAMPLE.readingId, roster: null, reading: { kind: "subscription" }, onbaseFiling: "file", extractWithOcr }],
+      workbookReferences });
+    const signal = new AbortController().signal;
+    const catalogCalls = () => account.calls.filter(call => call.url.endsWith("/models")).length;
+    await account.connected();
+    assert.throws(() => h.service.plan(start(true)), { message: ERROR_CATALOG.PROVIDER_UNAVAILABLE.text });
+    assert.equal((await h.service.prepareAndPlan?.(start(false), signal))?.planned.length, 1);
+    assert.equal(catalogCalls(), 0);
+    const wire = await h.service.prepareAndPlan?.(start(true), signal);
+    assert.ok(wire);
+    assert.equal(wire.refused.length, 0, JSON.stringify(wire.refused));
+    assert.equal(wire.planned.length, 1);
+    assert.equal(catalogCalls(), 1);
+    if (fault === "revoked session") account.setModelsHook(async () => Response.json({ detail: "withheld" }, { status: 401 }));
+    else account.setModels({ models: [{ slug: "gpt-5", display_name: "Other model", visibility: "list" }] });
+    assert.equal(ocrReadiness.ocrProviderAvailable(), true);
+    const unexpected = (): never => assert.fail("unrequested Start effect");
+    const kernel = createCommandKernel({ ...ocrReadiness, authority: h.database, lifecycle: testRunService(h.database, CLOCK), clock: CLOCK,
+      ids: { uuid: randomUUID }, appVersion: "0.1.0", descriptors: { resolve: () => descriptor },
+      configIdentity: { configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: UUID_4 },
+      intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS, writeResolution: { recheck: unexpected, resolveAbsent: unexpected },
+      workerRuntime: { pool: unusedWorkerPool(unexpected) } });
+    const refused = await kernel.executeStart({ commandId: randomUUID(), family: "start", type: "start-run", source: "dashboard",
+      requestedBy: "local-operator", requestedAt: CLOCK.now().toISOString(), target: { workflowId: descriptor.id, startPlanId: wire.startPlanId,
+        expectedVersion: wire.expectedVersion }, payload: wire.fingerprints });
+    assert.ok(refused.state === "rejected", JSON.stringify(refused));
+    assert.equal(refused.message, ERROR_CATALOG.PROVIDER_UNAVAILABLE.text);
+    assert.equal(catalogCalls(), 2);
+    assert.equal(h.database.authority.startPlans.get(wire.startPlanId)?.consumedBy, undefined);
+    assert.deepEqual(h.database.authority.runs.listByWorkflow(descriptor.id), []);
+    if (fault === "missing OCR model") {
+      assert.equal(account.service.readStatus().connection.state, "completed");
+      assert.equal(ocrReadiness.ocrProviderAvailable(), false);
+      await assert.rejects(h.service.prepareAndPlan?.(start(true), signal) ?? assert.fail("missing prepared Start service"),
+        { message: ERROR_CATALOG.PROVIDER_UNAVAILABLE.text });
+    }
+  } finally { await account.cleanup(); }
 });
 
 it("names the missing reference spreadsheet when an Emergency Contact start sends only a check pick", async () => {

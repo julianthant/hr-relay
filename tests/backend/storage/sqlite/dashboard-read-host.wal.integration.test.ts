@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { statSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, it } from "vitest";
@@ -7,7 +9,7 @@ import { z } from "zod";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createDashboardReadHost, ReadLaneRestartedError, type DashboardReadLanes } from "../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { LANE_READS_ENTRY, laneRollbackFails, laneTimedBackground, laneTimedSleep } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
+import { LANE_READS_ENTRY, laneRollbackFails, laneSearchBarrier, laneTimedBackground, laneTimedSleep } from "../../../support/fixtures/backend/dashboard-lane-reads.js";
 import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -20,11 +22,11 @@ const INTERACTIVE_MS = 10, BACKGROUND_MS = 60;
 /** The gate's peer write rate and workload; the 16 MiB peak is defined against them. */
 const WRITER_COMMITS_PER_SECOND = 100, WRITER_COMMITS = 250;
 
-async function walHost(checkpoint: typeof POLICY = POLICY) {
+async function walHost(checkpoint: typeof POLICY = POLICY, withSearch = false) {
   const fixture = await openBoundDatabaseFixture("read-lane-wal");
   cleanups.push(() => fixture.close());
   const lanes = createDashboardReadHost({ admission: fixture.profile.admission, database: fixture.database, clock: systemClock,
-    lanes: ["navigation"], entry: LANE_READS_ENTRY, checkpoint });
+    lanes: withSearch ? ["navigation", "search"] : ["navigation"], entry: LANE_READS_ENTRY, checkpoint });
   cleanups.push(() => lanes.close());
   await lanes.ready;
   const wal = `${fixture.path}-wal`;
@@ -179,4 +181,26 @@ it("takes the writer's automatic checkpoints while the host runs and hands them 
   assert.equal(lanes.status().checkpoints.length, 0);
   await lanes.close();
   assert.equal(fixture.database.autoCheckpointPages(), 1_000);
+});
+
+it("serves navigation while a checkpoint waits for the active Search read", async () => {
+  const { lanes, walBytes, writer } = await walHost(POLICY, true);
+  const directory = mkdtempSync(join(tmpdir(), "relay-search-checkpoint-"));
+  cleanups.push(() => rmSync(directory, { recursive: true, force: true }));
+  const search = lanes.read(laneSearchBarrier, { tag: "held Search", dir: directory });
+  try {
+    const deadline = performance.now() + 4_000;
+    while (!existsSync(join(directory, "started")) && performance.now() < deadline) await delay(10);
+    assert.ok(existsSync(join(directory, "started")));
+    const writes = writer();
+    try {
+      while (walBytes() <= POLICY.thresholdBytes && performance.now() < deadline) await delay(10);
+      assert.ok(walBytes() > POLICY.thresholdBytes, "the navigation read is posted behind a checkpoint request");
+      assert.ok(await lanes.read(laneTimedSleep, { tag: "Queue during Search", ms: 0 }));
+    } finally { writes.stop(); }
+  } finally {
+    writeFileSync(join(directory, "release"), "");
+    await search;
+  }
+  assert.ok(await walResetWithin(walBytes, 2 * POLICY.maxRetryMs) !== undefined);
 });

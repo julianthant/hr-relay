@@ -63,6 +63,6 @@ it("accepts a worker startup failure only on commands that ensure a worker", () 
   const run = (type: string) => CommandRequestSchema.parse({ commandId: UUID_1, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
     family: "run", type, target: { runId: UUID_2, expectedVersion: 1 } });
   const result = { state: "applied", commandId: UUID_1, affectedTargets: [{ family: "run", runId: UUID_2 }], workerStartup };
-  for (const type of ["resume", "retry", "recover-run"]) assert.deepEqual(checkedCommandResult(run(type), result), result);
-  for (const type of ["pause", "cancel"]) assert.throws(() => checkedCommandResult(run(type), result));
+  for (const type of ["resume", "retry"]) assert.deepEqual(checkedCommandResult(run(type), result), result);
+  for (const type of ["pause", "cancel", "recover-run"]) assert.throws(() => checkedCommandResult(run(type), result));
 });

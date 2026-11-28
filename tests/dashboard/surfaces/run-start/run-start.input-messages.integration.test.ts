@@ -70,15 +70,23 @@ describe("typed input refusals read as one plain sentence and keep their parsed 
     assert.doesNotMatch(dialog.text(), RAW);
   });
 
-  it("shows the semicolon separator by example in every workflow's placeholder", async () => {
-    for (const id of ["person-lookup", "separations", "work-study"]) {
-      const dialog = await open(id);
-      const box = dialog.typedInput();
-      assert.doesNotMatch(dialog.text(), /commas|new lines/u, id);
-      assert.match(box.placeholder, /\d; /u, id);
-      assert.doesNotMatch(box.placeholder, /,\s?\d{5,}/u, id);
-      await h.cleanup();
-    }
+  it("shows the semicolon separator by example in Person Lookup", async () => {
+    const dialog = await open("person-lookup");
+    const box = dialog.typedInput();
+    assert.doesNotMatch(dialog.text(), /commas|new lines/u);
+    assert.match(box.placeholder, /\d; /u);
+    assert.doesNotMatch(box.placeholder, /,\s?\d{5,}/u);
+  });
+
+  it.each([
+    ["separations", "Separate Kuali IDs with semicolons"],
+    ["work-study", "Separate Employee IDs with semicolons"],
+  ])("uses entry guidance without a sample ID in %s", async (id, placeholder) => {
+    const dialog = await open(id);
+    const box = dialog.typedInput();
+    assert.equal(box.placeholder, placeholder);
+    assert.equal(box.value, "");
+    assert.doesNotMatch(dialog.text(), /commas|new lines/u, id);
   });
 
   it("labels each list by what it takes and accepts both separators", async () => {

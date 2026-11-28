@@ -250,24 +250,23 @@ afterEach(async () => {
     assert.throws(() => commandFor("recheck-write", run, { proof: { schemaHash: "1".repeat(64), value: {} } }));
   });
 
-  it("confirmed-absent records the typed operator settlement and resumes for a fresh generation", async () => {
+  it("records the typed absence request and keeps the original fence until the fresh read", async () => {
     const { h, kernel } = await resolutionHarness();
     const { run, writeIntentId } = parkedAttemptingWrite(h);
     h.database.authority.writeIntents.parkAttempt({writeIntentId,generation:1,expectedVersion:1,code:"unknown",
       message:"operator absence requires parked authority",now:h.clock.now().toISOString(),
       authorityReason:deriveWriteAuthorityReason("recovery-probe-unknown","probe","test operator park")});
-    const command = commandFor("resolve-write-absent", run, {
-    });
+    const originalAttempt = h.database.authority.writeAttempts.get(UUID_5);
+    const command = commandFor("resolve-write-absent", run, {});
     if (command.family !== "run" || command.type !== "resolve-write-absent") throw new Error("unreachable");
     assert.equal(kernel.execute(command).state,"applied");
     assert.equal(h.database.authority.runs.get(run.envelope.runId)?.lifecycle.state,"queued");
-    const settled = intentByKey(h.database);
-    assert.ok(settled && settled.status === "retryable");
-    assert.equal(settled.settlement.state, "operator-confirmed-absent");
-    if (settled.settlement.state === "operator-confirmed-absent") {
-      assert.equal(settled.settlement.operator, "local-operator");
-    }
-    assert.equal(settled.generation, 1, "the resolution never itself advances the generation");
+    const requested = intentByKey(h.database);
+    assert.ok(requested?.status === "parked" && requested.recheck?.commandId === command.commandId);
+    assert.equal(h.database.authority.commandAudits.get(requested.recheck.auditId)?.request.requestedBy, "local-operator");
+    assert.equal(requested.generation, 1);
+    assert.deepEqual(h.database.authority.writeAttempts.listByIntent(writeIntentId), [originalAttempt]);
+    assert.deepEqual(h.world.events, []);
   });
 });
 }

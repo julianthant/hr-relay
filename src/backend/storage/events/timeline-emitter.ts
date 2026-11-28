@@ -12,7 +12,7 @@ export interface TimelineEmitter { emit(event: unknown): void; }
 
 /** Synchronous append joins the authority connection's enclosing transaction. */
 export function createTimelineEmitter(deps: Readonly<{
-  repository: TimelineRepository;
+  repository: Pick<TimelineRepository, "append">;
   clock: Clock;
   pid?: number;
   uuid?: () => string;

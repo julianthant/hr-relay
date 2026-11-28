@@ -1,6 +1,7 @@
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
-import { validateRerunSourcePlan, RerunRefusedError, rerunEvidenceReader, validateRerunWriteProof, validateRerunTransactionEvidence } from "./rerun.js";
+import { rerunEvidenceReader, validateRerunWriteProof, validateRerunTransactionEvidence } from "./rerun.js";
+import { validateRerunSourcePlan, RerunRefusedError } from "./rerun-source.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, workflowDelegatedDescriptor, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RunExistenceSchema, type RunExistence } from "../../../models/config/authority.js";
@@ -25,6 +26,8 @@ import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.
 import { rerunInputFieldAccepts, rerunTargetAccepts } from "../../../models/validation/rerun-values.js";
 import { workbookInputBinding } from "../workbooks.js";
 import { parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
+import { interruptedRetainedSteps, isInterruptedRerunSource } from "./recovery-plan.js";
+import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 
 export interface RerunValuesDependencies {
   readonly reader: { read(runId: string): RunExistence };
@@ -74,8 +77,18 @@ function containsProtected(value: JsonValue, privateValues: readonly string[]): 
 type NodeFact = RerunValuesSnapshot["steps"][number]["nodes"][number];
 type StepFact = RerunValuesSnapshot["steps"][number];
 const ADVANCE = { unfinished: 0, failed: 1, completed: 2 } as const;
-/** Preselection reads a condition-skipped node as not run, as it read one before the badges: it ranks between unfinished and failed, whatever the child order. */
-function advance(fact: NodeFact): number { return fact.reason === "condition-skipped" ? 0.5 : ADVANCE[fact.state]; }
+/** A manual omission keeps its badge when other members completed, but cannot hide unfinished or failed work. */
+function advance(fact: NodeFact): number {
+  if (fact.reason === "step-omitted" || fact.reason === "operator-asserted") return 1.5;
+  return fact.reason === "condition-skipped" ? 0.5 : ADVANCE[fact.state];
+}
+
+function omissionFact(descriptor: AnyWorkflowDescriptor, run: RunRecord, node: RuntimeFlowNode, checkpoint: RunCheckpointRecord | undefined): NodeFact | undefined {
+  if (checkpoint?.assertion !== undefined) return { nodeId: node.id, state: "unfinished", reason: "operator-asserted" };
+  const omitted = run.envelope.stepOmissions?.some(({ workflow, step }) => workflow === undefined
+    && descriptor.stepOmissions.find((spec) => spec.step === step)?.skips?.includes(String(node.id)) === true);
+  return omitted === true ? { nodeId: node.id, state: "unfinished", reason: "step-omitted" } : undefined;
+}
 
 function childWorkflows(descriptor: AnyWorkflowDescriptor): readonly string[] {
   return [...new Set(descriptor.startRows.flatMap(({ members }) => members.flatMap(({ workflow }) => workflow === undefined ? [] : [workflow])))];
@@ -148,32 +161,37 @@ function childUnitFacts(repositories: AuthorityDatabase["authority"], descriptor
   const facts = new Map<string, NodeFact>();
   for (const node of nodes) {
     const nodeId = String(node.id), checkpoint = checkpoints.get(node.id);
+    const omission = omissionFact(descriptor, run, node, checkpoint);
+    if (omission !== undefined) {
+      if (node.kind === "transaction") {
+        facts.set(unitKey(nodeId, "prepare"), { ...omission, phase: "prepare" });
+        facts.set(unitKey(nodeId, "commit"), { ...omission, phase: "commit" });
+      } else facts.set(nodeId, omission);
+      continue;
+    }
     if (node.kind === "transaction") {
       const taskId = String(node.commit.uses.id);
-      const asserted = checkpoint?.assertion !== undefined;
-      const settled = !asserted && (checkpoint !== undefined || settledTasks.has(taskId) || previews.get(nodeId) === "already-present");
+      const settled = checkpoint !== undefined || settledTasks.has(taskId) || previews.get(nodeId) === "already-present";
       const previewed = previews.get(nodeId) === "would-prepare";
       const prepared = settled || previewed || preparedTasks.has(taskId) || preparedSpans.has(nodeId);
-      const prepare: Pick<NodeFact, "state" | "reason"> = asserted ? { state: "unfinished", reason: "operator-asserted" }
-        : settled ? { state: "completed", reason: checkpoint !== undefined ? "checkpoint" : previews.has(nodeId) ? "already-present" : "settled-transaction" }
-          : prepared ? { state: "completed", reason: previewed ? "previewed" : "prepared" }
-            : failed === nodeId ? { state: "failed", reason: "failure" } : { state: "unfinished", reason: "not-recorded" };
-      const commit: Pick<NodeFact, "state" | "reason"> = asserted ? { state: "unfinished", reason: "operator-asserted" }
-        : settled ? prepare : failed === nodeId && prepared ? { state: "failed", reason: "failure" } : { state: "unfinished", reason: "not-recorded" };
+      const prepare: Pick<NodeFact, "state" | "reason"> = settled ? { state: "completed", reason: checkpoint !== undefined ? "checkpoint" : previews.has(nodeId) ? "already-present" : "settled-transaction" }
+        : prepared ? { state: "completed", reason: previewed ? "previewed" : "prepared" }
+          : failed === nodeId ? { state: "failed", reason: "failure" } : { state: "unfinished", reason: "not-recorded" };
+      const commit: Pick<NodeFact, "state" | "reason"> = settled ? prepare
+        : failed === nodeId && prepared ? { state: "failed", reason: "failure" } : { state: "unfinished", reason: "not-recorded" };
       facts.set(unitKey(nodeId, "prepare"), { nodeId: node.id, phase: "prepare", ...prepare });
       facts.set(unitKey(nodeId, "commit"), { nodeId: node.id, phase: "commit", ...commit });
       continue;
     }
     const observed = executions.filter((execution) => String(execution.nodeId) === nodeId).sort((a, b) =>
       a.attempt - b.attempt || (a.startedAt ?? a.endedAt ?? "").localeCompare(b.startedAt ?? b.endedAt ?? "")).at(-1);
-    const fact: Pick<NodeFact, "state" | "reason"> = checkpoint?.assertion !== undefined ? { state: "unfinished", reason: "operator-asserted" }
-      : failed === nodeId ? { state: "failed", reason: "failure" }
-        : checkpoint !== undefined ? { state: "completed", reason: "checkpoint" }
-          : gates.has(nodeId) ? { state: "completed", reason: "gate-result" }
-            : observed?.outcome === "skipped" ? { state: "completed", reason: "condition-skipped" }
-              : observed !== undefined && observed.outcome !== "done" ? { state: "unfinished", reason: "incomplete-execution" }
-                : delegationSettled(repositories, runId, node) ? { state: "completed", reason: "delegation-settled" }
-                  : { state: "unfinished", reason: "not-recorded" };
+    const fact: Pick<NodeFact, "state" | "reason"> = failed === nodeId ? { state: "failed", reason: "failure" }
+      : checkpoint !== undefined ? { state: "completed", reason: "checkpoint" }
+        : gates.has(nodeId) ? { state: "completed", reason: "gate-result" }
+          : observed?.outcome === "skipped" ? { state: "completed", reason: "condition-skipped" }
+            : observed !== undefined && observed.outcome !== "done" ? { state: "unfinished", reason: "incomplete-execution" }
+              : delegationSettled(repositories, runId, node) ? { state: "completed", reason: "delegation-settled" }
+                : { state: "unfinished", reason: "not-recorded" };
     facts.set(nodeId, { nodeId: node.id, ...fact });
   }
   return facts;
@@ -282,12 +300,11 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       const facts = new Map<string, NodeFact>();
       for (const node of nodes) {
         const checkpoint = checkpoints.get(node.id);
-        const omitted = run.envelope.stepOmissions?.some(({ workflow, step }) => workflow === undefined
-          && descriptor.stepOmissions.find((spec) => spec.step === step)?.skips?.includes(String(node.id)) === true) === true;
+        const omission = omissionFact(descriptor, run, node, checkpoint);
         const observed = executions.filter(({ nodeId }) => nodeId === node.id).sort((a, b) =>
           a.attempt - b.attempt || (a.startedAt ?? a.endedAt ?? "").localeCompare(b.startedAt ?? b.endedAt ?? "")).at(-1);
         let fact: NodeFact;
-        if (checkpoint?.assertion !== undefined || omitted) fact = { nodeId: node.id, state: "unfinished", reason: checkpoint?.assertion === undefined ? "step-omitted" : "operator-asserted" };
+        if (omission !== undefined) fact = omission;
         else if (failure?.nodeId === node.id || (observed?.outcome === "failed"
           && (checkpoint === undefined || observed.attempt > checkpoint.attempt
             || (observed.attempt === checkpoint.attempt && (observed.endedAt === undefined || observed.endedAt >= checkpoint.writtenAt))))) fact = { nodeId: node.id, state: "failed", reason: "failure" };
@@ -380,12 +397,17 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         return { workflow, steps: leastAdvancedSteps(child, older ? [] : [...latest.values()].map((member) => childUnitFacts(repositories, child, member, deps.executions?.(member.envelope.runId) ?? []))) };
       });
       // The source's typed facts refill a step it had typed, its own or a child's a row targets; they stay typed by hand.
-      const typed = (run.envelope.stepOmissions ?? []).filter((entry) => (entry.workflow === undefined
-        ? descriptor.stepOmissions.some((spec) => spec.step === entry.step)
-        : descriptor.startRows.some(({ target }) => target !== undefined && target.workflow === entry.workflow && target.step === entry.step))
-        && !containsProtected(JsonValueSchema.parse(entry.facts), privateValues));
+      const typed = (run.envelope.stepOmissions ?? []).filter((entry) => {
+        if (entry.workflow !== undefined && !descriptor.startRows.some(({ target }) => target?.workflow === entry.workflow && target?.step === entry.step)) return false;
+        const owner = entry.workflow === undefined ? descriptor : workflowDelegatedDescriptor(descriptor, entry.workflow);
+        const spec = owner.stepOmissions.find(({ step }) => step === entry.step);
+        return spec !== undefined
+          && !spec.form.fields.some(field => field.withheld === true && Object.hasOwn(entry.facts, field.key) && entry.facts[field.key] !== null)
+          && !containsProtected(JsonValueSchema.parse(entry.facts), privateValues);
+      });
       let sourceInput: RerunValuesSnapshot["sourceInput"] = { state: "available", value: run.input.parsed.value };
-      if (canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
+      if (descriptor.stepOmissions.some(spec => spec.withholdsBoundInput?.(run.input.parsed.value) === true)
+        || canonicalJsonStringify(valueFreeProtectedData(run.input.parsed.value, bindings)) !== canonicalJsonStringify(run.input.parsed.value)
         || containsProtected(run.input.parsed.value, privateValues)) sourceInput = { state: "unavailable", reason: "protected" };
       else if (older && descriptor.surfaces.inputRun?.typedInput !== undefined) {
         const input = run.input.parsed.value;
@@ -441,20 +463,22 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           ...("selectedRow" in picked && picked.selectedRow?.sheetId === sheetId ? { selectedRow: picked.selectedRow } : {}) })) : [];
       });
       const browserMode = sourceBrowserMode(repositories, run);
+      const retainedSteps = !older && isInterruptedRerunSource(repositories, run) && run.envelope.parent === undefined
+        ? interruptedRetainedSteps(repositories, descriptor, run) : undefined;
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
         sourceInput,
         source: { runId: request.runId, version: run.version, workflow: descriptor.id,
           descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, outcome: lifecycle.outcome,
           dryRun: run.envelope.dryRun, priority: run.envelope.priority, ...(browserMode === undefined ? {} : { browserMode }) },
         ...(spreadsheets.length === 0 ? {} : { spreadsheets }),
-        steps, values, transactions,
+        steps, values, transactions, ...(retainedSteps === undefined ? {} : { retainedSteps }),
         ...(children.length === 0 ? {} : { children }),
         ...(failedMembers.length === 0 ? {} : { failedMembers }),
         ...(typed.length === 0 ? {} : { typed }),
       } });
     });
   } catch (error) {
-    if (error instanceof RerunRefusedError) return { state: "refused", code: "source-invalid" };
+    if (error instanceof RerunRefusedError || error instanceof RunContinuationRefusedError) return { state: "refused", code: "source-invalid" };
     if (error instanceof SourceRefused) return { state: "refused", code: error.code };
     if (error instanceof z.ZodError || error instanceof SyntaxError) return { state: "refused", code: "source-invalid" };
     throw error;

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { composedQueueLane, refuseMainReads } from "../../../../support/helpers/backend/composed-queue-lane.js";
 import { BackfillGapObservationSchema } from "../../../../../src/backend/runs/notifications/backfill-gap.js";
+import type { StartPlanService } from "../../../../../src/backend/runs/commands/start-plan-service.js";
 import { registerQueueRoutes } from "../../../../../src/backend/transports/http/routes/queue.js";
 import { registerShellRoutes } from "../../../../../src/backend/transports/http/routes/shell.js";
 import type { ShellRouteDeps } from "../../../../../src/backend/transports/http/routes/shell-types.js";
@@ -250,13 +251,25 @@ afterEach(cleanupOriginalFixture);
 
   const FOREIGN_ORIGIN_CASES = foreignOriginCases();
 
+  function observeStartPlanning(real: StartPlanService, onPlan: () => void): StartPlanService {
+    const prepareAndPlan = real.prepareAndPlan?.bind(real);
+    assert.ok(prepareAndPlan, "expected the real start-plan service to support prepareAndPlan");
+    return {
+      ...real,
+      prepareAndPlan(input, signal) {
+        onPlan();
+        return prepareAndPlan(input, signal);
+      },
+    };
+  }
+
   it.each(FOREIGN_ORIGIN_CASES)(
     "refuses a start plan with %s before the planner or the body is touched",
     async (_label, headers) => {
       let plans = 0;
       const h = await harness({
         profileFixture: profileFixtures.create,
-        startPlans: (real) => ({ ...real, plan: (input) => { plans += 1; return real.plan(input); } }),
+        startPlans: (real) => observeStartPlanning(real, () => { plans += 1; }),
       });
       const request = new Request("http://localhost/api/v1/start-plans", {
         method: "POST",
@@ -279,8 +292,8 @@ afterEach(cleanupOriginalFixture);
   it("refuses a start plan whose JSON body rides text/plain, and admits the same body as JSON", async () => {
     let plans = 0;
     const h = await harness({
-        profileFixture: profileFixtures.create,
-      startPlans: (real) => ({ ...real, plan: (input) => { plans += 1; return real.plan(input); } }),
+      profileFixture: profileFixtures.create,
+      startPlans: (real) => observeStartPlanning(real, () => { plans += 1; }),
     });
     const body = JSON.stringify({
       workflowId: "fixture-graph",
