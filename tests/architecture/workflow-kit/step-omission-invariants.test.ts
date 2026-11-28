@@ -5,6 +5,11 @@ import { z } from "zod";
 import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
+import { CONTACT_PLAN_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/contact-plan/step.js";
+import { CONTACT_PREVIEW_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/contact-preview/step.js";
+import { ONBASE_FILING_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/onbase-filing/step.js";
+import { REFERENCE_CHECK_MANUAL as MEMBER_REFERENCE_CHECK_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/reference-check/step.js";
+import { emergencyContactMemberModule } from "../../support/helpers/registered-workflows.js";
 import { defineTaskContract } from "../../../src/models/task/task-contract.js";
 import { EidSchema, FingerprintSchema, ScenarioIdSchema, TaskIdSchema } from "../../../src/rules/identity/ids.js";
 import {
@@ -167,6 +172,7 @@ const PERSON_LOOKUP_ID = "person-lookup";
 const ONBOARDING_ID = "onboarding";
 const WORK_STUDY_ID = "work-study";
 const I9_CHECK_START_ID = "i9-check-start";
+const EC_MEMBER_ID = "emergency-contact-member";
 const FIXTURE_ID = "step-omission-guard-valid";
 
 /** The one legitimate fixture descriptor every positive check runs against too. */
@@ -272,6 +278,10 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
   },
   ...[DOCUMENTS_STEP, ROSTER_REFERENCE_STEP, RETENTION_STEP, PUBLICATION_STEP]
     .map(step => ({ descriptor: I9_CHECK_START_ID, step: step.key, declaration: step.manual, fieldKeys: [], produces: [] })),
+  { descriptor: EC_MEMBER_ID, step: "contact-plan", declaration: CONTACT_PLAN_MANUAL, fieldKeys: ["emplId"], produces: ["map-contact"] },
+  { descriptor: EC_MEMBER_ID, step: "reference-check", declaration: MEMBER_REFERENCE_CHECK_MANUAL, fieldKeys: ["referenceResult"], produces: ["reference-stop"] },
+  { descriptor: EC_MEMBER_ID, step: "contact-preview", declaration: CONTACT_PREVIEW_MANUAL, fieldKeys: [], produces: [] },
+  { descriptor: EC_MEMBER_ID, step: "onbase-filing", declaration: ONBASE_FILING_MANUAL, fieldKeys: [], produces: [] },
 ];
 
 /** Every `<descriptor>::<step>` row a complete sweep MUST have visited — the production declarations plus the fixture's one. */
@@ -311,6 +321,10 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
   "i9-check-start::roster-reference": { state: "omittable", forces: ["retention", "publication"] },
   "i9-check-start::retention": { state: "omittable", forces: ["publication"] },
   "i9-check-start::publication": { state: "omittable", forces: [] },
+  "emergency-contact-member::contact-plan": { state: "omittable", forces: ["onbase-filing", "contact-preview"] },
+  "emergency-contact-member::reference-check": { state: "omittable", forces: [] },
+  "emergency-contact-member::contact-preview": { state: "omittable", forces: [] },
+  "emergency-contact-member::onbase-filing": { state: "omittable", forces: [] },
 };
 
 
@@ -344,6 +358,10 @@ const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly st
   "i9-check-start::roster-reference": { asserted: [], omitted: ["read-reference", "read-requests"] },
   "i9-check-start::retention": { asserted: [], omitted: ["check-people", "read-rows"] },
   "i9-check-start::publication": { asserted: [], omitted: [], manual: ["publish-results", "save-workbook"] },
+  "emergency-contact-member::contact-plan": { asserted: ["map-contact"], omitted: ["contact-plan", "read-contacts"] },
+  "emergency-contact-member::reference-check": { asserted: ["reference-stop"], omitted: ["reference-check"] },
+  "emergency-contact-member::contact-preview": { asserted: [], omitted: [], manual: ["contact-preview"] },
+  "emergency-contact-member::onbase-filing": { asserted: [], omitted: [], manual: ["onbase-filing"] },
 };
 
 /** The same pinning for the whole-descriptor plan: every omittable step of a descriptor omitted at once. */
@@ -375,10 +393,15 @@ const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asse
     asserted: [],
     omitted: ["check-people", "publish-results", "read-approved-records", "read-documents", "read-people", "read-reference", "read-requests", "read-rows", "save-workbook"],
   },
+  [EC_MEMBER_ID]: {
+    asserted: ["map-contact", "reference-stop"],
+    omitted: ["contact-plan", "read-contacts", "reference-check"],
+    manual: ["contact-preview", "onbase-filing"],
+  },
 };
 
 /** Every descriptor this guard sweeps: the whole production registry plus the one legitimate fixture. */
-const SWEPT_DESCRIPTORS: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, validFixture];
+const SWEPT_DESCRIPTORS: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, emergencyContactMemberModule.descriptor, validFixture];
 
 function isFixture(descriptor: AnyWorkflowDescriptor): boolean {
   return String(descriptor.id) === FIXTURE_ID;
@@ -583,8 +606,8 @@ describe("step-omission invariants", () => {
       assert.deepEqual(sorted(whole.manual.keys()), expectedWhole.manual ?? [], `${id}: whole-descriptor nodes done by hand changed`);
     }
     assertSweptEveryDeclaration(audited, "planner sweep");
-    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, ONBOARDING_ID, WORK_STUDY_ID, I9_CHECK_START_ID, FIXTURE_ID, "crm-doc-download"]), "the whole-descriptor sweep visited the wrong descriptors");
+    assert.deepEqual(sorted(wholeDescriptorsAudited), sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, ONBOARDING_ID, WORK_STUDY_ID, I9_CHECK_START_ID, EC_MEMBER_ID, FIXTURE_ID, "crm-doc-download"]), "the whole-descriptor sweep visited the wrong descriptors");
     // Person Lookup has no gate; the ALWAYS-GATE sweep stays non-vacuous through these gated descriptors.
-    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, ONBOARDING_ID, WORK_STUDY_ID, FIXTURE_ID, "crm-doc-download"]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
+    assert.deepEqual(sorted(gatedDescriptors), sorted([SEPARATIONS_ID, ONBOARDING_ID, WORK_STUDY_ID, EC_MEMBER_ID, FIXTURE_ID, "crm-doc-download"]), "the gated descriptors the ALWAYS-GATE sweep covers changed");
   });
 });

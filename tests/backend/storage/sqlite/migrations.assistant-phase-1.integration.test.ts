@@ -15,7 +15,7 @@ import { systemClock } from "../../../../src/rules/time/clock.js";
 import { restoreSchema42AssistantStorage, restoreSchema45RunSearch, restoreSchema46AssistantEdits } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-it.each([42, 44, 46] as const)("upgrades populated schema-%d history to 47, verifies its backup and settles the retained turn", async fromSchemaVersion => {
+it.each([42, 44, 46] as const)("upgrades populated schema-%d history to the current version, verifies its backup and settles the retained turn", async fromSchemaVersion => {
   const profile = await createBoundProfileFixture();
   const profileId = profile.admission.profileBinding.profileId;
   const options = {
@@ -39,7 +39,7 @@ it.each([42, 44, 46] as const)("upgrades populated schema-%d history to 47, veri
     let originalMessages;
     {
       using raw = new DatabaseSync(profile.path);
-      assert.equal(inspectNativeAuthority(raw).schemaVersion, 47);
+      assert.equal(inspectNativeAuthority(raw).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       for (const table of tables) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
       if (fromSchemaVersion === 42) restoreSchema42AssistantStorage(raw);
       else if (fromSchemaVersion === 46) restoreSchema46AssistantEdits(raw);
@@ -53,11 +53,11 @@ it.each([42, 44, 46] as const)("upgrades populated schema-%d history to 47, veri
     }
 
     assert.deepEqual(await upgradeProfileAtStartup(profileBrowserClosure, profile.machine, profileId, { primaryDisplay: null }, systemClock),
-      { state: "upgraded", fromSchemaVersion, toSchemaVersion: 47, credentials: "unchanged" });
+      { state: "upgraded", fromSchemaVersion, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
     assert.deepEqual(migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION).filter(table => !migrationTableNames(fromSchemaVersion).includes(table)), fromSchemaVersion === 42 ? tables : ["assistant_applied_edits"]);
     {
       using upgraded = new DatabaseSync(profile.path, { readOnly: true });
-      assert.equal(inspectNativeAuthority(upgraded).schemaVersion, 47);
+      assert.equal(inspectNativeAuthority(upgraded).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       const parts = [{ kind: "text", runs: [{ kind: "plain", text: "Explain" }] }];
       assert.deepEqual(upgraded.prepare("SELECT * FROM assistant_messages").all().map(row => ({ ...row })), originalMessages.map(row => fromSchemaVersion !== 42 ? { ...row } : { ...row,
         payload_json: JSON.stringify({ parts, recording: { kind: "unrecorded", usage: { state: "unrecorded" } } }) }));
