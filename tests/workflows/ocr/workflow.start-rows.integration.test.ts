@@ -42,10 +42,10 @@ it("starts with operator readings for each original page and withholds release",
 
   const { run: settled } = await f.canonical.execute(run, new AbortController().signal);
   assert.ok(settled?.lifecycle.state === "terminal" && settled.lifecycle.outcome === "done");
-  assert.deepEqual(f.pageReads.toSorted(), [1, 2]);
   assert.equal(f.ocrCalls(), 0);
   const authority = f.database.authority;
   const children = authority.runs.listChildren(run.envelope.runId).filter(child => child.envelope.workflow === "ocr-page");
+  assert.equal(children.every(child => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "done"), true);
   assert.deepEqual(children.map(child => OcrPageWorkflowInputSchema.parse(child.input.parsed.value)).map(({ page, reading }) =>
     [page.sourcePage, reading.kind === "manual" ? reading.extraction.source : null]).toSorted(),
   [[1, { kind: "operator", actorId: "local-operator" }], [2, { kind: "operator", actorId: "local-operator" }]]);
@@ -61,10 +61,13 @@ it("starts with operator readings for each original page and withholds release",
   const result = authority.runResults.get(run.envelope.runId);
   assert.ok(result);
   assert.equal(OcrWorkflowResultSchema.parse(result.result.value).approvedSnapshot, null);
-  const { receipt } = deriveRunEvidenceReceipt({ descriptor, run: settled, result,
+  const receiptInput = { descriptor, run: settled, result,
     checkpoints: authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId),
     delegations: result.dependencies.flatMap(dependency => dependency.state === "delegation-resolved"
-      ? [authority.dependencies.evidence(run.envelope.runId, dependency.nodeId)] : []) });
+      ? [authority.dependencies.evidence(run.envelope.runId, dependency.nodeId)] : []) };
+  const { receipt } = deriveRunEvidenceReceipt(receiptInput);
+  assert.throws(() => deriveRunEvidenceReceipt({ ...receiptInput, run: { ...settled, envelope: { ...settled.envelope,
+    stepOmissions: settled.envelope.stepOmissions?.filter(({ step }) => step !== "approval") } } }), /OCR_REVIEW_REFUSED/u);
   const typed = projectTypedSteps(settled, descriptor).get("page-readings")?.typedValues;
   assert.partialDeepStrictEqual(typed, { fields: [{ key: "readings", withheld: true }] });
   const rerun = readRerunValues({ database: f.database, reader: f.canonical.lifecycle, descriptors: { resolve: f.resolve } },
