@@ -18,9 +18,11 @@ import { RunChecksStage } from "../../../../src/dashboard/surfaces/run-start/run
 import { PreflightReadinessWireSchema, PreflightSelectionSchema } from "../../../../src/models/preflight/preflight-contract.js";
 import { requiredPreflightChecks } from "../../../../src/models/preflight/preflight.js";
 import { PREFLIGHT_CHECKS } from "../../../../src/models/runtime/runtime-dependencies.js";
-import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { createPreflightAdmission } from "../../../../src/rules/preflight/preflight-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
+import { FIXTURE_CHATGPT_OCR_AVAILABLE } from "../../../support/fixtures/dashboard/fixture-chatgpt-account.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP } from "../../../support/fixtures/dashboard/fixture-start.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../support/fixtures/dashboard/fixture-settings.js";
 import { createPreflightHarness } from "../../../support/fixtures/preflight-seams.js";
@@ -89,20 +91,20 @@ function checksHarness(workflowId: string, failingCheck: "config.valid" | "secre
 /** The unavailable-checks notice with its Check again action is on screen. */
 const checksUnavailable = () => [...document.querySelectorAll("button")].some(button => button.textContent === "Check again");
 
-function Checks({ client, workflowId }: { client: DashboardClient; workflowId: string }) {
-  const checks = useRunChecks(client, workflowId, true, true, true);
+function Checks({ client, workflowId, requiresOcr }: { client: DashboardClient; workflowId: string; requiresOcr: boolean }) {
+  const checks = useRunChecks(client, workflowId, true, true, true, requiresOcr);
   return createElement("div", null,
     createElement(RunChecksStage, { checks: checks.state, onFix: () => undefined, onRecheck: checks.recheck }),
     createElement("button", { disabled: runChecksBlocked(checks.state), "data-checks-start": true }, "Start dry run"));
 }
 
-async function mount(client: DashboardClient, workflowId: string) {
+async function mount(client: DashboardClient, workflowId: string, requiresOcr = false) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
   await act(async () => { root?.render(createElement(DashboardClientProvider, { client,
     children: createElement(FixtureCommandBinding, { actorId: "local-operator",
-      children: createElement(Checks, { client, workflowId }) }),
+      children: createElement(Checks, { client, workflowId, requiresOcr }) }),
   })); });
   await settle();
 }
@@ -176,14 +178,21 @@ it.each(Object.entries(workflowSources).filter(([, source]) => source === "serve
   },
 );
 
-it("Check again executes new exact-scope detectors even when a report became available meanwhile", async () => {
+it.each([false, true])("Check again executes new exact-scope detectors with OCR required = %s", async requiresOcr => {
   const h = checksHarness("emergency-contact", false);
   let scopesUnavailable = true;
-  const client: DashboardClient = { ...h.client, preflightScopes: async () => {
+  const checkChatGptAccount: DashboardClient["checkChatGptAccount"] = async (_signal, options) => {
+    assert.equal(options?.fresh, true);
+    return scopesUnavailable ? FIXTURE_CHATGPT_OCR_AVAILABLE : { account: { state: "expired" },
+      connection: { state: "refused", checkedAt: IsoInstantSchema.parse(h.clock.now().toISOString()), failureCode: "CHATGPT_ACCOUNT_EXPIRED" },
+      usage: { state: "unavailable", reason: "expired" } };
+  };
+  const check = vi.fn(checkChatGptAccount);
+  const client: DashboardClient = { ...h.client, checkChatGptAccount: check, preflightScopes: async () => {
     if (scopesUnavailable) throw new Error("Synthetic unavailable workflow catalog");
     return h.client.preflightScopes();
   } };
-  await mount(client, "emergency-contact");
+  await mount(client, "emergency-contact", requiresOcr);
   const recheck = [...document.querySelectorAll("button")].find(button => button.textContent === "Check again");
   assert.ok(recheck, document.body.textContent ?? "");
   assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, true);
@@ -202,7 +211,25 @@ it("Check again executes new exact-scope detectors even when a report became ava
   const checks = requiredPreflightChecks(h.scope.requestedCapabilities);
   assert.deepEqual(h.observations, [...checks, ...checks]);
   assert.equal(checksUnavailable(), false);
-  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, false);
+  assert.equal(check.mock.calls.length, requiresOcr ? 2 : 0);
+  assert.equal(document.body.textContent?.includes(ERROR_CATALOG.PROVIDER_UNAVAILABLE.text), requiresOcr);
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, requiresOcr);
+});
+
+it.each([false, true])("enables OCR Start only when the connected account's fresh check finds the fixed model (%s)", async ocrModelAvailable => {
+  const h = checksHarness("emergency-contact", false);
+  const status = { ...FIXTURE_CHATGPT_OCR_AVAILABLE, ocrModelAvailable };
+  const checkChatGptAccount = vi.fn<DashboardClient["checkChatGptAccount"]>(async (_signal, options) => {
+    assert.equal(options?.fresh, true);
+    return status;
+  });
+  await mount({ ...h.client, checkChatGptAccount }, "emergency-contact", true);
+
+  assert.equal(checkChatGptAccount.mock.calls.length, 1);
+  const wire = await h.client.readPreflight(PreflightSelectionSchema.parse({ workflowId: "emergency-contact" }));
+  assert.ok(wire.state === "present" && wire.report.results.every(result => result.status === "pass"));
+  assert.equal(document.body.textContent?.includes(ERROR_CATALOG.PROVIDER_UNAVAILABLE.text), !ocrModelAvailable);
+  assert.equal(document.querySelector<HTMLButtonElement>("[data-checks-start]")?.disabled, !ocrModelAvailable);
 });
 
 it("does not execute a late check after the dialog has closed during settings acquisition", async () => {

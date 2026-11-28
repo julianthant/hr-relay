@@ -17,6 +17,7 @@ import {
   RUN_DIALOG_SEPARATIONS, RUN_DIALOG_SEPARATIONS_CATALOG, RUN_DIALOG_SEPARATIONS_TYPED, runDialogSeparationsRerunSnapshot,
 } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
 import { RUN_DIALOG_CRM_SHAPE, RUN_DIALOG_REFERENCE_READS, runDialogReferenceReads } from "../../../../fixtures/dashboard/run-dialog-reference-fixtures.js";
+import { FIXTURE_CHATGPT_OCR_SIGNED_OUT } from "../../../../fixtures/dashboard/fixture-chatgpt-account.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
 import { SceneBinding } from "./scene-binding.js";
 import { StoryFrame } from "./story-frame.js";
@@ -155,7 +156,7 @@ const OPTIONS = {
 } satisfies Record<OptionsControl, Story>;
 
 /** What the operator sees of the PDFs a PDF workflow takes, from none chosen to a refused pick. */
-type PdfInputState = "none" | "reading" | "selected" | "several" | "wrong-type" | "refused" | "upload-failed" | "choice-unpicked" | "choice-picked";
+type PdfInputState = "none" | "reading" | "selected" | "several" | "wrong-type" | "refused" | "upload-failed" | "choice-unpicked" | "choice-picked" | "ocr-unavailable";
 const pdfFile = (name: string, contents = "%PDF-1.4 story") => ({ name, mimeType: name.endsWith(".pdf") ? "application/pdf" : "text/plain", contents });
 const attach = (...files: ReturnType<typeof pdfFile>[]) => async (page: Page) => { await dialog(page).locator('input[type="file"]').setInputFiles(files.map(({ name, mimeType, contents }) => ({ name, mimeType, buffer: Buffer.from(contents) }))); };
 const pdfStage = (title: string, served: Partial<DashboardClient>, at: RunStartStage, then?: (page: Page) => Promise<void>): Story =>
@@ -172,6 +173,15 @@ const PDF = {
   "choice-unpicked": pdfStage("Options, the required form choice not made", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Next"); await at(page, "Start"); }),
   "choice-picked": pdfStage("Options, OCR off and a form chosen", {}, "Input", async page => { await afterAttach(pdfFile("first.pdf"))(page); await press(page, "Next"); await at(page, "Start");
     await dialog(page).getByRole("switch", { name: "Read with OCR" }).click(); await dialog(page).getByText("I-9", { exact: true }).click(); }),
+  "ocr-unavailable": pdfStage("Start blocked by a disconnected OCR account", { checkChatGptAccount: async () => FIXTURE_CHATGPT_OCR_SIGNED_OUT }, "Input", async page => {
+    await afterAttach(pdfFile("first.pdf"))(page);
+    await press(page, "Next");
+    await at(page, "Start");
+    await dialog(page).getByText("I-9", { exact: true }).click();
+    await dialog(page).getByText(ERROR_CATALOG.PROVIDER_UNAVAILABLE.text, { exact: true }).waitFor();
+    // Begin the gallery's Tab walk before the radio groups.
+    await dialog(page).focus();
+  }),
 } satisfies Record<PdfInputState, Story>;
 
 /** What the dialog shows when the reference spreadsheets a workflow reads cannot be read or checked. */

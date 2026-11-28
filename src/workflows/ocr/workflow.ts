@@ -1,5 +1,5 @@
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
-import { OcrCanonicalInput, OcrInputSchema } from "../../models/workflows/ocr/input.js";
+import { OcrCanonicalInput, OcrInputSchema, usesOcrProvider } from "../../models/workflows/ocr/input.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { ocrSourcePagesDefinition } from "./steps/source-pages/step.js";
@@ -16,6 +16,7 @@ export const ocrWorkflow = defineWorkflow({
   category: "documents",
   input: OcrInputSchema,
   canonicalInput: OcrCanonicalInput,
+  requiresOcrProvider: usesOcrProvider,
   inputSubject: "document",
   surface: { shape: "single" },
   enqueue: "reject-active",

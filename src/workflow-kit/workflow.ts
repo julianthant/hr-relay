@@ -214,6 +214,7 @@ export interface WorkflowDescriptor<
   readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   readonly referenceKeys?: (input: z.output<InputSchema>) => readonly string[];
   readonly plannedOutputs?: (input: z.output<InputSchema>, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
+  readonly requiresOcrProvider?: (input: z.output<InputSchema>) => boolean;
   readonly code: string;
   readonly label: string;
   readonly sessionLabel?: string;
@@ -588,6 +589,7 @@ export interface WorkflowPlanning {
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
   readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   readonly plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
+  readonly requiresOcrProvider: (parsed: unknown) => boolean;
   readonly parseInput: (raw: unknown) => Readonly<{ input: unknown; lookups: readonly WorkbookReferenceLookup[] }>;
   readonly parseCanonicalInput: (value: unknown) => unknown;
   readonly matchKey: (parsed: unknown) => string;
@@ -1651,6 +1653,7 @@ export function defineWorkflowDescriptor<
     ...(workbookReference === undefined ? {} : { workbookReference }),
     ...(workbookCheck === undefined ? {} : { workbookCheck }),
     plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => PlannedRunOutputSchema.array().parse(spec.plannedOutputs?.(spec.canonicalInput.parse(parsed), references) ?? []),
+    requiresOcrProvider: (parsed: unknown) => spec.requiresOcrProvider?.(spec.canonicalInput.parse(parsed)) ?? false,
     parseInput: (raw: unknown) => {
       const input = spec.flow.input.parse(raw);
       const lookups = workbookReference === undefined ? [] : [workbookReference.mode === "all"
