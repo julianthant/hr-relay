@@ -2,13 +2,84 @@ import { OnboardingInput, OnboardingCanonicalValueSchema, type OnboardingInputVa
 import { ONBOARDING_ROSTER_GATE_ID, OnboardingRosterChoiceSchema } from "../../../../models/workflows/onboarding/roster.js";
 import { CrmReadHireData } from "../../../../models/systems/crm/read-hire-data.js";
 import { OnboardingReadHirePlan } from "../../../../models/workflows/onboarding/read-hire-plan.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
+import type { JsonObject } from "../../../../rules/validation/canonical-json.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof, reuseTask } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 
+function enteredCrmData(facts: JsonObject, requestedEmail: string) {
+  const recordUrl = typeof facts.recordUrl === "string" ? facts.recordUrl : "";
+  const recordId = URL.canParse(recordUrl) ? new URL(recordUrl).searchParams.get("id") : null;
+  return {
+    recordId, recordUrl, requestedEmail, personalEmail: facts.personalEmail ?? "", workEmail: facts.workEmail ?? "",
+    recordFirstName: facts.firstName, recordLastName: facts.lastName, department: facts.department,
+    recruitmentNumber: facts.recruitmentNumber ?? "",
+    fields: {
+      positionNumber: facts.positionNumber, firstName: facts.firstName, lastName: facts.lastName, middleName: facts.middleName ?? "",
+      ssn: facts.ssn ?? "", address: facts.address, addressLine2: facts.addressLine2 ?? "", city: facts.city, state: facts.state,
+      postalCode: facts.postalCode, wage: facts.wage, dob: facts.dob, phone: facts.phone ?? "", email: facts.email,
+      appointment: facts.appointment, effectiveDate: facts.effectiveDate, expectedJobEndDate: facts.expectedJobEndDate ?? "",
+    },
+  };
+}
+
+function hirePlanInput(input: unknown, crm: unknown, rosterChoice: unknown) {
+  const { roster, postalCodeOverride, configuredJobEndDate } = OnboardingCanonicalValueSchema.parse(input);
+  return {
+    crm: CrmReadHireData.output.parse(crm),
+    roster: roster.state === "resolved" ? roster.row : OnboardingRosterChoiceSchema.parse(rosterChoice).row,
+    ...(postalCodeOverride === undefined ? {} : { postalCodeOverride }),
+    ...(configuredJobEndDate === undefined ? {} : { configuredJobEndDate }),
+  };
+}
+
+export const CRM_DATA_MANUAL: StepManualDeclaration = {
+  off: "values",
+  keeps: [ONBOARDING_ROSTER_GATE_ID, "hire-plan"],
+  form: { fields: [
+    { key: "recordUrl", label: "CRM record URL", kind: "text", withheld: true,
+      help: "Use the CRM record link in the format https://act-crm.my.site.com/hr/ONB_ViewOnboarding?id=…" },
+    { key: "firstName", label: "First name", kind: "text" },
+    { key: "lastName", label: "Last name", kind: "text" },
+    { key: "middleName", label: "Middle name", kind: "text", optional: true },
+    { key: "personalEmail", label: "Personal email on CRM record", kind: "text", optional: true, withheld: true },
+    { key: "workEmail", label: "Work email on CRM record", kind: "text", optional: true, withheld: true },
+    { key: "email", label: "Email on entry sheet", kind: "text", withheld: true,
+      help: "The entry-sheet email and the roster email must each match a personal or work email on the CRM record." },
+    { key: "dob", label: "Date of birth", kind: "us-date", withheld: true },
+    { key: "ssn", label: "SSN (if listed)", kind: "text", optional: true, withheld: true, help: "Use XXX-XX-XXXX." },
+    { key: "phone", label: "Phone", kind: "text", optional: true, withheld: true },
+    { key: "address", label: "Address", kind: "text", withheld: true },
+    { key: "addressLine2", label: "Address line 2", kind: "text", optional: true, withheld: true },
+    { key: "city", label: "City", kind: "text" },
+    { key: "state", label: "State", kind: "text" },
+    { key: "postalCode", label: "Postal code", kind: "text" },
+    { key: "positionNumber", label: "Position number", kind: "text" },
+    { key: "department", label: "Department including number", kind: "text", help: "Use the entry-sheet format, such as Dining (000412)." },
+    { key: "recruitmentNumber", label: "Recruitment number", kind: "text", optional: true },
+    { key: "appointment", label: "Appointment including classification", kind: "text", help: "Use the entry-sheet format, such as 5 Student: Casual/Restricted." },
+    { key: "wage", label: "Hourly rate", kind: "text", help: "Include the dollar sign, such as $17.75." },
+    { key: "effectiveDate", label: "Effective date", kind: "us-date" },
+    { key: "expectedJobEndDate", label: "Expected job end date", kind: "us-date", optional: true, help: "Leave blank to use the configured job end date." },
+  ] },
+  refine: (facts, submission) => {
+    const subject = OnboardingInput.safeParse(submission);
+    if (!subject.success) return [{ field: "email", message: "A run subject email is required." }];
+    const parsed = CrmReadHireData.output.safeParse(enteredCrmData(facts, subject.data.email));
+    return parsed.success ? [] : parsed.error.issues.map(issue => ({
+      field: issue.path[0] === "recordUrl" || issue.path[0] === "recordId" ? "recordUrl" : "email",
+      message: issue.message,
+    }));
+  },
+  produces: {
+    "crm-source": ({ facts, scope }) => enteredCrmData(facts, OnboardingCanonicalValueSchema.parse(scope.input).email),
+  },
+};
+
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "crm-data", label: "Read and validate hire data" }),
-  locked: "guard-read" as const,
+  manual: CRM_DATA_MANUAL,
   operatorFields: [
     { label: "First name", visibility: "logs", sources: [{ nodeId: "hire-plan", kind: "output", fieldPath: "employee.firstName" }] },
     { label: "Last name", visibility: "logs", sources: [{ nodeId: "hire-plan", kind: "output", fieldPath: "employee.lastName" }] },
@@ -73,14 +144,8 @@ export function buildCrmData(author: WorkflowAuthor<typeof OnboardingInput>) {
   const call = reuseTask(group, { id: "crm-source", contract: CrmReadHireData, replay: "always-rerun" },
     (input: OnboardingInputValue) => ({ email: input.email }));
   const source = author.task(call.identity, [choice], call.bind);
-  const plan = author.task(entries.task("hire-plan", OnboardingReadHirePlan, { replay: "always-rerun" }), [source, choice], ({ input, outputs }) => {
-    const roster = OnboardingCanonicalValueSchema.parse(input).roster;
-    return {
-      crm: outputs["crm-source"], roster: roster.state === "resolved" ? roster.row : OnboardingRosterChoiceSchema.parse(outputs[ONBOARDING_ROSTER_GATE_ID]).row,
-      ...(input.postalCodeOverride === undefined ? {} : { postalCodeOverride: input.postalCodeOverride }),
-      ...(input.configuredJobEndDate === undefined ? {} : { configuredJobEndDate: input.configuredJobEndDate }),
-    };
-  });
+  const plan = author.task(entries.task("hire-plan", OnboardingReadHirePlan, { replay: "always-rerun" }), [source, choice],
+    ({ input, outputs }) => hirePlanInput(input, outputs["crm-source"], outputs[ONBOARDING_ROSTER_GATE_ID]));
   return { choice, source, plan, steps: [[group, [choice, source, plan]]] as const,
     result: author.result(OnboardingReadHirePlan.output, [plan], ({ outputs }) => OnboardingReadHirePlan.output.parse(outputs["hire-plan"])) };
 }

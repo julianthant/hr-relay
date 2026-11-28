@@ -9,6 +9,7 @@ import {
   type StartRowKind,
   type StartRowLockReason,
   type StartRowMember,
+  type StartRowOff,
   type StartRowTarget,
   type StepOmissionForm,
   type StepOmissionGraphView,
@@ -33,6 +34,7 @@ export interface StartRowProjection {
   readonly label: string;
   readonly includedByDefault: boolean;
   readonly kind: StartRowKind;
+  readonly off?: StartRowOff;
   readonly lockReason?: StartRowLockReason;
   readonly members: readonly StartRowMember[];
   readonly target?: StartRowTarget;
@@ -44,6 +46,7 @@ const REQUIRED_REASON = "This workflow requires every node in this step.";
 
 /** `switch` when typing the values replaces every node of the step; `locked-manual` when some of its nodes still run. */
 function manualKind(descriptor: AnyWorkflowDescriptor, spec: StepOmissionSpec): "switch" | "locked-manual" {
+  if (spec.off !== undefined) return "switch";
   const step = descriptor.timeline.find(({ key }) => key === spec.step);
   if (step === undefined) throw new Error(`${descriptor.id} manual entry names step ${spec.step}, which is not on its timeline`);
   const replaced = new Set([...Object.keys(spec.produces), ...spec.skips ?? []]);
@@ -171,6 +174,7 @@ export function resolveStartStepOmissions(
   descriptor: AnyWorkflowDescriptor,
   selectedStepKeys: readonly string[] | undefined,
   stepOmissions: StepOmissions | undefined,
+  submission?: JsonValue,
 ): StepOmissions | undefined {
   if (selectedStepKeys === undefined) {
     if (stepOmissions !== undefined) {
@@ -240,7 +244,7 @@ export function resolveStartStepOmissions(
       }
       continue;
     }
-    resolved.push(checkedEntry(descriptor, step.key, spec, facts));
+    resolved.push(checkedEntry(descriptor, step.key, spec, facts, submission));
   }
   const own = resolved.length;
   // A child entry is checked in the child's descriptor; the parent plans nothing for it.
@@ -263,11 +267,11 @@ export function resolveStartStepOmissions(
 }
 
 /** One step's typed facts, checked against its form and refine rule and stamped with each field's label. */
-function checkedEntry(descriptor: AnyWorkflowDescriptor, step: string, spec: StepOmissionSpec, facts: Record<string, unknown>) {
+function checkedEntry(descriptor: AnyWorkflowDescriptor, step: string, spec: StepOmissionSpec, facts: Record<string, unknown>, submission?: JsonValue) {
   const parsed = stepOmissionFactsSchema(spec.form).safeParse(facts);
   // Field KEYS only: the values are the operator's typed HR facts.
   const issues = parsed.success
-    ? (spec.refine?.(parsed.data as Record<string, never>) ?? []).map(({ field }) => field)
+    ? (spec.refine?.(parsed.data, submission) ?? []).map(({ field }) => field)
     : parsed.error.issues.map((issue) => issue.path.map(String).join(".") || "(form)");
   if (issues.length > 0) {
     throw new StartStepOmissionRefusedError(
@@ -376,6 +380,7 @@ export function projectStartRows(descriptor: AnyWorkflowDescriptor): readonly St
       label: row.label,
       includedByDefault: step?.includedByDefault ?? true,
       kind,
+      ...(kind === "switch" && spec?.off !== undefined ? { off: spec.off } : {}),
       ...(reason === undefined ? {} : { lockReason: reason }),
       members: row.members,
       ...(row.target === undefined ? {} : { target: row.target }),
@@ -408,6 +413,7 @@ export function startStepWireControl(
 export function startRowWire(row: StartRowProjection): NonNullable<WorkflowStartWire["rows"]>[number] {
   return {
     key: row.key, label: row.label, includedByDefault: row.includedByDefault, kind: row.kind,
+    ...(row.off === undefined ? {} : { off: row.off }),
     ...(row.lockReason === undefined ? {} : { lockReason: row.lockReason }),
     members: row.members.map((member) => ({ ...member, ...(member.nodes === undefined ? {} : { nodes: [...member.nodes] }) })),
     ...(row.target === undefined ? {} : { target: { ...row.target } }),
