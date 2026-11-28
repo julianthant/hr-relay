@@ -81,15 +81,10 @@ it.each([false, true])("captures each chosen worksheet when starting CRM Documen
     }
     await dialog.press("Find latest CRM records");
     assert.equal(dialog.disabled("Start run"), true);
-    const records = document.querySelector<HTMLInputElement>('input[aria-label="CRM records"]'); assert.ok(records);
-    const typeRecords = (value: string) => act(async () => {
-      setValue?.set?.call(records, value);
-      records.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await typeRecords("fixture | | malformed |");
+    await dialog.fill("CRM records", "fixture | | malformed |");
     assert.equal(dialog.disabled("Start run"), true);
     assert.equal(planned, undefined);
-    await typeRecords(typedRecords);
+    await dialog.fill("CRM records", typedRecords);
     assert.equal(dialog.disabled("Start run"), false);
   }
   await dialog.press("Start run");
