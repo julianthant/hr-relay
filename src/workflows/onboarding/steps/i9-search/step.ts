@@ -3,6 +3,7 @@ import { I9LookupInputSchema, I9SignerOutputSchema } from "../../../../models/sy
 import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
 import { OnboardingReadI9Lookup } from "../../../../models/workflows/onboarding/read-i9-lookup.js";
 import type { HirePlanSchema } from "../../../../models/workflows/onboarding/read-hire-plan.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { ItemIdSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import { deriveItemId } from "../../../../rules/identity/logical-item.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
@@ -13,9 +14,19 @@ import { buildCrmData } from "../crm-data/step.js";
 import { buildUcpathSearch } from "../ucpath-search/step.js";
 import { hireReviewChoices } from "../../../../rules/onboarding/match-hire-subject.js";
 
+export const I9_SEARCH_MANUAL: StepManualDeclaration = {
+  off: "values",
+  form: { fields: [
+    { key: "i9Status", label: "I-9 lookup result", kind: "enum", values: ["Signed", "Unsigned", "Historical", "Not found", "Unresolved"] },
+    { key: "profileId", label: "I-9 profile ID", kind: "text", optional: true, withheld: true },
+  ] },
+  produces: {},
+  skips: ["i9-lookup-child", "i9-lookup"],
+};
+
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "i9-search", label: "Search I-9 profiles" }),
-  locked: "guard-read" as const,
+  manual: I9_SEARCH_MANUAL,
   operatorFields: [
     { label: "I-9 lookup", visibility: "logs", sources: [{ nodeId: "i9-lookup", kind: "output", fieldPath: "state" }],
       display: { cases: [{ value: "checked", text: "Checked" }, { value: "not-required", text: "Not required" }] } },

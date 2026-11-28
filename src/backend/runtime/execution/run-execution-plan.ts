@@ -36,6 +36,7 @@ type PlanEntry =
   | Readonly<{ mode: "asserted"; replay?: RunCheckpointRecord }>
 
   | Readonly<{ mode: "omitted" }>
+  | Readonly<{ mode: "manual" }>
   | Readonly<{ mode: "replay-child"; evidence: Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }> }>
   | Readonly<{ mode: "replay-gate"; record: GateResultRecord }>;
 
@@ -182,7 +183,7 @@ export function prepareRunPlan(
     && (payPathRecheckInputs !== undefined && node === startNode
       || envelope.continuation?.checkpoints.some(row => row.nodeId === node.id) === true);
   const pendingCommits = nodes.filter(node => node.kind === "transaction" && !retainedTransaction(node)
-    && !omissionPlan.omitted.has(String(node.id)) && !omissionPlan.asserted.has(String(node.id))).map(node => node.id);
+    && !omissionPlan.omitted.has(String(node.id)) && !omissionPlan.manual.has(String(node.id)) && !omissionPlan.asserted.has(String(node.id))).map(node => node.id);
   // An explicit start node requires every ancestor to resolve without executing it.
   let ancestorRegionOpen = canonicalInput !== undefined;
   const publicationRegion = new Set<string>();
@@ -191,6 +192,10 @@ export function prepareRunPlan(
   }
   for (const [index, node] of nodes.entries()) {
 
+    if (omissionPlan.manual.has(String(node.id))) {
+      plan.set(String(node.id), { mode: "manual" });
+      continue;
+    }
     if (omissionPlan.omitted.has(String(node.id))) {
       plan.set(String(node.id), { mode: "omitted" });
       continue;

@@ -2,38 +2,49 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, it } from "vitest";
 import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
-import { StartStepOmissionRefusedError, projectStartRows, projectStartSteps, resolveStartStepOmissions } from "../../../src/backend/runs/start/step-selection.js";
+import { StartStepOmissionRefusedError, projectStartRows, projectStartSteps, resolveStartStepOmissions, startRowWire, startStepWireControl } from "../../../src/backend/runs/start/step-selection.js";
+import { startRowsOf } from "../../../src/dashboard/surfaces/run-start/run-steps-model.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 
 const descriptor = WORKFLOW_MODULES.find(({ descriptor: candidate }) => String(candidate.id) === "onboarding")!.descriptor;
 
 describe("Onboarding Start run rows", () => {
-  it("serves the seven rows in order, every one locked with its reason", () => {
-    assert.deepEqual(projectStartRows(descriptor).map(({ key, label, kind, lockReason, members }) => ({ key, label, kind, lockReason: lockReason ?? null, members })), [
-      { key: "crm-data", label: "Read entry sheet", kind: "locked", lockReason: "guard-read", members: [{ step: "crm-data" }] },
-      { key: "ucpath-search", label: "Match existing person", kind: "locked", lockReason: "guard-read", members: [{ step: "ucpath-search" }, { step: "reference-check" }] },
-      { key: "i9-search", label: "Search I-9 profiles", kind: "locked", lockReason: "guard-read", members: [{ step: "i9-search" }] },
-      { key: "hire-review", label: "Review hire findings", kind: "locked", lockReason: "approval", members: [{ step: "hire-review" }] },
-      { key: "i9-creation", label: "Create I-9 profile", kind: "locked", lockReason: "form-action", members: [{ step: "i9-creation" }] },
-      { key: "ucpath-hire", label: "Submit hire", kind: "locked", lockReason: "form-action", members: [{ step: "ucpath-hire" }] },
-      { key: "master-results", label: "Fill master results", kind: "locked", lockReason: null, members: [{ step: "master-results" }] },
+  it("serves every row as a switch with manual values for reads and no fields for form actions", () => {
+    const rows = projectStartRows(descriptor);
+    assert.deepEqual(rows.map(({ key, label }) => [key, label]), [
+      ["crm-data", "Read entry sheet"],
+      ["ucpath-search", "Match existing person"],
+      ["i9-search", "Search I-9 profiles"],
+      ["hire-review", "Review hire findings"],
+      ["reference-check", "Check reference spreadsheets"],
+      ["i9-creation", "Create I-9 profile"],
+      ["ucpath-hire", "Submit hire"],
+      ["master-results", "Fill master results"],
     ]);
-  });
-
-  it("offers no switch and no typed field on any row", () => {
-    for (const row of projectStartRows(descriptor)) {
-      assert.equal(row.target, undefined, row.key);
-      assert.equal(row.manual, undefined, row.key);
-      assert.equal(row.selection, undefined, row.key);
+    for (const [index, row] of rows.entries()) {
+      assert.equal(row.kind, "switch", row.key);
+      assert.equal(row.lockReason, undefined, row.key);
+      assert.ok(row.target && row.manual, row.key);
+      assert.equal(row.off, index < 5 ? "values" : "manual", row.key);
+      assert.equal(row.manual.form.fields.length > 0, row.off === "values", row.key);
     }
   });
 
-  it("refuses a start that carries typed facts for any step", () => {
+  it("shows which dependent actions also skip when the required I-9 lookup is entered by hand", () => {
+    const rows = startRowsOf({
+      rows: projectStartRows(descriptor).map(startRowWire),
+      steps: projectStartSteps(descriptor).map(step => ({ ...step, control: startStepWireControl(step.control) })),
+    });
+    assert.equal(rows.find(row => row.key === "i9-search")?.note,
+      "Also skips: Review hire findings, Check reference spreadsheets, Create I-9 profile, Submit hire, Fill master results");
+    assert.deepEqual(rows.find(row => row.key === "crm-data")?.forces, []);
+  });
+
+  it("refuses turning off a read without valid manual values", () => {
     const keys = projectStartSteps(descriptor).map(({ key }) => key);
-    for (const step of keys) {
-      assert.throws(() => resolveStartStepOmissions(descriptor, keys, [{ step, facts: { value: "typed" } }]),
-        (error: unknown) => error instanceof StartStepOmissionRefusedError, step);
-    }
+    const step = "crm-data";
+    assert.throws(() => resolveStartStepOmissions(descriptor, keys.filter(key => key !== step), [{ step, facts: {} }]),
+      (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "facts-invalid");
   });
 
   it("plans nothing new and keeps today's node list", () => {
