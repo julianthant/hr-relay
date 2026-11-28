@@ -27,8 +27,16 @@ describe("Emergency Contact Start run rows", () => {
     ]);
   });
 
-  it("declares the member's contact read as a bound read", () => {
-    assert.deepEqual(emergencyContactMemberModule.descriptor.stepLocks, [{ step: "contact-plan", reason: "bound-read" }]);
+  it("offers typed contact-plan values only on the member's own Start rows", () => {
+    const memberRow = projectStartRows(emergencyContactMemberModule.descriptor).find(row => row.key === "contact-plan");
+    assert.ok(memberRow);
+    assert.equal(memberRow.kind, "switch");
+    assert.equal(memberRow.off, "values");
+    const parentRow = projectStartRows(descriptor).find(row => row.key === "read-existing-contacts");
+    assert.ok(parentRow);
+    assert.equal(parentRow.kind, "locked");
+    assert.equal(parentRow.lockReason, "bound-read");
+    assert.equal(parentRow.manual, undefined);
   });
 
   it("offers no switch and no typed field on any row", () => {
