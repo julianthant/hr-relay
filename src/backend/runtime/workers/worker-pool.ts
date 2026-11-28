@@ -144,6 +144,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   const timeouts = { readyMs: WORKER_READY_TIMEOUT_MS, gracefulMs: WORKER_GRACEFUL_STOP_TIMEOUT_MS,
     sigtermMs: WORKER_SIGTERM_TIMEOUT_MS, exitObservationMs: WORKER_EXIT_OBSERVATION_TIMEOUT_MS, ...deps.timeouts };
   const records = new Map<string, MemberRecord>();
+  const pendingWakes = new Set<string>();
   const at = () => IsoInstantSchema.parse(deps.clock.now().toISOString());
   const after = (ms: number, run: () => void): MonotonicDeadlineHandle => deps.scheduler.schedule(deps.clock.monotonicMs() + ms, run);
 
@@ -324,7 +325,7 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
     for (const pending of record.pending.values()) { pending.timer.cancel(); pending.reject(error); }
     record.pending.clear();
   };
-  const awaitReply = (record: MemberRecord, message: Exclude<WorkerParentMessage, { kind: "worker-stop" }>, deadlineMs: number): Promise<JsonValue> =>
+  const awaitReply = (record: MemberRecord, message: Extract<WorkerParentMessage, { requestId: string }>, deadlineMs: number): Promise<JsonValue> =>
     new Promise((resolve, reject) => {
       const timer = after(deadlineMs, () => {
         if (record.pending.delete(message.requestId)) reject(new WorkerPoolError("WORKER_REQUEST_TIMED_OUT"));
@@ -356,6 +357,21 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
   return Object.freeze({
     takeShutdownStopFailures: (): readonly unknown[] => takeStopFailures("shutdown"),
     snapshot(): readonly WorkerMemberView[] { return Object.freeze([...records.values()].map(view)); },
+
+    wakeForWork(workflowId: string): void {
+      if (pendingWakes.has(workflowId)) return;
+      pendingWakes.add(workflowId);
+      queueMicrotask(() => {
+        pendingWakes.delete(workflowId);
+        for (const record of records.values()) {
+          // Activity messages can trail a worker's return to idle. The child decides when it can claim.
+          if (record.member.workflowId !== workflowId || record.state !== "running" || record.directive !== "run") continue;
+          const report = (error: unknown): void => { if (error !== null) deps.onFault?.(record.member, error, record.port.pid); };
+          try { record.port.send({ kind: "worker-work-available" }, report); }
+          catch (error) { report(error); }
+        }
+      });
+    },
 
     async start(member: WorkerPoolMember): Promise<WorkerMemberView> {
       const exiting = records.get(member.workerId);
