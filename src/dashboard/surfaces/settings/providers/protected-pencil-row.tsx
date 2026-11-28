@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, ResultRow, dsIcon } from "../../../ds/ui.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { formatSetting } from "../editor/settings-draft-model.js";
+import { SavingMark } from "../editor/settings-controls.js";
 import { ProtectedSettingField } from "./settings-protected-field.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
@@ -20,11 +21,13 @@ export function ProtectedPencilRow({ editor, name, label, thing, description }: 
   const authority = editor.editor.document.protectedSettings;
   const credentials = editor.protectedEditor;
   const stored = authority.state === "available" ? authority.entries[name] : undefined;
-  const shown = stored === undefined ? "Not set" : name === "ucpathUserId" ? formatSetting(stored.value) : "••••••••";
   const disabled = credentials.locked || authority.state !== "available" || editor.readProblem !== undefined;
   const operation = credentials.draft[name];
   const typed = operation?.kind === "set" ? operation.raw.trim() : "";
   const changed = typed !== "" && !(name === "ucpathUserId" && stored !== undefined && typed === formatSetting(stored.value));
+  // A username waiting for a fresh revision, or being saved, shows what was typed; after this credential's save fails the row shows the served value and the draft waits for an explicit Save in the dialog.
+  const waiting = name === "ucpathUserId" && !open && typed !== "" && !credentials.failedNames.includes(name) ? typed : undefined;
+  const shown = stored === undefined && waiting === undefined ? "Not set" : name === "ucpathUserId" ? waiting ?? formatSetting(stored?.value) : "••••••••";
   const close = (): void => { credentials.reset(name); setOpen(false); };
   return <div data-settings-path={`protected.${name}`}>
     <ResultRow label={label} value={<span className="inline-flex items-center justify-end gap-3">
@@ -40,5 +43,6 @@ export function ProtectedPencilRow({ editor, name, label, thing, description }: 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <SavingMark editor={{ savingPaths: credentials.savingNames }} path={name} />
   </div>;
 }
