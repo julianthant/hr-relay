@@ -3,8 +3,10 @@ import { createOperatorProjection, createOperatorRunDetail } from "../../../src/
 import { readRunPanel } from "../../../src/backend/runs/queries/run-detail.js";
 import { projectTypedSteps } from "../../../src/backend/runs/queries/run-detail/typed-values.js";
 import { readRerunValues } from "../../../src/backend/runs/start/rerun-values.js";
+import { projectStartRows, projectStartSteps, startRowWire } from "../../../src/backend/runs/start/step-selection.js";
 import { projectRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
+import { sourceBadge, startRowsOf } from "../../../src/dashboard/surfaces/run-start/run-steps-model.js";
 import { EmergencyContactMemberResultSchema } from "../../../src/models/workflows/emergency-contact/result.js";
 import assert from "node:assert/strict";
 import { afterEach,it } from "vitest";
@@ -261,4 +263,8 @@ it("authenticates OCR approval, skips both writes and withholds the typed ID fro
   { runId: source.envelope.runId, expectedVersion: source.version });
   assert.ok(values.state === "available", JSON.stringify(values));
   assert.deepEqual(values.snapshot.typed?.map(({ step }) => step), ["contact-preview", "onbase-filing"]);
+  const rows = startRowsOf({ steps: projectStartSteps(compiled.descriptor), rows: projectStartRows(compiled.descriptor).map(startRowWire) });
+  const contactPlan = rows.find(({ key }) => key === "contact-plan");
+  assert.ok(contactPlan);
+  assert.equal(sourceBadge(contactPlan, values.snapshot), "skipped");
 });
