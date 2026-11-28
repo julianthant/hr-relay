@@ -1616,7 +1616,7 @@ export class AuthorityDatabase implements Disposable {
   createReadLaneTimelineQuery(): ReturnType<typeof createDashboardSnapshotQuery> {
     if (this.#openMode !== "dashboard-read-worker-read-only-no-migrate" || this.#historyOwner !== undefined) throw new Error("read-lane-native-owner-required");
     return createDashboardSnapshotQuery(this.#database, this.#admission.profileBinding, read => this.#withOwnReadSnapshot(() => {
-      this.#validateExternalQuerySources();
+      this.#validateExternalQuerySources("original");
       return read();
     }));
   }
@@ -3385,12 +3385,12 @@ export class AuthorityDatabase implements Disposable {
    * the closure of the logged changes from schema 31, the whole-store check below it or after a schema move or log gap.
    * Nothing here runs under the write lock.
    */
-  #validateExternalQuerySources(mode: "selector" | "mutation" = "selector", searchValidation: "all" | "progress" | "none" = "all"): void {
+  #validateExternalQuerySources(errorMode: "search-rebuild" | "original" = "search-rebuild", searchValidation: "all" | "progress" | "none" = "all"): void {
     if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return;
     const owner = this.#historyOwner;
     if (owner !== undefined) {
       owner.withAuthorityReadSnapshot(() => {
-        owner.#validateExternalQuerySources(mode, searchValidation);
+        owner.#validateExternalQuerySources(errorMode, searchValidation);
         if (owner.getMeta().authorityGeneration !== this.getMeta().authorityGeneration) throw new AuthoritySnapshotChangedError();
       });
       return;
@@ -3403,7 +3403,7 @@ export class AuthorityDatabase implements Disposable {
       if (reader === undefined) validateAuthorityStore(this.#database, searchValidation);
       else admitChanges(this.#database, reader, searchValidation, observed);
     } catch (error) {
-      if (mode === "mutation") throw error;
+      if (errorMode === "original") throw error;
       throw new Error("run-search-index-rebuild-required", { cause: error });
     }
     const stable = observed === this.#snapshotExternalDataVersion && readIntPragma(this.#database, "data_version") === observed;
@@ -3466,7 +3466,7 @@ export class AuthorityDatabase implements Disposable {
       try {
         this.#admitMutation();
         const witnesses = new Map(outermostOperationProof()?.witnesses);
-        if (mode === "projection") this.#withReadSnapshot(() => { this.#validateExternalQuerySources("mutation", searchValidation); });
+        if (mode === "projection") this.#withReadSnapshot(() => { this.#validateExternalQuerySources("original", searchValidation); });
         this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
         try { this.#database.exec("BEGIN IMMEDIATE"); }
         catch (error) {
