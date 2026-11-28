@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { randomUUID } from "node:crypto";
+import { createWorkerChildChannel } from "../../../../src/backend/runtime/workers/worker-child-channel.js";
 import { createWorkerPool, requireStoppedPool, WorkerPoolError, type WorkerExitFact, type WorkerMemberView, type WorkerPoolDependencies, type WorkerPoolMember, type WorkerProcessPort } from "../../../../src/backend/runtime/workers/worker-pool.js";
 import type { WorkerParentMessage } from "../../../../src/backend/runtime/workers/worker-messages.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -207,6 +208,47 @@ describe("worker pool", () => {
     const pending = w.pool.request(target, { type: "close-for-removal" }, 1_000); await flush();
     port.exit(1, null);
     await assert.rejects(pending, { code: "WORKER_EXITED" });
+  });
+
+  it("can finish removal after the original close times out and succeeds late", async () => {
+    const w = world(), { port, target } = await running(w);
+    const closed = Promise.withResolvers<{ closed: boolean }>();
+    let closes = 0;
+    const unexpected = (): never => { throw new Error("unrequested control"); };
+    const child = createWorkerChildChannel({ clock: w.clock, send: message => { port.message(message); },
+      onStop: reason => { assert.equal(reason, "remove"); port.exit(0, null); },
+      handlers: { refreshBrowser: unexpected, reopenBrowser: unexpected, checkParkedWrite: unexpected,
+        closeForRemoval: () => { closes += 1; return closed.promise; }, pause: unexpected, resume: unexpected } });
+    const close = () => w.pool.request(target, { type: "close-for-removal" }, 1_000);
+    const deliverLatest = () => {
+      const message = port.sent.at(-1);
+      assert.ok(message);
+      child.receive(message);
+    };
+
+    const timedOut = assert.rejects(close(), { code: "WORKER_REQUEST_TIMED_OUT" });
+    deliverLatest();
+    w.clock.advanceWall(1_000);
+    await w.advance(1_000);
+    await timedOut;
+    closed.resolve({ closed: true });
+    await flush();
+    assert.equal(w.pool.snapshot()[0]?.state, "running", "the late reply did not advance removal to Stop");
+    child.receive({ kind: "worker-work-available" });
+    assert.equal(child.beginRun(), false);
+
+    const retry = close();
+    deliverLatest();
+    assert.deepEqual(await retry, { closed: true });
+    assert.equal(closes, 1, "the retry reuses the completed close");
+    assert.equal(child.beginRun(), false, "the retry acknowledgment keeps the claim fence");
+    const stopped = w.pool.stop(target, "remove");
+    assert.equal(port.sent.at(-1)?.kind, "worker-stop");
+    deliverLatest();
+    await stopped;
+    assert.deepEqual(w.pool.snapshot()[0]?.exit, {
+      code: 0, signal: null, at: w.clock.now().toISOString(), outcome: "stopped", reason: "remove", settlement: "settled",
+    });
   });
 
   it("disconnects and kills a child that sends an invalid worker message", async () => {
