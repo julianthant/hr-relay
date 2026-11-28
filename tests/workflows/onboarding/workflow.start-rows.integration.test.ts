@@ -39,7 +39,7 @@ describe("Onboarding Start run rows", () => {
   it("plans nothing new and keeps today's node list", () => {
     assert.equal(resolveStartStepOmissions(descriptor, projectStartSteps(descriptor).map(({ key }) => key), undefined), undefined);
     const nodes = descriptorRuntimeNodes(descriptor).map((node) => [String(node.id), node.kind, node.dependsOn.map(String), "dryRun" in node ? node.dryRun ?? null : null]);
-    assert.deepEqual(nodes.find(([id]) => id === "reference-check")?.[2], ["hire-plan", "hire-subject", "hire-review"]);
-    assert.equal(createHash("sha256").update(JSON.stringify(nodes)).digest("hex"), "5b266b94ba8f6729841e17b828b9be64a03009bb84c96053812559b31c2e53cc");
+    assert.deepEqual(nodes.find(([id]) => id === "reference-fields-crm-source")?.[2], ["crm-source", "reference-fields-start", "reference-field-review-start"]);
+    assert.equal(createHash("sha256").update(JSON.stringify(nodes)).digest("hex"), "deb76b6c2e8059b37c381761061c8e6948daf543ddea5dd8874ef9b4b9f69bb6");
   });
 });

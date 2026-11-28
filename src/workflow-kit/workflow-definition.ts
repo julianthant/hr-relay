@@ -791,7 +791,7 @@ function referenceStages<Input extends z.ZodType>(
   const finalStage = stageIds.at(-1) ?? "start";
   const finalCheck = checkId(finalStage);
   const finalGate = referenceReviewId(finalStage);
-  const group = {
+  const group: WorkflowTimelineGroup = {
     ...REFERENCE_CHECK_STEP, system: "local" as const,
     review: {
       pages: [{
@@ -1305,17 +1305,26 @@ export function compileWorkflow<
   void role;
   void intake;
   void result;
-  const timeline = steps.map(([group, entries]) => ({
-    key: group.key,
-    label: group.label,
-    ...(group.description === undefined ? {} : { description: group.description }),
-    ...(group.system === undefined ? {} : { system: group.system }),
-    nodes: entries.flatMap(entryNodeIds),
-    ...(group.operatorFields === undefined ? {} : { operatorFields: group.operatorFields }),
-    ...(group.selection === undefined ? {} : { selection: group.selection }),
-    ...(group.manual === undefined ? {} : { manual: group.manual }),
-    ...(group.locked === undefined ? {} : { locked: group.locked }),
-  }));
+  const referenceComparisons = referenceCheck === undefined ? [] : flattenEntries(steps)
+    .filter(entry => entry.kind === "task" && entry.contracts.includes(CompareReferenceFields));
+  const timeline = steps.map(([group, entries]) => {
+    const comparisonReaders = referenceComparisons.filter(entry => entry.references.some(dependency => group.manual?.skips?.includes(dependency.id)))
+      .map(entry => entry.id);
+    const manual = group.manual === undefined || comparisonReaders.length === 0 ? group.manual : {
+      ...group.manual, orderOnlyReaders: [...new Set([...(group.manual.orderOnlyReaders ?? []), ...comparisonReaders])],
+    };
+    return {
+      key: group.key,
+      label: group.label,
+      ...(group.description === undefined ? {} : { description: group.description }),
+      ...(group.system === undefined ? {} : { system: group.system }),
+      nodes: entries.flatMap(entryNodeIds),
+      ...(group.operatorFields === undefined ? {} : { operatorFields: group.operatorFields }),
+      ...(group.selection === undefined ? {} : { selection: group.selection }),
+      ...(manual === undefined ? {} : { manual }),
+      ...(group.locked === undefined ? {} : { locked: group.locked }),
+    };
+  });
   const usesDefaultTimeline = steps.every(([group, entries]) => {
     const [entry] = entries as readonly RuntimeEntry[];
     if (entry === undefined || entries.length !== 1 || group.manual !== undefined || group.locked !== undefined || group.selection !== undefined || group.operatorFields !== undefined || group.system !== undefined || group.description !== undefined) return false;

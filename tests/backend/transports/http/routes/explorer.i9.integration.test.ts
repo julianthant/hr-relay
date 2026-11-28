@@ -148,7 +148,7 @@ it("shows confirmed identity rows only for an identifier match and the name sear
 
 it("only offers a reference review when a resolved field differs", async () => {
   const spec = await review("i9-check");
-  const [comparison, review] = blocks(spec, "reference-check", "decision"); assert.ok(comparison); assert.ok(review);
+  const [comparison, approval] = blocks(spec, "reference-check", "decision"); assert.ok(comparison); assert.ok(approval);
   for (const identity of ["not-found", "ambiguous", "found"]) {
     const selected = walk(spec, {}, { "retention-identity": identity });
     assert.equal(selected.values["reference-result"], "false");

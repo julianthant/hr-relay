@@ -159,7 +159,7 @@ export function runDialogWriteRerunSnapshot(): RerunValuesResponse {
     sourceInput: { state: "available", value: { emplId: RUN_DIALOG_TYPED, effectiveDate: "2026-08-03" } },
     source: { runId: RUN_ID, version: 3, workflow: RUN_DIALOG_WORK_STUDY, descriptorVersion: WORK_STUDY.version, contractFingerprint: HASH, outcome: "cancelled", dryRun: false, priority: "interactive", browserMode: "headless" },
     steps: WORK_STUDY.steps.map(({ key }) => key !== "transaction"
-      ? { key, state: "completed", nodes: (WRITE_NODES[key as keyof typeof WRITE_NODES] ?? []).map(nodeId => ({ nodeId, state: "completed", reason: nodeId === "reference-stop" ? "condition-skipped" : "checkpoint" })) }
+      ? { key, state: "completed", nodes: (WRITE_NODES[key as keyof typeof WRITE_NODES] ?? []).map(nodeId => ({ nodeId, state: "completed", reason: nodeId.startsWith("reference-field-review-") ? "condition-skipped" : "checkpoint" })) }
       : { key, state: "unfinished", nodes: [{ nodeId: "transaction-plan", state: "completed", reason: "checkpoint" },
         { nodeId: "save-transaction", state: "unfinished", reason: "incomplete-execution" }] }),
     values: [], transactions: [{ stepKey: "transaction", ...WRITE_RECEIPT, disposition: "committed", filedBySource: true }],
