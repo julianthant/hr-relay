@@ -12,14 +12,14 @@ import { searchPersonMatchTask } from "../../tasks/search-person-match.js";
 import { searchPersonOrgTask } from "../../tasks/search-person-org.js";
 
 const MatchFactsSchema = z.strictObject({ status: z.enum(["found", "not-found"]), eid: EidSchema.nullable(), name: z.string().min(1).nullable() });
+const whenFound = { field: "status", equals: "found" };
 const MATCH_MANUAL: StepManualDeclaration = {
   off: "values",
   form: { fields: [
     { key: "status", label: "Found in UCPath", kind: "enum", values: ["found", "not-found"], replaces: { nodeId: "match-outcome", path: "identity.status" } },
-    { key: "eid", label: "Matched Employee ID", kind: "eid", optional: true, help: "Required when found.", replaces: { nodeId: "match-outcome", path: "identity.eid" } },
-    { key: "name", label: "UCPath name", kind: "text", optional: true, help: "Required when found.", replaces: { nodeId: "match-outcome", path: "identity.name" } },
+    { key: "eid", label: "Matched Employee ID", kind: "eid", optional: true, requiredWhen: whenFound, help: "Required when found.", replaces: { nodeId: "match-outcome", path: "identity.eid" } },
+    { key: "name", label: "UCPath name", kind: "text", optional: true, requiredWhen: whenFound, help: "Required when found.", replaces: { nodeId: "match-outcome", path: "identity.name" } },
   ] },
-  refine: facts => facts.status === "found" ? ["eid", "name"].filter(field => facts[field] === null).map(field => ({ field, message: "Required when found." })) : [],
   produces: {
     "match-outcome": ({ facts }) => {
       const typed = MatchFactsSchema.parse(facts);

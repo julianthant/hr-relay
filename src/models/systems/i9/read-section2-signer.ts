@@ -5,6 +5,7 @@ import { containsDryRunSample } from "../../workflow/dry-run.js";
 import { ERROR_CATALOG } from "../../failures/error-catalog.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 import { taskId } from "../../../rules/identity/ids.js";
+import type { JsonObject } from "../../../rules/validation/canonical-json.js";
 
 export const I9LookupInputSchema = z.strictObject({
   lastName: z.string().trim().min(1),
@@ -31,6 +32,11 @@ export const I9SignerOutputSchema = z.discriminatedUnion("i9Status", [
   z.strictObject({ i9Status: z.literal("unable-to-access"), signerName: z.literal("") }),
 ]).refine(value => !containsDryRunSample(value), "Preview samples cannot become an I-9 lookup result");
 export type I9SignerOutput = z.output<typeof I9SignerOutputSchema>;
+
+export function manualI9Signer({ i9Status, signerName, profileId, i9Id }: JsonObject) {
+  return { i9Status, signerName: signerName ?? "",
+    ...(profileId === null ? {} : { profileId }), ...(i9Id === null ? {} : { i9Id }) };
+}
 
 export const I9ReadSection2Signer = defineTaskContract({
   id: taskId("i9/read-section2-signer"),

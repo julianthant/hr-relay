@@ -14,6 +14,26 @@ const { descriptor } = i9LookupModule;
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
 
+it("refuses invalid lookup results in Steps before starting", () => {
+  const [row] = startRowsOf({ steps: projectStartSteps(descriptor), rows: projectStartRows(descriptor).map(startRowWire) });
+  assert.ok(row?.form);
+  const historical = { i9Status: "historical", signerName: "", profileId: "900001", i9Id: "900002" };
+  for (const invalid of [
+    { ...historical, profileId: "" },
+    { ...historical, i9Id: "" },
+    { ...historical, profileId: "invalid" },
+    { ...historical, i9Id: "0" },
+    { ...historical, signerName: "Example Representative" },
+    { ...historical, i9Status: "signed", signerName: "Example Representative", profileId: "invalid" },
+    { ...historical, i9Status: "not-found" },
+    { ...historical, i9Status: "unable-to-access", profileId: "", i9Id: "", signerName: "Example Representative" },
+  ]) assert.equal(stepEntries([rowOpenFold(row, row.form, invalid)]), null, JSON.stringify(invalid));
+  assert.ok(stepEntries([rowOpenFold(row, row.form, historical)]));
+  for (const i9Status of ["unsigned", "not-found", "unable-to-access"]) {
+    assert.ok(stepEntries([rowOpenFold(row, row.form, { i9Status, signerName: "", profileId: "", i9Id: "" })]));
+  }
+});
+
 it("uses the typed lookup result without opening I-9 Complete", async () => {
   assert.deepEqual(projectStartRows(descriptor).map(({ key, kind, off }) => [key, kind, off]), [
     ["lookup", "switch", "values"],

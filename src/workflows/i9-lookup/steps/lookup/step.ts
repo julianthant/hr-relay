@@ -1,34 +1,20 @@
-import { I9LookupInputSchema, I9ReadSection2Signer, I9SignerOutputSchema } from "../../../../models/systems/i9/read-section2-signer.js";
+import { I9LookupInputSchema, I9ReadSection2Signer, I9SignerOutputSchema, manualI9Signer } from "../../../../models/systems/i9/read-section2-signer.js";
 import { ReadI9LookupResult } from "../../../../models/workflows/i9-lookup/read-result.js";
 import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
-import type { JsonObject } from "../../../../rules/validation/canonical-json.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 
-const whenSigned = { field: "i9Status", equals: "signed" };
-
-function typedSigner({ i9Status, signerName, profileId, i9Id }: JsonObject) {
-  return { i9Status, signerName: signerName ?? "",
-    ...(profileId === null ? {} : { profileId }), ...(i9Id === null ? {} : { i9Id }) };
-}
-
 const lookupManual: StepManualDeclaration = {
   off: "values",
-  form: { fields: [
+  form: { format: "i9-signer-result", fields: [
     { key: "i9Status", label: "I-9 status", kind: "enum", values: ["signed", "unsigned", "historical", "not-found", "unable-to-access"] },
-    { key: "signerName", label: "Authorized official signer", kind: "text", optional: true, requiredWhen: whenSigned },
-    { key: "profileId", label: "I-9 profile ID", kind: "text", optional: true, requiredWhen: whenSigned, withheld: true, help: "Digits only. Required for Signed and Historical." },
-    { key: "i9Id", label: "I-9 record ID", kind: "text", optional: true, requiredWhen: whenSigned, withheld: true, help: "Digits only. Required for Signed and Historical." },
+    { key: "signerName", label: "Authorized official signer", kind: "text", optional: true },
+    { key: "profileId", label: "I-9 profile ID", kind: "text", optional: true, withheld: true, help: "Digits only. Required for Signed and Historical." },
+    { key: "i9Id", label: "I-9 record ID", kind: "text", optional: true, withheld: true, help: "Digits only. Required for Signed and Historical." },
   ] },
-  refine: facts => {
-    const parsed = I9SignerOutputSchema.safeParse(typedSigner(facts));
-    return parsed.success ? [] : parsed.error.issues.flatMap(issue =>
-      (issue.code === "unrecognized_keys" ? issue.keys : [String(issue.path[0] ?? "i9Status")])
-        .map(field => ({ field, message: "Enter the values required for the selected I-9 status." })));
-  },
   keeps: ["lookup"],
-  produces: { "lookup-source": ({ facts }) => I9SignerOutputSchema.parse(typedSigner(facts)) },
+  produces: { "lookup-source": ({ facts }) => I9SignerOutputSchema.parse(manualI9Signer(facts)) },
 };
 
 export const I9_LOOKUP_STEP = Object.freeze({

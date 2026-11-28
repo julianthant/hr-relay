@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { JsonObject, JsonValue } from "../../rules/validation/canonical-json.js";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { EID_PATTERN, type IsoInstant } from "../../rules/identity/ids.js";
+import { I9ReadSection2Signer, I9SignerOutputSchema, manualI9Signer } from "../systems/i9/read-section2-signer.js";
 import { CRM_MANUAL_RECORDS_EXAMPLE, crmManualRecordsIssue } from "../workflows/crm-doc-download/manual-records.js";
 import type { RuntimeScope } from "./graph.js";
 import { TimelineCategoryKeySchema } from "./presentation.js";
@@ -39,6 +40,7 @@ export const StepOmissionFieldSchema = z.discriminatedUnion("kind", [
 export type StepOmissionField = z.infer<typeof StepOmissionFieldSchema>;
 
 export const StepOmissionFormSchema = z.strictObject({
+  format: z.literal("i9-signer-result").optional(),
   fields: z.array(StepOmissionFieldSchema).superRefine((fields, ctx) => {
     const seen = new Set<string>();
     for (const field of fields) {
@@ -89,7 +91,7 @@ export function stepOmissionFieldFactSchema(field: StepOmissionField, input?: St
 
 /** ONE strict facts schema per form — every key is present; absence is a refusal, not a default. */
 export function stepOmissionFactsSchema(form: StepOmissionForm, input?: StepOmissionInput): z.ZodObject<Record<string, z.ZodType<JsonValue>>> {
-  const { fields } = StepOmissionFormSchema.parse(form);
+  const { fields, format } = StepOmissionFormSchema.parse(form);
   const shape: Record<string, z.ZodType<JsonValue>> = {};
   for (const field of fields) shape[field.key] = stepOmissionFieldFactSchema(field, input);
   return z.strictObject(shape).superRefine((facts, ctx) => {
@@ -97,6 +99,13 @@ export function stepOmissionFactsSchema(form: StepOmissionForm, input?: StepOmis
       const condition = field.requiredWhen;
       if (condition !== undefined && facts[condition.field] === condition.equals && facts[field.key] === null) {
         ctx.addIssue({ code: "custom", path: [field.key], message: "Enter a value for the selected choice." });
+      }
+    }
+    if (format === "i9-signer-result") {
+      const parsed = I9SignerOutputSchema.safeParse(manualI9Signer(facts));
+      if (!parsed.success) for (const issue of parsed.error.issues) {
+        const keys = issue.code === "unrecognized_keys" ? issue.keys : [issue.path[0] ?? "i9Status"];
+        for (const key of keys) ctx.addIssue({ code: "custom", path: [key], message: "Enter the values required for the selected I-9 status." });
       }
     }
   });
@@ -433,6 +442,7 @@ export type StepOmissionCascadeRow =
 
 /** Schema-valid probe facts establish shape only; cascade and guard share the same values. */
 export function stepOmissionPlaceholderFacts(form: StepOmissionForm): JsonObject {
+  if (form.format === "i9-signer-result") return JsonFactsSchema.parse(I9ReadSection2Signer.example);
   const placeholder = (field: StepOmissionField): JsonValue => {
     switch (field.kind) {
       case "boolean": return false;
