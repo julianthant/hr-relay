@@ -57,13 +57,16 @@ Run this from a Relay checkout with its dependencies installed. Stop the copy da
 signed in and hold [imported run history](../profiles/README.md); prepare it with that import command, not by hand.
 
 ```sh
-node --import tsx scripts/bench/read-lanes.ts development --runs 3
+node --import tsx scripts/bench/read-lanes.ts development --runs 5 --fresh-copy
 ```
 
 Each run is a cold process that opens the copy's store the way the dashboard does and starts the real read host:
-shape A starts the navigation lane alone and shape B starts the navigation and search lanes. Shapes alternate between
+shape A starts the navigation lane alone and shape B starts the navigation and search lanes. With `--fresh-copy`,
+both shapes use one temporary clone of the stopped copy's data. The command removes the clone after the run.
+Shapes alternate between
 runs. A run records the time from host creation until every lane is ready, the process RSS added by the lanes after
-one timeline page, and that page's time. Each shape passes G2 on its own when every run is ready within 5 s and adds
+one timeline page, and that page's time. Each run compares the first page and a page crossing the archive boundary
+with the dashboard history. Each shape passes G2 on its own when every run is ready within 5 s and adds
 at most 350 MiB. The backend runs under tsx, as `npm run dashboard:prod` runs it, because there is no packaged build.
 The command writes the JSON report in the invoking directory with mode `600`.
 

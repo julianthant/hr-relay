@@ -1,4 +1,5 @@
 import { readStartupFile, type StartupFile } from "./startup-file-proof.js";
+import { createDashboardSnapshotQuery } from "./authority-dashboard-snapshot.js";
 import type { LogMutation } from "../events/log-mutations.js";
 import type { FileIdentitySchema } from "../../../models/storage/file-identity.js";
 import { createWorkerSlotRepository } from "./worker-slots.js";
@@ -131,7 +132,7 @@ import { applyWriteTransition, AtomicWriteCommitInputSchema, AtomicWriteCommitRe
 import { type ChangeLogReader, changeLogHighWater, CHANGE_LOG_RETAINED_ENTRIES, readAuthorityChanges, validateAuthorityChanges, readSingletonImage, changeLogBaseline, validateAuthorityStore, admitChanges, CHANGE_LOG_PRUNE_INTERVAL_MS } from "./authority-change-admission.js";
 import { readIntPragma, AuthorityDatabaseOptionsSchema, type AuthorityDatabaseOpenModeSchema, existingDatabaseLocation, errorMessage, inspectionTableNames, readMetaRow, parseDiagnosticPageCount, readTextPragma, optimizeAuthorityPlanner, AUTHORITY_WAL_SIZE_LIMIT_BYTES, AuthorityMetaSchema, sqliteChanges, AuthoritySchemaInspectionSchema, CountRowSchema, configureWritableConnection, tableNames, type MetaRowSchema } from "./authority-connection.js";
 import { inspectStoredData, CredentialContextRequiredError, AuthoritySchemaVersionError, AuthorityFormatUnsupportedError, type StartupFailureClassification, isSqliteDamage, AuthorityWriterBusyError, AuthoritySnapshotChangedError } from "./authority-errors.js";
-import { assertNativeSchema, checkSqliteIntegrity, upgradeInspections, type VerifiedUpgradeImage, type NativeInspection, inspectNativeAuthority, QuickCheckRowSchema, assertPublishedAssistantNumbering, normalizedNativeSchema, expectedNativeSchema, nonProjectionFingerprint, runSearchDefinitions, startupImageDigest, authorityContentFingerprint, inspectStoppedTransaction, commitVerifiedUpgrade, inspectNormalAuthority, inspectOpenDatabase, checkInspectionPragmas, observeReadonlyStartupFile, sameStartupFile } from "./authority-inspection.js";
+import { assertNativeSchema, checkSqliteIntegrity, assertReadLaneDatabase, upgradeInspections, type VerifiedUpgradeImage, type NativeInspection, inspectNativeAuthority, QuickCheckRowSchema, assertPublishedAssistantNumbering, normalizedNativeSchema, expectedNativeSchema, nonProjectionFingerprint, runSearchDefinitions, startupImageDigest, authorityContentFingerprint, inspectStoppedTransaction, commitVerifiedUpgrade, inspectNormalAuthority, inspectOpenDatabase, checkInspectionPragmas, observeReadonlyStartupFile, sameStartupFile } from "./authority-inspection.js";
 import { type AuthorityRepositories, type AuthorityWriteCommitHooks, type AuthorityTerminalizationHooks, type AuthorityLifecycleHooks, type SlowOperationHook, type EarlierRunEvents, type PendingLogoutServices, type ImmutableInsertResult, DiagnosticPurgeDispositionSchema, type CanonicalRunClaimOutcome, type RunRepository, type StartPlanRepository, type DuoCeremonyLeaseRepository, type DuoCeremonyLeaseAcquireOutcome, type WorkerPoolRepository, type RunSessionRepository } from "./authority-repositories.js";
 import { inspectionRunReader, readTimelineRun, assertTimelineOwner, INSPECTED_TIMELINE_KINDS, readRunPages, JsonRowSchema, assertTerminalEvidenceOwner, timelineEvidenceRepositories, assertConfirmationPublication, authenticateStoredWriteResolution, assertRefreshedReceiptSettlement, authenticateStoredResolutionAudit, readConfirmationPublication, authenticatedPublicationDeletion, CURRENT_READERS, readDelegationRefreshCommands } from "./authority-run-evidence.js";
 import { readManagedArtifactReferencesFromDatabase, maintenanceInventory, browserProfileInventory, requireStoppedUpgradeSource, flatQueuedRunCancellationInventory, withDirectReaderAdmission, inspectExistingDatabaseReadOnly, type AuthorityReadIdentitySnapshot, inspectAuthorityReadIdentityReadOnly, inspectSpanRunAuthorityReadOnly } from "./authority-stopped-reads.js";
@@ -278,6 +279,7 @@ export class AuthorityDatabase implements Disposable {
   #optimizeOnClose: boolean;
   #closed = false;
   #historyReader?: AuthorityDatabase;
+  #readLaneImageDigest?: string;
   #checkpointCustodians = 0;
   #historyOwner?: AuthorityDatabase;
   #historyCursorOffset = 0;
@@ -335,6 +337,7 @@ export class AuthorityDatabase implements Disposable {
     credentials?: CredentialStore,
     purpose: "stopped-startup-recovery" | "stopped-layout-source" | "stopped-layout-target" | "ordinary" | "profile-initialization" | "profile-onboarding-debug" | "stopped-restore-projection" | "stopped-span-root-repair" | "stopped-logout-settlement" | "stopped-logout-inspection" = "ordinary",
     slowOperation?: SlowOperationHook,
+    laneImage?: "capture" | Readonly<{ digest: string }>,
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
@@ -424,8 +427,17 @@ export class AuthorityDatabase implements Disposable {
         if (existed && purpose === "ordinary") this.#initializeSchema(existingVersion, options.migrationOwner);
       }
       this.#database.exec("BEGIN");
-      if (readOnlyNoMigrate) this.#validateReadOnlyNoMigrateDatabase(existingVersion);
-      else this.#validateDatabase(existed && (purpose === "ordinary" || purpose === "stopped-startup-recovery"), admittedDataVersion);
+      if (readOnlyNoMigrate) {
+        const expected = laneImage === "capture" ? undefined : laneImage?.digest;
+        const observed = expected === undefined ? undefined : startupImageDigest(this.#database);
+        if (observed?.state !== "observed" || observed.digest !== expected) this.#validateReadOnlyNoMigrateDatabase(existingVersion);
+        else checkInspectionPragmas(this.#database, false);
+        // Capture only in the transaction that passed the full inspection and only when a copy has a history reader.
+        if (laneImage === "capture") {
+          const inspected = startupImageDigest(this.#database);
+          if (inspected.state === "observed") this.#readLaneImageDigest = inspected.digest;
+        }
+      } else this.#validateDatabase(existed && (purpose === "ordinary" || purpose === "stopped-startup-recovery"), admittedDataVersion);
       readAppSettings(this.#database);
       if (readIntPragma(this.#database, "user_version") >= CHANGE_LOG_SCHEMA_VERSION) this.#changeReader ??= changeLogBaseline(this.#database);
       this.#database.exec("COMMIT");
@@ -476,6 +488,13 @@ export class AuthorityDatabase implements Disposable {
       catch (closeError) { throw retainAuthoritySourceClosure([error, closeError], { database, admission }); }
       throw error;
     }
+  }
+
+  static openReadLaneNative(admission: RuntimeAdmission, path: string, busyTimeoutMs: number, withHistory: boolean): AuthorityDatabase {
+    admission.assertProfileRuntime();
+    return new AuthorityDatabase(admission, { path, busyTimeoutMs, migrationOwner: "dashboard-read-lane",
+      openMode: "dashboard-read-worker-read-only-no-migrate" }, systemClock,
+      undefined, undefined, undefined, undefined, "ordinary", undefined, withHistory ? "capture" : undefined);
   }
 
   static readIncompleteOnboardingInventory(admission: RuntimeAdmission) {
@@ -1580,17 +1599,29 @@ export class AuthorityDatabase implements Disposable {
         || !sameDirectory({ device: String(status.dev), inode: String(status.ino) }, archive.identity)) throw new Error("read-lane-history-source-changed");
     };
     admitArchive();
+    // Only a byte-identical snapshot reuses the native inspection. A changed or unprovable image is checked in full.
+    const digest = this.#readLaneImageDigest;
     const reader = new AuthorityDatabase(owner, { path: this.#path, busyTimeoutMs: this.#busyTimeoutMs,
-      migrationOwner: "dashboard-read-lane-history", openMode: "dashboard-read-worker-read-only-no-migrate" }, this.#clock);
+      migrationOwner: "dashboard-read-lane-history", openMode: "dashboard-read-worker-read-only-no-migrate" }, this.#clock,
+      undefined, undefined, undefined, undefined, "ordinary", undefined, digest === undefined ? undefined : { digest });
     try {
       // A lane never writes the archive: one that is stale or missing an index is refused, not upgraded.
       reader.#historyCursorOffset = attachHistoryArchive(reader.#database, archive.path, owner.profileBinding, "validate");
+      reader.#database.exec("PRAGMA history.cache_size=-2000; PRAGMA history.mmap_size=0");
       admitArchive();
       if (reader.#historyCursorOffset !== archive.cursorOffset) throw new Error("read-lane-history-cursor-mismatch");
       reader.#historyOwner = this;
       this.#historyReader = reader;
       return reader;
     } catch (error) { reader.close(); throw error; }
+  }
+
+  createReadLaneTimelineQuery(): ReturnType<typeof createDashboardSnapshotQuery> {
+    if (this.#openMode !== "dashboard-read-worker-read-only-no-migrate" || this.#historyOwner !== undefined) throw new Error("read-lane-native-owner-required");
+    return createDashboardSnapshotQuery(this.#database, this.#admission.profileBinding, read => this.#withOwnReadSnapshot(() => {
+      this.#validateExternalQuerySources("original");
+      return read();
+    }));
   }
 
   /**
@@ -3283,7 +3314,9 @@ export class AuthorityDatabase implements Disposable {
     this.#database.exec("PRAGMA query_only = ON");
     this.#database.exec(`PRAGMA busy_timeout = ${String(this.#busyTimeoutMs)}`);
     // A read lane pages through TEMP tables and views. Its connection opened read-only, so main and any attachment still refuse writes.
-    if (this.#openMode === "dashboard-read-worker-read-only-no-migrate") this.#database.exec("PRAGMA query_only=OFF; PRAGMA trusted_schema=OFF");
+    if (this.#openMode === "dashboard-read-worker-read-only-no-migrate") {
+      this.#database.exec("PRAGMA query_only=OFF; PRAGMA trusted_schema=OFF; PRAGMA main.cache_size=-2000; PRAGMA main.mmap_size=0");
+    }
   }
 
   #admitExistingSchema(): number {
@@ -3322,7 +3355,8 @@ export class AuthorityDatabase implements Disposable {
 
   #validateReadOnlyNoMigrateDatabase(existingVersion: number | undefined): void {
     if (existingVersion === undefined) throw new Error("read-only admission requires an existing native authority");
-    inspectOpenDatabase(this.#database, false);
+    if (this.#openMode === "dashboard-read-worker-read-only-no-migrate") assertReadLaneDatabase(this.#database);
+    else inspectOpenDatabase(this.#database, false);
   }
 
   #validateDatabase(useStartupCheckpoint: boolean, dataVersion: number): void {
@@ -3376,12 +3410,12 @@ export class AuthorityDatabase implements Disposable {
    * the closure of the logged changes from schema 31, the whole-store check below it or after a schema move or log gap.
    * Nothing here runs under the write lock.
    */
-  #validateExternalQuerySources(mode: "selector" | "mutation" = "selector", searchValidation: "all" | "progress" | "none" = "all"): void {
+  #validateExternalQuerySources(errorMode: "search-rebuild" | "original" = "search-rebuild", searchValidation: "all" | "progress" | "none" = "all"): void {
     if (this.#transactionMode === "authority" || this.#transactionMode === "projection") return;
     const owner = this.#historyOwner;
     if (owner !== undefined) {
       owner.withAuthorityReadSnapshot(() => {
-        owner.#validateExternalQuerySources(mode, searchValidation);
+        owner.#validateExternalQuerySources(errorMode, searchValidation);
         if (owner.getMeta().authorityGeneration !== this.getMeta().authorityGeneration) throw new AuthoritySnapshotChangedError();
       });
       return;
@@ -3394,7 +3428,7 @@ export class AuthorityDatabase implements Disposable {
       if (reader === undefined) validateAuthorityStore(this.#database, searchValidation);
       else admitChanges(this.#database, reader, searchValidation, observed);
     } catch (error) {
-      if (mode === "mutation") throw error;
+      if (errorMode === "original") throw error;
       throw new Error("run-search-index-rebuild-required", { cause: error });
     }
     const stable = observed === this.#snapshotExternalDataVersion && readIntPragma(this.#database, "data_version") === observed;
@@ -3458,7 +3492,7 @@ export class AuthorityDatabase implements Disposable {
       try {
         this.#admitMutation();
         const witnesses = new Map(outermostOperationProof()?.witnesses);
-        if (mode === "projection") this.#withReadSnapshot(() => { this.#validateExternalQuerySources("mutation", searchValidation); });
+        if (mode === "projection") this.#withReadSnapshot(() => { this.#validateExternalQuerySources("original", searchValidation); });
         this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
         try { this.#database.exec("BEGIN IMMEDIATE"); }
         catch (error) {
