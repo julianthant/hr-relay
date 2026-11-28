@@ -113,12 +113,13 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     kernel, lifecycle, childRuns, step, plans,
     start(descriptor: AnyWorkflowDescriptor, input: unknown, startOptions: Readonly<{ dryRun: boolean; protectedSubmissionBindings?: readonly ProtectedInputBinding[];
       workbookReferences?: readonly z.infer<typeof WorkbookActiveSelectionSchema>[]; selectedStepKeys?: readonly string[];
-      stepOmissions?: readonly Readonly<{ step: string; facts: Readonly<Record<string, unknown>> }>[]; rerunSource?: unknown; warningAcknowledgment?: string }>) {
+      stepOmissions?: readonly Readonly<{ workflow?: string; step: string; facts: Readonly<Record<string, unknown>> }>[]; rerunSource?: unknown; warningAcknowledgment?: string }>) {
       const active = database.authority.runtimeConfig.get();
       assert.ok(active);
       const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors: { resolve },
         ...(options?.workbooks === undefined ? {} : { workbooks: options.workbooks }),
         ...(options?.protectedSecrets === undefined ? {} : { protectedSecrets: options.protectedSecrets }),
+        ...(options?.ocrProviderAvailable === undefined ? {} : { ocrProviderAvailable: options.ocrProviderAvailable }),
         clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: LOCAL_OPERATOR_ACTOR_ID,
         configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId,
         ...(startOptions.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: startOptions.protectedSubmissionBindings }) });

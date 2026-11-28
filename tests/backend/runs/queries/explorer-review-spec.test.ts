@@ -54,7 +54,10 @@ it("derives run options from Start run declarations only", () => {
       ["skip-reference-check", "Check reference spreadsheets", "run"], ["skip-i9-creation", "Create or reuse the I-9 record", "run"],
       ["skip-ucpath-hire", "File and verify the UCPath hire", "run"], ["skip-master-results", "Fill verified master results", "run"]]);
   assert.deepEqual(workflow("work-study").reviewSpec.options.map(option => option.id), ["dry-run", "skip-ucpath-auth", "skip-transaction"]);
-  assert.deepEqual(workflow("ocr-page").reviewSpec.options, []);
+  assert.deepEqual(workflow("ocr-page").reviewSpec.options, [{
+    id: "skip-read-page", label: "Read source page", initial: "run",
+    choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }],
+  }]);
   const separations = workflow("separations").reviewSpec;
   assert.deepEqual(separations.options.filter(option => option.id.startsWith("skip-")).map(option => [option.id, option.label, option.initial]),
     [["skip-kuali-extraction", "Kuali extraction", "run"], ["skip-identity-check", "Identity check", "run"],
