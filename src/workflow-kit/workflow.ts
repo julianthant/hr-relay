@@ -560,7 +560,8 @@ function checkChildStartRows(descriptor: AnyWorkflowDescriptor, targets: Readonl
     }
     if (row.target?.workflow === undefined) continue;
     const child = childOf(row.target.workflow);
-    if (!child.stepOmissions.some(({ step }) => step === row.target?.step)) {
+    const manual = child.stepOmissions.find(({ step }) => step === row.target?.step);
+    if (manual === undefined || manual.ownStartOnly === true) {
       throw new Error(`${id}: start row "${row.key}" targets step "${row.target.step}" of child workflow "${row.target.workflow}", which declares no manual entry`);
     }
     targeted.add(`${row.target.workflow}/${row.target.step}`);
@@ -577,10 +578,9 @@ function checkChildStartRows(descriptor: AnyWorkflowDescriptor, targets: Readonl
         }
       }
     }
-    for (const { step, parentStartOptional } of child.stepOmissions) {
-      if (parentStartOptional !== true && !targeted.has(`${workflow}/${step}`)) {
-        throw new Error(`${id}: step "${step}" of child workflow "${workflow}" takes typed values, but no start row targets it`);
-      }
+    for (const { step, ownStartOnly } of child.stepOmissions) {
+      if (ownStartOnly === true) continue;
+      if (!targeted.has(`${workflow}/${step}`)) throw new Error(`${id}: step "${step}" of child workflow "${workflow}" takes typed values, but no start row targets it`);
     }
   }
 }
@@ -898,6 +898,7 @@ function deriveStepOmissions(
   declared: readonly Readonly<{ key: string; nodes: readonly string[]; selection?: Readonly<{ inputField: string; selectedWhen: boolean }>; manual?: StepManualDeclaration }>[] | undefined,
 ): readonly StepOmissionSpec[] {
   const specs: StepOmissionSpec[] = [];
+  const declaredSteps = new Map(declared?.map((category) => [category.key, category.manual]));
   for (const category of declared ?? []) {
     const manual = category.manual;
     if (manual === undefined) continue;
@@ -951,7 +952,11 @@ function deriveStepOmissions(
     const kept = new Set(manual.keeps);
     for (const member of kept) {
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(member), owner);
-      const ingressGate = node.kind === "gate" && node.resolvedBy === "operator" && node.dependsOn.length === 0;
+      const operatorGate = node.kind === "gate" && node.resolvedBy === "operator" && (node.dependsOn.length === 0
+        || node.when?.of.from === "node" && node.dependsOn.length === 1 && Object.hasOwn(manual.produces, node.when.of.nodeId));
+      const ingressRead = node.kind === "task" && node.dependsOn.length === 0 && node.replay === "always-rerun"
+        && node.uses.subject.kind === "none" && (node.uses.providers?.length ?? 0) > 0 && node.uses.artifacts === undefined
+        && !isPreviewBoundary(node) && nodes.some(candidate => Object.hasOwn(manual.produces, candidate.id) && candidate.dependsOn.includes(node.id));
       const validation = node.kind === "task" && node.uses.id.startsWith("workflow:") && node.uses.provenance.default === "derived"
         && node.uses.subject.kind === "none" && node.uses.artifacts === undefined && !isPreviewBoundary(node)
         && node.dependsOn.some(dependency => Object.hasOwn(manual.produces, dependency));
@@ -959,8 +964,8 @@ function deriveStepOmissions(
         || node.kind === "task" && !isPreviewBoundary(node) && !node.uses.providers?.length
           && node.uses.subject.kind === "none");
       if (manual.off !== "values" || !members.has(member) || skipped.has(member) || Object.hasOwn(manual.produces, member)
-        || !ingressGate && !validation && !inputBacked) {
-        throw new Error(`${id}: ${owner} can only keep its own operator ingress gate, local validation or an input-backed reader`);
+        || !operatorGate && !ingressRead && !validation && !inputBacked) {
+        throw new Error(`${id}: ${owner} can only keep an ingress read, operator gate, local validation, or input-backed reader`);
       }
     }
     const switchable = category.selection !== undefined || selectedByOneInputCondition(id, nodes, category.nodes, owner);
@@ -978,6 +983,11 @@ function deriveStepOmissions(
       const node = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(reader), owner);
       if (members.has(reader) || !node.dependsOn.some((dependency) => skipped.has(String(dependency)))) {
         throw new Error(`${id}: ${owner} names order-only reader "${reader}", which is not a node of another step that waits on a skipped member`);
+      }
+    }
+    for (const dependent of manual.alsoSkips ?? []) {
+      if (dependent === category.key || declaredSteps.get(dependent) === undefined) {
+        throw new Error(`${id}: ${owner} also skips "${dependent}", which must be another omittable step`);
       }
     }
     for (const field of form.fields) {
@@ -1006,14 +1016,15 @@ function deriveStepOmissions(
     specs.push(Object.freeze({
       step: category.key, form, produces: Object.freeze({ ...manual.produces }),
       ...(manual.off === undefined ? {} : { off: manual.off }),
+      ...(manual.ownStartOnly === undefined ? {} : { ownStartOnly: manual.ownStartOnly }),
       ...(manual.skips === undefined ? {} : { skips: Object.freeze([...manual.skips]) }),
       ...(manual.refine === undefined ? {} : { refine: manual.refine }),
       ...(manual.bindInput === undefined ? {} : { bindInput: manual.bindInput }),
       ...(manual.withholdsBoundInput === undefined ? {} : { withholdsBoundInput: manual.withholdsBoundInput }),
       ...(manual.allowsChildFanOut === undefined ? {} : { allowsChildFanOut: manual.allowsChildFanOut }),
-      ...(manual.parentStartOptional === undefined ? {} : { parentStartOptional: manual.parentStartOptional }),
       ...(manual.skipsGatesAndTransactions === undefined ? {} : { skipsGatesAndTransactions: manual.skipsGatesAndTransactions }),
       ...(manual.orderOnlyReaders === undefined ? {} : { orderOnlyReaders: Object.freeze([...manual.orderOnlyReaders]) }),
+      ...(manual.alsoSkips === undefined ? {} : { alsoSkips: Object.freeze([...manual.alsoSkips]) }),
     }));
   }
   return Object.freeze(specs);

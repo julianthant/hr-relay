@@ -383,11 +383,13 @@ export function projectStartRows(descriptor: AnyWorkflowDescriptor): readonly St
       return (member.nodes ?? step.nodes.map(({ id }) => String(id))).map((id) => {
         const node = view.nodes.get(id);
         if (node === undefined) throw new Error(`${view.descriptor.id} start row names missing node ${id}`);
-        return node;
+        return { node, view, ownStartOnly: view.specByStep.get(member.step)?.ownStartOnly === true };
       });
     });
-    if (shown.some((node) => node.kind === "transaction" || node.kind === "task" && node.dryRun === "stop-before-publish")) return "form-action";
-    if (shown.some((node) => node.kind === "gate")) return "approval";
+    if (shown.some(({ node }) => node.kind === "transaction" || node.kind === "task" && node.dryRun === "stop-before-publish")) return "form-action";
+    if (shown.some(({ node, view, ownStartOnly }) => ownStartOnly && node.kind === "task"
+      && [...view.nodes.values()].some(other => other.kind === "transaction" && other.dependsOn.includes(node.id)))) return "bound-read";
+    if (shown.some(({ node }) => node.kind === "gate")) return "approval";
     return undefined;
   };
   return Object.freeze(descriptor.startRows.map((row): StartRowProjection => {

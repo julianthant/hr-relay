@@ -31,7 +31,7 @@ const childPolicy = Object.freeze({
   onChildFailed: "allow-partial", cascadeCancel: "cascade",
   afterChildRetry: "resume-parent", visibility: "inline"
 } as const);
-const DOCUMENT_VALUES = { off: "values", allowsChildFanOut: true, parentStartOptional: true } as const;
+const DOCUMENT_VALUES = { off: "values", allowsChildFanOut: true, ownStartOnly: true } as const;
 
 const SOURCE_COUNT: StepManualDeclaration = {
   ...DOCUMENT_VALUES,

@@ -203,6 +203,8 @@ export interface StepManualIssue {
 /** A step folder's declaration; a producer returns a COMPLETE output the executor parses with the node's own contract output schema — never a partial object or a placeholder. */
 export interface StepManualDeclaration {
   readonly off?: StartRowOff;
+  /** The child offers this switch only on its own Start rows. */
+  readonly ownStartOnly?: true;
   readonly form: StepOmissionForm;
   readonly produces: Readonly<Record<string, (context: StepOmissionProduceContext) => unknown>>;
   /** Reading nodes that do not run when the values are typed; every node neither produced nor skipped runs. */
@@ -215,13 +217,13 @@ export interface StepManualDeclaration {
   readonly withholdsBoundInput?: (input: JsonValue) => boolean;
   /** Own facts describe the parent document, not one shared assertion applied to its child members. */
   readonly allowsChildFanOut?: true;
-  /** A parent that groups this step into a broader row can leave its values control on the owning workflow. */
-  readonly parentStartOptional?: true;
   /** Allows `skips` to name the step's gates and transactions: the typed values stand for their decision or write. */
   readonly skipsGatesAndTransactions?: true;
   /** Nodes in other steps that depend on a skipped member only to run after it and read none of its output. */
   readonly orderOnlyReaders?: readonly string[];
-  /** Ingress approvals, local validation and input-backed readers that still run with supplied values. */
+  /** Other steps that require this step to run even though they bind no output from it. */
+  readonly alsoSkips?: readonly string[];
+  /** Ingress checks, operator gates, local validation and input-backed readers that still run with supplied values. */
   readonly keeps?: readonly string[];
 }
 
@@ -342,6 +344,7 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
   const stepByNode = new Map<string, string>();
   for (const category of graph.timeline) for (const { id } of category.nodes) stepByNode.set(id, category.key);
   const specByStep = new Map(graph.stepOmissions.map((spec) => [spec.step, spec]));
+  const requestedSteps = new Set<string>();
 
   for (const entry of RequestedOmissionsSchema.parse(requested)) {
     if (entry.workflow !== undefined) continue;
@@ -364,6 +367,7 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
       });
       continue;
     }
+    requestedSteps.add(entry.step);
     const skipped = new Set(spec.skips ?? []);
     for (const { id } of category.nodes) {
       const node = nodeById.get(id);
@@ -381,6 +385,16 @@ export function planStepOmissions(graph: StepOmissionGraphView, requested: reado
       if (nodeById.get(producedId)?.kind !== "task") {
         throw new Error(`step "${entry.step}" omission produces node "${producedId}", which is not a task node; gates and transactions are never substituted`);
       }
+    }
+  }
+
+  for (const step of requestedSteps) {
+    for (const dependent of specByStep.get(step)?.alsoSkips ?? []) {
+      if (requestedSteps.has(dependent)) continue;
+      refusals.push({
+        code: "dependency-omitted", step: dependent,
+        message: `step "${dependent}" requires step "${step}" to run; omit "${dependent}" too, or include "${step}"`,
+      });
     }
   }
 
