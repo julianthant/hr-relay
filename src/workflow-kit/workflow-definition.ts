@@ -32,7 +32,7 @@ import {
 } from "../models/workflow/presentation.js";
 import type { StepLockReason, StepManualDeclaration } from "../models/workflow/step-omission.js";
 import type { ItemId } from "../rules/identity/ids.js";
-import { BrowserSystemIdSchema, DelegationEdgeIdSchema, WorkflowIdSchema } from "../rules/identity/ids.js";
+import { BrowserSystemIdSchema, DelegationEdgeIdSchema, EidSchema, WorkflowIdSchema } from "../rules/identity/ids.js";
 import type { AnyNodeEntry, BuiltFlow } from "./flow.js";
 import { flow } from "./flow.js";
 import type { RegisteredTaskStore } from "./task-registry.js";
@@ -45,6 +45,10 @@ import type {
   WorkflowDescriptorSpec,
 } from "./workflow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes, parseWorkbookRequirement } from "./workflow.js";
+import { CompareReferenceFields, ReferenceReviewSchema, referenceComparisonForGate, referenceReviewId } from "../models/processing/workbooks/reference-fields.js";
+import { defineReferenceCheck, referenceFieldsAt } from "./reference-check.js";
+import { PersonLookupInput } from "../models/workflows/person-lookup/input.js";
+import { PersonLookupResultSchema } from "../models/workflows/person-lookup/result.js";
 
 /** The closed entry algebra. */
 export type WorkflowEntryKind = "task" | "parallel" | "delegate" | "gate" | "transaction" | "branch";
@@ -751,6 +755,7 @@ function validateOmissions(id: string, steps: readonly WorkflowTimelineTuple[]):
       if (readerGroup === group || readerGroup.manual !== undefined) continue;
       for (const reference of reader.references) {
         if (memberGroup.get(reference) !== group || !skipped.has(reference.id) || Object.hasOwn(manual.produces, reference.id)) continue;
+        if (reader.kind === "task" && reader.contracts.includes(CompareReferenceFields)) continue;
         if (manual.orderOnlyReaders?.includes(reader.id) === true) continue;
         throw new Error(
           `workflow ${id} step "${group.key}" is omittable, but ${entryName(reader)} in step "${readerGroup.key}" reads its `
@@ -771,6 +776,112 @@ type CompiledFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodType>
   CompiledState,
   readonly string[]
 >;
+
+export const REFERENCE_CHECK_STEP = Object.freeze({ key: "reference-check", label: "Reference spreadsheets" });
+
+function referenceStages<Input extends z.ZodType>(
+  definition: NonNullable<WorkflowDefinition["referenceCheck"]>, steps: readonly WorkflowTimelineTuple[], author: WorkflowAuthor<Input>,
+) {
+  const order = topologicalEntries(steps, parallelMembership(steps));
+  const mapped = order.filter(node => Object.hasOwn(definition.outputs, node.id));
+  const lookupId = "reference-person-lookup";
+  const lookupName = definition.lookupName;
+  const stageIds = ["start", ...(lookupName === undefined ? [] : [lookupId]), ...mapped.map(node => node.id)];
+  const checkId = (suffix: string) => `reference-fields-${suffix}`;
+  const finalStage = stageIds.at(-1) ?? "start";
+  const finalCheck = checkId(finalStage);
+  const finalGate = referenceReviewId(finalStage);
+  const group = {
+    ...REFERENCE_CHECK_STEP, system: "local" as const,
+    review: {
+      pages: [{
+        id: "reference-spreadsheets", title: REFERENCE_CHECK_STEP.label, mode: "Read only" as const,
+        nodeIds: stageIds.flatMap(suffix => [checkId(suffix), referenceReviewId(suffix)]),
+        lines: [
+          { id: "read-selection", kind: "read" as const, text: "Read the selected worksheets once when the run resolves the employee key.", nodeIds: stageIds.map(checkId) },
+          { id: "compare-fields", kind: "check" as const, text: "Compare each resolved field and review any differences.", nodeIds: stageIds.map(referenceReviewId) },
+        ],
+        fields: [],
+      }],
+      branchLabels: [],
+      decisions: [
+        { id: "reference-result", label: "Reference comparison", reads: { nodeId: finalCheck, fieldPath: "review" },
+          nodeIds: stageIds.map(checkId), initial: "false", outcomes: [
+            { value: "false", label: "No differences to review", then: "Continues with the next workflow action." },
+            { value: "true", label: "Field differs", then: "Waits for your decision in Logs in both live and dry runs." },
+          ] },
+        { id: "reference-check-review", label: "Review reference spreadsheet differences", reads: { nodeId: finalGate, fieldPath: "decision" },
+          nodeIds: stageIds.map(referenceReviewId), initial: "continue", when: [{ "reference-result": ["true"] }],
+          outcomes: [{ value: "continue", label: "Continue anyway", then: "Continues after you accept the displayed differences." }],
+          cancellation: { label: "Cancel run", then: "Cancels the run at the reference review." } },
+      ],
+    } as const,
+  };
+  const entries = defineStepEntries(group);
+  const earlier: { check: AnyWorkflowEntry; gate: AnyWorkflowEntry }[] = [];
+  const producers: AnyWorkflowEntry[] = [];
+  const referenceEntries: AnyWorkflowEntry[] = [];
+  const columns = [...new Set([definition.key, ...Object.keys(definition.input ?? {}), ...Object.values(definition.outputs).flatMap(Object.keys)])];
+  const keySchema = definition.key === "eid" ? EidSchema : z.email();
+  const fieldsFor = (id: string, value: unknown) => id === lookupId
+    ? referenceFieldsAt({ eid: "0.output.activeStatus.details.eid", fullName: "0.output.activeStatus.details.name" }, value)
+    : referenceFieldsAt(definition.outputs[id] ?? {}, value);
+  for (const suffix of stageIds) {
+    if (lookupName !== undefined && suffix === lookupId) {
+      const lookup = author.delegate({
+        id: lookupId, label: "Resolve a reference Employee ID",
+        target: { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: PersonLookupResultSchema },
+        edgeId: lookupId, cardinality: "many", await: "terminal", join: "all-settled",
+        policy: { onChildFailed: "allow-partial", cascadeCancel: "cascade", afterChildRetry: "manual-parent-resume" },
+      }, [earlier[0]!.check], {
+        bind: ({ input, outputs }) => {
+          const check = CompareReferenceFields.output.safeParse(outputs[checkId("start")]);
+          const [name] = referenceFieldsAt({ fullName: lookupName }, input);
+          return check.success && check.data.captured === null && name !== undefined
+            ? [{ name: name.value, crmCheck: false, keepNonHdh: true }] : [];
+        },
+        deriveChildItemId: (_input, context) => context.canonicalItemId,
+      });
+      referenceEntries.push(lookup);
+      producers.push(lookup);
+    } else {
+      const source = mapped.find(node => node.id === suffix);
+      if (source !== undefined) producers.push(source);
+    }
+    const previous = [...earlier];
+    const resolved = [...producers];
+    const check = author.task(entries.task(checkId(suffix), CompareReferenceFields, {
+      replay: "checkpoint", when: { kind: "is-present", of: { from: "reference", typeId: definition.selection.id } },
+    }), [...resolved, ...previous.flatMap(stage => [stage.check, stage.gate])], ({ input, outputs }) => {
+      const prior = previous.flatMap(stage => {
+        const output = outputs[stage.check.id];
+        return output === undefined ? [] : [{ output: CompareReferenceFields.output.parse(output), continued: outputs[stage.gate.id] !== undefined }];
+      });
+      const sheets = prior.find(stage => stage.output.captured !== null)?.output.captured ?? null;
+      const initial = referenceFieldsAt(definition.input ?? {}, input);
+      const current = suffix === "start" ? initial : fieldsFor(suffix, outputs[suffix]);
+      const fields = sheets !== null ? current : [
+        ...initial,
+        ...resolved.flatMap(node => fieldsFor(node.id, outputs[node.id])),
+      ];
+      const key = (lookupName === undefined || suffix === "start" || suffix === lookupId ? fields : [])
+        .find(field => field.field === definition.key && keySchema.safeParse(field.value).success)?.value;
+      return {
+        read: sheets !== null || key === undefined ? null : { typeId: definition.selection.id, key, columns },
+        sheets, fields,
+        approved: prior.filter(stage => stage.continued).flatMap(stage => stage.output.mismatches.map(({ source, field }) => ({ source, field }))),
+        last: suffix === finalStage,
+      };
+    });
+    const gate = author.gate(entries.operatorGate(referenceReviewId(suffix), {
+      label: "Review reference spreadsheet differences", result: ReferenceReviewSchema,
+      when: { kind: "equals", of: { from: "node", nodeId: check.id, path: "review" }, value: true },
+    }), [check]);
+    earlier.push({ check, gate });
+    referenceEntries.push(check, gate);
+  }
+  return [group, referenceEntries] as const;
+}
 
 /** The authored presentation half of a definition: every descriptor field an author writes, minus the compiler-derived products (`flow`, `timeline`, `contractFingerprint`). */
 export type WorkflowDefinitionPresentation<
@@ -799,6 +910,7 @@ export interface WorkflowDefinitionSpec<
   readonly role: WorkflowModuleRole;
   /** Ref data-intake-and-edit-data — the spreadsheet-capable declaration, when one exists. */
   readonly intake?: IntakeProjection;
+  readonly referenceCheck?: ReturnType<typeof defineReferenceCheck>;
     /** The graph, authored through the typed author so each entry's input/output binds to THIS
      *  input schema; returns the ordered timeline tuples and the terminal result declaration. */
   readonly steps: (author: WorkflowAuthor<InputSchema>) => Readonly<{
@@ -816,6 +928,7 @@ export interface WorkflowDefinition<
   readonly requiredWorkbookFields: readonly string[];
   readonly workbookReference?: WorkflowDefinitionPresentation<InputSchema, ResultSchema, Completion>["workbookReference"];
   readonly workbookCheck?: WorkflowDefinitionPresentation<InputSchema, ResultSchema, Completion>["workbookCheck"];
+  readonly referenceCheck?: ReturnType<typeof defineReferenceCheck>;
   readonly input: InputSchema;
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
@@ -905,15 +1018,30 @@ export function defineWorkflow<
 ): WorkflowDefinition<InputSchema, ResultSchema, Completion> {
   const id = WorkflowIdSchema.parse(spec.id);
   WorkflowModuleRoleSchema.parse(spec.role);
-  const { requiredWorkbookFields, workbookReference, workbookCheck } = parseWorkbookRequirement(spec.requiredWorkbookFields, spec.workbookReference, spec.workbookCheck);
+  const { requiredWorkbookFields, workbookReference, workbookCheck } = parseWorkbookRequirement(
+    spec.requiredWorkbookFields, spec.workbookReference, spec.referenceCheck?.selection ?? spec.workbookCheck);
   const { steps: authorSteps, input, role, intake, ...presentation } = spec;
-  const authored = authorSteps(workflowAuthor<InputSchema>(spec.capabilities?.delegationDisplay));
-  validateSteps(id, authored.steps, authored.result.references);
+  const author = workflowAuthor<InputSchema>(spec.capabilities?.delegationDisplay);
+  const authored = authorSteps(author);
+  const reference = spec.referenceCheck === undefined ? undefined : referenceStages(spec.referenceCheck, authored.steps, author);
+  const steps = reference === undefined ? authored.steps : [reference, ...authored.steps];
+  const rows = spec.referenceCheck !== undefined && spec.rows !== undefined
+    && !spec.rows.some(row => row.members.some(member => member.workflow === undefined && member.step === REFERENCE_CHECK_STEP.key))
+    ? [{ ...REFERENCE_CHECK_STEP, members: [{ step: REFERENCE_CHECK_STEP.key }] }, ...spec.rows] : spec.rows;
+  validateSteps(id, steps, authored.result.references);
 
-  for (const entry of flattenEntries(authored.steps)) Object.freeze(entry.references);
+  for (const entry of flattenEntries(steps)) Object.freeze(entry.references);
   Object.freeze(authored.result.references);
   return Object.freeze({
     ...presentation,
+    ...(spec.nodePurposes === undefined || reference === undefined ? {} : {
+      nodePurposes: Object.freeze([...spec.nodePurposes, ...reference[1].map(node => ({
+        nodeId: node.id, purpose: node.kind === "gate"
+          ? "Review the differences between the resolved values and the captured worksheets."
+          : "Compare newly resolved values against the selected worksheets.",
+      }))]),
+    }),
+    ...(rows === undefined ? {} : { rows }),
     requiredWorkbookFields,
     ...(workbookReference === undefined ? {} : { workbookReference }),
     ...(workbookCheck === undefined ? {} : { workbookCheck }),
@@ -921,7 +1049,7 @@ export function defineWorkflow<
     input,
     role,
     ...(intake === undefined ? {} : { intake }),
-    steps: Object.freeze(authored.steps.map(([group, entries]) => Object.freeze([
+    steps: Object.freeze(steps.map(([group, entries]) => Object.freeze([
       Object.freeze(Object.defineProperty({ ...group,
         ...(group.review === undefined ? {} : { review: deepFreeze(WorkflowStepReviewSchema.parse(group.review)) }),
       }, GROUP_OWNER, {
@@ -942,8 +1070,8 @@ function entryNodeIds(entry: AnyWorkflowEntry): readonly string[] {
     : [entry.id];
 }
 
-function topologicalEntries(definition: AnyWorkflowDefinition, parallelOf: ReadonlyMap<AnyWorkflowEntry, ParallelEntry<string, unknown>>): readonly RuntimeEntry[] {
-  const entries = flattenEntries(definition.steps) as unknown as readonly RuntimeEntry[];
+function topologicalEntries(steps: readonly WorkflowTimelineTuple[], parallelOf: ReadonlyMap<AnyWorkflowEntry, ParallelEntry<string, unknown>>): readonly RuntimeEntry[] {
+  const entries = flattenEntries(steps) as unknown as readonly RuntimeEntry[];
   const ordered: RuntimeEntry[] = [];
   const remaining = new Set(entries);
   while (remaining.size > 0) {
@@ -951,12 +1079,21 @@ function topologicalEntries(definition: AnyWorkflowDefinition, parallelOf: Reado
       remaining.has(entry)
       && [...entry.references, ...(parallelOf.get(entry)?.references ?? [])].every((reference) => !remaining.has(reference as RuntimeEntry)));
     if (ready === undefined) {
-      throw new Error(`workflow ${definition.id} dependency cycle among: ${[...remaining].map(({ id }) => id).join(", ")}`);
+      throw new Error(`workflow dependency cycle among: ${[...remaining].map(({ id }) => id).join(", ")}`);
     }
     remaining.delete(ready);
     ordered.push(ready);
   }
   return Object.freeze(ordered);
+}
+
+function parallelMembership(steps: readonly WorkflowTimelineTuple[]) {
+  const membership = new Map<AnyWorkflowEntry, ParallelEntry<string, unknown>>();
+  for (const entry of flattenEntries(steps)) {
+    if (!isParallel(entry)) continue;
+    for (const branch of entry.branches) for (const leaf of branch.leaves) membership.set(leaf, entry);
+  }
+  return membership;
 }
 
 interface RuntimeFlowBuilder {
@@ -1021,12 +1158,9 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
   definition: WorkflowDefinition<InputSchema, ResultSchema, CompletionProgram | undefined>,
 ): CompiledFlow<InputSchema, ResultSchema> {
   const builder = flow(definition.input) as unknown as RuntimeFlowBuilder;
-  const parallelOf = new Map<AnyWorkflowEntry, ParallelEntry<string, unknown>>();
-  for (const entry of flattenEntries(definition.steps)) {
-    if (!isParallel(entry)) continue;
-    for (const branch of entry.branches) for (const leaf of branch.leaves) parallelOf.set(leaf, entry);
-  }
+  const parallelOf = parallelMembership(definition.steps);
   const emittedParallels = new Set<ParallelEntry<string, unknown>>();
+  let referenceFence: string | undefined;
   const emitParallel = (entry: ParallelEntry<string, unknown>): void => {
     if (emittedParallels.has(entry)) return;
     emittedParallels.add(entry);
@@ -1036,8 +1170,8 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
       { join: entry.join, dependsOn: entry.references.map(reference => reference.id) },
     );
   };
-  for (const entry of topologicalEntries(definition, parallelOf)) {
-    const dependsOn = Object.freeze(entry.references.map(({ id }) => id));
+  for (const entry of topologicalEntries(definition.steps, parallelOf)) {
+    const dependsOn = entry.references.map(({ id }) => id);
     if (entry.kind === "parallel") continue;
     const parent = parallelOf.get(entry);
     if (parent !== undefined) emitParallel(parent);
@@ -1060,7 +1194,7 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
     if (entry.kind === "transaction") {
       builder.transaction(entry.id, {
         ...(entry.label === undefined ? {} : { label: entry.label }),
-        dependsOn,
+        dependsOn: referenceFence === undefined ? dependsOn : [...dependsOn, referenceFence],
         prepare: { uses: entry.prepareContract, bind: entry.prepareBind },
         ...(entry.previewBind === undefined ? {} : { previewBind: entry.previewBind }),
         commit: { uses: entry.commitContract, bind: entry.commitBind },
@@ -1094,6 +1228,7 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
       ...(entry.when === undefined ? {} : { when: entry.when }),
       result: entry.result,
     });
+    if (referenceComparisonForGate(entry.id) !== undefined) referenceFence = entry.id;
   }
   return builder.build({
     schema: definition.result.schema,
@@ -1164,7 +1299,7 @@ export function compileWorkflow<
   if (definition.kind !== "workflow-definition") {
     throw new Error("compileWorkflow requires a value produced by defineWorkflow");
   }
-  const { kind, input, role, intake, steps, result, ...presentation } = definition;
+  const { kind, input, role, intake, steps, result, referenceCheck, ...presentation } = definition;
   void kind;
   void input;
   void role;
@@ -1201,6 +1336,7 @@ export function compileWorkflow<
       requiredWorkbookFields: definition.requiredWorkbookFields,
       workbookReference: definition.workbookReference,
       workbookCheck: definition.workbookCheck,
+      referenceFields: referenceCheck,
     }),
     flow: compileFlow(definition),
     ...(usesDefaultTimeline ? {} : { timeline }),

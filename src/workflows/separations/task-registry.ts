@@ -6,7 +6,6 @@ import { matchActiveEmploymentTask } from "./tasks/match-active-employment.js";
 import { matchSeparationSubjectTask } from "./tasks/match-separation-subject.js";
 import { readSeparationDatesTask } from "./tasks/read-separation-dates.js";
 import { readSeparationPlanTask } from "./tasks/read-separation-plan.js";
-import { readSeparationsReferenceStopTask } from "./tasks/read-reference-stop.js";
 import { verifyIdentityApprovalTask } from "./tasks/verify-identity-approval.js";
 import { verifyTerminationReceiptTask } from "./tasks/verify-termination-receipt.js";
 
@@ -21,5 +20,4 @@ export const separationsStore = defineWorkflowStore("separations", {
   matchActiveEmployment: matchActiveEmploymentTask,
   readSeparationDates: readSeparationDatesTask,
   verifyTerminationReceipt: verifyTerminationReceiptTask,
-  readReferenceStop: readSeparationsReferenceStopTask,
 });

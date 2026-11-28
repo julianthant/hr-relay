@@ -86,17 +86,17 @@ it("derives the steps and session chips of every option value", async () => {
   const spec = await personLookup();
   const ids = (chosen: Values) => walk(spec, chosen).steps.map(entry => entry.id);
   const systems = (chosen: Values) => walk(spec, chosen).sessions.map(session => session.system);
-  assert.deepEqual(ids({}), ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"]);
+  assert.deepEqual(ids({}), ["reference-check", "searching", "cross-verify", "active-status", "crm-dates"]);
   assert.deepEqual(systems({}), ["ucpath", "crm"]);
-  assert.deepEqual(ids({ includeCrmDates: "true" }), ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"]);
-  assert.deepEqual(ids({ includeCrmDates: "false" }), ["searching", "cross-verify", "active-status", "reference-check"]);
-  assert.deepEqual(ids({ "skip-crm-dates": "skip" }), ["searching", "cross-verify", "active-status", "reference-check"]);
-  assert.deepEqual(ids({ crmCheck: "false" }), ["searching", "active-status", "reference-check"]);
+  assert.deepEqual(ids({ includeCrmDates: "true" }), ["reference-check", "searching", "cross-verify", "active-status", "crm-dates"]);
+  assert.deepEqual(ids({ includeCrmDates: "false" }), ["reference-check", "searching", "cross-verify", "active-status"]);
+  assert.deepEqual(ids({ "skip-crm-dates": "skip" }), ["reference-check", "searching", "cross-verify", "active-status"]);
+  assert.deepEqual(ids({ crmCheck: "false" }), ["reference-check", "searching", "active-status"]);
   assert.deepEqual(systems({ crmCheck: "false" }), ["ucpath"]);
-  assert.deepEqual(ids({ crmCheck: "false", includeCrmDates: "true" }), ["searching", "active-status", "reference-check"]);
-  assert.deepEqual(ids({ mode: "match" }), ["searching", "reference-check"]);
+  assert.deepEqual(ids({ crmCheck: "false", includeCrmDates: "true" }), ["reference-check", "searching", "active-status"]);
+  assert.deepEqual(ids({ mode: "match" }), ["reference-check", "searching"]);
   assert.deepEqual(systems({ mode: "match" }), ["ucpath"]);
-  assert.deepEqual(ids({ mode: "match", crmCheck: "true" }), ["searching", "cross-verify", "reference-check"]);
+  assert.deepEqual(ids({ mode: "match", crmCheck: "true" }), ["reference-check", "searching", "cross-verify"]);
   assert.deepEqual(walk(spec, { mode: "match" }).values["search-by"], undefined);
 });
 
@@ -170,12 +170,12 @@ it("serves each decision's outcomes with the sentence of what the run does and w
 it("derives the steps, cards and rows that follow each decision outcome", async () => {
   const spec = await personLookup();
   const ids = (chosen: Values, decisions: Values) => walk(spec, chosen, decisions).steps.map(entry => entry.id);
-  assert.deepEqual(ids({ includeCrmDates: "true" }, { "employment-status": "inactive" }), ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"]);
+  assert.deepEqual(ids({ includeCrmDates: "true" }, { "employment-status": "inactive" }), ["reference-check", "searching", "cross-verify", "active-status", "crm-dates"]);
   for (const outcome of ["not-found", "multiple-matches"]) {
-    assert.deepEqual(ids({ includeCrmDates: "true" }, { "employment-status": outcome }), ["searching", "cross-verify", "active-status", "reference-check"], outcome);
-    assert.deepEqual(ids({ mode: "match", crmCheck: "true" }, { "search-result": outcome }), ["searching", "reference-check"], outcome);
-    assert.deepEqual(ids({}, { "search-result": outcome }), ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"], outcome);
-    assert.deepEqual(ids({ includeCrmDates: "false" }, { "search-result": outcome }), ["searching", "cross-verify", "active-status", "reference-check"], outcome);
+    assert.deepEqual(ids({ includeCrmDates: "true" }, { "employment-status": outcome }), ["reference-check", "searching", "cross-verify", "active-status"], outcome);
+    assert.deepEqual(ids({ mode: "match", crmCheck: "true" }, { "search-result": outcome }), ["reference-check", "searching"], outcome);
+    assert.deepEqual(ids({}, { "search-result": outcome }), ["reference-check", "searching", "cross-verify", "active-status", "crm-dates"], outcome);
+    assert.deepEqual(ids({ includeCrmDates: "false" }, { "search-result": outcome }), ["reference-check", "searching", "cross-verify", "active-status"], outcome);
   }
   const cards = (stepId: string, decisions: Values) => {
     const { values } = walk(spec, {}, decisions);

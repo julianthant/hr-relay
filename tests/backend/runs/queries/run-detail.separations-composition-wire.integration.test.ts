@@ -256,13 +256,14 @@ describe("separations — the identity-gate wire", () => {
   } catch (error) { throw retainWireFailure(error); }
   });
 
-  it("binds the identity approval to comparison and the reference review to its stop", () => {
+  it("binds identity approval and every reference gate to the matching comparison", () => {
     try {
 
     const views = gateNodeViews() as readonly { nodeId: string; dependsOn: readonly string[] }[];
     assert.deepEqual(views.map(({ nodeId, dependsOn }) => [nodeId, dependsOn]), [
+      ...["start", "document", "subject", "job-summary"].map(stage => [`reference-field-review-${stage}`, [`reference-fields-${stage}`]]),
       ["identity-approval", ["comparison"]],
-      ["reference-check-review", ["reference-stop"]],
+      ["reference-field-review-approval", ["reference-fields-approval"]],
     ]);
   } catch (error) { throw retainWireFailure(error); }
   });

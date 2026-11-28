@@ -14,6 +14,7 @@ import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-ha
 const world = createReferenceCheckWriteWorld();
 afterEach(world.cleanup);
 const { descriptor } = compileWorkflow(workStudyWorkflow);
+const REFERENCE_GATE = "reference-field-review-paypath-position";
 const INPUT = { emplId: "10000001", effectiveDate: "08/03/2026" };
 /** A name no fixture's PayPath read carries, so finding it anywhere in the run proves a row value leaked. */
 const ROW_ONLY_NAME = "Zebedee Quillfeather";
@@ -45,8 +46,8 @@ describe("Work-Study reference spreadsheet check", () => {
   it("skips the check with no spreadsheet picked and files as before", async () => {
     const f = await fixture(), run = await f.execute(f.start(INPUT, []));
     assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
-    assert.deepEqual(f.nodeSpans(run, "reference-check"), [["skipped", "condition-false"]]);
-    assert.deepEqual(f.nodeSpans(run, "reference-check-review"), [["skipped", "condition-false"]]);
+    assert.deepEqual(f.nodeSpans(run, "reference-fields-start"), [["skipped", "condition-false"]]);
+    assert.deepEqual(f.nodeSpans(run, REFERENCE_GATE), [["skipped", "condition-false"]]);
     assert.deepEqual(f.checkLines(run), []);
     assert.equal(f.commits(), 1);
     assert.equal(f.saved(run.envelope.runId), "saved");
@@ -55,36 +56,28 @@ describe("Work-Study reference spreadsheet check", () => {
   it("work-study/reference-check — files without asking when the picked spreadsheet holds the employee", async () => {
     const f = await fixture(), run = await f.execute(f.start(INPUT, [f.holding()]));
     assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
-    assert.deepEqual(f.checkLines(run), ["Fall roster · Hires: found in row 3"]);
-    assert.deepEqual(f.nodeSpans(run, "reference-check-review"), [["skipped", "condition-false"]]);
+    assert.deepEqual(f.checkLines(run), ["Hires, row 3: Employee ID matches", "Hires, row 3: Legal name matches"]);
+    assert.deepEqual(f.nodeSpans(run, REFERENCE_GATE), [["skipped", "condition-false"]]);
     assert.equal(f.commits(), 1);
   });
 
-  it("stops before staging when the employee is missing, and Continue anyway files once", async () => {
-    const f = await fixture(), started = f.start(INPUT, [f.missing()]);
-    const parked = await f.execute(started);
-    assert.ok(parked.lifecycle.state === "parked-gate" && String(parked.lifecycle.gateId) === "reference-check-review");
-    assert.deepEqual(f.checkLines(parked), ["Badge list · Issued: not found"]);
-    assert.deepEqual([f.stages(), f.commits()], [0, 0]);
-    assert.deepEqual(f.database.authority.writeIntents.listByRun(started.envelope.runId), []);
-    const decision = f.card(started);
-    assert.equal(decision.type, "review-before-write");
-    assert.deepEqual(decision.options.map(option => [option.id, option.label, option.send.via]), [["continue", "Continue anyway", "gate-arm"], ["cancel-run", "Cancel run", "row-action"]]);
-    assert.equal(decision.context, "Badge list · Issued: not found · Compared: Employee ID, and name where the sheet has one.");
-
-    assert.equal(f.continueAnyway(started).state, "applied");
-    const done = await f.execute(started);
+  it("logs the missing row and files once without asking", async () => {
+    const f = await fixture(), done = await f.execute(f.start(INPUT, [f.missing()]));
     assert.ok(done.lifecycle.state === "terminal" && done.lifecycle.outcome === "done");
+    assert.deepEqual(f.checkLines(done), ["Not in Issued"]);
     assert.equal(f.commits(), 1);
-    assert.equal(f.saved(started.envelope.runId), "saved");
+    assert.equal(f.saved(done.envelope.runId), "saved");
   });
 
-  it("stops with the same card when the name differs, without recording any value from the row, and Cancel run files nothing", async () => {
+  it("stops with the same card when the name differs, with the mismatched values only in the review, and Cancel run files nothing", async () => {
     const f = await fixture(), started = f.start(INPUT, [f.renamed()]);
     const parked = await f.execute(started);
     assert.equal(parked.lifecycle.state, "parked-gate");
-    assert.equal(f.card(started).context, "Fall roster · Hires: name differs in row 2 · Compared: Employee ID, and name where the sheet has one.");
-    assert.equal(JSON.stringify([f.events(started), f.card(started)]).includes(ROW_ONLY_NAME), false);
+    const decision = f.card(started);
+    assert.equal(decision.type, "review-before-write");
+    assert.deepEqual(decision.options.map(option => [option.id, option.label, option.send.via]), [["continue", "Continue anyway", "gate-arm"], ["cancel-run", "Cancel run", "row-action"]]);
+    assert.equal(decision.context, `Hires, row 2 · Legal name: spreadsheet “${ROW_ONLY_NAME}”, workflow “Lee, Jordan”`);
+    assert.equal(JSON.stringify(f.events(started)).includes(ROW_ONLY_NAME), false);
 
     assert.equal(f.cancel(started).state, "applied");
     const cancelled = f.current(started);
@@ -97,24 +90,36 @@ describe("Work-Study reference spreadsheet check", () => {
     const f = await fixture({ read: { ...read, displayedName: "Lee Lee" } });
     const reference = f.spreadsheet("Fall roster", "Hires", ["eid", "fullName"], [["10000001", "Lee Thompson"]]);
     const parked = await f.execute(f.start(INPUT, [reference]));
-    assert.ok(parked.lifecycle.state === "parked-gate" && String(parked.lifecycle.gateId) === "reference-check-review");
-    assert.deepEqual(f.checkLines(parked), ["Fall roster · Hires: name differs in row 2"]);
+    assert.ok(parked.lifecycle.state === "parked-gate" && String(parked.lifecycle.gateId) === REFERENCE_GATE);
+    assert.deepEqual(f.checkLines(parked), ["Hires, row 2: Employee ID matches", "Hires, row 2: Legal name differs"]);
     assert.deepEqual([f.stages(), f.commits()], [0, 0]);
     assert.deepEqual(f.database.authority.writeIntents.listByRun(parked.envelope.runId), []);
   });
 
-  it("never stops a dry run for the check, and still records its line", async () => {
+  it("continues a dry run with a missing row and records its line", async () => {
     const f = await fixture(), run = await f.execute(f.start(INPUT, [f.missing()], true));
     assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify(f.database.authority.failures.listByRun(run.envelope.runId)));
-    assert.deepEqual(f.checkLines(run), ["Badge list · Issued: not found"]);
-    assert.deepEqual(f.nodeSpans(run, "reference-check-review"), [["skipped", "condition-false"]]);
+    assert.deepEqual(f.checkLines(run), ["Not in Issued"]);
+    assert.deepEqual(f.nodeSpans(run, REFERENCE_GATE), [["skipped", "condition-false"]]);
     assert.equal(f.commits(), 0);
+  });
+
+  it("parks on a later field difference in a dry run and never submits", async () => {
+    const f = await fixture(), started = f.start(INPUT, [f.renamed()], true);
+    const parked = await f.execute(started);
+    assert.ok(parked.lifecycle.state === "parked-gate" && parked.lifecycle.gateId === REFERENCE_GATE);
+    assert.deepEqual([f.stages(), f.commits()], [0, 0]);
+    assert.equal(f.continueAnyway(parked).state, "applied");
+    const done = await f.execute(started);
+    assert.ok(done.lifecycle.state === "terminal" && done.lifecycle.outcome === "done");
+    assert.equal(f.commits(), 0);
+    assert.deepEqual(f.database.authority.writeIntents.listByRun(started.envelope.runId), []);
   });
 
   it("keeps the answer across a restart; a Retry is a new run that asks again, and the person is filed once", async () => {
     /** PayPath drops the pool on the first staging only, so the run fails after the answer and its Retry can file. */
     const dropped: { positionPool?: string } = { positionPool: "" };
-    const f = await fixture({ stagedValues: dropped }), started = f.start(INPUT, [f.missing()]);
+    const f = await fixture({ stagedValues: dropped }), started = f.start(INPUT, [f.renamed()]);
     assert.equal((await f.execute(started)).lifecycle.state, "parked-gate");
     assert.equal(f.continueAnyway(started).state, "applied");
     const failed = await f.execute(f.current(started));
@@ -127,7 +132,7 @@ describe("Work-Study reference spreadsheet check", () => {
     const successor = successorId === undefined ? undefined : f.database.authority.runs.get(successorId);
     assert.ok(successor !== undefined && successor.envelope.retryOf === started.envelope.runId);
     const asked = await f.execute(successor);
-    assert.ok(asked.lifecycle.state === "parked-gate" && String(asked.lifecycle.gateId) === "reference-check-review", "a Retry is a new run, so it asks again before filing");
+    assert.ok(asked.lifecycle.state === "parked-gate" && String(asked.lifecycle.gateId) === REFERENCE_GATE, "a Retry is a new run, so it asks again before filing");
     assert.equal(f.commits(), 0);
     assert.equal(f.continueAnyway(successor).state, "applied");
     const filed = await f.execute(f.current(successor));

@@ -8,6 +8,7 @@ import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import type { NodeId } from "../../../rules/identity/ids.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { TerminalDependencyEvidence } from "../../../models/run/result.js";
+import { CompareReferenceFields, referenceComparisonForGate } from "../../../models/processing/workbooks/reference-fields.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, RunCheckpointRecordSchema, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "../checkpoints/checkpoint-patch.js";
@@ -245,14 +246,14 @@ export function prepareRunPlan(
       let conditionKnown = true;
       for (const dependency of node.dependsOn) {
         const dependencyEntry = plan.get(String(dependency));
-        if (recheckAncestor && dependencyEntry?.mode === "skipped-condition") continue;
+        if (dependencyEntry?.mode === "skipped-condition") continue;
         if (dependencyEntry === undefined || dependencyEntry.mode === "execute"
           || dependencyEntry.mode === "asserted" && dependencyEntry.replay === undefined
           || !Object.hasOwn(outputs, String(dependency))) {
           conditionKnown = false;
         }
       }
-      if (node.when !== undefined && conditionKnown) {
+      if (node.when !== undefined && (conditionKnown || node.when.of.from !== "node")) {
 
         const condition = evaluateNodeCondition(node.when, scopeFor(node.dependsOn));
         if (!condition) {
@@ -260,11 +261,13 @@ export function prepareRunPlan(
           continue;
         }
       }
-      const stored = recheckAncestor ? payPathRecheckInputs.get(node.id) : retainedAccounting
+      const checkpoint = recheckAncestor ? payPathRecheckInputs.get(node.id) : retainedAccounting
         ? deps.authority.authority.runCheckpoints.listByAttempt(envelope.workflow, envelope.itemId, node.id, envelope.attempt)
           .filter(record => record.runId === runId).at(-1)
         : readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true,
           node.when?.of.from === "reference" ? node.when.of.typeId : undefined);
+      const stored = node.uses === CompareReferenceFields && checkpoint?.runId !== runId && envelope.continuation === undefined
+        ? undefined : checkpoint;
 
       if ((envelope.recovery === "restart-from-start" || envelope.sourceBound !== undefined && envelope.continuation === undefined) && stored !== undefined && stored.runId !== runId) {
         if (explicit) {
@@ -314,7 +317,7 @@ export function prepareRunPlan(
           continue;
         }
         const deferred = node.dependsOn.some(dependency => !Object.hasOwn(outputs, String(dependency))
-          && !(recheckAncestor && plan.get(String(dependency))?.mode === "skipped-condition"));
+          && plan.get(String(dependency))?.mode !== "skipped-condition");
         if (!deferred && envelope.continuation !== undefined) {
           const original = node.uses.input.parse(node.bind(sourceScopeFor(record.runId, node.dependsOn, boundAt(record))));
           const continued = node.uses.input.parse(node.bind(scopeFor(node.dependsOn)));
@@ -373,10 +376,18 @@ export function prepareRunPlan(
       continue;
     }
     if (node.kind === "gate") {
+      const comparison = referenceComparisonForGate(node.id);
+      const deferredComparison = comparison === undefined ? undefined : plan.get(comparison);
+      const conditionApplies = () => {
+        const scope = scopeFor(node.dependsOn);
+        const evidence = deferredComparison?.mode === "replay" && comparison !== undefined
+          ? { ...scope, outputs: { ...scope.outputs, [comparison]: deferredComparison.record.output.value } } : scope;
+        return node.resolvedBy === "operator" && node.when !== undefined && evaluateNodeCondition(node.when, evidence);
+      };
       if (node.resolvedBy === "operator" && node.when !== undefined
-        && node.dependsOn.every((dependency) => outputs[String(dependency)] !== undefined
-          || (recheckAncestor && plan.get(String(dependency))?.mode === "skipped-condition"))
-        && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
+        && node.dependsOn.every(dependency => outputs[String(dependency)] !== undefined
+          || plan.get(String(dependency))?.mode === "skipped-condition" || (dependency === comparison && deferredComparison?.mode === "replay"))
+        && !conditionApplies()) {
         if (readContinuationGate(deps.authority.authority, envelope, String(node.id)) !== undefined) {
           problems.push(`inapplicable gate "${node.id}" carries a stored operator result; evidence changed`);
           continue;

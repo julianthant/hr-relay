@@ -150,8 +150,7 @@ export const IDENTITY_REVIEW_TEXT = Object.freeze({
 
 /** The reference review's served text: a picked spreadsheet did not hold the person, or names them differently. */
 export const REFERENCE_CHECK_REVIEW_TEXT = Object.freeze({
-  title: "Reference sheet does not confirm this person",
-  compared: "Compared: Employee ID, and name where the sheet has one.",
+  title: "Review reference spreadsheet differences",
   stale: "This review changed. Reload it before answering.",
 });
 

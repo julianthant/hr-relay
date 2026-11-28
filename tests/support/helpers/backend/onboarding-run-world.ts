@@ -44,7 +44,7 @@ import { UCPATH_HIRE_SUBJECT } from "../../../../src/models/ui/ucpath-hire.js";
 import type { z } from "zod";
 import { SearchPersonMatchOutputSchema } from "../../../../src/models/systems/ucpath/search-person-match.js";
 import { ONBOARDING_WRITE_REVIEW_GATE, OnboardingWriteApprovalSchema } from "../../../../src/models/workflows/onboarding/read-write-plan.js";
-import { REFERENCE_CHECK } from "../../../../src/models/processing/workbooks/verify-person.js";
+import { REFERENCE_CHECK_ID } from "../../../../src/models/processing/workbooks/reference-fields.js";
 
 export function createOnboardingRunWorld() {
   const descriptor = compileWorkflow(onboardingWorkflow).descriptor;
@@ -143,7 +143,7 @@ export function createOnboardingRunWorld() {
       const extra = library.create({ name, themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: sheetName, width: fields.length, hidden: [], headerRow: 1,
         columnBindings: fields.map((fieldId, index) => ({ id: `check-${String(index)}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
         rows: [{ id: "header", cells: fields.map(value => ({ value })) }, ...rows.map((cells, index) => ({ id: `row-${String(index)}`, cells: cells.map(value => ({ value })) }))] }] });
-      return { entry: 1, typeId: REFERENCE_CHECK.id, libraryId: extra.libraryId, versionId: library.libraryVersion(extra.libraryId).version.id,
+      return { entry: 1, typeId: REFERENCE_CHECK_ID, libraryId: extra.libraryId, versionId: library.libraryVersion(extra.libraryId).version.id,
         sheetId: "sheet", expectedVersion: library.read(extra.libraryId).version };
     };
     /** The start request with the required roster pick and these extra spreadsheets as the second check. */
@@ -202,7 +202,7 @@ export function createOnboardingRunWorld() {
         throw new Error("fixture: the cancel stops the library patch");
       }
       return createWorkbookLibraryAdapter({ runId: run.envelope.runId, repository: f.repository, clock: f.clock,
-        references: { runId: run.envelope.runId, write: command => workbooks.write(run, command), verifyPerson: command => workbooks.verifyPerson(run, command) } }).invoke(request, invocation);
+        references: { runId: run.envelope.runId, write: command => workbooks.write(run, command), readFields: command => workbooks.readReferenceFields(run, command) } }).invoke(request, invocation);
     } };
     const rawExecution = canonicalChildExecution({ descriptor, stores: taskStoreRegistry, authority: f.database,
       lifecycle, sessions: manager, emitter, writeSequencer,

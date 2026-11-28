@@ -1,5 +1,6 @@
 /** Declared gate decisions: how a stored `gate_results` row becomes the receipt's decision-evidence row, with each gate decision scoped by its own workflow and gate. */
 import { z } from "zod";
+import { referenceComparisonForGate } from "../processing/workbooks/reference-fields.js";
 import { GateIdSchema, WorkflowIdSchema, NodeIdSchema } from "../../rules/identity/ids.js";
 import { EvidenceLeafPathSchema } from "./evidence-classification.js";
 import { OcrApprovalReferenceSchema } from "../workflows/ocr/result.js";
@@ -185,12 +186,6 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     ],
     boundEvidencePath: "evidenceDigest",
   },
-    /* A picked reference spreadsheet did not confirm the person; "Cancel run" is the run's own cancel, so continuing is the only stored answer. */
-  ...["work-study", "work-study-reference-check", "separations", "separations-reference-check", "onboarding", "onboarding-reference-check", "emergency-contact-member", "emergency-contact-member-reference-check"].map(workflowId => ({
-    workflowId, gateId: "reference-check-review", decisionPath: "decision", resolution: { source: "operator" },
-    arms: [{ value: "continue", outcome: "approved", label: "Continue anyway",
-      summary: "an operator continued although a picked reference spreadsheet did not confirm this person" }],
-  })),
 ].map((entry) => Object.freeze(GateDecisionDeclarationSchema.parse(entry))));
 
 const BY_WORKFLOW_AND_GATE = new Map<string, GateDecisionDeclaration>();
@@ -208,7 +203,13 @@ export function findGateDecision(
   workflowId: string,
   gateId: string,
 ): GateDecisionDeclaration | undefined {
-  return BY_WORKFLOW_AND_GATE.get(`${workflowId}\u0000${gateId}`);
+  const declared = BY_WORKFLOW_AND_GATE.get(`${workflowId}\u0000${gateId}`);
+  if (declared !== undefined || referenceComparisonForGate(gateId) === undefined) return declared;
+  return GateDecisionDeclarationSchema.parse({
+    workflowId, gateId, decisionPath: "decision", resolution: { source: "operator" },
+    arms: [{ value: "continue", outcome: "approved", label: "Continue anyway",
+      summary: "an operator accepted the displayed workbook field differences" }],
+  });
 }
 
 /** The declaration, or a loud refusal naming the exact gap. */

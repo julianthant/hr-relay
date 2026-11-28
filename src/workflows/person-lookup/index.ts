@@ -3,7 +3,7 @@ import { defineStepProof } from "../../workflow-kit/workflow-definition.js";
 import { personLookupActiveStatusDefinition } from "./steps/active-status/step.js";
 import { personLookupCrmDatesDefinition } from "./steps/crm-dates/step.js";
 import { personLookupCrossVerifyDefinition } from "./steps/cross-verify/step.js";
-import { personLookupReferenceCheckDefinition } from "./steps/reference-check/step.js";
+import { personLookupReferenceCheckDefinition } from "./steps/reference-check/proof.js";
 import { personLookupSearchingDefinition } from "./steps/searching/step.js";
 import { personLookupStore } from "./task-registry.js";
 import { personLookupWorkflow } from "./workflow.js";

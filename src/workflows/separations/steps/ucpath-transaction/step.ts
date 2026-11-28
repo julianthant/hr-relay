@@ -55,13 +55,11 @@ import type { SeparationsCanonicalInput, SeparationsInput } from "../../workflow
 import type { buildIdentity, readJobs } from "../identity-check/step.js";
 import type { buildTimecard } from "../kronos-timecard/step.js";
 import type { buildExtraction } from "../kuali-extraction/step.js";
-import type { buildReferenceCheck } from "../reference-check/step.js";
 type Author = WorkflowAuthor<typeof SeparationsInput>;
 type Extraction = ReturnType<typeof buildExtraction>;
 type Jobs = ReturnType<typeof readJobs>;
 type Timecard = ReturnType<typeof buildTimecard>;
 type Identity = ReturnType<typeof buildIdentity>;
-type Reference = ReturnType<typeof buildReferenceCheck>;
 
 export const PENDING_TERMINATION_STEP = defineWorkflowStep({
   key: "pending-termination",
@@ -447,14 +445,13 @@ const SeparationsUcpathTerminationResultSchema = z.strictObject({
   }),
 });
 
-/** `reference` is the composition's reference-check review; the sweep, the first write, waits for it. */
-export function buildTermination({ task, transaction, group }: Author, extraction: Extraction, jobs: Jobs, timecard: Timecard, identity: Identity, reference?: Reference) {
+export function buildTermination({ task, transaction, group }: Author, extraction: Extraction, jobs: Jobs, timecard: Timecard, identity: Identity) {
   const { terminationType } = extraction, { employment } = jobs, { dates } = timecard, { approval } = identity;
   const pendingSet = task(pendingSetNode, [approval], ({ outputs }) => ({
     emplId: outputs["approval"].approved.emplId,
     expectedName: outputs["approval"].approved.ucpathName,
   }));
-  const clearPending = transaction(clearPendingNode, reference === undefined ? [approval, pendingSet] : [approval, pendingSet, reference.review], {
+  const clearPending = transaction(clearPendingNode, [approval, pendingSet], {
     prepareBind: ({ outputs }) => ({
       emplId: outputs["approval"].approved.emplId,
       expectedName: outputs["approval"].approved.ucpathName,

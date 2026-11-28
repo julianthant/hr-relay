@@ -12,7 +12,7 @@ const descriptor = compileWorkflow(emergencyContactMemberWorkflow).descriptor;
 const nodes = descriptorRuntimeNodes(descriptor);
 
 it("files to OnBase as the member's third step, declared after the Save without depending on it", () => {
-  assert.deepEqual(descriptor.timeline.map(step => step.key), ["contact-plan", "reference-check", "contact-preview", "onbase-filing"]);
+  assert.deepEqual(descriptor.timeline.map(step => step.key), ["reference-check", "contact-plan", "contact-preview", "onbase-filing"]);
   const save = nodes.findIndex(node => node.id === "contact-preview"), filing = nodes.findIndex(node => node.id === "onbase-filing");
   assert.ok(save >= 0 && filing > save);
   const node = nodes[filing];

@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
+import { referenceCheckLines } from "../../support/helpers/backend/reference-check-lines.js";
+import { REFERENCE_CHECK_ID, ReferenceReviewSchema } from "../../../src/models/processing/workbooks/reference-fields.js";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { parseRunWorkbookReference } from "../../../src/models/dashboard/workbooks.js";
-import { REFERENCE_CHECK, VerifyWorkbookPerson } from "../../../src/models/processing/workbooks/verify-person.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
 import { I9CheckStartResultSchema } from "../../../src/models/workflows/i9-check/batch.js";
 import { I9IdentitySchema } from "../../../src/models/workflows/i9-check/check.js";
@@ -10,7 +13,6 @@ import { createI9CheckStartWorld } from "../../support/helpers/backend/i9-check-
 
 const world = createI9CheckStartWorld();
 afterEach(world.cleanup);
-const CheckLines = VerifyWorkbookPerson.output.shape.checks;
 /** A person child's result; only the identity UCPath found is read here. */
 const ChildResultSchema = z.looseObject({ identity: I9IdentitySchema });
 /** A name no fixture carries, so finding it anywhere in a run proves a row value leaked. */
@@ -29,14 +31,11 @@ async function fixture(options: Parameters<typeof world.fixture>[0] = {}) {
     await f.canonical.execute(f.run, new AbortController().signal);
     f.approveNext();
     const result = await f.canonical.execute(f.run, new AbortController().signal);
-    assert.ok(result.run?.lifecycle.state === "terminal" && result.run.lifecycle.outcome === "done", JSON.stringify(result.run?.lifecycle));
     return result.run;
   };
   const people = () => f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "i9-check");
   const events = (run: RunRecord) => f.database.authority.timelineEvents.page({}).filter(event => event.scope.kind === "run" && event.scope.runId === run.envelope.runId);
-  const checkLines = (run: RunRecord) => events(run).flatMap(event => event.payload.kind === "span" && event.payload.event.t === "data.observed" && event.payload.event.nodeId === "reference-check"
-    ? event.payload.event.points.flatMap(point => point.field !== "checks" ? [] : point.values.flatMap(value => value.state === "allowed" ? CheckLines.parse(value.value).map(check => check.line) : [value.state]))
-    : []);
+  const checkLines = (run: RunRecord) => referenceCheckLines(events(run));
   const nodeSpans = (run: RunRecord, nodeId: string) => events(run).flatMap(event => event.payload.kind === "span" && event.payload.event.t === "span.ended"
     && event.payload.event.spanPath.includes(`/${nodeId}#`) ? [[event.payload.event.outcome, "notRunReason" in event.payload.event ? event.payload.event.notRunReason : undefined]] : []);
   /** Each person child's check lines, keyed by the Employee ID UCPath found. */
@@ -57,26 +56,43 @@ describe("I-9 Check reference spreadsheet check", () => {
     assert.equal(f.people().length, 2);
     for (const child of f.people()) {
       assert.equal(child.input.workbookReferences, undefined);
-      assert.deepEqual(f.nodeSpans(child, "reference-check"), [["skipped", "condition-false"]]);
+      assert.deepEqual(f.nodeSpans(child, "reference-fields-start"), [["skipped", "condition-false"]]);
       assert.deepEqual(f.checkLines(child), []);
     }
     assert.equal(I9CheckStartResultSchema.parse(f.database.authority.runResults.get(f.run.envelope.runId)?.result.value).personCount, 2);
   });
 
-  it("i9-check/reference-check — shows each person's line per extra spreadsheet and goes on to save the results workbook", async () => {
+  it("i9-check/reference-check — reads once after the delegated lookup, compares earlier fields and waits for the differing name", async () => {
     const f = await fixture({ checks: [ROSTER, BADGES] });
     await f.runToEnd();
+    const parked = f.people().find(child => child.lifecycle.state === "parked-gate");
+    assert.ok(parked?.lifecycle.state === "parked-gate");
+    assert.equal(parked.lifecycle.gateId, "reference-field-review-reference-person-lookup");
+    const lookups = f.database.authority.runs.listChildren(parked.envelope.runId);
+    assert.equal(lookups.length, 1);
+    assert.equal(lookups[0]?.envelope.workflow, "person-lookup");
+    assert.equal(lookups[0]?.input.workbookReferences, undefined);
+    assert.deepEqual(f.fieldReads.filter(read => read.runId === parked.envelope.runId), [{ runId: parked.envelope.runId, key: "10000002" }]);
+    assert.equal(f.savedResults(), 0);
+    assert.equal(f.canonical.kernel.execute({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(),
+      requestedBy: "local-operator", source: "dashboard", family: "gate", type: "resolve-gate",
+      target: { runId: parked.envelope.runId, gateId: parked.lifecycle.gateId, expectedVersion: parked.version },
+      payload: { result: { schemaHash: deriveSchemaHash(ReferenceReviewSchema, "output"), value: { decision: "continue" } } },
+    }).state, "applied");
+    const settled = (await f.canonical.execute(f.run, new AbortController().signal)).run;
+    assert.ok(settled?.lifecycle.state === "terminal" && settled.lifecycle.outcome === "done");
+    assert.equal(f.fieldReads.length, 2);
     for (const child of f.people()) {
       const typeIds = (child.input.workbookReferences ?? []).map(bound => parseRunWorkbookReference(bound).request.typeId);
-      assert.deepEqual(typeIds, [REFERENCE_CHECK.id, REFERENCE_CHECK.id], "a person child gets the extra picks, never the required roster");
+      assert.deepEqual(typeIds, [REFERENCE_CHECK_ID, REFERENCE_CHECK_ID], "a person child gets the extra picks, never the required roster");
       assert.equal(child.lifecycle.state === "terminal" && child.lifecycle.outcome, "done");
     }
     for (const document of f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "ocr")) {
       assert.equal(document.input.workbookReferences, undefined, "OCR declares no second check");
     }
     assert.deepEqual(f.linesByPerson(), {
-      "10000001": ["Fall roster · Hires: found in row 2", "Badge list · Issued: found in row 2"],
-      "10000002": ["Fall roster · Hires: name differs in row 3", "Badge list · Issued: not found"],
+      "10000001": ["Hires, row 2: Legal name matches", "Hires, row 2: Employee ID matches", "Issued, row 2: Employee ID matches"],
+      "10000002": ["Not in Issued", "Hires, row 3: Employee ID matches", "Hires, row 3: Legal name differs"],
     });
     const output = I9CheckStartResultSchema.parse(f.database.authority.runResults.get(f.run.envelope.runId)?.result.value);
     assert.deepEqual(output.tracker.rows.map(row => [row.ucpathEmplId, row.action]), [["10000001", "Keep"], ["10000002", "Keep"]]);
@@ -84,10 +100,10 @@ describe("I-9 Check reference spreadsheet check", () => {
     assert.equal(JSON.stringify(f.people().map(child => f.events(child))).includes(ROW_ONLY_NAME), false);
   });
 
-  it("shows the lines in a dry run and stops for nothing", async () => {
+  it("continues a dry run with missing rows", async () => {
     const f = await fixture({ dryRun: true, checks: [BADGES] });
     await f.runToEnd();
-    assert.deepEqual(f.linesByPerson(), { "10000001": ["Badge list · Issued: found in row 2"], "10000002": ["Badge list · Issued: not found"] });
+    assert.deepEqual(f.linesByPerson(), { "10000001": ["Issued, row 2: Employee ID matches"], "10000002": ["Not in Issued"] });
     assert.equal(f.savedResults(), 0);
   });
 });

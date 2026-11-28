@@ -94,10 +94,10 @@ it("follows the person's identifier result through the conditional hire-date sea
     id, label, initial: "run", choices: [{ value: "run", label: "Runs" }, { value: "skip", label: "Skipped" }],
   })));
   assert.deepEqual(spec.sessions, [{ system: "ucpath", when: [{ "skip-person-lookup": ["run"] }, { "skip-person-match": ["run"] }] }]);
-  assert.deepEqual(walk(spec).steps.map(entry => entry.id), ["person-match", "roster-match", "reference-check"]);
+  assert.deepEqual(walk(spec).steps.map(entry => entry.id), ["reference-check", "person-match", "roster-match"]);
   for (const identity of ["ambiguous", "not-found"]) {
     const lookup = walk(spec, {}, { "identifier-result": identity, "hire-date-needed": "true" });
-    assert.deepEqual(lookup.steps.map(entry => entry.id), ["person-match", "person-lookup", "roster-match", "reference-check"]);
+    assert.deepEqual(lookup.steps.map(entry => entry.id), ["reference-check", "person-match", "person-lookup", "roster-match"]);
   }
   assert.equal(walk(spec, {}, { "hire-date-needed": "true" }).values["hire-date-needed"], "false");
   assert.equal(walk(spec, {}, { "identifier-result": "ambiguous" }).values["hire-date-needed"], "true");
@@ -122,8 +122,8 @@ it("follows the person's identifier result through the conditional hire-date sea
     assert.equal(outcome.stops, false);
   }
   const checks = blocks(spec, "reference-check", "decision")[0]; assert.ok(checks);
-  assert.deepEqual(checks.outcomes.filter(outcome => ["confirmed", "unconfirmed"].includes(outcome.value)).map(outcome => [outcome.value, outcome.stops]),
-    [["confirmed", false], ["unconfirmed", false]]);
+  assert.deepEqual(checks.outcomes.filter(outcome => ["false", "true"].includes(outcome.value)).map(outcome => [outcome.value, outcome.stops]),
+    [["false", false], ["true", false]]);
 });
 
 it("shows confirmed identity rows only for an identifier match and the name search's own results on the name-only path", async () => {
@@ -134,7 +134,7 @@ it("shows confirmed identity rows only for an identifier match and the name sear
   assert.deepEqual(shownCards(found.values).at(-1), ["Person Organizational Summary detail", ["Employee ID", "Confirmed name"]]);
   const nameOnly = walk(spec, {}, { "identifier-result": "not-found" });
   assert.equal(nameOnly.values["hire-date-needed"], "false");
-  assert.deepEqual(nameOnly.steps.map(entry => entry.id), ["person-match", "roster-match", "reference-check"]);
+  assert.deepEqual(nameOnly.steps.map(entry => entry.id), ["reference-check", "person-match", "roster-match"]);
   assert.deepEqual(shownCards(nameOnly.values).at(-1), ["Person Organizational Summary results", ["Hire date", "Employee ID"]]);
   assert.ok(!shownCards(nameOnly.values).some(([title]) => title === "Person Organizational Summary detail"));
   const ambiguous = walk(spec, {}, { "identifier-result": "ambiguous" });
@@ -146,22 +146,17 @@ it("shows confirmed identity rows only for an identifier match and the name sear
   assert.deepEqual(continuing(nameOnly.values), ["false", "true"]);
 });
 
-it("reports no person in the reference check, never a confirmation, when retention found no unique identity", async () => {
+it("only offers a reference review when a resolved field differs", async () => {
   const spec = await review("i9-check");
-  const card = blocks(spec, "reference-check", "card")[0]; assert.ok(card);
-  const row = card.rows.find(candidate => candidate.label === "Reference result"); assert.ok(row?.value);
-  const decision = blocks(spec, "reference-check", "decision").find(candidate => candidate.id === "reference-result"); assert.ok(decision);
-  for (const identity of ["not-found", "ambiguous"]) {
-    const selected = walk(spec, {}, { "retention-identity": identity, "reference-result": "confirmed" });
-    assert.equal(selected.values["reference-result"], "no-person", identity);
-    assert.equal(valueOf(row.value, selected.values), "No person found");
-    assert.deepEqual(visible(decision.outcomes, selected.values).filter(outcome => !outcome.stops).map(outcome => outcome.value), ["no-person"]);
+  const [comparison, review] = blocks(spec, "reference-check", "decision"); assert.ok(comparison); assert.ok(review);
+  for (const identity of ["not-found", "ambiguous", "found"]) {
+    const selected = walk(spec, {}, { "retention-identity": identity });
+    assert.equal(selected.values["reference-result"], "false");
+    assert.equal(selected.values["reference-check-review"], undefined);
   }
-  const found = walk(spec);
-  assert.equal(found.values["reference-result"], "confirmed");
-  assert.equal(valueOf(row.value, found.values), "Confirmed");
-  assert.deepEqual(visible(decision.outcomes, found.values).filter(outcome => !outcome.stops).map(outcome => outcome.value), ["confirmed", "unconfirmed"]);
-  assert.equal(walk(spec, {}, { "reference-result": "unconfirmed" }).values["reference-result"], "unconfirmed");
+  const mismatch = walk(spec, {}, { "reference-result": "true", "reference-check-review": "cancelled" });
+  assert.equal(mismatch.values["reference-check-review"], "cancelled");
+  assert.equal(mismatch.stop?.value, "cancelled");
 });
 
 it("defaults the retention recommendation to Shred for nobody found and manual review for an ambiguous identity", async () => {

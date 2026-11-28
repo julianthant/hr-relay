@@ -1,3 +1,4 @@
+import { expectedReferenceStages } from "../support/fixtures/reference-check-graph.js";
 import { createSearchWorkflowDefinitionFixtures } from "../support/helpers/search-workflow-definition-fixtures.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -80,6 +81,8 @@ describe("workflow definition compiler", () => {
     expect(declaration.map((group) => [group.key, group.label, group.entries.map((entry) => ({
       id: entry.id, nodeIds: entry.nodeIds.map(String), dependsOn: entry.dependsOn.map(String),
     }))])).toEqual([
+      ["reference-check", "Reference spreadsheets", expectedReferenceStages(["start", "search-identity", "crm-identity", "active-status"])
+        .flatMap(stage => stage.entries.map(({ id, nodeIds, dependsOn }) => ({ id, nodeIds, dependsOn })))],
       [
         "searching",
         "Search for person",
@@ -186,7 +189,6 @@ describe("workflow definition compiler", () => {
         ]
       ],
       ["crm-dates", "Read CRM dates", [{id: "crm-dates", nodeIds: ["crm-dates"], dependsOn: ["active-status"]}]],
-      ["reference-check", "Check reference spreadsheets", [{id: "reference-check", nodeIds: ["reference-check"], dependsOn: ["search-identity", "crm-identity", "matching", "crm-selected-record", "crm-results", "active-status"]}]],
     ]);
     expect(Object.isFrozen(declaration)).toBe(true);
     expect(Object.isFrozen(declaration[0]?.entries[0]?.nodeIds)).toBe(true);

@@ -1,3 +1,4 @@
+import { expectedReferenceStages } from "../../support/fixtures/reference-check-graph.js";
 import { InputRunSurfaceSchema } from "../../../src/models/workflow/ingress.js";
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
@@ -5,6 +6,7 @@ import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-r
 import { workflowPlanning, workflowProjections } from "../../../src/workflow-kit/workflow.js";
 import { personLookupDescriptor, personLookupModule, separationsIdentityCheckDescriptor, separationsKronosTimecardDescriptor, separationsUcpathTerminationDescriptor } from "../../support/helpers/registered-workflows.js";
 
+const referenceStages = expectedReferenceStages(["start", "search-identity", "crm-identity", "active-status"]);
 describe("workflow definition public equivalence characterization", () => {
   it("declares the exact Queue outcome table for Search and Match", () => {
     assert.deepEqual(personLookupDescriptor.outcomeProjection, {
@@ -261,6 +263,7 @@ describe("workflow definition public equivalence characterization", () => {
     ],
     "timelineDeclared": true,
     "timeline": [
+      { key: "reference-check", label: "Reference spreadsheets", nodes: referenceStages.flatMap(stage => stage.timelineNodes) },
       {
         "key": "searching",
         "label": "Search for person",
@@ -322,16 +325,6 @@ describe("workflow definition public equivalence characterization", () => {
           {
             "id": "crm-dates",
             "label": "CRM Dates"
-          }
-        ]
-      },
-      {
-        "key": "reference-check",
-        "label": "Check reference spreadsheets",
-        "nodes": [
-          {
-            "id": "reference-check",
-            "label": "Check reference spreadsheets"
           }
         ]
       }
@@ -636,6 +629,7 @@ describe("workflow definition public equivalence characterization", () => {
     "eid"
   ],
   "graph": [
+    ...referenceStages[0]!.graph,
     {
       "id": "searching",
       "kind": "task",
@@ -672,6 +666,7 @@ describe("workflow definition public equivalence characterization", () => {
         "matching"
       ]
     },
+    ...referenceStages[1]!.graph,
     {
       "id": "cross-verify",
       "kind": "task",
@@ -707,6 +702,7 @@ describe("workflow definition public equivalence characterization", () => {
         }
       }
     },
+    ...referenceStages[2]!.graph,
     {
       "id": "crm-selected-record",
       "kind": "task",
@@ -776,6 +772,7 @@ describe("workflow definition public equivalence characterization", () => {
         "value": "search"
       }
     },
+    ...referenceStages[3]!.graph,
     {
       "id": "crm-dates",
       "kind": "task",
@@ -790,28 +787,10 @@ describe("workflow definition public equivalence characterization", () => {
           "path": "datesEid"
         }
       }
-    },
-    {
-      "id": "reference-check",
-      "kind": "task",
-      "dependsOn": [
-        "search-identity",
-        "crm-identity",
-        "matching",
-        "crm-selected-record",
-        "crm-results",
-        "active-status"
-      ],
-      "when": {
-        "kind": "is-present",
-        "of": {
-          "from": "reference",
-          "typeId": "reference-check"
-        }
-      }
     }
   ],
   "steps": [
+    ...referenceStages[0]!.steps,
     {
       "key": "searching",
       "nodeId": "searching",
@@ -836,6 +815,7 @@ describe("workflow definition public equivalence characterization", () => {
       "taskId": "workflow:person-lookup/read-resolved-identity",
       "conditional": false
     },
+    ...referenceStages[1]!.steps,
     {
       "key": "cross-verify",
       "nodeId": "cross-verify",
@@ -852,6 +832,7 @@ describe("workflow definition public equivalence characterization", () => {
       "taskId": "workflow:person-lookup/read-resolved-identity",
       "conditional": true
     },
+    ...referenceStages[2]!.steps,
     {
       "key": "crm-selected-record",
       "nodeId": "crm-selected-record",
@@ -884,6 +865,7 @@ describe("workflow definition public equivalence characterization", () => {
       "taskId": "workflow:person-lookup/read-active-status",
       "conditional": true
     },
+    ...referenceStages[3]!.steps,
     {
       "key": "crm-dates",
       "nodeId": "crm-dates",
@@ -891,34 +873,29 @@ describe("workflow definition public equivalence characterization", () => {
       "kind": "task",
       "taskId": "crm/read-onboarding-dates",
       "conditional": true
-    },
-    {
-      "key": "reference-check",
-      "nodeId": "reference-check",
-      "label": "Check reference spreadsheets",
-      "kind": "task",
-      "taskId": "workbooks/verify-person",
-      "conditional": true
     }
   ],
-  "gates": [],
+  "gates": referenceStages.map(stage => stage.gate),
   "systems": [
     "crm",
     "ucpath"
   ],
   "requires": [],
   "contracts": [
+    "workbooks/read-reference-fields",
     "ucpath/search-person-org",
     "ucpath/search-person-match",
     "workflow:person-lookup/read-resolved-identity",
+    "workbooks/read-reference-fields",
     "crm/search-onboarding-records",
     "workflow:person-lookup/read-resolved-identity",
+    "workbooks/read-reference-fields",
     "crm/verify-onboarding-record",
     "crm/read-onboarding-results",
     "ucpath/search-person-org",
     "workflow:person-lookup/read-active-status",
-    "crm/read-onboarding-dates",
-    "workbooks/verify-person"
+    "workbooks/read-reference-fields",
+    "crm/read-onboarding-dates"
   ],
   "dryRun": {
     "state": "unsupported",

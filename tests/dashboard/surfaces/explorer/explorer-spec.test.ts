@@ -11,10 +11,10 @@ const cards = (stepId: string) => spec.steps.find(step => step.id === stepId)!.b
 
 describe("Explorer spec resolution", () => {
   it("shows the steps and session chips the run options select, and renumbers by dropping hidden steps", () => {
-    assert.deepEqual(ids(), ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"]);
-    assert.deepEqual(ids({ includeCrmDates: "false" }), ["searching", "cross-verify", "active-status", "reference-check"]);
-    assert.deepEqual(ids({ includeCrmDates: "true" }), ["searching", "cross-verify", "active-status", "crm-dates", "reference-check"]);
-    assert.deepEqual(ids({ crmCheck: "false" }), ["searching", "active-status", "reference-check"]);
+    assert.deepEqual(ids(), ["reference-check", "searching", "cross-verify", "active-status", "crm-dates"]);
+    assert.deepEqual(ids({ includeCrmDates: "false" }), ["reference-check", "searching", "cross-verify", "active-status"]);
+    assert.deepEqual(ids({ includeCrmDates: "true" }), ["reference-check", "searching", "cross-verify", "active-status", "crm-dates"]);
+    assert.deepEqual(ids({ crmCheck: "false" }), ["reference-check", "searching", "active-status"]);
     assert.deepEqual(resolveExplorer(spec, { crmCheck: "false" }, {}).sessions, ["ucpath"]);
     assert.deepEqual(resolveExplorer(spec, {}, {}).sessions, ["ucpath", "crm"]);
   });

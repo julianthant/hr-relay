@@ -53,7 +53,7 @@ it("serves Work Study's planned PayPath values, their origins and the live Save 
   const { reviewSpec: spec } = await served("work-study");
   assert.deepEqual(spec.options, [{ id: "dry-run", label: "Dry run", choices: [{ value: "true", label: "On" }, { value: "false", label: "Off" }], initial: "false" }]);
   assert.deepEqual(spec.sessions, [{ system: "ucpath" }]);
-  assert.deepEqual(walk(spec).steps.map(entry => entry.id), ["ucpath-auth", "reference-check", "transaction"]);
+  assert.deepEqual(walk(spec).steps.map(entry => entry.id), ["reference-check", "ucpath-auth", "transaction"]);
   const [card] = blocks(spec, "transaction", "card"); assert.ok(card);
   assert.deepEqual([card.title, card.mode], ["PayPath Actions", "fill"]);
   assert.deepEqual(card.rows.map(row => [row.label, row.value]), [
@@ -65,21 +65,21 @@ it("serves Work Study's planned PayPath values, their origins and the live Save 
   assert.deepEqual(visible(blocks(spec, "transaction", "click"), walk(spec, { "dry-run": "true" }).values), []);
 });
 
-it("stops Work Study before PayPath when the operator cancels an unconfirmed reference check, and never asks during a dry run", async () => {
+it("offers Continue anyway or Cancel run for a field difference in either mode", async () => {
   const { reviewSpec: spec } = await served("work-study");
   const [check, approval] = blocks(spec, "reference-check", "decision"); assert.ok(check); assert.ok(approval);
   assert.deepEqual([check.id, approval.id], ["reference-result", "reference-check-review"]);
-  assert.deepEqual(check.outcomes.slice(0, 3).map(outcome => outcome.value), ["confirmed", "unconfirmed", "no-person"]);
+  assert.deepEqual(check.outcomes.slice(0, 2).map(outcome => outcome.value), ["false", "true"]);
   assert.deepEqual(approval.outcomes.map(outcome => [outcome.value, outcome.stops]), [["continue", false], ["cancelled", true]]);
-  const stopped = walk(spec, {}, { "reference-result": "unconfirmed", "reference-check-review": "cancelled" });
-  assert.deepEqual(stopped.steps.map(entry => entry.id), ["ucpath-auth", "reference-check"]);
-  assert.equal(stopped.stop?.then, "Cancels the run before anything is filed.");
-  const continued = walk(spec, {}, { "reference-result": "unconfirmed" });
-  assert.equal(continued.values["reference-check-review"], "continue");
-  assert.equal(continued.steps.at(-1)?.id, "transaction");
-  const dry = walk(spec, { "dry-run": "true" }, { "reference-result": "unconfirmed" });
-  assert.equal(dry.values["reference-check-review"], undefined);
-  assert.equal(dry.values["save-transaction"], "dry-run");
+  for (const dryRun of ["false", "true"]) {
+    const stopped = walk(spec, { "dry-run": dryRun }, { "reference-result": "true", "reference-check-review": "cancelled" });
+    assert.deepEqual(stopped.steps.map(entry => entry.id), ["reference-check"]);
+    assert.equal(stopped.stop?.then, "Cancels the run at the reference review.");
+    const continued = walk(spec, { "dry-run": dryRun }, { "reference-result": "true" });
+    assert.equal(continued.values["reference-check-review"], "continue");
+    assert.equal(continued.steps.at(-1)?.id, "transaction");
+    if (dryRun === "true") assert.equal(continued.values["save-transaction"], "dry-run");
+  }
 });
 
 it("names Onboarding's delegated I-9 workflow and follows every retained lookup result", async () => {
@@ -267,7 +267,7 @@ it("finishes Onboarding with the master receipt's review outcome, and never pres
   const dry = walk(spec, { "dry-run": "true" });
   assert.equal(dry.steps.some(entry => entry.id === "master-results"), false);
   assert.equal(visible(blocks(spec, "ucpath-hire", "card"), dry.values).some(card => card.id === "hire-receipt"), false);
-  const unconfirmed = walk(spec, { mode: "rehire" }, { "reference-result": "unconfirmed", "reference-check-review": "cancelled" });
+  const unconfirmed = walk(spec, { mode: "rehire" }, { "reference-result": "true", "reference-check-review": "cancelled" });
   assert.equal(unconfirmed.steps.at(-1)?.id, "reference-check");
 });
 

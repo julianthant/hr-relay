@@ -3,7 +3,7 @@ import { defineStepProof } from "../../workflow-kit/workflow-definition.js";
 import { i9CheckPersonLookupDefinition } from "./steps/person-lookup/step.js";
 import { i9CheckPersonMatchDefinition } from "./steps/person-match/step.js";
 import { i9CheckRosterMatchDefinition } from "./steps/roster-match/step.js";
-import { i9CheckReferenceCheckDefinition } from "./steps/reference-check/step.js";
+import { i9CheckReferenceCheckDefinition } from "./steps/reference-check/proof.js";
 import { i9CheckStore } from "./task-registry.js";
 import { i9CheckWorkflow } from "./workflow.js";
 

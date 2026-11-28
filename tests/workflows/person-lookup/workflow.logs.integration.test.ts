@@ -2,6 +2,7 @@ import { afterAll, afterEach, it } from "vitest";
 import { createProfileFixtureSet } from "../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import type { JsonObject } from "../../../src/rules/validation/canonical-json.js";
+import { createNoteTimelineWriter } from "../../../src/backend/storage/events/note-timeline-writer.js";
 import { buildRunLogsSection } from "../../../src/backend/runs/queries/run-logs.js";
 import { dataOriginViewsOf } from "../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { createRunQueueProjectionTestWorld } from "../../support/helpers/backend/run-queue-projection-world.js";
@@ -79,24 +80,17 @@ it.each([
  else {const section=read();assert.ok(section.section==="logs");assert.deepEqual(section.payload.rows?.flatMap(row=>row.kind==="observed"?row.displayFields?.map(field=>"value" in field?field.value:"unread")??[]:[]),redacted?["Redacted"]:[]);}
 });
 
-it("shows one Reference spreadsheet line per picked spreadsheet and no other part of the check", async () => {
+it("serves reference comparison notes without exposing the retained row values", async () => {
   const w = await world();
   queuedEventOf(w, { seed: 87, descriptor: personLookupModule.descriptor });
   const run = w.authority.records.get(uuidOf(87)); assert.ok(run);
-  const at = w.clock.now().toISOString();
-  const checks = [
-    { spreadsheet: "Fall roster", sheet: "Hires", outcome: "found", row: 3, line: "Fall roster · Hires: found in row 3" },
-    { spreadsheet: "Badge list", sheet: "Issued", outcome: "not-found", row: null, line: "Badge list · Issued: not found" },
-    { spreadsheet: "Spring roster", sheet: "Hires", outcome: "name-differs", row: 12, line: "Spring roster · Hires: name differs in row 12" },
-  ];
-  w.writer.emit({ t: "data.observed", ts: at, observedAt: at, workflow: "person-lookup", runId: run.envelope.runId, attempt: 1, traceId: traceOf(87),
-    spanPath: `${traceOf(87)}/reference-check#1`, nodeId: "reference-check", taskId: "workbooks/verify-person",
-    points: Object.entries({ state: "checked", result: "unconfirmed", checks }).map(([field, value]) => ({ direction: "read" as const, field,
-      values: [{ key: field, state: "allowed" as const, classification: "safe-diagnostic" as const, transform: "allow" as const, value }] })) });
+  const lines = ["Hires, row 3: Employee ID matches", "Not in Issued", "Hires, row 12: Legal name differs"];
+  const writer = createNoteTimelineWriter({ repository: w.timeline, clock: w.clock });
+  for (const message of lines) writer.emitNote({ workflow: "person-lookup", level: "step", message,
+    address: { runId: run.envelope.runId, attempt: 1, traceId: traceOf(87), spanPath: `${traceOf(87)}/reference-fields-start#1.1` } });
   w.projection.ingestFromTimeline();
   const section = buildRunLogsSection({ runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot, projection: w.projection, authority: w.authority,
     descriptors: { resolve: () => ({ dataOrigins: dataOriginViewsOf(personLookupModule) }) } }, run.envelope.runId, undefined, run);
   assert.ok(section.section === "logs");
-  const fields = section.payload.rows?.flatMap(row => row.kind === "observed" ? row.displayFields ?? [] : []) ?? [];
-  assert.deepEqual(fields.map(field => [field.label, "value" in field ? field.value : "unread"]), checks.map(check => ["Reference spreadsheet", check.line]));
+  assert.deepEqual(section.payload.rows?.flatMap(row => row.kind === "note" ? [row.note.message] : []), lines);
 });
