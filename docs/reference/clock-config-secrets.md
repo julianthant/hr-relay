@@ -569,7 +569,7 @@ Fresh workbook storage contains one General type seed. Incomplete-profile invent
 The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29 and 30. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/models/config/authority-schema-versions.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 46` and
+`src/models/config/authority-schema-versions.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 48` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
@@ -584,6 +584,8 @@ The native layout includes the pause scalar and its JSON-equality triggers, plus
 The v42 migration removes the unused panel mode from saved settings and native and imported settings snapshots. It advances the preferences fingerprint and, where the saved override changes, the matching saved settings, active generation and settlement fingerprints. Historical commands retain their original requests under the schema hash that admitted them.
 
 The v45 migration adds Full access to native and imported settings snapshots with an off default and advances the settings-initialization schema hash. Sparse saved settings and their authenticated command history retain their values. The assistant reads the owning store's saved permission at each start boundary.
+
+The v48 migration adds an index over the confirmation instants of durable write intents for Activity. It leaves the retained write intents and their evidence intact.
 
 The v46 migration builds the run-search FTS5 trigram index from the existing search projection in the person database and imported history. Projection triggers update the index in the same transaction. The index uses the projection's OCR digests and enables FTS5 secure deletion.
 

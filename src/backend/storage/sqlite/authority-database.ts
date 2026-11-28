@@ -98,7 +98,7 @@ import { createRunSummaries, listRunWorkflows } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings } from "./settings-storage.js";
 import { TimelineRecordError, createTimelineRepository, timelineEventFromRow } from "./timeline-repository.js";
-import { selectTransactions } from "./transaction-selection.js";
+import { countActivityConfirmations, selectTransactions } from "./transaction-selection.js";
 import { createWorkbookLibraryRepository, hasOnlyInitialWorkbookType } from "./workbook-library-repository.js";
 import { DryRunScenarioResultSchema } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
@@ -2336,6 +2336,46 @@ export class AuthorityDatabase implements Disposable {
       envelopes => this.authority.dependencies.parents(envelopes)).query(this.getMeta().authorityGeneration,query) });
   }
 
+  readActivityRuns(from: string, to: string) {
+    return this.withAuthorityReadSnapshot(() => {
+      this.#validateExternalQuerySources();
+      const runs = this.#database.prepare(`SELECT * FROM runs ${runIndex(this.#database, "runs_day_idx")}
+        WHERE local_day BETWEEN ? AND ? ORDER BY workflow,local_day,id`).all(from, to)
+        .map(row => ({ run: runRecordFromRow(row), localDay: z.iso.date().parse(row.local_day) }));
+      const parents = this.authority.dependencies.parents(runs.map(({ run }) => run.envelope));
+      return runs.map(({ run, localDay }) => {
+        const parent = parents.get(run.envelope.runId);
+        if (parent === undefined) throw new Error("activity-run-parent-unavailable");
+        const delegationWait = run.lifecycle.state === "queued" && isQueueTopLevel({ parent }) ? this.#readDelegationWaitState(run) : null;
+        return { run, localDay, parent, delegationWait };
+      });
+    });
+  }
+
+  readActivityEvidence(input: { terminal: readonly string[]; people: readonly string[]; failures: readonly string[] }) {
+    return this.withAuthorityReadSnapshot(() => {
+      this.#validateExternalQuerySources();
+      const selectCurrent = (ids: readonly string[], receipts: boolean) => ids.length === 0 ? [] : this.#database.prepare(`
+        SELECT ${receipts ? "receipt" : "settlement"}.* FROM json_each(?) selected
+        CROSS JOIN runs run ON run.id=selected.value
+        CROSS JOIN run_results settlement ON settlement.run_id=run.id
+        ${receipts ? "CROSS JOIN run_receipts receipt ON receipt.run_id=run.id AND receipt.settlement_version=settlement.settlement_version" : ""}
+        WHERE ${CURRENT_RUN_SETTLEMENT_SQL}`).all(JSON.stringify(ids));
+      const unique = <Row>(rows: readonly Row[], key: (row: Row) => string) => {
+        const indexed = new Map(rows.map(row => [key(row), row]));
+        if (indexed.size !== rows.length) throw new Error("activity-run-evidence-ambiguous");
+        return indexed;
+      };
+      const failures = input.failures.length === 0 ? [] : this.#database.prepare(
+        "SELECT * FROM run_failures WHERE id IN (SELECT value FROM json_each(?))").all(JSON.stringify(input.failures));
+      return {
+        receipts: unique(selectCurrent(input.terminal, true).map(row => this.#parseNativeRow("run_receipts", row, RunEvidenceReceiptSchema)), row => row.runId),
+        people: unique(selectCurrent(input.people, false).map(row => this.#parseNativeRow("run_results", row, RunResultRecordSchema)), row => row.runId),
+        failures: unique(failures.map(row => this.#parseNativeRow("run_failures", row, FailureRecordSchema)), row => row.failureId),
+      };
+    });
+  }
+
   /** A retained summary read still admits the current source, and never serves from a write transaction. */
   runSummaryReadPosition() {
     if (this.#transactionMode !== "read") return undefined;
@@ -4226,7 +4266,10 @@ export class AuthorityDatabase implements Disposable {
           this.#parseNativeRow("dryrun_results",row,DryRunScenarioResultSchema))),
       }),
       operatorXlsxExports: generated.exports,
-      confirmedTransactionSources: { select: input => this.withAuthorityReadSnapshot(() => {
+      confirmedTransactionSources: { countActivityConfirmations: (from, to) => this.withAuthorityReadSnapshot(() => {
+        this.#validateExternalQuerySources();
+        return countActivityConfirmations(this.#database, from, to);
+      }), select: input => this.withAuthorityReadSnapshot(() => {
         this.#validateExternalQuerySources();
         const selected = selectTransactions(this.#database,input);
         const events = selected.map(record => {

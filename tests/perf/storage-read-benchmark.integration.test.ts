@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import { afterAll, beforeAll, describe, it } from "vitest";
+import { createActivityPopulationService } from "../../src/backend/runs/queries/activity-population.js";
+import { createTransactionHistory } from "../../src/backend/storage/sqlite/transaction-history.js";
+import { manualClock, systemClock } from "../../src/rules/time/clock.js";
+import { runRecordOf } from "../support/helpers/backend/dashboard-harness.js";
 import { growth, measureStorageRead, STORAGE_READS, storeCheck, type StorageReadId } from "./storage-read-benchmark.js";
 import { seedStorageReadFixture, type StorageReadFixture } from "./storage-read-fixture.js";
 import { traceSqliteStatements } from "./sqlite-statement-counter.js";
@@ -36,6 +41,43 @@ describe("the storage read benchmark at 10,000 runs", () => {
     fixture.reader.summaryWorkflows();
     const warm = traceSqliteStatements(() => fixture.reader.summaryWorkflows());
     assert.throws(() => storeCheck(warm.statements), /ran the store check 0 times/u);
+  });
+
+  it("reads cold 30- and 90-day populations within budget as older history grows", () => {
+    const to = "2026-11-15";
+    const ranges = [{ from: "2026-10-17", to, total: 100 }, { from: "2026-08-18", to, total: 200 }];
+    const countClock = manualClock(new Date(`${to}T20:00:00.000Z`));
+    for (const { reader } of [small, fixture]) reader.withAuthorityTransaction(() => {
+      for (let index = 0; index < 200; index += 1) {
+        reader.authority.runs.enqueue(runRecordOf({ seed: 50_000 + index, runNumber: 50_000 + index,
+          enqueuedAt: `${index < 100 ? "2026-09-08" : "2026-11-08"}T20:00:00.000Z`, dryRun: true }));
+      }
+    });
+    const newReader = ({ reader }: StorageReadFixture) => createActivityPopulationService({ database: reader, clock: countClock,
+      descriptors: { resolve: () => undefined }, ledger: createTransactionHistory(reader.authority) });
+    for (const { from, total } of ranges) {
+      const samples: number[] = [];
+      for (let trial = 0; trial < 5; trial += 1) for (const store of [small, fixture]) {
+        const reader = newReader(store);
+        const started = systemClock.monotonicMs();
+        const selected = reader.read({ from, to });
+        const elapsed = systemClock.monotonicMs() - started;
+        assert.equal(selected.report.totalRuns, total);
+        assert.equal(selected.population.length, total);
+        if (store === fixture) samples.push(elapsed);
+      }
+      samples.sort((left, right) => left - right);
+      assert.ok(samples[2] < 300, `Activity ${from}–${to} median must be under 300 ms: ${samples.join(", ")}`);
+    }
+    const { statements } = traceSqliteStatements(() => newReader(fixture).read({ from: ranges[0].from, to }));
+    const populationSql = statements.find(({ sql }) => sql.includes("runs_day_idx"))?.sql;
+    const confirmationsSql = statements.find(({ sql }) => sql.includes("GROUP BY system,instance"))?.sql;
+    assert.ok(populationSql && confirmationsSql);
+    const raw = new DatabaseSync(fixture.path, { readOnly: true });
+    try {
+      assert.match(JSON.stringify(raw.prepare(`EXPLAIN QUERY PLAN ${populationSql}`).all(ranges[0].from, to)), /SEARCH runs USING INDEX runs_day_idx/u);
+      assert.match(JSON.stringify(raw.prepare(`EXPLAIN QUERY PLAN ${confirmationsSql}`).all(ranges[0].from, to)), /SEARCH write_intents USING INDEX write_intents_activity_confirmed_idx/u);
+    } finally { raw.close(); }
   });
 });
 

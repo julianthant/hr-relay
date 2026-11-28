@@ -353,6 +353,8 @@ const ARCHIVE_UPGRADES: Readonly<Record<number, (archive: DatabaseSync, format: 
   45: archive => {
     for (const statement of RUN_SEARCH_FTS_MIGRATION.statements) archive.exec(statement);
   },
+  46: () => undefined, // Assistant edit receipts live in the person database.
+  47: () => undefined, // Activity's confirmation index is copied from the native store below.
 };
 const ArchiveVersion = z.strictObject({ format: z.literal([1, archiveFormat]), schema_version: z.number().int(), installation_id: z.uuid(), profile_id: z.uuid() });
 

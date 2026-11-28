@@ -2,18 +2,43 @@ import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { TransactionHistorySelectionSchema, TransactionSelectionRecordSchema } from "../../../rules/write-safety/transaction-selection.js";
 import { TimelineAppendSchema, TimelineEventRecordSchema } from "../../../models/events/timeline.js";
+import { ACTIVITY_CONFIRMATION_TIME_SQL } from "./migrations.js";
+import { BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
+
+const ActivityConfirmationCountSchema = z.strictObject({ system: BrowserSystemIdSchema, instance: z.enum(["prod", "test"]), count: z.number().int().positive() });
+
+function confirmationTimeBounds(from: string, to: string): readonly [string | undefined, string | undefined] {
+  const first = from === "0001-01-01" ? undefined : new Date(`${from}T00:00:00`).toISOString();
+  if (to === "9999-12-31") return [first, undefined];
+  const end = new Date(`${to}T00:00:00`);
+  end.setDate(end.getDate() + 1);
+  return [first, end.toISOString()];
+}
+
+/** The committed intent owns the confirmation even if the run and its delivery event were deleted. */
+export function countActivityConfirmations(database: DatabaseSync, from: string, to: string) {
+  const [first, end] = confirmationTimeBounds(from, to);
+  const bounds: string[] = [], params: string[] = [];
+  if (first !== undefined) {
+    bounds.push(`${ACTIVITY_CONFIRMATION_TIME_SQL} >= julianday(?)`);
+    params.push(first);
+  }
+  if (end !== undefined) {
+    bounds.push(`${ACTIVITY_CONFIRMATION_TIME_SQL} < julianday(?)`);
+    params.push(end);
+  }
+  return database.prepare(`SELECT system, json_extract(publication_json,'$.ledger.instance') AS instance, count(*) AS count
+    FROM write_intents WHERE ${["status='committed'", ...bounds].join(" AND ")}
+    GROUP BY system,instance`).all(...params).map(row => ActivityConfirmationCountSchema.parse(row));
+}
 
 /** Reject the entire selection before loading evidence if it exceeds the admitted bound. */
 export function selectTransactions(database: DatabaseSync, input: unknown) {
   const selection = TransactionHistorySelectionSchema.parse(input);
+  const [first, end] = confirmationTimeBounds(selection.from, selection.to);
   const where: string[] = [], params: string[] = [];
-  if (selection.from !== "0001-01-01") {
-    where.push("confirmed_at >= ?"); params.push(new Date(`${selection.from}T00:00:00`).toISOString());
-  }
-  if (selection.to !== "9999-12-31") {
-    const end = new Date(`${selection.to}T00:00:00`); end.setDate(end.getDate() + 1);
-    where.push("confirmed_at < ?"); params.push(end.toISOString());
-  }
+  if (first !== undefined) { where.push("confirmed_at >= ?"); params.push(first); }
+  if (end !== undefined) { where.push("confirmed_at < ?"); params.push(end); }
   if (selection.runId !== undefined) { where.push("run_id = ?"); params.push(selection.runId); }
   if (selection.system !== undefined) { where.push("system = ?"); params.push(selection.system); }
   const rows = database.prepare(`WITH sources AS (

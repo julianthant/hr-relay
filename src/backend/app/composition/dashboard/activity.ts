@@ -46,7 +46,7 @@ const lanePopulations = new WeakMap<AuthorityDatabase, {
 
 /** The report, population and Activity XLSX selection run in one lane snapshot, signed and validated with the runtime's key. */
 const activityLaneRead = defineLaneRead(import.meta.url, "activity", {
-  lane: "navigation", priority: "interactive",
+  lane: "navigation", priority: "interactive", sourceProof: "per-read",
   args: z.strictObject({ signingKey: FingerprintSchema, request: ActivityLaneRequestSchema }),
   run({ history, nowMs, start }, { signingKey, request }): z.infer<typeof ActivityLaneReplySchema> {
     let held = lanePopulations.get(history);
