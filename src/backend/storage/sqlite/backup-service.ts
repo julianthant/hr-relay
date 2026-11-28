@@ -120,7 +120,7 @@ export async function verifyBackupBytesAtPath(
 
 export const backupLogPaths = (backupPath: string) => LOG_DATABASE_NAMES.map(name => `${backupPath}.${name}.db`);
 export const verifiedBackupFiles = ({ backupPath, manifest }: VerifiedBackup) =>
-  [backupPath, ...(manifest.logFiles === undefined ? [] : backupLogPaths(backupPath))];
+  [backupPath, ...(manifest.manifestVersion === 4 && manifest.logFiles !== undefined ? backupLogPaths(backupPath) : [])];
 
 export async function verifyBackupLogFile(path: string, expected: Readonly<{ byteSize: number; sha256: string }>): Promise<void> {
   const metadata = fileStatus(path);
