@@ -104,6 +104,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       library.putType({ id: ONBOARDING_ROSTER_TYPE_ID, name: "Onboarding roster", keyFieldId: "email", fields: [...CRM_DOCUMENT_ROSTER_FIELDS], defaultWorkbookId: null });
       library.operatorOperation(libraryId, "type", { kind: "metadata", expectedVersion: saved.version, metadata: { typeId: ONBOARDING_ROSTER_TYPE_ID, sharePoint: null } });
       workbookReferences = [{ entry: 1, libraryId, versionId: "original", sheetId: selectedSheet.id, expectedVersion: library.read(libraryId).version }];
+      if (mode === "complete") workbookReferences.push({ ...workbookReferences[0], sheetId: secondSheet.id });
     }
     const planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: f.clock, ids: h.plannerIds,
       descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, planTtlMs: 600000, workbooks: library, plannedBy: "local-operator",
@@ -146,7 +147,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
     assert.equal(plan.planned.length, 1); assert.deepEqual(plan.refused, []);
     const entry = plan.planned[0]; assert.ok(entry?.workbookReferences);
     if (mode === "manual-package" || mode === "manual-reference") assert.equal(entry.outputs, undefined);
-    if (mode === "split") assert.equal(entry.workbookReferences.length, 2);
+    if (mode === "split" || mode === "complete") assert.equal(entry.workbookReferences.length, 2);
     const start = h.kernel.execute({ ...world.startCommand(plan), requestedAt: f.clock.now().toISOString() });
     const runId = singleAppliedRunId(start);
     const current = library.read(libraryId), edited = structuredClone(current.workbook), firstName = edited.sheets[0]?.rows[1]?.cells[1]; assert.ok(firstName);
@@ -164,7 +165,8 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       return { ...driver, async findDocumentRecord(request: Parameters<typeof driver.findDocumentRecord>[0]) {
         assert.notEqual(mode, "manual-search", "manual records must replace the browser search");
         const captured = f.db.authority.runs.get(runId); assert.ok(captured); assert.equal(captured.lifecycle.state, "running");
-        const reader = createRunWorkbookService({ database: f.db, clock: f.clock }), command = { typeId: ONBOARDING_ROSTER_TYPE_ID, keys: ["one@example.test"] };
+        const reader = createRunWorkbookService({ database: f.db, clock: f.clock }), command = { typeId: ONBOARDING_ROSTER_TYPE_ID,
+          keys: [mode === "complete" ? "two@example.test" : "one@example.test"] };
         const read = reader.read(captured, command);
         if (mode === "split") {
           assert.equal(read.sources.length, 2);
@@ -173,7 +175,13 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
           capturedDigests = read.sources.map(source => source.referenceDigest);
           assert.deepEqual(read.sources.map(source => decodeWorkbookReference(source.reference).snapshot.rows.flatMap(row => row.matches).map(match => match.values.firstName)), [["Legal"], ["Other"]]);
           assert.deepEqual(read.sources.map(source => decodeWorkbookReference(source.reference).snapshot.worksheets), [[{ sheetId: "csv", name: "Sheet 1" }], [{ sheetId: "csv", name: "Sheet 1" }]]);
-        } else assert.equal(read.reference.snapshot.versionId, "original");
+        } else {
+          assert.equal(read.reference.snapshot.versionId, "original");
+          if (mode === "complete") {
+            assert.deepEqual(read.sources.map(source => source.reference.snapshot.worksheets[0]?.name), ["July 6", "August 2"]);
+            assert.deepEqual(read.sources.map(source => decodeWorkbookReference(source.reference).snapshot.rows[0]?.matches[0]?.values.firstName), ["Second", "Second"]);
+          }
+        }
         for (const changed of [
           { ...captured, claimGeneration: Number(captured.claimGeneration) + 1 },
           { ...captured, envelope: { ...captured.envelope, traceId: "cd-000001-9999" } },
@@ -434,7 +442,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
   } finally { await manager?.closeAll("worker-stop"); await resources?.stop(); for (const database of world.openDatabases.splice(0)) database.close(); await f.dispose(); }
 }
 
-it("crm-doc-download/worksheet-archives — executes registered CRM sessions, run-bound references and both PDFs in the selected worksheet ZIP", () => runCrm("complete"));
+it("crm-doc-download/worksheet-archives — reads two selected sheets, collapses agreeing rows and puts both PDFs in one worksheet ZIP", () => runCrm("complete"));
 it("retains multiple operator row choices and resumes the same batch to publish both exact PDFs in one worksheet archive", () => runCrm("ambiguous"));
 it("reads two General CSVs that share csv/row-1, records the chosen source, and publishes both archives", () => runCrm("split"));
 it("publishes nothing and logs Done outside Relay when worksheet packaging is off", () => runCrm("manual-package"));
