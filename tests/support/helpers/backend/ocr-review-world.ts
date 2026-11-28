@@ -53,6 +53,8 @@ import { I9LookupError, type I9LookupInput } from "../../../../src/models/system
 import { sessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { i9PageSubmission } from "../../fixtures/i9-check-start.js";
 import type { ChatGptOcrAdapter } from "../../../../src/backend/processing/providers/provider-client.js";
+import { OCR_EXTRACTION_RESPONSE_HASH, OcrExtractionRequestSchema } from "../../../../src/models/processing/ocr/extract-form-page.js";
+import { ProviderAdapterOutcomeSchema } from "../../../../src/models/providers/providers.js";
 
 interface ReviewedPageFacts {
   readonly employeeName: string;
@@ -68,7 +70,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       retainedProducer?: boolean; coordinator?: boolean; fileName?: string; dryRun?: boolean; extractWithOcr?: boolean;
       parent?: WorkflowModule; ocr?: Pick<WorkflowModule, "descriptor"> & Partial<Pick<WorkflowModule, "stores">>; ocrPage?: WorkflowModule;
       lookupNames?: readonly string[]; employeeIds?: readonly (string | null)[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; holdPages?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
-      failManualPageOnce?: number; stopAfterPageFailure?: boolean;
+      failManualPageOnce?: number; stopAfterPageFailure?: boolean; ocrProviderAvailable?: () => boolean;
       signerLookup?: Readonly<{ firstNames: readonly string[]; failOnce?: string }>;
       reviewedPages?: readonly ReviewedPageFacts[]; operatorEvidence?: boolean;
       screenshotCapture?: NonNullable<Parameters<typeof world.executorHarness>[0]>["screenshotCapture"];
@@ -102,9 +104,14 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       const signerReads: string[] = [];
       const pageReads: number[] = [];
       let ocrCalls = 0;
-      const refuseOcr: ChatGptOcrAdapter = { capability: "ocr.extract", policy: { kind: "chatgpt-subscription-only", timeoutMs: 120_000 }, async invoke() {
+      const provider: ChatGptOcrAdapter = { capability: "ocr.extract", policy: { kind: "chatgpt-subscription-only", timeoutMs: 120_000 }, async invoke(request) {
         ocrCalls++;
-        throw new Error("Unexpected OCR provider request in the manual-entry fixture.");
+        assert.equal(options.ocrProviderAvailable?.(), true, "Unexpected OCR provider call while unavailable");
+        const { formType, page, sourcePage } = OcrExtractionRequestSchema.parse(request.payload.value);
+        const value = { formType, sourcePage, sourceSha256: page.sha256, pageKind: "blank", record: null,
+          source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "synthetic-test-model" }, readAt: clock.now().toISOString() };
+        return ProviderAdapterOutcomeSchema.parse({ response: { state: "produced", value: { schemaHash: OCR_EXTRACTION_RESPONSE_HASH, value } },
+          evidence: { summary: "Synthetic blank page", capturedAt: value.readAt } });
       } };
       const sessions = options.signerLookup === undefined ? options.sessions : sessionFactoryHarness({ i9: () => ({
         ...createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: READ_AT }),
@@ -174,10 +181,11 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       const notes = options.operatorEvidence === true ? createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }) : undefined;
       const canonical = canonicalChildExecution({ ...harness.deps, emitter: { emit: event => { harness.deps.emitter.emit(event); options.onSpan?.(event); } }, artifacts, ...(writeSequencer === undefined ? {} : { writeSequencer }) }, database, path, resolve,
         options.retainedProducer === true ? retainedOcrCheckpointPublication : createOcrCheckpointPublication,
-        { workbooks, resources: (reader, run) => { const claim = runClaim(run); assert.ok(claim); const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
+        { workbooks, ...(options.ocrProviderAvailable === undefined ? {} : { ocrProviderAvailable: options.ocrProviderAvailable }),
+          resources: (reader, run) => { const claim = runClaim(run); assert.ok(claim); const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
           const needsPlanEvidence = notes !== undefined && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction");
           return { ...(!needsPlanEvidence ? {} : { taskNotes: notes }), providers: { configSnapshots: database.authority.configSnapshots,
-          idFactory: { next: () => randomUUID() }, adapters: { "ocr.extract": refuseOcr, ...(options.checks === undefined ? {} : { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
+          idFactory: { next: () => randomUUID() }, adapters: { "ocr.extract": provider, ...(options.checks === undefined ? {} : { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
             references: { runId: run.envelope.runId, write: () => { throw new Error("the reference check must not write a reference"); }, verifyPerson: command => runWorkbooks.verifyPerson(run, command) } }) }),
             "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({clock,
             reader: options.approvedReader === undefined
@@ -273,7 +281,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       const request = OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
         formType, roster: null, approval: options.release === true ? "release" : "review-only",
         ...(options.extractWithOcr === undefined ? {} : { extractWithOcr: options.extractWithOcr }),
-        reading: options.extractWithOcr === false ? { kind: "subscription" }
+        reading: options.extractWithOcr === false || options.ocrProviderAvailable !== undefined ? { kind: "subscription" }
           : { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
       assert.ok(roster);
       const workbookReferences = options.retainedProducer === true || root.descriptor.workbookReference?.id !== "ocr-roster" ? undefined : [{ entry: 1, libraryId: roster.libraryId,
@@ -312,8 +320,12 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       // holdPages: stop once the OCR run has queued its page runs, before any page is claimed.
       const executeToPages = async () => {
         const outcomes: Awaited<ReturnType<typeof canonical.execute>>["outcomes"] = [];
-        const pagesQueued = () => database.authority.runs.listChildren(parentRun.envelope.runId)
-          .some(child => child.envelope.workflow === "ocr-page" && child.lifecycle.state === "queued");
+        const pagesQueued = () => {
+          const ocrRun = root === ocrRoot ? parentRun : database.authority.runs.listChildren(parentRun.envelope.runId)
+            .find(child => child.envelope.workflow === "ocr");
+          return ocrRun !== undefined && database.authority.runs.listChildren(ocrRun.envelope.runId)
+            .some(child => child.envelope.workflow === "ocr-page" && child.lifecycle.state === "queued");
+        };
         while (!pagesQueued()) outcomes.push((await canonical.step(parentRun, signal)).outcome);
         return { run: database.authority.runs.get(parentRun.envelope.runId), outcomes };
       };

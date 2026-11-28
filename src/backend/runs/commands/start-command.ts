@@ -16,6 +16,7 @@ import { assertOcrRecoverySnapshotCurrent } from "../lifecycle/ocr-review-author
 import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { reviewedRunSettingsCurrent } from "../settings/run-settings.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
+import { assertOcrStartReady } from "../start/ocr-readiness.js";
 import { buildRerunPlan, RerunRefusedError } from "../start/rerun.js";
 import { applied, type CommandApplication } from "./command-application.js";
 import type { CommandKernelDependencies } from "./command-kernel.js";
@@ -180,6 +181,7 @@ export function executeStartRun(
     reject(request, "RUN_START_RESTART_REQUIRED", ERROR_CATALOG.RUN_START_RESTART_REQUIRED.text);
   }
   dependencies.preflight?.assertReady(workflowPreflightScope(descriptor, plan));
+  assertOcrStartReady(repositories, descriptor, plan, dependencies.ocrProviderAvailable);
   const continuation = plan.rerun?.continuation;
   if (continuation !== undefined && plan.rerun !== undefined) {
     const source = requireRun(repositories, request, plan.rerun.source.runId);

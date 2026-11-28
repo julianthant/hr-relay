@@ -44,11 +44,14 @@ const readManually = (file: Pdf) => ManualReadingSchema.safeParse(file.original)
 export function pdfRunOfferedFields(surface: UploadRunSurface, draft: PdfRunDraft | null) {
   return pdfRunLaunchFields(surface).filter(({ field }) => field !== OCR_FIELD || draft === null || !draft.files.some(readManually));
 }
-/** How the footer says the PDFs are read: by the manual readings kept for all of them, else "OCR off" only when the declared switch is off; a PDF workflow without the switch always reads. */
-export function pdfRunOcrFooter(surface: UploadRunSurface, draft: PdfRunDraft | null, picks: PdfRunPicks): string {
-  if (draft !== null && draft.files.length > 0 && draft.files.every(readManually)) return "Manual reading";
+export function pdfRunReadingMode(surface: UploadRunSurface, draft: PdfRunDraft | null, picks: PdfRunPicks): "manual" | "off" | "subscription" {
+  if (draft !== null && draft.files.length > 0 && draft.files.every(readManually)) return "manual";
   const field = pdfRunLaunchFields(surface).find(candidate => candidate.kind === "boolean" && candidate.field === OCR_FIELD);
-  return field?.kind === "boolean" && !pdfRunSwitchValue(field, picks) ? "OCR off" : "OCR on";
+  return field?.kind === "boolean" && !pdfRunSwitchValue(field, picks) ? "off" : "subscription";
+}
+
+export function pdfRunOcrFooter(surface: UploadRunSurface, draft: PdfRunDraft | null, picks: PdfRunPicks): string {
+  return { manual: "Manual reading", off: "OCR off", subscription: "OCR on" }[pdfRunReadingMode(surface, draft, picks)];
 }
 /** The first required launch field without a pick, which blocks planning; null when every required field is picked. */
 export function unpickedPdfRunField(surface: UploadRunSurface, picks: PdfRunPicks) {
