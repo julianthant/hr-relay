@@ -303,8 +303,9 @@ export function stampDashboardDay(dayJson: string, stamp: Readonly<{ day: string
 }
 
 /** The navigation lane's day read, as the projection calls it. */
+type DashboardDayReadOptions = Readonly<{ slot?: Readonly<{ subscriberId: string; slot: string }>; signal?: AbortSignal; initialSnapshot?: true }>;
 export interface DashboardDayLane {
-  read(day: string, request: Readonly<{ slot?: Readonly<{ subscriberId: string; slot: string }>; signal?: AbortSignal }>): Promise<Readonly<{ body: string; processRevision: number | null }>>;
+  read(day: string, request: DashboardDayReadOptions): Promise<Readonly<{ body: string; processRevision: number | null }>>;
   /** The current process-facts revision; a reply built at another revision is discarded. */
   processRevision(): number;
 }
@@ -1884,7 +1885,7 @@ export class RunQueueProjection {
    * One read of the day at this dispatch. With a lane it is the lane's reply; without one it is built here, in this turn,
    * so it is current by construction.
    */
-  requestDashboardDay(day: string, request: Readonly<{ slot?: Readonly<{ subscriberId: string; slot: string }>; signal?: AbortSignal }> = {}): DashboardDayRead | Promise<DashboardDayRead> {
+  requestDashboardDay(day: string, request: DashboardDayReadOptions = {}): DashboardDayRead | Promise<DashboardDayRead> {
     if (this.#health.state === "degraded") {
       throw new ProjectionDegradedError(`the run/queue projection is degraded and refuses to serve counts: ${this.#health.lastError ?? "unknown"}`);
     }

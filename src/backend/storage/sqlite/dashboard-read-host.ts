@@ -147,7 +147,7 @@ const readingAt = (lane: number) => 1 + lane;
 
 const RequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("read"), id: z.number().int().positive(), beginSeq: z.number().int().nonnegative(), module: z.string().min(1), name: z.string().min(1), key: z.string().min(1), args: z.unknown(),
-    priority: z.enum(["interactive", "background"]), nowMs: z.number().int(), processRevision: z.number().int().nonnegative().nullable(), processFacts: z.unknown() }),
+    priority: z.enum(["initial-snapshot", "interactive", "background"]), nowMs: z.number().int(), processRevision: z.number().int().nonnegative().nullable(), processFacts: z.unknown() }),
   z.strictObject({ kind: z.literal("cancel"), id: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("checkpoint"), id: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("close") }),
@@ -185,6 +185,7 @@ export interface DashboardReadOptions {
   readonly slot?: Readonly<{ subscriberId: string; slot: string }>;
   readonly processFacts?: Readonly<{ revision: number; facts: unknown }>;
   readonly signal?: AbortSignal;
+  readonly initialSnapshot?: true;
 }
 
 export interface WalCheckpointAttempt {
@@ -215,6 +216,7 @@ interface LaneReadRequest {
   readonly lane: Lane;
   readonly key: string;
   readonly definition: LaneReadDefinition<unknown, unknown>;
+  readonly priority: LaneReadMessage["priority"];
   readonly args: unknown;
   readonly processRevision: number | null;
   readonly processFacts: unknown;
@@ -315,7 +317,7 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
   const post = (lane: Lane, request: LaneReadRequest) => {
     if (lane.worker === undefined) throw new Error("read-lane-post-unready");
     const message: LaneRequest = { kind: "read", id: request.id, beginSeq: dispatchSeq, module: request.definition.module,
-      name: request.definition.name, key: request.key, args: request.args, priority: request.definition.priority, nowMs: clock.nowMs(), processRevision: request.processRevision,
+      name: request.definition.name, key: request.key, args: request.args, priority: request.priority, nowMs: clock.nowMs(), processRevision: request.processRevision,
       processFacts: request.processFacts };
     try { lane.worker.postMessage(message); }
     catch (error) {
@@ -325,11 +327,12 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
     request.postedSeq = message.beginSeq;
     lane.sent.set(request.id, request);
   };
-  /** Reads held while the lane booted go out interactive first, in arrival order within each class. */
+  /** Reads held during boot go out in arrival order within their priority. */
   const flush = (lane: Lane) => {
     const held = lane.held.splice(0);
-    for (const request of [...held.filter(request => request.definition.priority === "interactive"),
-      ...held.filter(request => request.definition.priority !== "interactive")]) post(lane, request);
+    for (const priority of ["initial-snapshot", "interactive", "background"] as const) {
+      for (const request of held) if (request.priority === priority) post(lane, request);
+    }
   };
 
   const beginCheckpoint = () => {
@@ -564,12 +567,14 @@ export function createDashboardReadHost(input: Readonly<{ admission: RuntimeAdmi
       const admitted = registered.args.safeParse(args);
       if (!admitted.success) return Promise.reject(admitted.error);
       const parsed: unknown = admitted.data;
+      if (options.initialSnapshot === true && registered.priority !== "interactive") return Promise.reject(new Error("read-lane-snapshot-priority-refused"));
+      const priority = options.initialSnapshot === true ? "initial-snapshot" : registered.priority;
       if (registered.processFacts && options.processFacts === undefined) return Promise.reject(new Error("read-lane-process-facts-required"));
       const processRevision = registered.processFacts ? options.processFacts?.revision ?? null : null;
       const processFacts = registered.processFacts ? options.processFacts?.facts ?? null : null;
       const signal = options.signal;
       const onAbort = () => { detach(request, signal?.reason instanceof Error ? signal.reason : new Error("read-aborted")); };
-      const request: LaneReadRequest = { id: ++messageId, dispatchSeq: ++dispatchSeq, lane, definition: registered, args: parsed,
+      const request: LaneReadRequest = { id: ++messageId, dispatchSeq: ++dispatchSeq, lane, definition: registered, priority, args: parsed,
         key: canonicalJsonStringify({ lane: lane.name, read: registered.id, args: parsed }), processRevision, processFacts,
         slot: options.slot === undefined ? undefined : canonicalJsonStringify(options.slot), settle: Promise.withResolvers(),
         release: () => signal?.removeEventListener("abort", onAbort), waiting: true, postedSeq: undefined };
@@ -646,7 +651,8 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
     .map(identity => `${identity.device}:${identity.inode}`).join("+") + `@${String(start.cursorOffset)}`;
   const cache = new Map<string, CacheEntry>();
   const checkpoints: number[] = [];
-  const interactive: ReadJob[] = [], background: ReadJob[] = [];
+  const queueByPriority: Record<LaneReadMessage["priority"], ReadJob[]> = { "initial-snapshot": [], interactive: [], background: [] };
+  const queues = Object.values(queueByPriority);
   let scheduled = false, closed = false, gateWait = false, waitingForReaders = false;
   let loading = false;
   const unloaded = new Map(readModules);
@@ -776,12 +782,15 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
   const runRead = (definition: LaneReadDefinition<unknown, unknown>, job: ReadJob, queue: ReadJob[]) => {
     const twins = job.requests, picked = twins[0];
     if (job.chunks === undefined) {
-      for (let index = 0; index < queue.length;) {
-        const queued = queue[index];
-        if (queued.chunks === undefined && queued.requests[0].key === picked.key && queued.requests[0].processRevision === picked.processRevision) {
-          twins.push(...queued.requests);
-          queue.splice(index, 1);
-        } else index += 1;
+      const pending = picked.priority === "initial-snapshot" ? [queue, queueByPriority.interactive] : [queue];
+      for (const candidates of pending) {
+        for (let index = 0; index < candidates.length;) {
+          const queued = candidates[index];
+          if (queued.chunks === undefined && queued.requests[0].key === picked.key && queued.requests[0].processRevision === picked.processRevision) {
+            twins.push(...queued.requests);
+            candidates.splice(index, 1);
+          } else index += 1;
+        }
       }
     }
     const ids = twins.map(twin => twin.id);
@@ -811,7 +820,7 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
       return;
     }
     if (message.kind === "cancel") {
-      for (const queue of [interactive, background]) {
+      for (const queue of queues) {
         const jobIndex = queue.findIndex(queued => queued.requests.some(request => request.id === message.id));
         if (jobIndex === -1) continue;
         const { requests } = queue[jobIndex];
@@ -822,12 +831,12 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
       }
       return;
     }
-    (message.priority === "interactive" ? interactive : background).push({ requests: [message] });
+    queueByPriority[message.priority].push({ requests: [message] });
   };
   function takeRead() {
-    const queue = interactive.length > 0 ? interactive : background;
+    const queue = queues.find(pending => pending.length > 0);
+    if (queue === undefined || loading) return;
     const job = queue[0];
-    if (job === undefined || loading) return;
     const message = job.requests[0];
     const definition = definitions.get(laneReadId(message.module, message.name));
     const load = definition === undefined ? unloaded.get(message.module) : undefined;
@@ -841,7 +850,8 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
       }, () => process.exit(LANE_FAILURE_EXIT_CODE));
       return;
     }
-    if (definition === undefined || definition.priority !== message.priority) {
+    const priority = message.priority === "initial-snapshot" ? "interactive" : message.priority;
+    if (definition?.priority !== priority) {
       queue.shift();
       send({ kind: "read-failed", ids: [message.id], message: "read-lane-read-unknown" });
       return;
@@ -850,7 +860,7 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
     queue.shift();
     runRead(definition, job, queue);
   }
-  /** The lane takes its own next message: a checkpoint, then interactive reads, then background ones. */
+  /** Take a checkpoint, an initial snapshot, an interactive read or a background read in that order. */
   const step = () => {
     scheduled = false;
     if (closed) return;
@@ -864,7 +874,7 @@ function runReadLane(port: MessagePort, data: unknown, readModules: ReadonlyMap<
   // One event-loop turn between messages lets every message that arrived during a read join the queues before the next pick.
   function schedule() {
     const checkpointReady = checkpoints.length > 0 && !waitingForReaders;
-    if (scheduled || closed || gateWait || (!checkpointReady && (loading || interactive.length + background.length === 0))) return;
+    if (scheduled || closed || gateWait || (!checkpointReady && (loading || queues.every(queue => queue.length === 0)))) return;
     scheduled = true;
     setImmediate(() => {
       // A failed send or close leaves the lane in an unknown state; the host restarts it from its exit.

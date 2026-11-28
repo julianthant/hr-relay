@@ -55,6 +55,7 @@ const STORAGE_EVENT = { kind: "storage-degraded", concern: "disk-space", state: 
 interface LaneRead {
   readonly day: string;
   readonly signal: AbortSignal | undefined;
+  readonly initialSnapshot: boolean;
   /** The lane's body as its replica builds the day now, at the current process-facts revision. */
   capture(): Readonly<{ body: string; processRevision: number }>;
   answer(reply: Readonly<{ body: string; processRevision: number }>): void;
@@ -83,7 +84,7 @@ async function laneHarness(options: Readonly<{ maxPending?: number; status?: tru
     processRevision: () => state.revision,
     read(day, request) {
       const reply = Promise.withResolvers<Readonly<{ body: string; processRevision: number }>>();
-      reads.push({ day, signal: request.signal,
+      reads.push({ day, signal: request.signal, initialSnapshot: request.initialSnapshot === true,
         capture: () => {
           replica.ingestFromTimeline();
           const built = replica.buildLaneDay(day);
@@ -204,6 +205,7 @@ describe("a stream snapshot read on the navigation lane", () => {
     const third = queuedEventOf(w, { seed: 3 });
     fold();
     const opening = hub.connect({ day: DAY });
+    assert.equal(lastRead(reads).initialSnapshot, true);
     await answerAll(reads);
     const connection = await opening;
     const terminalize = (seed: number, runId: string) => {
@@ -213,6 +215,7 @@ describe("a stream snapshot read on the navigation lane", () => {
     };
 
     terminalize(1, first.runId);
+    assert.equal(lastRead(reads).initialSnapshot, false);
     await answerAll(reads, 1);
     const updates = await drain(connection);
     const patch = updates[0];

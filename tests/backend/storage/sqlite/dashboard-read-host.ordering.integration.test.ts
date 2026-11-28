@@ -77,6 +77,19 @@ it("refuses a background reply when its authority changes between chunks", async
   await assert.rejects(scan, { code: "STORAGE_SNAPSHOT_CHANGED" });
 });
 
+it("takes a stream's day snapshot ahead of queued interactive work and answers its queued twin", async () => {
+  const { lanes } = await host();
+  const { dir, release } = barrierDir();
+  const scan = lanes.read(laneBackgroundBarrier, { tag: "scan", dir });
+  await until(() => existsSync(join(dir, "started")));
+  const unrelated = lanes.read(laneSleep, { tag: "unrelated", ms: 0 });
+  const day = { tag: "day", ms: 0 };
+  const queueRead = lanes.read(laneSleep, day);
+  const initialSnapshot = lanes.read(laneSleep, day, { initialSnapshot: true });
+  release();
+  assert.deepEqual(await Promise.all([run(scan), run(initialSnapshot), run(queueRead), run(unrelated)]), [1, 2, 2, 3]);
+});
+
 it("starts a click queued behind a background read while the main thread is still held, with no host handoff", async () => {
   const { lanes } = await host();
   const { dir, release } = barrierDir();

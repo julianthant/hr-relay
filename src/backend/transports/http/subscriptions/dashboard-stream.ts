@@ -592,7 +592,8 @@ export class DashboardStreamHub {
     request.attempts += 1;
     let read: DashboardDayRead | Promise<DashboardDayRead>;
     try {
-      read = this.#projection.requestDashboardDay(request.day, { signal: request.controller.signal });
+      read = this.#projection.requestDashboardDay(request.day, { signal: request.controller.signal,
+        ...(request.origin === "handoff" ? { initialSnapshot: true } : {}) });
     } catch (error) {
       // A day built here fails in the turn that drove the change: its connections resubscribe and the failure reaches that caller.
       if (request.origin === "change") { this.#snapshotGap(request); throw error; }
