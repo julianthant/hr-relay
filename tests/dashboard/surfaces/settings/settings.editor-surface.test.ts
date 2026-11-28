@@ -405,7 +405,8 @@ it("keeps the real Settings fields enabled over a held re-read and keeps an edit
   assert.ok(host);
   const rows = [...host.querySelectorAll("[data-settings-path]")];
   assert.ok(rows.length > 0);
-  assert.deepEqual(rows.flatMap(row => [...row.querySelectorAll<HTMLElement>("input, button, select, [role='switch'], [role='spinbutton']")].filter(control => control.matches(":disabled, [aria-disabled='true']"))), [], "no served field is disabled while the re-read is held");
+  const disabled = rows.flatMap(row => [...row.querySelectorAll<HTMLElement>("input, button, select, [role='switch'], [role='spinbutton']")].filter(control => control.matches(":disabled, [aria-disabled='true']"))).length;
+  assert.equal(disabled, 0, "no served field is disabled while the re-read is held");
   const date = host.querySelector<HTMLElement>('[data-settings-path$=".jobEndDate"] [role="spinbutton"]');
   assert.ok(date);
   const toggle = host.querySelector<HTMLInputElement>('[data-settings-path="preferences.preventSleepWhileRunning"] input');
