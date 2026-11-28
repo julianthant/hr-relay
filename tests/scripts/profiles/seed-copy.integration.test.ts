@@ -226,17 +226,13 @@ it("replaces its synthetic history and retains imported rows outside operational
   expect(readFileSync(copy.path)).toEqual(localBefore);
 
   const { client, outbound, spawn, preflight } = await openSeededDashboard(workspace);
-  const visible = new Set<string>();
   const days = new Set([imported, ...seeded.generated].map(row => searchPartitionDay(new Date(row.envelope.enqueuedAt))));
   expect(days.size).toBe(90);
-  for (const day of days) for (const row of (await client.dashboardDay(day)).queueSurfaces) visible.add(row.runId);
-  for (const { envelope } of seeded.generated) {
-    expect(visible).toContain(envelope.runId);
-    expect((await client.runDetail(envelope.runId)).runId).toBe(envelope.runId);
-  }
+  const rows = new Map<string, Awaited<ReturnType<typeof client.dashboardDay>>["queueSurfaces"][number]>();
+  for (const day of days) for (const row of (await client.dashboardDay(day)).queueSurfaces) rows.set(row.runId, row);
   const notificationIds = (await client.notificationSnapshot()).map(row => row.notificationId);
   expect(notificationIds).toEqual(expect.arrayContaining([importedNotice, ...seeded.notices].map(row => row.notificationId)));
-  await expectTimelines(client, seeded.generated);
+  await expectTimelines(client, seeded.generated, rows);
   await expectLiveSamples(client, seeded.generated, preflight);
   expect(outbound).toEqual([]);
   expect(spawn).not.toHaveBeenCalled();
@@ -281,11 +277,8 @@ const HEADER_STATUS: Record<string, string> = { queued: "Queued", running: "Runn
   paused: "Paused", waiting: "Review", succeeded: "Done", failed: "Failed", cancelled: "Cancelled", "needs-review": "Write parked" };
 
 /** Every generated run reads as a real one: its recorded setup leads its Logs in order, its state card follows, and the header says its state. */
-async function expectTimelines(client: ReturnType<typeof createDashboardClient>, generated: readonly RunRecord[]) {
-  const rows = new Map<string, Awaited<ReturnType<typeof client.dashboardDay>>["queueSurfaces"][number]>();
-  for (const day of new Set([clock.now(), ...generated.map(run => new Date(run.envelope.enqueuedAt))].map(searchPartitionDay))) {
-    for (const row of (await client.dashboardDay(day)).queueSurfaces) rows.set(row.runId, row);
-  }
+async function expectTimelines(client: ReturnType<typeof createDashboardClient>, generated: readonly RunRecord[],
+  rows: ReadonlyMap<string, Awaited<ReturnType<typeof client.dashboardDay>>["queueSurfaces"][number]>) {
   for (const run of generated) {
     const row = rows.get(run.envelope.runId), name = run.displayName ?? "";
     assert.ok(row !== undefined, name);
@@ -293,8 +286,14 @@ async function expectTimelines(client: ReturnType<typeof createDashboardClient>,
     expect(renderToStaticMarkup(createElement(RunStateChips, { row })).replace(/<[^>]*>/gu, " "), name).toContain(HEADER_STATUS[state]);
     expect(isStarting(row), name).toBe(false);
     expect(isNeedsDuo(row), name).toBe(state === "needs-duo");
-    if (run.claimGeneration === 0) { expect(state, name).toBe("queued"); continue; }
-    const { steps } = projectRunLogs(await readRunLogs(client, { row, workflowLabel: row.workflowId }, new AbortController().signal), client);
+    if (run.claimGeneration === 0) {
+      expect(state, name).toBe("queued");
+      expect((await client.runDetail(run.envelope.runId)).runId).toBe(run.envelope.runId);
+      continue;
+    }
+    const logs = await readRunLogs(client, { row, workflowLabel: row.workflowId }, new AbortController().signal);
+    expect(logs.detail.runId).toBe(run.envelope.runId);
+    const { steps } = projectRunLogs(logs, client);
     expect(steps.map(step => step.time), name).not.toContain("—");
     const descriptor = WORKFLOW_MODULES.find(module => module.descriptor.id === run.envelope.workflow)?.descriptor;
     assert.ok(descriptor !== undefined, name);
