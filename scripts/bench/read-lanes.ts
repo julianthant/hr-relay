@@ -207,14 +207,24 @@ async function serveG4(shape: Shape, workspace: string) {
 }
 
 async function admitG4Copy(profile: CopyProfile, workspace: string) {
-  const [{ acquireRuntimeLifetimeLock }, { acquireEntrypointAdmission }, { openReadOnlyDatabase }] = await Promise.all([
+  const [{ acquireRuntimeLifetimeLock }, { acquireEntrypointAdmission }, { openReadOnlyDatabase }, { AuthorityDatabase },
+    { createCredentialStore }, { resolveConfigWithProvenance }, { hostConfigFacts }, { hostAwareResolutionEnvironment },
+    { probePrimaryDisplay }, { readBootSettings }, { LOCAL_OPERATOR_ACTOR_ID }] = await Promise.all([
     import("../../src/backend/storage/admission/lifetime-lock.js"),
     import("../../src/backend/storage/admission/bootstrap-admission.js"),
     import("../../src/backend/storage/sqlite/readonly-authority-snapshot.js"),
+    import("../../src/backend/storage/sqlite/authority-database.js"),
+    import("../../src/backend/storage/configuration/credential-store.js"),
+    import("../../src/backend/app/config/resolve.js"),
+    import("../../src/models/config/host-display.js"),
+    import("../../src/models/config/secrets.js"),
+    import("../../src/backend/app/host/primary-display.js"),
+    import("../../src/backend/runtime/settings/settings-runtime.js"),
+    import("../../src/rules/identity/ids.js"),
   ]);
   const lock = await acquireRuntimeLifetimeLock(runtimeProfiles[profile].lockPort);
   try {
-    const machine = acquireEntrypointAdmission(workspace, "shared", lock);
+    const machine = acquireEntrypointAdmission(workspace, "exclusive", lock);
     try {
       const { activeProfileId, installationId, profiles } = machine.readProfileRegistry();
       const row = profiles.find(person => person.profileId === activeProfileId);
@@ -229,12 +239,31 @@ async function admitG4Copy(profile: CopyProfile, workspace: string) {
           if (binding.installation_id !== installationId || binding.profile_id !== row.profileId
             || archive.prepare("SELECT 1 FROM runs LIMIT 1").get() === undefined) throw new Error("read-lanes-g4-copy-history-required");
         } finally { archive.close(); }
-        const database = openReadOnlyDatabase(join(person.stateRoot, "state.db"), 250);
+        const path = join(person.stateRoot, "state.db");
+        const database = openReadOnlyDatabase(path, 250);
         try {
           if (database.prepare("SELECT 1 FROM runs WHERE state IS NOT 'terminal' LIMIT 1").get() !== undefined) {
             throw new Error("read-lanes-g4-copy-has-active-runs");
           }
         } finally { database.close(); }
+        // A copied active snapshot still names the input profile's absolute paths. Activate the clone's paths through the normal repositories.
+        const credentials = createCredentialStore({ admission: person, stateRoot: person.stateRoot });
+        const authority = AuthorityDatabase.open(person, { path, busyTimeoutMs: 5000, migrationOwner: "read-lanes-bench" },
+          systemClock, undefined, undefined, undefined, credentials);
+        try {
+          const host = hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay));
+          authority.withAuthorityTransaction(repositories => {
+            const saved = readBootSettings(repositories);
+            if (repositories.runtimeConfig.get() === undefined) throw new Error("read-lanes-g4-active-settings-required");
+            const resolved = resolveConfigWithProvenance(saved.settings, host, systemClock, { stateRoot: person.stateRoot, artifactRoot: person.artifactRoot });
+            const { config, fingerprint, provenance, preferences, preferencesFingerprint } = resolved;
+            const configSnapshotId = randomUUID(), at = systemClock.now().toISOString();
+            repositories.configSnapshots.insert({ configSnapshotId, revision: saved.revision, config, fingerprint, provenance, preferences,
+              preferencesFingerprint, capturedAt: at, capturedBy: LOCAL_OPERATOR_ACTOR_ID });
+            repositories.runtimeConfig.activate({ settingsRevision: saved.revision, settingsFingerprint: saved.settingsFingerprint,
+              configSnapshotId, configFingerprint: fingerprint, activatedAt: at });
+          });
+        } finally { authority.close(); }
         return row.profileId;
       } finally { person.release(); }
     } finally { machine.release(); }
@@ -311,7 +340,7 @@ async function measureG4(shape: Shape, profile: CopyProfile, workspace: string,
     const credentials = operatorCredentials();
     const active = await client.signInProfile({ email: credentials.RELAY_EMAIL, password: credentials.RELAY_PASSWORD });
     const { proof, session } = auth;
-    if (active.state !== "active") throw new Error(`read-lanes-g4-sign-in-${active.state === "refused" ? active.code : active.state}`);
+    if (active.state !== "active") throw new Error(`read-lanes-g4-sign-in-${active.state === "refused" || active.state === "error" ? active.code : active.state}`);
     if (active.profileId !== input.profileId) throw new Error("read-lanes-g4-sign-in-profile-mismatch");
     if (active.duoState !== "ready") throw new Error("read-lanes-g4-sign-in-duo-unavailable");
     if (proof === undefined || session === undefined) throw new Error("read-lanes-g4-sign-in-headers-missing");
