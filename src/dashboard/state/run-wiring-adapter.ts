@@ -474,7 +474,6 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   const decisionEvents = new Set(sections.flatMap(section => section.section === "identity-gate" && section.payload.state === "available"
     ? [gateTimelineOwner(detail, section.payload.value)?.native?.eventId ?? []].flat() : section.section === "workbook-writes"
       ? (section.payload.referenceChoices ?? []).map(choice => choice.native.eventId) : []));
-  const failedNodes = new Set<string | undefined>(sections.flatMap(section => section.section === "failure" && section.payload.state === "available" ? [section.payload.value.nodeId] : []));
   let gateDecisionShown = false;
   for (const event of detail.timeline.events) {
     if (decisionEvents.has(requireNative(event.native).eventId)) continue;
@@ -490,12 +489,12 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       steps.push({ id: gate.gateId, time, title: plainStepLabel(gate.label), entries: [{ kind: "decision", id: gate.gateId, time, decision: { state: "review", ...gateCard } }] });
       continue;
     }
-    // The timeline strip already shows done, pending, running and failed stages; only a skip, wait or cancel adds a log line.
-    if (event.state === "done" || event.state === "pending" || event.state === "active" || (event.state === "failed" && failedNodes.has(requireNative(event.native).nodeId))) continue;
+    // Every step that started or finished has its own row with its own title, state and time, beside any failure card.
+    if (event.state === "pending") continue;
     const time = formatTimeWithSeconds(event.at);
     groupable.add(event.noteId);
     order.set(event.noteId, requireNative(event.native).order); node.set(event.noteId, requireNative(event.native).nodeId);
-    const state = { failed: "Failed", blocked: "Waiting", cancelled: "Cancelled", skipped: "Skipped" }[event.state];
+    const state = { done: "Done", active: "Running", failed: "Failed", blocked: "Waiting", cancelled: "Cancelled", skipped: "Skipped" }[event.state];
     const reason = event.notRun.state === "present" ? event.notRun.reason : undefined;
     const typed = detail.timeline.steps?.find(category => category.key === event.categoryKey)?.typedValues;
     const typedFields = typed?.fields.length ?? 0;
@@ -503,8 +502,10 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
     // A form action, or a step whose form types nothing, was done outside Relay; a read or gate turned off was replaced by typed values.
     const byHand = typed?.doneByHand?.some(nodeId => nodeId === requireNative(event.native).nodeId) === true;
     const why = reason === "step-omitted" && typedFields > 0 && !byHand ? "operator-asserted" : reason;
+    const recorded = event.state === "done" || event.state === "active" || event.state === "failed" ? event.state : undefined;
     steps.push({ id: event.noteId, time, title: plainStepLabel(event.label), entries: [{ kind: "note", id: event.noteId, time,
-      message: replacedReading ? REPLACED_READING : reasoned(state, why) }] });
+      message: replacedReading ? REPLACED_READING : recorded !== undefined ? `${plainStepLabel(event.label)} · ${state}` : reasoned(state, why),
+      ...(recorded === undefined ? {} : { state: recorded }), ...(recorded === "failed" ? { tone: "danger" as const } : {}) }] });
   }
   if (new Set(steps.map(step => step.id)).size !== steps.length) throw new RunLogIdentityError("RUN_LOG_ROW_IDENTITY_DUPLICATE");
   const orderOf = (id: string): number => {
@@ -555,11 +556,26 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         ...(member.durationSec === undefined ? {} : { durationLabel: formatDuration(member.durationSec) }) }; }) };
   });
   const findings = sections.find(section => section.section === "parked-write" && section.payload.ucpathFindings !== undefined);
-  return { steps: [...named, ...runDecisionStep(detail.decision, named.at(-1)?.time), ...cancelledEnding(detail.cancellation)], timeline,
+  const recorded = named.length > 0 ? named : heldSteps(detail.heldBeforeStart);
+  return { steps: [...recorded, ...runDecisionStep(detail.decision, detail.decision?.type === "paused" && detail.pausedAt !== undefined ? formatTimeWithSeconds(detail.pausedAt) : lastRecordedTime(recorded) ?? (detail.timeline.events.length === 0 ? undefined : formatTimeWithSeconds(detail.timeline.events.reduce((latest, event) => event.at > latest ? event.at : latest, detail.timeline.events[0]?.at ?? "")))), ...cancelledEnding(detail.cancellation)], timeline,
     ...(findings?.section !== "parked-write" || findings.payload.ucpathFindings === undefined ? {} : { ucpathFindings: {
       stepId: findings.payload.writeIntentId, attemptLabel: `Attempt ${findings.payload.runAttempt}`,
       presentation: ucpathFoundPresentation(findings.payload.ucpathFindings),
     } }) };
+}
+
+/** The run-level card is stamped at the last recorded row, not at its stage's heading. */
+function lastRecordedTime(steps: readonly LogStep[]): string | undefined {
+  const last = steps.at(-1), entry = last?.entries.at(-1);
+  return entry !== undefined && "time" in entry && typeof entry.time === "string" ? entry.time : last?.time;
+}
+
+function heldSteps(held: RunDetailWire["heldBeforeStart"]): readonly LogStep[] {
+  if (held === undefined) return [];
+  return ([["run-queued", "Queued", held.queuedAt], ["run-paused", "Paused", held.pausedAt]] as const).map(([id, title, at]) => {
+    const time = formatTimeWithSeconds(at);
+    return { id, time, title, entries: [{ kind: "note", id, time, message: title }] };
+  });
 }
 
 /** The served cancelled ending closes the log; it is a run-level fact, never a node's timeline event. */

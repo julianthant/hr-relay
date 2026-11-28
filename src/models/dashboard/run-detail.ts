@@ -329,6 +329,10 @@ export const RunDetailWireSchema = z.strictObject({
     key: z.literal("retry-child"), label: z.literal("Retry"), kind: z.literal("command"), command: z.literal("retry"),
     expectedVersion: RowRevisionSchema, intent: z.literal("neutral"), icon: z.literal("retry"), placement: z.array(z.literal("banner")).length(1),
   }).optional(),
+  /** When the pause was recorded; the Paused card is stamped with it. */
+  pausedAt: IsoInstantSchema.optional(),
+  /** A run paused before its first claim has no action rows; its recorded instants stand in for them. */
+  heldBeforeStart: z.strictObject({ queuedAt: IsoInstantSchema, pausedAt: IsoInstantSchema }).optional(),
   /** Historical archives may omit captures; every live read emits them. */
   captures: RunCaptureAvailabilityWireSchema.optional(),
     /* The timeline steps this run OMITTED at start, by descriptor key; their typed values are served on each step's `typedValues`. */
