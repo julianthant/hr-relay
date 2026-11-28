@@ -19,7 +19,7 @@ describe("Work-Study Start run rows", () => {
 
   it("requires a complete PayPath form when the read is turned off", () => {
     const selected = ["reference-check", "transaction"];
-    assert.throws(() => resolveStartStepOmissions(descriptor, selected),
+    assert.throws(() => resolveStartStepOmissions(descriptor, selected, undefined),
       (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "facts-missing");
     assert.throws(() => resolveStartStepOmissions(descriptor, selected, [{ step: "ucpath-auth", facts: {} }]),
       (error: unknown) => error instanceof StartStepOmissionRefusedError && error.code === "facts-invalid");

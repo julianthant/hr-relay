@@ -86,7 +86,7 @@ const STAGE = {
   StartSteps: stage("A customized start's Steps, the last page", reading(PASS), "Start", {
     then: async page => { await customizeSteps(page); await press(page, "Next"); await at(page, "Steps"); } }),
   RerunStart: stage("A rerun's Start, options and checks", rerunClient(), "Start", { rerun: true, catalog: RUN_DIALOG_RERUN_CATALOG }),
-  CancelledSteps: stage("A Work-Study run cancelled after it filed: every served step is required, so all run again", writeRerunClient(), "Steps", { rerun: true, ...WORK_STUDY_RERUN }),
+  CancelledSteps: stage("A Work-Study run cancelled after it filed, with both switches on by default", writeRerunClient(), "Steps", { rerun: true, ...WORK_STUDY_RERUN }),
   CancelledReceipts: stage("That rerun's Start, naming the receipt the source already filed", writeRerunClient(), "Start", { rerun: true, ...WORK_STUDY_RERUN }),
   CancelledWarning: stage("That rerun warned before its filing step files again", writeRerunClient({ previewRerunWarnings: async () => runDialogWriteRerunWarning() }), "Start", { rerun: true, ...WORK_STUDY_RERUN,
     then: async page => { await press(page, "Start live run"); await dialog(page).getByText("already submitted").waitFor(); } }),

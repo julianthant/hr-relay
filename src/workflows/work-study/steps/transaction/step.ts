@@ -77,7 +77,7 @@ export function buildTransaction(author: WorkflowAuthor<typeof WorkStudyInput>, 
   const target = ({ outputs }: { outputs: { [TRANSACTION_PLAN_NODE]: WorkStudyPlan } }) => workStudyTarget(outputs[TRANSACTION_PLAN_NODE]);
   const save = author.transaction(saveEntry, reference === undefined ? [plan] : [plan, reference.review], { prepareBind: target, commitBind: target });
   return { plan, steps: [[TRANSACTION_STEP, [plan, save]]] as const,
-    result: author.result(TransactionResultSchema, [plan, save], ({ outputs }) => {
+    result: author.result(TransactionResultSchema, [plan, save], ({ outputs }): z.input<typeof TransactionResultSchema> => {
       const filed = outputs[SAVE_NODE];
       return filed === undefined ? { state: "omitted", step: TRANSACTION_STEP.key } : {
         state: WORK_STUDY_DISPOSITION_STATE[filed.disposition],
