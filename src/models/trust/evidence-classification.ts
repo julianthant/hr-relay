@@ -628,7 +628,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...ocrArtifactLeaves(workflowInput(id), "document."), ...open(workflowInput(id), "sourcePage", "onbaseFiling"),
   ]),
   ...["emergency-contact-member", "emergency-contact-member-contact-preview", "emergency-contact-member-onbase-filing"].flatMap(id => [
-    ...open(workflowResult(id), "disposition"), ...contactProofLeaves(workflowResult(id), "proof."),
+    ...open(workflowResult(id), "disposition", "step"), ...contactProofLeaves(workflowResult(id), "proof."),
   ]),
   ...contactPlannedOutputLeaves(workflowResult("emergency-contact-member-contact-plan")),
   ...["emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].flatMap(id => [

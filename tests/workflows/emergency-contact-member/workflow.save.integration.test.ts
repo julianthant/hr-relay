@@ -184,6 +184,8 @@ it("turns off the UCPath Save without preparing, fencing or clicking it and logs
   assert.deepEqual(f.database.authority.writeIntents.listByRun(runId), []);
   assert.equal(f.filing.imports(), 1, "an included OnBase filing still runs after a manually completed Save");
   assert.deepEqual(f.database.authority.runResults.get(runId)?.result.value, { disposition: "omitted", step: "contact-preview" });
+  const receipt = createReceiptService({ database: f.database, runReader: f.execution.lifecycle, descriptors: [compiled.descriptor] }).ensureReceipt(runId);
+  assert.partialDeepStrictEqual(receipt.output.find(fact => fact.field === "step"), { state: "satisfied", value: { value: "contact-preview" } });
 
   const { stateRoot } = f.authority;
   const reader = testRunService(f.database, f.clock);
