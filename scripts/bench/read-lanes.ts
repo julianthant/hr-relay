@@ -289,13 +289,14 @@ async function measureG4(shape: Shape, profile: CopyProfile, workspace: string,
   const [
     { chromium }, { createDashboardClient }, { operatorCredentials, resumeKey }, { CrossDateSearchPageSchema },
     { CalendarWireSchema }, { DashboardStreamEnvelopeSchema }, { CommandResultSchema, SettingsCommandRequestSchema }, { deriveSettingsPatchFingerprint, SettingsPatchSchema },
-    { FrontendBootstrapWireSchema }, { SHUTDOWN_BACKUP_WAIT_MS },
+    { FrontendBootstrapWireSchema }, { DashboardDayWireSchema }, { SHUTDOWN_BACKUP_WAIT_MS },
   ] = await Promise.all([
     import("playwright"), import("../../src/dashboard/client/index.js"), import("../profiles/copy-signin.js"),
     import("../../src/models/dashboard/search.js"), import("../../src/models/dashboard/calendar.js"),
     import("../../src/models/dashboard/subscription.js"), import("../../src/rules/commands/commands.js"),
     import("../../src/models/config/settings.js"),
-    import("../../src/models/dashboard/bootstrap.js"), import("../../src/backend/app/bootstrap/secure-env-bootstrap.js"),
+    import("../../src/models/dashboard/bootstrap.js"), import("../../src/models/dashboard/projection.js"),
+    import("../../src/backend/app/bootstrap/secure-env-bootstrap.js"),
   ]);
   const startLoad = loadavg();
   const child = fork(fileURLToPath(import.meta.url), [profile, "--g4-backend", shape, "--cloned-workspace", workspace], {
@@ -363,7 +364,17 @@ async function measureG4(shape: Shape, profile: CopyProfile, workspace: string,
       const calendar = queue.getByRole("menu", { name: "Pick a date" });
       const readyQueueRow = '.dashboard-queue-column:not([aria-busy="true"]) [data-queue-scroll] :is([data-queue-open], [data-queue-batch-id])';
       const sound = "preferences.notifications.sound";
-      await queue.locator(readyQueueRow).first().waitFor();
+      try { await queue.locator(readyQueueRow).first().waitFor(); }
+      catch (cause) {
+        const evidence = await Promise.all(input.days.map(async day => {
+          const response = await fetch(`${origin}/api/v1/dashboard?day=${day}`, { headers: { "x-relay-session": session }, signal: AbortSignal.timeout(G4_TIMEOUT_MS) });
+          if (!response.ok) return { day, status: response.status };
+          const { queueSurfaces } = DashboardDayWireSchema.parse(await response.json());
+          return { day, status: response.status, rows: queueSurfaces.length, selected: queueSurfaces.filter(row => row.workflowId === input.workflow).length };
+        }));
+        const loadFailed = await queue.getByText("Couldn't load the queue.", { exact: true }).isVisible();
+        throw new Error(`read-lanes-g4-initial-queue-unavailable ${JSON.stringify({ loadFailed, evidence })}`, { cause });
+      }
       const settingsDocument = await client.editableSettings();
       const original = settingsDocument.sections.flatMap(section => section.leaves).find(leaf => leaf.path === sound);
       const soundValue = z.enum(["default", "none"]).parse(original?.effectiveValue);
