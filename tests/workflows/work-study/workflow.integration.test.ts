@@ -174,7 +174,7 @@ function requestPayPathRecheck(database: AuthorityDatabase, clock: Clock, parked
     authority: database, lifecycle: testRunService(database, clock), clock, ids, appVersion: "0.1.0",
     descriptors, configIdentity: UNSTORED_CONFIG_IDENTITY, intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS, workerRuntime: { pool: unusedWorkerPool() },
-    writeResolution: createWriteResolutionExecutor({ authority: database, ids, descriptors,
+    writeResolution: createWriteResolutionExecutor({ ids, descriptors,
       continuation: testRunContinuation(database, clock) }),
   });
   const result = kernel.execute({

@@ -11,6 +11,7 @@ import { LedgerEntryPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from 
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import { SchemaBoundCanonicalValueSchema } from "../../../models/validation/schema-bound-value.js";
 import {
+  OperatorAbsenceResolutionSchema,
   TransactionOutcomeSchema,
   WriteAuthorityReasonSchema,
   WriteRetrySettlementSchema,
@@ -145,7 +146,9 @@ export const ResolvedParkedWriteCommitInputSchema = z.strictObject({
 
 export const ResolvedParkedWriteAbsenceInputSchema = z.strictObject({
   writeIntentId:WriteIntentIdSchema,generation:PositiveIntSchema,expectedIntentVersion:PositiveIntSchema,
-  settlement:WriteRetrySettlementSchema,resolution:ParkedWriteResolutionBindingSchema.extend({decision:z.literal("absent")}),
+  settlement:OperatorAbsenceResolutionSchema.required({evidence:true}),
+  resolution:ParkedWriteResolutionBindingSchema.extend({decision:z.literal("absent")}),
+  claim:RunClaimTokenSchema,
 });
 
 export const WriteIntentParkCodeSchema = WriteParkCodeSchema;
