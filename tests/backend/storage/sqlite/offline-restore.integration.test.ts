@@ -124,7 +124,7 @@ describe("assistant history through backup and restore", () => {
       }
       assert.deepEqual(Object.values(phaseOneRows(profile.path, phaseOneChat)).map(rows => rows.length), [0, 0, 0, 0]);
       const manifest = backup.manifests[0]; assert.ok(manifest);
-      assert.equal(manifest.schemaVersion, 47);
+      assert.equal(manifest.schemaVersion, 48);
       const manifestPath = join(root, "backups", "authority", `${manifest.backupFileName}.manifest.json`);
       const verified = await verifyBackupManifestAtPath(admission, manifestPath);
       assert.deepEqual(phaseOneRows(verified.backupPath, phaseOneChat), expectedRows);

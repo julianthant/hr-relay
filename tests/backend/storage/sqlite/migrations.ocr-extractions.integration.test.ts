@@ -122,7 +122,7 @@ it("upgrades populated OCR schema twelve to workbook masters without rewriting s
     applyAuthorityMigrationsAfter(database, 13, { now: '2026-11-03T00:00:00.000Z', captureFile: () => { throw new Error('no capture expected'); } });
     database.exec(`UPDATE database_states SET schema_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}; PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}; COMMIT`);
     assert.equal(inspectNormalAuthority(database).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get()?.count, 54 + AUTHORITY_DERIVED_TABLES.length);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get()?.count, 55 + AUTHORITY_DERIVED_TABLES.length);
     assert.deepEqual(database.prepare('SELECT * FROM artifacts').all(), before);
     assert.deepEqual(extractedArtifactFromRow(before[0]), stored);
     const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: () => { throw new Error('migration-read-only-proof'); } });
