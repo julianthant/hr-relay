@@ -3,10 +3,12 @@ import type { JsonValue } from "../../../../src/rules/validation/canonical-json.
 
 type Call = Readonly<{ tool: string; args: JsonValue }>;
 type EditScenario = Readonly<{ name: string; message: string; calls: readonly Call[]; largestRequest: number; total: number;
-  refusal?: AssistantFailureCode; changeWorkbookAfterRead?: boolean; maskedSource?: string }>;
+  refusal?: AssistantFailureCode; changeWorkbookAfterRead?: boolean; maskedSource?: string; expectedLink?: string; expectedName?: string }>;
 
 const readSheet = { tool: "read_spreadsheets", args: { view: "list", sheet: null, limit: 5 } } as const;
 const readSetting = { tool: "read_settings", args: { key: "browser.headless" } } as const;
+const sharePointUrl = "https://example.sharepoint.com/sites/hr/Tracker.xlsx";
+const quotedName = 'Tracker "West" \\ Archive';
 
 // Budgets leave roughly ten percent above the served scenario measurements.
 export const editScenarios = [{
@@ -80,6 +82,30 @@ export const editScenarios = [{
   message: 'Rename spreadsheet "Other tracker" to Winter tracker.',
   calls: [readSheet, { tool: "change_spreadsheet", args: { change: { action: "rename", sheet: "[[S1.g1]]", source: "Winter tracker" } } }],
   refusal: "ASSISTANT_VALUE_NEEDS_SOURCE",
+  largestRequest: 4_700, total: 9_300,
+}, {
+  name: "Refuse an unquoted SharePoint URL when the provider drops the final period",
+  message: `Link the only spreadsheet to ${sharePointUrl}.`,
+  calls: [readSheet, { tool: "change_spreadsheet", args: { change: { action: "link", sheet: "[[S1.g1]]", source: sharePointUrl } } }],
+  refusal: "ASSISTANT_VALUE_NEEDS_SOURCE",
+  largestRequest: 4_700, total: 9_300,
+}, {
+  name: "Refuse a final period included in the provider's unquoted SharePoint URL",
+  message: `Link the only spreadsheet to ${sharePointUrl}.`,
+  calls: [readSheet, { tool: "change_spreadsheet", args: { change: { action: "link", sheet: "[[S1.g1]]", source: sharePointUrl + "." } } }],
+  refusal: "ASSISTANT_VALUE_NEEDS_SOURCE",
+  largestRequest: 4_700, total: 9_300,
+}, {
+  name: "Link the exact quoted SharePoint URL with a final period",
+  message: `Link the only spreadsheet to ${JSON.stringify(sharePointUrl + ".")}.`,
+  calls: [readSheet, { tool: "change_spreadsheet", args: { change: { action: "link", sheet: "[[S1.g1]]", source: sharePointUrl + "." } } }],
+  expectedLink: sharePointUrl + ".",
+  largestRequest: 4_700, total: 9_300,
+}, {
+  name: "Rename to an exact quoted name with escaped characters",
+  message: `Rename the only spreadsheet to ${JSON.stringify(quotedName)}.`,
+  calls: [readSheet, { tool: "change_spreadsheet", args: { change: { action: "rename", sheet: "[[S1.g1]]", source: quotedName } } }],
+  expectedName: quotedName,
   largestRequest: 4_700, total: 9_300,
 }, {
   name: "Replace a long cell",

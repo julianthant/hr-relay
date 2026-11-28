@@ -504,6 +504,7 @@ it("applies spreadsheet and settings edits in the accepted turn, keeps values lo
       const calls = [...scenario.calls];
       const measured: number[] = [];
       const settingsBefore = db.authority.settingsCurrent.get();
+      const linkBefore = db.authority.workbooks.catalog().find(row => row.libraryId === libraryId)?.metadata.sharePoint;
       transport.setResponse(init => {
         assert.ok(typeof init.body === "string");
         const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
@@ -540,6 +541,7 @@ it("applies spreadsheet and settings edits in the accepted turn, keeps values lo
         assert.equal(envelope.result.reason, scenario.refusal);
         assert.equal(edits.length, applied);
         assert.deepEqual(db.authority.settingsCurrent.get(), settingsBefore);
+        assert.deepEqual(db.authority.workbooks.catalog().find(row => row.libraryId === libraryId)?.metadata.sharePoint, linkBefore);
         assert.equal(db.authority.workbooks.read(libraryId)?.workbook.name,
           index >= 3 ? "Autumn tracker" : "Summer tracker");
         continue;
@@ -553,7 +555,18 @@ it("applies spreadsheet and settings edits in the accepted turn, keeps values lo
       assert.equal(edit.actorId, "local-operator");
       const value = part.runs.find(run => run.kind === "value");
       assert.ok(value?.kind === "value" && value.previous !== undefined);
-      if (index === 0) {
+      if ("expectedLink" in scenario) {
+        assert.ok(edit.details.kind === "spreadsheets" && edit.details.command === "link");
+        const linked = db.authority.workbooks.catalog().find(row => row.libraryId === libraryId)?.metadata;
+        assert.equal(linked?.sharePoint?.url, scenario.expectedLink);
+        assert.deepEqual(edit.details.next, linked);
+        assert.equal(value.value, scenario.expectedLink);
+      } else if ("expectedName" in scenario) {
+        assert.ok(edit.details.kind === "spreadsheets" && edit.details.command === "rename");
+        assert.equal(edit.details.next, scenario.expectedName);
+        assert.equal(value.value, scenario.expectedName);
+        assert.equal(db.authority.workbooks.read(libraryId)?.workbook.name, scenario.expectedName);
+      } else if (index === 0) {
         assert.equal(value.previous, privateName);
         assert.equal(value.value, "Summer tracker");
         assert.equal(db.authority.workbooks.read(libraryId)?.workbook.name, "Summer tracker");

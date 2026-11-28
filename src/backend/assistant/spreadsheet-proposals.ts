@@ -64,7 +64,7 @@ export function spreadsheetChange(deps: Pick<AssistantPluginDeps, "workbooks" | 
   return {
     kind: "change", tier: "write-local", name: "change_spreadsheet",
     description: "Edit a local library workbook after reading it. Rename, set type, link or unlink SharePoint, use or rename a version, create a named version from a saved one, save an attachment as the next version, or change one cell. "
-      + 'Require a direct command naming the only spreadsheet or spreadsheet "Name" and its value. Use 1-based worksheet, row and column. Pass the exact supplied value as source.',
+      + 'Require a direct command naming the only spreadsheet or spreadsheet "Name" and its value. Use 1-based worksheet, row and column. Pass the decoded value as source. URLs ending a sentence with a period need quotes.',
     parameters: Parameters, output: AssistantChangeOutput, privacy: [],
     async change(input, context) {
       const { change } = Parameters.parse(input);
@@ -122,7 +122,9 @@ export function spreadsheetChange(deps: Pick<AssistantPluginDeps, "workbooks" | 
               }
               case "link": {
                 const url = text(), metadata = WorkbookMetadataSchema.safeParse({ ...entry.metadata, sharePoint: { url, verifiedAt: owner.at } });
-                requireRequest(target => [`link ${target} to ${JSON.stringify(url)}`, ...(/\s/u.test(url) ? [] : [`link ${target} to ${url}`])]);
+                const spellings = [JSON.stringify(url)];
+                if (!/[\s"]/u.test(url) && !context.operatorText.trimEnd().endsWith(".")) spellings.push(url);
+                requireRequest(target => spellings.map(value => `link ${target} to ${value}`));
                 if (!metadata.success) throw new AssistantToolRefusal("ASSISTANT_SPREADSHEET_REFUSED");
                 return local({ kind: "link", url }, `Changed the link for ${entry.name}`, entry.metadata, metadata.data,
                   entry.metadata.sharePoint === null ? "Unlinked" : entry.metadata.sharePoint.url, url);

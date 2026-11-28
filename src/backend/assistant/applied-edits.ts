@@ -32,9 +32,9 @@ export function requireEditRead(context: AssistantChangeContext, target: string,
 
 export function requireOperatorSource(context: AssistantChangeContext, source: string | null) {
   if (source === null || source.trim().length === 0) throw new AssistantToolRefusal("ASSISTANT_VALUE_NEEDS_SOURCE");
-  const literal = source.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const spellings = [source, JSON.stringify(source)].map(value => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
   const word = String.raw`[\p{L}\p{M}\p{N}\p{Pc}]`;
-  const exact = new RegExp(`(?<!${word})${literal}(?!${word})`, "u");
+  const exact = new RegExp(`(?<!${word})(?:${spellings.join("|")})(?!${word})`, "u");
   if (!operatorValueSpans(context.operatorText).some(span => exact.test(span))) {
     throw new AssistantToolRefusal("ASSISTANT_VALUE_NEEDS_SOURCE");
   }
