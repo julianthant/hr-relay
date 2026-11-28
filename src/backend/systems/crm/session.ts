@@ -14,12 +14,11 @@ import type {
   BrowserLoginStep,
   SystemLoginContext,
 } from "../browser-shared/login-contract.js";
-import { NEW_KRONOS_SSO_PATH } from "../browser-shared/ucsd-sso-guard.js";
+import { NEW_KRONOS_SSO_PATH, requireSsoPath } from "../browser-shared/ucsd-sso-guard.js";
 import {
   abortIfCancelled,
   raceCancellation,
   submitPinnedUcsdSsoCredentials,
-  submitSsoForm,
   verifyUcsdAuthenticatedApplication,
   waitForAuthenticatedLanding,
   waitForSsoForm,
@@ -123,22 +122,22 @@ async function ensureActiveDirectorySelected(context: SystemLoginContext, token:
 async function submitCrmSsoForm(context: SystemLoginContext, token: DuoCeremonyLeaseToken): Promise<void> {
   context.assertCurrent();
   const { page, config } = context;
-  // The ACT CRM entry was observed using the same POST route as New Kronos.
-  if (config.urls.crm.prod.entry !== CRM_POST_SSO_ENTRY || URL.parse(page.url())?.pathname !== NEW_KRONOS_SSO_PATH) {
-    return submitSsoForm(SYSTEM, context, token);
-  }
-
-  let step: BrowserLoginStep = "credential-fill";
+  let step: BrowserLoginStep = "sso-form";
   const assertCurrent = () => {
     abortIfCancelled(SYSTEM, step, context);
     assertDuoCeremonyLeaseToken(token, { system: SYSTEM });
   };
   try {
-    await submitPinnedUcsdSsoCredentials(page, async () => context.credentials, assertCurrent,
-      config.timeouts.navigationMs, NEW_KRONOS_SSO_PATH, (kind, targetId) => {
-        if (targetId === "ucsd.sso.password") step = "sso-submit";
-        recordBrowserAction(kind, targetId);
-      });
+    const path = requireSsoPath(new URL(page.url()).pathname);
+    // Only the verified ACT CRM entry shares the New Kronos POST route.
+    if (path === NEW_KRONOS_SSO_PATH && config.urls.crm.prod.entry !== CRM_POST_SSO_ENTRY) throw new Error("UCSD_SSO_SCOPE");
+    await submitPinnedUcsdSsoCredentials(page, async () => {
+      step = "credential-fill";
+      return context.credentials;
+    }, assertCurrent, config.timeouts.navigationMs, path, (kind, targetId) => {
+      if (targetId === "ucsd.sso.password") step = "sso-submit";
+      recordBrowserAction(kind, targetId);
+    });
   } catch (error) {
     if (error instanceof AggregateError) throw error;
     assertCurrent();

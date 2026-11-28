@@ -163,7 +163,7 @@ describe("crm login recipe", () => {
     });
     await assert.rejects(crmLoginRecipe(context), (error: unknown) => {
       assert.ok(error instanceof BrowserLoginError);
-      assert.equal(error.step, "credential-fill");
+      assert.equal(error.step, "sso-form");
       return true;
     });
     assert.deepEqual(harness.filled(), []);

@@ -149,8 +149,9 @@ const FIXTURE_EMPLOYEE_ID = "10456712";
 const PEOPLESOFT_PREFIX = "/psc/ucphrprd/EMPLOYEE/HRMS/";
 const LISTED_SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 
-function storedSignInFailure(detail: string, observedUrl: string, system: "ucpath" | "crm" = "ucpath", check?: "application-route") {
-  const login = new BrowserLoginError(system, "verify-landing", detail, observedUrl, undefined, undefined, check);
+function storedSignInFailure(detail: string, observedUrl: string, system: "ucpath" | "crm" = "ucpath",
+  check?: "application-route", step: BrowserLoginError["step"] = "verify-landing") {
+  const login = new BrowserLoginError(system, step, detail, observedUrl, undefined, undefined, check);
   return buildNodeFailureRecord({ writes: [], run: QUEUED_RUN,
     failureId: "10000000-0000-4000-8000-000000000007", nodeId: NODE_ID, taskId: TASK_ID,
     error: new TaskError(TASK_ID, login.code, login.message, { cause: login }),
@@ -185,21 +186,22 @@ describe("refused sign-in detail", () => {
     assert.equal(stored.includes("secret"), false);
   });
 
-  it("shows the recorded CRM sign-in step in Logs without exposing diagnostics", () => {
-    const failure = storedSignInFailure(
-      "the login could not prove the authenticated application",
-      `https://act-crm.my.site.com/hr/ONB_SearchOnboardings?EMPLID=${FIXTURE_EMPLOYEE_ID}`,
-      "crm",
-    );
+  it.each([
+    { step: "verify-landing", origin: "https://act-crm.my.site.com", path: "/hr/ONB_SearchOnboardings",
+      expected: "Relay could not verify the signed-in CRM page." },
+    { step: "sso-form", origin: "https://a5.ucsd.edu", path: "/tritON/profile/SAML2/Redirect/SSO",
+      expected: "Relay could not verify the UCSD sign-in form for CRM." },
+  ] as const)("shows the CRM $step refusal in Logs without exposing diagnostics", ({ step, origin, path, expected }) => {
+    const failure = storedSignInFailure("the sign-in check refused", `${origin}${path}?EMPLID=${FIXTURE_EMPLOYEE_ID}`,
+      "crm", undefined, step);
     assert.equal(failure.code, "CRM_SIGN_IN_FAILED");
     assert.equal(failure.debug?.signInRefusal?.check, undefined);
     assert.deepEqual(failure.debug?.signInRefusal, {
       system: "crm",
-      step: "verify-landing",
-      pageOrigin: "https://act-crm.my.site.com",
-      pagePath: "/hr/ONB_SearchOnboardings",
+      step,
+      pageOrigin: origin,
+      pagePath: path,
     });
-    const expected = "Relay could not verify the signed-in CRM page.";
     const projected = projectFailureForOperator(failure, true);
     assert.equal(projected.summary, expected);
     assert.equal(projected.debug, undefined);
