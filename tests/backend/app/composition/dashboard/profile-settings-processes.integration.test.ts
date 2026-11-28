@@ -10,6 +10,7 @@ import { readSettings } from "../../../../../src/backend/runtime/settings/settin
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createDashboardReadHost } from "../../../../../src/backend/storage/sqlite/dashboard-read-host.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/settings.js";
+import { SettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { LANE_READS_ENTRY } from "../../../../support/fixtures/backend/dashboard-lane-reads.js";
 import { createBoundProfileFixture, openBoundDatabaseFixture } from "../../../../support/helpers/admission-fixture.js";
@@ -41,9 +42,10 @@ it("leaves a Settings worker commit in the WAL while the dashboard read host own
   const settings = createProfileSettingsProcesses(profile.admission, profile.lifetime, selected.epoch, { primaryDisplay: null }, selected.assertCurrent);
   cleanups.push(() => settings.closeCommands());
   const commandId = randomUUID(), patch = { "concurrency.defaultWorkers": { set: 3 } };
-  const result = await settings.execute({ commandId, requestedAt: systemClock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
+  const command = SettingsCommandRequestSchema.parse({ commandId, requestedAt: systemClock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
     family: "settings", type: "apply-settings", target: { expectedRevision: readSettings(database.authority).revision },
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
+  const result = await settings.execute(command);
   assert.equal(result.state, "applied");
   assert.ok(database.authority.commands.get(commandId), "the active database sees the committed command");
 
