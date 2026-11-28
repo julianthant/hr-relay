@@ -1782,11 +1782,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
     }
     if (verdict.state === "absent" && intent.status === "parked" && recheck !== undefined && absenceOperator !== undefined) {
+      if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
       context.signal.throwIfAborted();
       const resolvedAt = instant();
       if (context.run.envelope.buildId === currentBuildId() && isFreshParkedWriteAbsence(intent, verdict.evidence, resolvedAt)) {
-        if (deps.beforeConfirmedWrite !== undefined) await deps.beforeConfirmedWrite();
-        context.signal.throwIfAborted();
         try {
           const resolved = deps.authority.settleResolvedParkedAbsence({ writeIntentId: intent.writeIntentId, generation: intent.generation,
             expectedIntentVersion: intent.version, claim: context.claim,

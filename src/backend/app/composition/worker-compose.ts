@@ -411,7 +411,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   let removeStopListeners: (() => void) | undefined;
   let router: IpcRouter | undefined;
   const stopController = new AbortController();
-  let channelFailure: unknown;
+  let channelFailure: unknown, announcedWorkerReady = false;
   const logChannel = launch === undefined ? undefined : createWorkerLogChannel(error => {
     channelFailure = error;
     database.refuseWritesAfterLogFailure(error);
@@ -666,6 +666,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         watchForWork: channel?.watchForWork,
         bindSessions: sessions => {
           boundSessions = sessions;
+          announcedWorkerReady = channel !== undefined;
           channel?.ready({ workerId, pid: process.pid, profileId: selected.profileId, sessionGeneration: launch?.sessionGeneration ?? 0,
             browserSystems: z.array(BrowserSystemIdSchema).parse([...systems]), activity: current });
         },
@@ -777,7 +778,10 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       code: "WORKER_CLEANUP_FAILED", reason: "resource-closure-unproved" }, { kind: "worker", workerId }); }
     catch (loggingError) { cleanupErrors.push(loggingError); }
   }
-  try { await logChannel?.drain(); } catch (error) { cleanupErrors.push(error); }
+  // Before readiness the parent reconciles startup records from state after the worker exits.
+  if (announcedWorkerReady) {
+    try { await logChannel?.drain(); } catch (error) { cleanupErrors.push(error); }
+  }
   removeLogPublisher?.();
   router?.close();
   let databaseClosureProven = false;
