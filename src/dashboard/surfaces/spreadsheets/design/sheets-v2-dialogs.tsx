@@ -16,7 +16,8 @@ function Shell({ title, description, onClose, footer, children, size = 'sm' }: {
 const Cancel = ({ onClose }: { onClose: () => void }) => <V2Button onClick={onClose}>Cancel</V2Button>;
 
 export interface DialogActions { rename: (name: string) => void; clone: (name: string) => Promise<string | undefined>; link: (url: string) => void; useVersion: (versionId: string) => void; remove: () => void;
-  createVersion: (name: string, from: { kind: 'sharepoint' } | { kind: 'version'; versionId: string }) => void; renameVersion: (versionId: string, name: string) => void; deleteVersion: (versionId: string) => void }
+  createVersion: (name: string, from: { kind: 'sharepoint' } | { kind: 'version'; versionId: string }) => void; renameVersion: (versionId: string, name: string) => void;
+  canDeleteVersion: (versionId: string) => Promise<boolean>; deleteVersion: (versionId: string) => void }
 
 export function SheetDialog({ kind, sheet, actions, deleteReady, onClose }: { kind: DialogKind; sheet: Sheet; actions: DialogActions; deleteReady: boolean; onClose: () => void }) {
   const [text, setText] = useState(kind === 'rename' ? sheet.name : kind === 'clone' ? `Copy of ${sheet.name}` : kind === 'link' ? sheet.sharePoint ?? '' : '');
@@ -39,7 +40,7 @@ export function SheetDialog({ kind, sheet, actions, deleteReady, onClose }: { ki
     description="Runs that read it keep their results. SharePoint files are unchanged." />;
 }
 
-type VersionStep = { step: 'list' } | { step: 'new' } | { step: 'rename' | 'delete' | 'use'; id: string };
+type VersionStep = { step: 'list' } | { step: 'new' } | { step: 'rename' | 'checking-delete' | 'delete' | 'use'; id: string };
 
 function VersionsDialog({ sheet, actions, deleteReady, onClose }: { sheet: Sheet; actions: DialogActions; deleteReady: boolean; onClose: () => void }) {
   const [view, setView] = useState<VersionStep>({ step: 'list' });
@@ -49,6 +50,13 @@ function VersionsDialog({ sheet, actions, deleteReady, onClose }: { sheet: Sheet
   const target = 'id' in view ? sheet.versions.find(entry => entry.id === view.id) : undefined;
   const list = () => setView({ step: 'list' });
   const done = (run: () => void) => () => { run(); onClose(); };
+  const checkDelete = (id: string) => {
+    const check = { step: 'checking-delete' as const, id };
+    setView(check);
+    void actions.canDeleteVersion(id).then(allowed => {
+      setView(current => current !== check ? current : allowed ? { step: 'delete', id } : { step: 'list' });
+    });
+  };
   if (view.step === 'use' && target) return <ConfirmDialog open onOpenChange={open => { if (!open) onClose(); }} title={`Use ${target.name}?`} detail={sheet.name} confirmLabel="Use version" onConfirm={done(() => actions.useVersion(target.id))}
     description={<><span className="block">Runs read {target.name} from now on. Other versions are kept.</span>{sheet.sharePoint && <span className="block">The next sync replaces it.</span>}</>} />;
   if (view.step === 'delete' && target && deleteReady && !target.inUse) return <ConfirmDialog open onOpenChange={open => { if (!open) onClose(); }} title={`Delete ${target.name}?`} confirmLabel="Delete version" destructive onConfirm={done(() => actions.deleteVersion(target.id))}
@@ -71,7 +79,7 @@ function VersionsDialog({ sheet, actions, deleteReady, onClose }: { sheet: Sheet
         <span className="min-w-0 flex-1 truncate">{entry.name}</span><span className="w-28 shrink-0 tabular-nums text-ui-muted">{stamp(entry.at)}</span><span className="w-12 shrink-0 text-right">{entry.inUse && <Grey>In use</Grey>}</span>
       </button>
       <V2Icon label={`Rename ${entry.name}`} onClick={() => { setText(entry.name); setView({ step: 'rename', id: entry.id }); }}><Pencil aria-hidden className={dsIcon.md} /></V2Icon>
-      <V2Icon label={`Delete ${entry.name}`} disabled={entry.inUse || !deleteReady} onClick={() => setView({ step: 'delete', id: entry.id })}><Trash2 aria-hidden className={dsIcon.md} /></V2Icon>
+      <V2Icon label={`Delete ${entry.name}`} disabled={entry.inUse || !deleteReady || view.step === 'checking-delete'} onClick={() => checkDelete(entry.id)}><Trash2 aria-hidden className={dsIcon.md} /></V2Icon>
     </li>; })}</ul>
     <Grey className="mt-2 block">Versions in use can't be deleted.</Grey>{sheet.sharePoint && <Grey className="block">The next sync replaces the current version.</Grey>}</Shell>;
 }

@@ -25,7 +25,7 @@ let host: HTMLElement;
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   wiring.adapter = { changeLibrary: vi.fn(async () => ({ state: 'confirmed' })), cloneLibrary: vi.fn(async () => ({ state: 'confirmed' })), importSharePoint: vi.fn(async () => ({ state: 'confirmed' })) };
-  wiring.adapter.refreshCatalog = vi.fn(async () => undefined);
+  wiring.adapter.refreshCatalog = vi.fn(async () => ({ state: 'ready', catalog: wiring.catalog }));
   wiring.pending = [];
   wiring.catalog = [make('roster', 'Roster.xlsx', { pinned: true, linked: true }), make('keys', 'Keys.xlsx')];
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
@@ -201,6 +201,28 @@ it('shows In use and disables Delete before confirmation for versions held by an
   }
   assert.equal(dialog.querySelector<HTMLButtonElement>('button[aria-label="Delete v4"]')?.disabled, false);
   assert.ok(byText('button', 'New version'));
+  assert.equal(lastChange(), undefined);
+});
+
+it('checks for a hold acquired after Versions opened before allowing Delete confirmation', async () => {
+  const dialog = await openVersions();
+  const remove = dialog.querySelector<HTMLButtonElement>('button[aria-label="Delete v1"]');
+  assert.equal(remove?.disabled, false);
+  const held = WorkbookLibraryEntrySchema.parse({ ...make('keys', 'Keys.xlsx'), heldVersionIds: ['v1'] });
+  const refresh = Promise.withResolvers<{ state: 'ready'; catalog: (typeof held)[] }>();
+  wiring.adapter.refreshCatalog?.mockReturnValueOnce(refresh.promise);
+  await click(remove);
+
+  assert.equal(wiring.adapter.refreshCatalog?.mock.calls.length, 2);
+  assert.equal(remove?.disabled, true);
+  assert.equal(byText('button', 'Delete version'), undefined);
+  wiring.catalog = [held];
+  refresh.resolve({ state: 'ready', catalog: [held] });
+  await render();
+
+  assert.match(remove?.closest('li')?.textContent ?? '', /In use/u);
+  assert.equal(remove?.disabled, true);
+  assert.equal(byText('button', 'Delete version'), undefined);
   assert.equal(lastChange(), undefined);
 });
 

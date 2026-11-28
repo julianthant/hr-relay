@@ -190,6 +190,12 @@ export function SheetsV2({ onOpenRun }: { onOpenRun?: (runId: string, partitionD
       createVersion: (name, from) => void change(target.id, { kind: 'create-version', name, from, useNow: false },
         from.kind === 'sharepoint' ? 'Created the version' : `Created ${name}`, "Couldn't create the version"),
       renameVersion: (versionId, name) => void change(target.id, { kind: 'rename-version', versionId, name }, `Renamed to ${name}`, "Couldn't rename the version"),
+      canDeleteVersion: async versionId => {
+        const refreshed = await adapter.refreshCatalog();
+        if (refreshed?.state !== 'ready') return false;
+        const entry = refreshed.catalog.find(item => item.libraryId === target.id && !item.state.removed);
+        return entry !== undefined && sheetOf(entry).versions.find(version => version.id === versionId)?.inUse === false;
+      },
       deleteVersion: versionId => void change(target.id, { kind: 'delete-version', versionId }, 'Deleted the version', "Couldn't delete the version"),
       remove: () => void change(target.id, { kind: 'remove' }).then(removed => { if (removed && openId === target.id) setOpenId(undefined); }),
     }} />}
