@@ -16,6 +16,7 @@ import { readDelegationEvidence } from "../../../src/backend/storage/sqlite/dele
 import { projectRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { logPlainText } from "../../../src/dashboard/surfaces/run-detail/logs/log-feed-model.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
+import { deriveEvidenceEntryId } from "../../../src/models/trust/evidence-identity.js";
 
 describe("one I-9 PDF Start through admitted children", () => {
   const world = createI9CheckStartWorld();
@@ -232,8 +233,8 @@ describe("I-9 Check Start omissions", () => {
       delegations: result.dependencies.flatMap(entry => entry.state === "delegation-resolved" || entry.state === "child-resolved"
         ? [readDelegationEvidence(database.authority, entry.parentRunId, entry.nodeId)] : []),
     });
-    const receiptField = publication ? "workbook.step" : "reason";
-    expect(receipt.output.find(fact => fact.field === receiptField))
+    const receiptEntry = deriveEvidenceEntryId(receipt.receiptId, "output", publication ? "workbook.step" : "reason");
+    expect(receipt.output.find(fact => fact.id === receiptEntry))
       .toMatchObject({ state: "satisfied", value: { value: publication ? "publication" : "retention-results-unavailable" } });
 
     const reader = f.canonical.lifecycle;
