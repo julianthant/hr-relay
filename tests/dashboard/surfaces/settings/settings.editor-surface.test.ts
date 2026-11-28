@@ -454,7 +454,7 @@ it("keeps a refused username off the closed row and unsent when the Password edi
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
     if (url.endsWith("/settings/editable")) return new Response(JSON.stringify(served), { status: 200 });
     if (url.endsWith("/commands") && typeof init?.body === "string") {
-      const request: { commandId: string } = JSON.parse(init.body);
+      const request = JSON.parse(init.body) as { commandId: string };
       writes.push(request);
       return new Response(JSON.stringify({ state: "rejected", commandId: request.commandId, code: "not-editable", message: "This setting cannot be changed." }), { status: 422 });
     }
