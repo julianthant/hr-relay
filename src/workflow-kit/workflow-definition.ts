@@ -46,7 +46,7 @@ import type {
 } from "./workflow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes, parseWorkbookRequirement } from "./workflow.js";
 import { CompareReferenceFields, REFERENCE_LOOKUP_NODE, ReferenceReviewSchema, referenceComparisonForGate, referenceReviewId } from "../models/processing/workbooks/reference-fields.js";
-import { defineReferenceCheck, referenceFieldsAt } from "./reference-check.js";
+import { defineReferenceCheck, manualReferenceReview, REFERENCE_RESULT_FORM, referenceFieldsAt } from "./reference-check.js";
 import { PersonLookupInput } from "../models/workflows/person-lookup/input.js";
 import { PersonLookupResultSchema } from "../models/workflows/person-lookup/result.js";
 
@@ -895,9 +895,15 @@ function referenceStages<Input extends z.ZodType>(
     earlier.push({ source: suffix, check, gate });
     referenceEntries.push(check, gate);
   }
-  const manual = definition.manualForm;
+  const manual = definition.manual;
+  const retainsReview = manual === "review-on-own-start";
+  const retained = [finalCheck, finalGate];
   return [manual === undefined ? group : author.group(group, { manual: {
-    off: "values", form: manual, produces: {}, skips: referenceEntries.map(entry => entry.id), skipsGatesAndTransactions: true,
+    off: "values", form: REFERENCE_RESULT_FORM,
+    ...(retainsReview ? { ownStartOnly: true, keeps: [finalGate] } : {}),
+    produces: retainsReview ? { [finalCheck]: manualReferenceReview } : {},
+    skips: referenceEntries.map(entry => entry.id).filter(id => !retainsReview || !retained.includes(id)),
+    skipsGatesAndTransactions: true,
   } }), referenceEntries] as const;
 }
 
@@ -1327,6 +1333,27 @@ export function compileWorkflow<
   void role;
   void intake;
   void result;
+  const writeReview = referenceCheck?.writeReview;
+  const referenceDependencies = new Map<string, string>();
+  if (writeReview !== undefined) {
+    const order = topologicalEntries(steps, parallelMembership(steps));
+    const authority = order.findIndex(entry => entry.id === writeReview.source);
+    const gate = referenceReviewId(writeReview.source);
+    const gateIndex = order.findIndex(entry => entry.kind === "gate" && entry.id === gate);
+    if (authority < 0 || gateIndex <= authority) throw new Error(`invalid reference write review at ${writeReview.source}`);
+    // The verified identity task consumes the earlier reviews before its own reference review can authorize proceeding.
+    const earlier = order.slice(0, authority).findLast(entry => entry.kind === "gate" && referenceComparisonForGate(entry.id) !== undefined);
+    if (earlier !== undefined && referenceCheck?.manual !== "review-on-own-start") referenceDependencies.set(writeReview.source, earlier.id);
+    for (const reader of writeReview.before) {
+      if (order.findIndex(entry => entry.id === reader) <= gateIndex) throw new Error(`reference write review ${gate} must precede ${reader}`);
+      referenceDependencies.set(reader, gate);
+    }
+  }
+  const dependencies = (entry: RuntimeEntry) => {
+    const reference = referenceDependencies.get(entry.id);
+    const authored = entry.references.map(({ id }) => id);
+    return reference === undefined ? authored : [...authored, reference];
+  };
   const referenceComparisons = referenceCheck === undefined ? [] : flattenEntries(steps)
     .filter(entry => entry.kind === "task" && entry.contracts.includes(CompareReferenceFields));
   const timeline = steps.map(([group, entries]) => {
@@ -1355,27 +1382,6 @@ export function compileWorkflow<
     return label !== undefined && group.key === entry.id && group.label === label;
   });
   const contracts = Object.freeze(flattenEntries(steps).flatMap(({ contracts: owned }) => owned));
-  const writeReview = referenceCheck?.writeReview;
-  const referenceDependencies = new Map<string, string>();
-  if (writeReview !== undefined) {
-    const order = topologicalEntries(steps, parallelMembership(steps));
-    const authority = order.findIndex(entry => entry.id === writeReview.source);
-    const gate = referenceReviewId(writeReview.source);
-    const gateIndex = order.findIndex(entry => entry.kind === "gate" && entry.id === gate);
-    if (authority < 0 || gateIndex <= authority) throw new Error(`invalid reference write review at ${writeReview.source}`);
-    // The verified identity task consumes the earlier reviews before its own reference review can authorize proceeding.
-    const earlier = order.slice(0, authority).findLast(entry => entry.kind === "gate" && referenceComparisonForGate(entry.id) !== undefined);
-    if (earlier !== undefined) referenceDependencies.set(writeReview.source, earlier.id);
-    for (const reader of writeReview.before) {
-      if (order.findIndex(entry => entry.id === reader) <= gateIndex) throw new Error(`reference write review ${gate} must precede ${reader}`);
-      referenceDependencies.set(reader, gate);
-    }
-  }
-  const dependencies = (entry: RuntimeEntry) => {
-    const reference = referenceDependencies.get(entry.id);
-    const authored = entry.references.map(({ id }) => id);
-    return reference === undefined ? authored : [...authored, reference];
-  };
   const descriptor = defineWorkflowDescriptor({
     ...presentation,
     contractFingerprint: workflowContractFingerprint({

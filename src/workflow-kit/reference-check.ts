@@ -5,14 +5,22 @@ import { z } from "zod";
 import { NodeIdSchema } from "../rules/identity/ids.js";
 import { deepFreeze } from "../rules/validation/immutability.js";
 import { REFERENCE_CHECK_ID } from "../models/processing/workbooks/reference-fields.js";
-import { StepOmissionFormSchema } from "../models/workflow/step-omission.js";
+import type { StepOmissionForm, StepOmissionProduceContext } from "../models/workflow/step-omission.js";
+
+export const REFERENCE_RESULT_FORM = deepFreeze({
+  fields: [{ key: "referenceResult", label: "Reference spreadsheet result", kind: "enum", values: ["Confirmed", "Unconfirmed", "Not checked"] }],
+} satisfies StepOmissionForm);
+
+export function manualReferenceReview({ facts, scope }: StepOmissionProduceContext) {
+  return { captured: null, matches: [], mismatches: [], review: scope.dryRun === undefined && facts.referenceResult !== "Confirmed" ? true : null };
+}
 
 const SourceFields = z.record(z.string(), z.union([z.string().min(1), z.array(z.string().min(1)).min(2)]));
 const ReferenceCheckDefinitionSchema = z.strictObject({
   key: z.enum(["eid", "email"]),
   input: SourceFields.optional(),
   lookupName: z.string().min(1).optional(),
-  manualForm: StepOmissionFormSchema.optional(),
+  manual: z.enum(["values", "review-on-own-start"]).optional(),
   writeReview: z.strictObject({ source: NodeIdSchema, before: z.array(NodeIdSchema).min(1) }).optional(),
   outputs: z.record(z.string().refine(id => NodeIdSchema.safeParse(id).success), SourceFields),
 });

@@ -110,6 +110,16 @@ it("offers Continue anyway and Cancel run for a difference before the member's S
   assert.equal(walk(member, { "reference-result": "true", "reference-check-review": "continue", onbaseFiling: "file" }).stop, undefined);
 });
 
+it("serves all four member skip choices and prevents either write on the skipped-plan path", async () => {
+  const member = await review("emergency-contact-member");
+  assert.deepEqual(member.options.filter(({ id }) => id.startsWith("skip-")).map(({ id, initial }) => [id, initial]), [
+    ["skip-reference-check", "run"], ["skip-contact-plan", "run"], ["skip-contact-preview", "run"], ["skip-onbase-filing", "run"],
+  ]);
+  assert.deepEqual(walk(member, { onbaseFiling: "file", "skip-contact-plan": "skip" }).steps, ["reference-check"]);
+  assert.deepEqual(walk(member, { onbaseFiling: "file", "skip-contact-preview": "skip" }).steps, ["reference-check", "contact-plan", "onbase-filing"]);
+  assert.deepEqual(walk(member, { onbaseFiling: "file", "skip-onbase-filing": "skip" }).steps, ["reference-check", "contact-plan", "contact-preview"]);
+});
+
 it("names every delegated workflow and its document, person or page scope, with filing sessions following the parent's declared choice", async () => {
   const parent = await review("emergency-contact");
   assert.deepEqual(blocks(parent, "read-document", "starts"), [{ kind: "starts", workflowId: "ocr", title: "OCR", each: "This PDF" }]);

@@ -8,17 +8,12 @@ import { onboardingUcpathSearchDefinition } from "./steps/ucpath-search/step.js"
 import { onboardingI9SearchDefinition } from "./steps/i9-search/step.js";
 import { onboardingHireWritesDefinition, buildHireReview } from "./steps/hire-review/step.js";
 import { defineReferenceCheck } from "../../workflow-kit/reference-check.js";
-import type { StepOmissionForm } from "../../models/workflow/step-omission.js";
-
-export const ONBOARDING_REFERENCE_FORM = {
-  fields: [{ key: "referenceResult", label: "Reference spreadsheet result", kind: "enum", values: ["Confirmed", "Unconfirmed", "Not checked"] }],
-} satisfies StepOmissionForm;
 
 export const onboardingWorkflow = defineWorkflow({
   id: "onboarding", version: 3, code: "on", label: "Onboarding", icon: "UserPlus", category: "onboarding",
   requiredWorkbookFields: [...ONBOARDING_ROSTER_FIELDS],
   workbookReference: { id: ONBOARDING_ROSTER_TYPE_ID, keyFieldId: "email", mode: "keys", writableFields: [...ONBOARDING_ROSTER_OUTPUT_FIELDS] },
-  referenceCheck: defineReferenceCheck({ key: "email", input: { email: "email" }, manualForm: ONBOARDING_REFERENCE_FORM, outputs: {
+  referenceCheck: defineReferenceCheck({ key: "email", input: { email: "email" }, manual: "values", outputs: {
     "crm-source": { email: "requestedEmail", fullName: ["recordFirstName", "recordLastName"], firstName: "recordFirstName", lastName: "recordLastName", dob: "fields.dob" },
     "hire-plan": { dob: "employee.dob" },
     "ucpath-source": { eid: "confirmed[].emplId", fullName: "confirmed[].name" },

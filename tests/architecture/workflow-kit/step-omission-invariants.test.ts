@@ -5,6 +5,11 @@ import { z } from "zod";
 import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
+import { CONTACT_PLAN_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/contact-plan/step.js";
+import { CONTACT_PREVIEW_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/contact-preview/step.js";
+import { ONBASE_FILING_MANUAL } from "../../../src/workflows/emergency-contact-member/steps/onbase-filing/step.js";
+import { manualReferenceReview, REFERENCE_RESULT_FORM } from "../../../src/workflow-kit/reference-check.js";
+import { emergencyContactMemberModule } from "../../support/helpers/registered-workflows.js";
 import { defineTaskContract } from "../../../src/models/task/task-contract.js";
 import { EidSchema, FingerprintSchema, ScenarioIdSchema, TaskIdSchema } from "../../../src/rules/identity/ids.js";
 import {
@@ -41,7 +46,6 @@ import { CRM_DATA_MANUAL } from "../../../src/workflows/onboarding/steps/crm-dat
 import { UCPATH_SEARCH_MANUAL } from "../../../src/workflows/onboarding/steps/ucpath-search/step.js";
 import { I9_SEARCH_MANUAL } from "../../../src/workflows/onboarding/steps/i9-search/step.js";
 import { HIRE_REVIEW_MANUAL, I9_CREATION_MANUAL, UCPATH_HIRE_MANUAL, MASTER_RESULTS_MANUAL } from "../../../src/workflows/onboarding/steps/hire-review/step.js";
-import { ONBOARDING_REFERENCE_FORM } from "../../../src/workflows/onboarding/workflow.js";
 
 const FixtureInput = z.strictObject({ eid: EidSchema });
 const FixtureCanonicalInput = defineCanonicalInput(
@@ -163,6 +167,7 @@ const SEPARATIONS_ID = "separations";
 const PERSON_LOOKUP_ID = "person-lookup";
 const ONBOARDING_ID = "onboarding";
 const WORK_STUDY_ID = "work-study";
+const EC_MEMBER_ID = "emergency-contact-member";
 const FIXTURE_ID = "step-omission-guard-valid";
 
 /** The one legitimate fixture descriptor every positive check runs against too. */
@@ -254,7 +259,7 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
   { descriptor: ONBOARDING_ID, step: "ucpath-search", declaration: UCPATH_SEARCH_MANUAL, fieldKeys: ["match", "emplId"], produces: [] },
   { descriptor: ONBOARDING_ID, step: "i9-search", declaration: I9_SEARCH_MANUAL, fieldKeys: ["i9Status", "profileId"], produces: [] },
   { descriptor: ONBOARDING_ID, step: "hire-review", declaration: HIRE_REVIEW_MANUAL, fieldKeys: ["decision", "emplId"], produces: [] },
-  { descriptor: ONBOARDING_ID, step: "reference-check", declaration: { form: ONBOARDING_REFERENCE_FORM, produces: {} }, fieldKeys: ["referenceResult"], produces: [] },
+  { descriptor: ONBOARDING_ID, step: "reference-check", declaration: { form: REFERENCE_RESULT_FORM, produces: {} }, fieldKeys: ["referenceResult"], produces: [] },
   { descriptor: ONBOARDING_ID, step: "i9-creation", declaration: I9_CREATION_MANUAL, fieldKeys: [], produces: [] },
   { descriptor: ONBOARDING_ID, step: "ucpath-hire", declaration: UCPATH_HIRE_MANUAL, fieldKeys: [], produces: [] },
   { descriptor: ONBOARDING_ID, step: "master-results", declaration: MASTER_RESULTS_MANUAL, fieldKeys: [], produces: [] },
@@ -266,6 +271,11 @@ const PRODUCTION_DECLARATIONS: readonly Readonly<{
     descriptor: WORK_STUDY_ID, step: "transaction", declaration: TRANSACTION_STEP.manual,
     fieldKeys: [], produces: [],
   },
+  { descriptor: EC_MEMBER_ID, step: "contact-plan", declaration: CONTACT_PLAN_MANUAL, fieldKeys: ["emplId"], produces: ["map-contact"] },
+  { descriptor: EC_MEMBER_ID, step: "reference-check", declaration: { form: REFERENCE_RESULT_FORM, produces: { "reference-fields-read-contacts": manualReferenceReview } },
+    fieldKeys: ["referenceResult"], produces: ["reference-fields-read-contacts"] },
+  { descriptor: EC_MEMBER_ID, step: "contact-preview", declaration: CONTACT_PREVIEW_MANUAL, fieldKeys: [], produces: [] },
+  { descriptor: EC_MEMBER_ID, step: "onbase-filing", declaration: ONBASE_FILING_MANUAL, fieldKeys: [], produces: [] },
 ];
 
 /** Every `<descriptor>::<step>` row a complete sweep MUST have visited — the production declarations plus the fixture's one. */
@@ -301,12 +311,18 @@ const PRODUCTION_CASCADE_ROWS: Readonly<Record<string, StepOmissionCascadeRow>> 
   "onboarding::master-results": { state: "omittable", forces: [] },
   "work-study::ucpath-auth": { state: "omittable", forces: [] },
   "work-study::transaction": { state: "omittable", forces: [] },
+  "emergency-contact-member::contact-plan": { state: "omittable", forces: ["contact-preview", "onbase-filing"] },
+  "emergency-contact-member::reference-check": { state: "omittable", forces: [] },
+  "emergency-contact-member::contact-preview": { state: "omittable", forces: [] },
+  "emergency-contact-member::onbase-filing": { state: "omittable", forces: [] },
 };
 
 
 const ONBOARDING_REFERENCE_NODES = sorted([
   "start", "crm-source", "hire-plan", "ucpath-source", "hire-subject", "write-plan", "hire-receipt", "concurrent-hire-receipt",
 ].flatMap(stage => [`reference-fields-${stage}`, `reference-field-review-${stage}`]));
+const EC_SKIPPED_REFERENCE_NODES = sorted(["start", "map-contact"]
+  .flatMap(stage => [`reference-fields-${stage}`, `reference-field-review-${stage}`]));
 
 const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly string[]; omitted: readonly string[]; manual?: readonly string[] }>>> = {
   "crm-doc-download::search-records": { asserted: ["document-records"], omitted: [] },
@@ -334,6 +350,10 @@ const PRODUCTION_PLANS: Readonly<Record<string, Readonly<{ asserted: readonly st
   "onboarding::master-results": { asserted: [], omitted: [], manual: ["concurrent-master-results", "master-results"] },
   "work-study::ucpath-auth": { asserted: ["paypath-position"], omitted: [] },
   "work-study::transaction": { asserted: [], omitted: ["save-transaction", "transaction-plan"] },
+  "emergency-contact-member::contact-plan": { asserted: ["map-contact"], omitted: ["contact-plan", "read-contacts"] },
+  "emergency-contact-member::reference-check": { asserted: ["reference-fields-read-contacts"], omitted: EC_SKIPPED_REFERENCE_NODES },
+  "emergency-contact-member::contact-preview": { asserted: [], omitted: [], manual: ["contact-preview"] },
+  "emergency-contact-member::onbase-filing": { asserted: [], omitted: [], manual: ["onbase-filing"] },
 };
 
 /** The same pinning for the whole-descriptor plan: every omittable step of a descriptor omitted at once. */
@@ -361,10 +381,15 @@ const PRODUCTION_WHOLE_DESCRIPTOR_PLANS: Readonly<Record<string, Readonly<{ asse
     asserted: ["paypath-position"],
     omitted: ["save-transaction", "transaction-plan"],
   },
+  [EC_MEMBER_ID]: {
+    asserted: ["map-contact", "reference-fields-read-contacts"],
+    omitted: sorted(["contact-plan", "read-contacts", ...EC_SKIPPED_REFERENCE_NODES]),
+    manual: ["contact-preview", "onbase-filing"],
+  },
 };
 
 /** Every descriptor this guard sweeps: the whole production registry plus the one legitimate fixture. */
-const SWEPT_DESCRIPTORS: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, validFixture];
+const SWEPT_DESCRIPTORS: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, emergencyContactMemberModule.descriptor, validFixture];
 
 function isFixture(descriptor: AnyWorkflowDescriptor): boolean {
   return String(descriptor.id) === FIXTURE_ID;
@@ -569,7 +594,7 @@ describe("step-omission invariants", () => {
       assert.deepEqual(sorted(whole.manual.keys()), expectedWhole.manual ?? [], `${id}: whole-descriptor nodes done by hand changed`);
     }
     assertSweptEveryDeclaration(audited, "planner sweep");
-    const expected = sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, ONBOARDING_ID, WORK_STUDY_ID, FIXTURE_ID, "crm-doc-download"]);
+    const expected = sorted([SEPARATIONS_ID, PERSON_LOOKUP_ID, ONBOARDING_ID, WORK_STUDY_ID, EC_MEMBER_ID, FIXTURE_ID, "crm-doc-download"]);
     assert.deepEqual(sorted(wholeDescriptorsAudited), expected, "the whole-descriptor sweep visited the wrong descriptors");
     assert.deepEqual(sorted(gatedDescriptors), expected, "the gated descriptors the ALWAYS-GATE sweep covers changed");
   });

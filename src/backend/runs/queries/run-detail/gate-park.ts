@@ -20,7 +20,7 @@ import { z } from "zod";
 import { HirePlanSchema } from "../../../../models/workflows/onboarding/read-hire-plan.js";
 import { SearchPersonMatchOutputSchema } from "../../../../models/systems/ucpath/search-person-match.js";
 import { ONBOARDING_WRITE_REVIEW_GATE, OnboardingWriteApprovalSchema } from "../../../../models/workflows/onboarding/read-write-plan.js";
-import { CompareReferenceFields, ReferenceReviewSchema, referenceComparisonForGate } from "../../../../models/processing/workbooks/reference-fields.js";
+import { CompareReferenceFields, REFERENCE_CHECK_ID, ReferenceReviewSchema, referenceComparisonForGate } from "../../../../models/processing/workbooks/reference-fields.js";
 import { spreadsheetField } from "../../../../models/fields/workbook-fields.js";
 import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
 import { hireReviewChoices, type HireReviewChoices } from "../../../../rules/onboarding/match-hire-subject.js";
@@ -134,8 +134,13 @@ function reviewBeforeWriteDecision(deps: RunDetailQueryDeps, authority: RunRecor
   const comparison = referenceComparisonForGate(gateId);
   if (comparison !== undefined && arms !== undefined) {
     const check = hireReviewCheckpoint(deps, authority, comparison, CompareReferenceFields.output, true);
-    return referenceReviewDecision(deps, authority, arms, gateId, check?.mismatches.map(item =>
-      `${item.sheet}, row ${item.row} · ${spreadsheetField(item.field).label}: spreadsheet “${item.expected}”, workflow “${item.actual}”`) ?? []);
+    const lines = check?.mismatches.map(item =>
+      `${item.sheet}, row ${item.row} · ${spreadsheetField(item.field).label}: spreadsheet “${item.expected}”, workflow “${item.actual}”`) ?? [];
+    if (check?.captured === null && check.review === true && lines.length === 0) {
+      const typed = authority.envelope.stepOmissions?.find(entry => entry.workflow === undefined && entry.step === REFERENCE_CHECK_ID)?.facts.referenceResult;
+      if (typed === "Unconfirmed" || typed === "Not checked") lines.push(`Reference spreadsheet result: ${typed}`);
+    }
+    return referenceReviewDecision(deps, authority, arms, gateId, lines);
   }
   if (gateId !== ONBOARDING_WRITE_REVIEW_GATE || arms === undefined) return undefined;
   const review = hireReviewFacts(deps, authority);

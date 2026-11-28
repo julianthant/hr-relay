@@ -2,7 +2,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js
 import { EmergencyContactMemberCanonicalInput,EmergencyContactMemberInputSchema } from "../../models/workflows/emergency-contact-member/input.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
-import { contactPlanDefinition } from "./steps/contact-plan/step.js";
+import { CONTACT_PLAN_MANUAL, contactPlanDefinition } from "./steps/contact-plan/step.js";
 import { contactPreviewDefinition } from "./steps/contact-preview/step.js";
 import { onbaseFilingDefinition } from "./steps/onbase-filing/step.js";
 import { defineReferenceCheck } from "../../workflow-kit/reference-check.js";
@@ -11,7 +11,8 @@ export const EMERGENCY_CONTACT_SCENARIOS = ["emergency-contact/unambiguous-addit
   "emergency-contact/conflict-refused", "emergency-contact/dry-run", "emergency-contact/unknown", "emergency-contact/verified-save", "emergency-contact-member/reference-check"] as const;
 export const emergencyContactMemberWorkflow = defineWorkflow({
   id: "emergency-contact-member", version: 1, code: "em", label: "Emergency Contact member", icon: "Users", category: "documents",
-  summary: "Authenticates one approved OCR record, saves its ordered primary contact changes in UCPath and files its source page to OnBase.", requiredWorkbookFields: [], referenceCheck: defineReferenceCheck({ key: "eid", input: { eid: "record.assertedEid" }, outputs: {
+  summary: "Authenticates one approved OCR record, saves its ordered primary contact changes in UCPath and files its source page to OnBase.", requiredWorkbookFields: [], referenceCheck: defineReferenceCheck({ key: "eid", input: { eid: "record.assertedEid" }, manual: "review-on-own-start",
+    writeReview: { source: "read-contacts", before: ["contact-plan"] }, outputs: {
     "map-contact": { eid: "emplId", fullName: "expectedName" },
     "read-contacts": { eid: "contacts.emplId", fullName: "contacts.displayedName" },
   } }),
@@ -30,8 +31,9 @@ export const emergencyContactMemberWorkflow = defineWorkflow({
     { nodeId: "onbase-filing", purpose: "File the record's first source page to OnBase through one child once the Save settles." },
   ],
   steps: author => {
-    const plan = contactPlanDefinition.build(author);
-    const preview = contactPreviewDefinition.build(author, plan), filing = onbaseFilingDefinition.build(author);
+    const plan = contactPlanDefinition.build(author, CONTACT_PLAN_MANUAL);
+    const preview = contactPreviewDefinition.build(author, plan, true);
+    const filing = onbaseFilingDefinition.build(author, { contactPlanSwitch: true });
     return { steps: [...plan.steps, ...preview.steps, ...filing.steps], result: preview.result };
   },
 });

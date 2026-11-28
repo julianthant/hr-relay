@@ -12,7 +12,7 @@ import { CHANGE_LOG_MIGRATION, changeLogTriggers } from "./authority-change-log.
 import { RUN_SEARCH_FTS_MIGRATION } from "./run-search-fts.js";
 import { DEBUG_EVENTS_MIGRATION } from "./timeline-repository.js";
 import { OCR_REVIEW_MIGRATION } from "./ocr-review.js";
-import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_MIGRATION } from "./workbook-library-repository.js";
+import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, WORKBOOK_LIBRARY_PIN_TAGS_MIGRATION, WORKBOOK_LIBRARY_SYNC_STATUS_MIGRATION, WORKBOOK_PAYLOAD_MIGRATION, WORKBOOK_VERSION_NAMES_MIGRATION } from "./workbook-library-repository.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { CapturedWorkbookWriteSourceSchema, RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -1217,6 +1217,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   { version: ASSISTANT_APPLIED_EDITS_SCHEMA_VERSION, statements: [
     ...ASSISTANT_APPLIED_EDITS_STATEMENTS, ...changeLogTriggers(ASSISTANT_APPLIED_EDITS_TABLE),
   ] },
+  WORKBOOK_VERSION_NAMES_MIGRATION,
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
