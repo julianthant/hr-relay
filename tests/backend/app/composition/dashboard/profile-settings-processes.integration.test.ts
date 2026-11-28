@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { afterEach, it } from "vitest";
 import { createProfileSettingsProcesses } from "../../../../../src/backend/app/composition/dashboard/profile-settings-processes.js";
-import { captureSelectedProfileStorage } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { composeSelectedProfileStorage } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createNoteTimelineWriter } from "../../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createDashboardReadHost } from "../../../../../src/backend/storage/sqlite/dashboard-read-host.js";
@@ -13,16 +13,18 @@ import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../.
 import { SettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { LANE_READS_ENTRY } from "../../../../support/fixtures/backend/dashboard-lane-reads.js";
-import { createBoundProfileFixture, openBoundDatabaseFixture } from "../../../../support/helpers/admission-fixture.js";
+import { boundProfileCredentials, createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 it("leaves a Settings worker commit in the WAL while the dashboard read host owns checkpoints", async () => {
-  const f = await openBoundDatabaseFixture("settings-worker-checkpoint", systemClock, 250, undefined, undefined, undefined,
-    () => createBoundProfileFixture({ sharedMachine: true }));
-  cleanups.push(() => f.close());
-  const { profile, database } = f;
+  const profile = await createBoundProfileFixture({ sharedMachine: true });
+  cleanups.push(() => profile.close());
+  const hostFacts = { primaryDisplay: null };
+  const { profileEpoch, assertCurrent, database, account } = composeSelectedProfileStorage({ machineAdmission: profile.machine,
+    admission: profile.admission, credentials: boundProfileCredentials(profile.admission), clock: systemClock, hostFacts });
+  cleanups.push(async () => { await account.close(); database.close(); });
   const lanes = createDashboardReadHost({ admission: profile.admission, database, clock: systemClock,
     lanes: ["navigation"], entry: LANE_READS_ENTRY, checkpoint: { thresholdBytes: Number.MAX_SAFE_INTEGER } });
   cleanups.push(() => lanes.close());
@@ -36,10 +38,9 @@ it("leaves a Settings worker commit in the WAL while the dashboard read host own
         level: "step", message: "w".repeat(192 * 1024) });
     }
   });
-  assert.ok(statSync(`${f.path}-wal`).size > 32 + 1_000 * (4096 + 24), "the WAL exceeds SQLite's default checkpoint threshold");
+  assert.ok(statSync(`${profile.path}-wal`).size > 32 + 1_000 * (4096 + 24), "the WAL exceeds SQLite's default checkpoint threshold");
 
-  const selected = captureSelectedProfileStorage(profile.machine);
-  const settings = createProfileSettingsProcesses(profile.admission, profile.lifetime, selected.epoch, { primaryDisplay: null }, selected.assertCurrent);
+  const settings = createProfileSettingsProcesses(profile.admission, profile.lifetime, profileEpoch, hostFacts, assertCurrent);
   cleanups.push(() => settings.closeCommands());
   const commandId = randomUUID(), patch = { "concurrency.defaultWorkers": { set: 3 } };
   const command = SettingsCommandRequestSchema.parse({ commandId, requestedAt: systemClock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
@@ -50,7 +51,7 @@ it("leaves a Settings worker commit in the WAL while the dashboard read host own
   assert.ok(database.authority.commands.get(commandId), "the active database sees the committed command");
 
   // The immutable view of this fixture reads only the main file, without replaying its WAL.
-  const file = pathToFileURL(f.path);
+  const file = pathToFileURL(profile.path);
   file.searchParams.set("immutable", "1");
   const main = new DatabaseSync(file, { readOnly: true });
   try { assert.equal(main.prepare("SELECT id FROM commands WHERE id=?").get(commandId), undefined); }
