@@ -59,7 +59,7 @@ const TURN = {
 } satisfies Record<Exclude<AssistantTurn["state"], "cancelled" | "unknown">, Story>;
 
 const reply = (script: AssistantReplyScript): AssistantHostProps => ({ client: { reply: script } });
-const edit = (title: string, script: "spreadsheet-edit" | "settings-edit", message: string): Story =>
+const edit = (title: string, script: "spreadsheet-edit" | "settings-edit" | "undo-edit", message: string): Story =>
   scene(title, { ...reply(script), modelChoices: true, modelPreference: { slug: "gpt-6.1-sol", effort: "medium" } }, { ready: 'text="Edit applied"', play: page => sendMessage(page, message) });
 const REPLY = {
   answer: after("A short answer", {}, 'text="10101010"'),
@@ -68,6 +68,7 @@ const REPLY = {
   "proposal-many": after("Several rows proposed", reply("proposal-many"), 'text=/Reply yes to save all 3/'),
   "spreadsheet-edit": edit("A spreadsheet edit", "spreadsheet-edit", "Rename the spreadsheet to Summer tracker."),
   "settings-edit": edit("A settings edit", "settings-edit", "Turn headless browser mode off."),
+  "undo-edit": edit("A spreadsheet edit undone", "undo-edit", "Undo the tracker change."),
   "answered-yes": after("A typed yes that started a session", reply("answered-yes"), '.reply-session'),
   "full-access-dry-run": scene("A dry run started with Full access", { ...approvalProps, ...reply("full-access-dry-run") },
     { play: then(pickFullAccess, async page => { await page.getByRole("textbox", { name: "Message Relay" }).fill("Start a Separations dry run."); }, press("Send message")), ready: '.reply-session' }),
@@ -159,6 +160,7 @@ const KNOWN_BREAKS = {
   "reply/answered-yes": BREAK_SETS.COMPOSER_FOCUS,
   "reply/spreadsheet-edit": BREAK_SETS.MODEL_COMPOSER,
   "reply/settings-edit": BREAK_SETS.MODEL_COMPOSER,
+  "reply/undo-edit": BREAK_SETS.MODEL_COMPOSER,
   "reply/full-access-dry-run": ["named-and-focusable", "primary-button-accent"],
   "turn/failed": BREAK_SETS.COMPOSER_FOCUS,
   "turn/idle": BREAK_SETS.COMPOSER_FOCUS,
