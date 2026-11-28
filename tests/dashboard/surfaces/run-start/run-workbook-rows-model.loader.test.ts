@@ -20,8 +20,9 @@ let root: Root | undefined;
 let observed: ReturnType<typeof useWorkbookRows> | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; observed = undefined; document.body.replaceChildren(); vi.useRealTimers(); });
 type Props = { client: Parameters<typeof useWorkbookRows>[0]; identity?: string; authority?: object; ready?: boolean; version?: typeof first };
+const SHEETS = ["sheet"] as const;
 function Probe(props: Props) {
-  observed = useWorkbookRows(props.client, props.identity ?? "workflow/catalog-revision-1/library", props.authority ?? authority, true, props.ready ?? true, "library", props.version ?? first, "email", "sheet");
+  observed = useWorkbookRows(props.client, props.identity ?? "workflow/catalog-revision-1/library", props.authority ?? authority, true, props.ready ?? true, "library", props.version ?? first, "email", SHEETS);
   return null;
 }
 async function render(props: Props) {

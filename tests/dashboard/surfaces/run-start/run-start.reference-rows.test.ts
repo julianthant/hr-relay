@@ -190,12 +190,11 @@ it("gives each workflow in the list one title with its full name", async () => {
   assert.ok(entry.querySelector("[title]") === null);
 });
 
-it("keeps a workflow that cannot read several reference worksheets on a single pick", async () => {
+it("offers only the worksheet that maps the required reference fields", async () => {
   await h.openDialog(h.stubClient({ ...rosterLookupReads() }), { workflows: [rosterLookup], panelWorkflowId: rosterLookup.workflowId });
   await h.settle(); await add("References", "Contact roster");
-  await click("Contact roster worksheet, First");
-  assert.equal(worksheetItems("menuitemcheckbox").length, 0);
-  assert.equal(worksheetItems("menuitemradio").length, 1);
+  await click("Contact roster worksheets, First");
+  assert.deepEqual(worksheetItems("menuitemcheckbox").map(option => [option.textContent, option.getAttribute("aria-checked")]), [["First", "true"]]);
 });
 
 it("draws the Add spreadsheet menu as the mock does: Pinned first, the mock's empty text, search finds the rest", async () => {

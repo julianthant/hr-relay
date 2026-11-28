@@ -440,9 +440,9 @@ export interface RunReferenceSheet {
 }
 
 /** The served Run and Rerun dialogs' one Spreadsheets field: the reference spreadsheet the run looks people up in and the optional extra spreadsheets it checks each person against. One Add spreadsheet button: it fills the reference first, then adds checks; with no check available it changes the reference. */
-export function RunSpreadsheets({ reference, check, busy: reading, locked = false, catalogError, onRefresh }: {
+export function RunSpreadsheets({ reference, check, busy: reading, locked = false, catalogError, onRefresh, inspectWorksheets = false }: {
   reference?: RunReferenceSheet | undefined; check?: { readonly sheets: readonly CheckSheet[] } & CheckCallbacks | undefined;
-  busy: boolean; locked?: boolean; catalogError: string | null; onRefresh: () => void;
+  busy: boolean; locked?: boolean; catalogError: string | null; onRefresh: () => void; inspectWorksheets?: boolean;
 }) {
   const busy = reading || locked;
   const chosen = reference?.sheets.find(sheet => sheet.libraryId === reference.chosenLibraryId);
@@ -475,7 +475,8 @@ export function RunSpreadsheets({ reference, check, busy: reading, locked = fals
     <SpreadsheetSection title={title} description={description} picker={picker}>
       {(reference !== undefined && chosen !== undefined || check?.sheets.some(sheet => sheet.pickedSheetIds !== undefined)) && <>
       {reference !== undefined && chosen && <SpreadsheetRow name={chosen.name} versions={chosen.versions} versionId={reference.chosenVersionId ?? chosen.currentVersionId} note={note}
-        worksheets={worksheets} picked={chosenSheetIds} mode={reference.several ? "many" : "one"} max={reference.several ? MAX_SELECTED_WORKBOOK_SOURCES : undefined} busy={busy} locked={locked} worksheetsReady={worksheetsState === "ready"}
+        worksheets={worksheets} picked={chosenSheetIds} mode={reference.several ? "many" : "one"} max={reference.several ? MAX_SELECTED_WORKBOOK_SOURCES : undefined} busy={busy} locked={locked} worksheetsReady={worksheetsState === "ready" && !reading}
+        inspectWorksheets={inspectWorksheets}
         onVersion={reference.onVersion} onWorksheets={reference.onWorksheets} onRemove={reference.onRemove} />}
       {check !== undefined && <CheckPickedRows busy={busy} locked={locked} {...check} />}
       </>}

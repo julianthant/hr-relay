@@ -294,17 +294,19 @@ PDF documents or parent-only delegation. Served spreadsheet intake uploads in th
 real `intake` session route.
 
 `inputRun.workbookRows: {typeId, inputField}` declares saved-row selection in Input. The field must be
-emitted by the surface's parser. The launcher loads the chosen immutable named version and retains each
-selected physical sheet/row in workbook order. `typedInput.initialMode: null` leaves the mode unchosen
+emitted by the surface's parser. The launcher loads the chosen immutable named version and lists saved rows
+from every selected worksheet in workbook order. The Start request attaches each physical row to its owning
+worksheet. `typedInput.initialMode: null` leaves the mode unchosen
 until the operator selects one. Fresh Onboarding uses saved rows and one common **New hire** or **Rehire**
 choice, with no fresh text-entry alternative. [Run reference planning](frontend-backend-integration.md#run-reference-and-output-plans)
 owns entry admission, partial refusals and independent run creation.
 
 Rerun prefills safe source identity fields in Values, using the declared input parser. Protected
 values and identities that no longer satisfy the current input stay uncopied. Interrupted Rerun
-uses the source run's retained input and workbook references. Ordinary Onboarding Rerun remains
-one source input with a fresh visible library/version lookup, without a selected-row picker or retained
-source selector. Its [trusted input projection](workflow-model.md#56-recovery-and-rerun) removes server-owned roster data.
+uses the source run's retained input and workbook references. Ordinary Rerun keeps the selected worksheets of
+the source's named reference version and lets the operator inspect the selection in Steps. Ordinary Onboarding Rerun
+keeps one source input and its original physical row where present. Its
+[trusted input projection](workflow-model.md#56-recovery-and-rerun) removes server-owned roster data.
 
 Parsed identifier entries trim and collapse whitespace, follow the declared separators, and deduplicate identities. The two-column preview retains the total count; each remove button updates the textbox and planned population. Normalization on blur preserves typing, while protected Match tuples retain their raw editor values and masked preview.
 

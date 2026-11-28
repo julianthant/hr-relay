@@ -10,6 +10,7 @@ import {
 import { initialRunDialogState, visibleRunDialog, type RunDialogState } from "../../../../src/dashboard/surfaces/run-start/run-dialog-model.js";
 import { sourceBadge, startRowsOf, type StepRow } from "../../../../src/dashboard/surfaces/run-start/run-steps-model.js";
 import { RerunValuesRequestSchema, RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
+import { I9_CHECK_REFERENCE } from "../../../../src/models/workflows/i9-check/start.js";
 import { WORK_STUDY_TYPED_INPUT } from "../../../../src/models/workflows/work-study/input.js";
 
 const OMIT_FORM = { fields: [{ key: "reason", label: "Reason", kind: "text" }, { key: "confirmed", label: "Confirmed", kind: "boolean" }] } as unknown as Extract<RunStartWorkflow["steps"][number]["control"], { state: "omittable" }>["form"];
@@ -370,12 +371,15 @@ describe("rerun restore", () => {
     const live = restoreRerunDraft(snapshot, reading);
     assert.deepEqual([live.dryRunRequested, live.referenceSelections, live.checkPicks], [false, {}, {}]);
   });
-  it("picks a source's several reference worksheets again only where the workflow reads them all", () => {
-    const reading = (writableFields: string[]): RunStartWorkflow => ({ ...plain, workbookReference: { id: "onboarding-roster", keyFieldId: "email", mode: "keys", writableFields } });
-    const pick = (sheetId: string) => ({ typeId: "onboarding-roster", libraryId: "people", versionId: "v1", sheetId });
+  it.each([
+    { id: "onboarding-roster", keyFieldId: "email", mode: "keys", writableFields: ["eid"] },
+    { id: I9_CHECK_REFERENCE.typeId, keyFieldId: "eid", mode: "keys", writableFields: [] },
+    { id: "ocr-roster", keyFieldId: "eid", mode: "all", writableFields: [] },
+  ] as const)("picks both of the source's worksheets for $id", workbookReference => {
+    const reading: RunStartWorkflow = { ...plain, workbookReference };
+    const pick = (sheetId: string) => ({ typeId: workbookReference.id, libraryId: "people", versionId: "v1", sheetId });
     const source = RerunValuesSnapshotSchema.parse({ ...snapshot, spreadsheets: [pick("a"), pick("b")] });
-    assert.deepEqual(restoreRerunDraft(source, reading([])).referenceSelections, { "onboarding-roster": { libraryId: "people", versionId: "v1", sheetIds: ["a", "b"] } });
-    assert.deepEqual(restoreRerunDraft(source, reading(["roster.notes"])).referenceSelections, {});
+    assert.deepEqual(restoreRerunDraft(source, reading).referenceSelections, { [workbookReference.id]: { libraryId: "people", versionId: "v1", sheetIds: ["a", "b"] } });
   });
   it("refuses a source whose browser mode nobody recorded instead of taking the last draft's", () => {
     const { browserMode: _browserMode, ...source } = snapshot.source;

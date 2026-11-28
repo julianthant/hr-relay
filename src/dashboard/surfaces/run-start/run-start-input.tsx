@@ -17,7 +17,7 @@ import { WORKBOOK_ROW_UNAVAILABLE_TEXT, resolveWorkbookRowSelection } from "./ru
 
 export function RunStartInput({
   workflow, workflowId, inputRun, pdfSurface, pdfInput, draft: { text, referenceDrafts, referenceSelections, selectedWorkbookRows },
-  typedValues, typedInputRef, preview, busy, sending, recovery, update,
+  typedValues, typedInputRef, preview, busy, sending, recovery, update, referencesOnly = false,
   spreadsheets: { library, selectedWorkflow, workbookCheck, requiredTypes, compatibilityMissing, referenceSources, checkSheets, versionSources },
   savedRows: { rowCapability, rowLibrary, rowVersion, workbookRows, rowSource, rowSelectionFresh, rowChoices },
 }: {
@@ -36,8 +36,10 @@ export function RunStartInput({
   update: (change: (current: launchDraft.LaunchDraft) => launchDraft.LaunchDraft) => void;
   spreadsheets: ReturnType<typeof useRunStartSpreadsheets>;
   savedRows: ReturnType<typeof useRunStartWorkbookRows>;
+  referencesOnly?: boolean;
 }) {
-  if (compatibilityMissing) return <FailureNotice sentence="Spreadsheets can't be checked." {...(sending ? {} : { action: { label: "Retry", onClick: () => void library.adapter.refreshCatalog() } })} />;
+  const referencesLocked = referencesOnly || sending;
+  if (compatibilityMissing) return <FailureNotice sentence="Spreadsheets can't be checked." {...(referencesLocked ? {} : { action: { label: "Retry", onClick: () => void library.adapter.refreshCatalog() } })} />;
   const checkBusy = library.catalogRefreshing || library.compatibility === undefined;
   const checkHandlers = {
     onAdd: (libraryId: string) => { const sheet = checkSheets.find(candidate => candidate.libraryId === libraryId);
@@ -55,7 +57,7 @@ export function RunStartInput({
   const referenceControls = (types: readonly string[], withCheck: boolean) => {
     const check = withCheck && workbookCheck !== undefined ? { sheets: checkSheets, ...checkHandlers } : undefined;
     if (types.length === 0) return check === undefined ? undefined : library.catalogLoading ? referenceLoading("Optional.")
-      : <RunSpreadsheets check={check} busy={checkBusy} locked={sending} catalogError={library.catalogError} onRefresh={() => void library.adapter.refreshCatalog()} />;
+      : <RunSpreadsheets check={check} busy={checkBusy} locked={referencesLocked} catalogError={library.catalogError} onRefresh={() => void library.adapter.refreshCatalog()} />;
     if (library.catalogLoading) return referenceLoading(`Needs ${requiredLabelOf(selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [])}.`);
     return <>{types.map(typeId => {
       const draft = referenceDrafts[typeId];
@@ -63,9 +65,9 @@ export function RunStartInput({
       const requiredFields = selectedWorkflow?.requiredWorkbookFields.map(id => spreadsheetField(id).label) ?? [];
       const sheets = library.catalog.filter(entry => entry.state.origin.kind === 'local' && !entry.state.removed).map(entry => ({ libraryId: entry.libraryId, name: entry.name, pinned: entry.state.pinned,
         versions: entry.state.versions.map((version, index) => ({ id: version.id, savedAt: version.savedAt, name: version.name || `v${entry.state.versions.length - index}` })), currentVersionId: entry.state.selectedVersionId, worksheets: referenceSources.filter(source => source.libraryId === entry.libraryId).map(source => source.sheetName) }));
-      return <RunSpreadsheets key={typeId} check={check !== undefined && checkSheets.length > 0 ? check : undefined} busy={library.catalogRefreshing || library.compatibility === undefined} locked={sending} catalogError={library.catalogError}
-        onRefresh={() => void library.adapter.refreshCatalog()}
-        reference={{ requiredLabel: requiredLabelOf(requiredFields), sheets, chosenLibraryId: draft?.libraryId, chosenVersionId: draft?.versionId, chosenSheetIds: referenceSelections[typeId]?.sheetIds ?? [], several: launchDraft.readsSeveralWorksheets(selectedWorkflow?.workbookReference),
+      return <RunSpreadsheets key={typeId} check={check !== undefined && checkSheets.length > 0 ? check : undefined} busy={library.catalogRefreshing || library.compatibility === undefined} locked={referencesLocked} catalogError={library.catalogError}
+        onRefresh={() => void library.adapter.refreshCatalog()} inspectWorksheets={referencesOnly}
+        reference={{ requiredLabel: requiredLabelOf(requiredFields), sheets, chosenLibraryId: draft?.libraryId, chosenVersionId: draft?.versionId, chosenSheetIds: referenceSelections[typeId]?.sheetIds ?? [], several: true,
           worksheets: sheetOptions.map(source => ({ sheetId: source.sheetId, sheetName: source.sheetName })), worksheetsState: versionSources.state, worksheetsError: versionSources.error,
           onPick: (libraryId, versionId) => update(current => launchDraft.pickReference(current, typeId, libraryId, versionId)),
           onVersion: versionId => update(current => launchDraft.pickReferenceVersion(current, typeId, versionId)),
@@ -77,6 +79,7 @@ export function RunStartInput({
           onRemove: () => update(current => launchDraft.removeReference(current, typeId)) }} />;
     })}</>;
   };
+  if (referencesOnly) return referenceControls(requiredTypes, false);
   return (
                 <section aria-label="Input" className="launch-form-sections flex min-h-0 flex-1 flex-col">
                   {pdfSurface !== undefined ? <>

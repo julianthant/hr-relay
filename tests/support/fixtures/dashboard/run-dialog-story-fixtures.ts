@@ -60,7 +60,7 @@ const typedInput = (flow: RunStartWorkflow, supportsDryRun: boolean): RunStartWo
 export const RUN_DIALOG_DRY_RUN_CATALOG = catalogOf(flow => typedInput(flow, true));
 /** The entry as a workflow that reads its people from a required reference spreadsheet. */
 export const RUN_DIALOG_REFERENCE_CATALOG = catalogOf(flow => ({ ...flow, requiredWorkbookFields: ["eid"], workbookReference: { id: "roster-type", keyFieldId: "eid", mode: "keys", writableFields: [] } }));
-/** CRM Document Download as its descriptor declares it: the one workflow whose reference takes several worksheets. */
+/** CRM Document Download as its descriptor declares it, with a read-only roster reference. */
 export const RUN_DIALOG_CRM = "crm-doc-download";
 export const RUN_DIALOG_SEVERAL_SHEETS_CATALOG = catalogOf(flow => ({ ...flow, workflowId: RUN_DIALOG_CRM, label: "CRM Document Download", icon: "FileText", code: "cd",
   requiredWorkbookFields: [...CRM_DOCUMENT_ROSTER_FIELDS], workbookReference: { id: ONBOARDING_ROSTER_TYPE_ID, keyFieldId: "email", mode: "keys", writableFields: [] },

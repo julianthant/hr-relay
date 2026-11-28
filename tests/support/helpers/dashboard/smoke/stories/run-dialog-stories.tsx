@@ -18,6 +18,10 @@ import {
 } from "../../../../fixtures/dashboard/run-dialog-story-fixtures.js";
 import { RUN_DIALOG_CRM_SHAPE, RUN_DIALOG_REFERENCE_READS, runDialogReferenceReads } from "../../../../fixtures/dashboard/run-dialog-reference-fixtures.js";
 import { FIXTURE_CHATGPT_OCR_SIGNED_OUT } from "../../../../fixtures/dashboard/fixture-chatgpt-account.js";
+import { buildWorkflowCatalog } from "../../../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
+import { compileWorkflow } from "../../../../../../src/workflow-kit/workflow-definition.js";
+import { onboardingWorkflow } from "../../../../../../src/workflows/onboarding/workflow.js";
+import type { RunStartWorkflow } from "../../../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { defineSurface, type Story } from "../story-catalogue.js";
 import { SceneBinding } from "./scene-binding.js";
 import { StoryFrame } from "./story-frame.js";
@@ -185,7 +189,7 @@ const PDF = {
 } satisfies Record<PdfInputState, Story>;
 
 /** What the dialog shows when the reference spreadsheets a workflow reads cannot be read or checked. */
-type ReferenceState = "none-added" | "pdfs-none-added" | "loading" | "catalog-failed" | "compatibility-failed" | "unchecked" | "check-loading" | "check-failed" | "chosen" | "version-chosen" | "spreadsheet-menu" | "long-name-menu" | "worksheet-menu" | "one-of-several" | "three-worksheets" | "several-menu" | "start";
+type ReferenceState = "none-added" | "pdfs-none-added" | "loading" | "catalog-failed" | "compatibility-failed" | "unchecked" | "check-loading" | "check-failed" | "chosen" | "version-chosen" | "spreadsheet-menu" | "long-name-menu" | "worksheet-menu" | "one-of-several" | "three-worksheets" | "several-menu" | "two-start" | "two-rerun" | "start";
 const unreadable = () => { throw new Error("The spreadsheets could not be read."); };
 const reference = (title: string, served: Partial<DashboardClient>, catalog = RUN_DIALOG_REFERENCE_CATALOG, extra: Partial<Story> & SceneOptions = {}): Story =>
   stage(title, () => runDialogClient({ workbookTypes: async () => [], ...served }), "Input", { catalog, ...extra });
@@ -202,6 +206,27 @@ const chooseThree = async (page: Page) => { await chooseRoster(page);
   await dialog(page).getByRole("button", { name: /worksheets, /u }).click(); await worksheetSearch(page).waitFor();
   for (const name of ["Nov. 16", "Nov 9"]) await page.getByRole("menuitemcheckbox", { name }).click(); };
 const several = (title: string, then: (page: Page) => Promise<void>) => reference(title, runDialogReferenceReads(SHEETS, "onboarding-roster", RUN_DIALOG_CRM_SHAPE), RUN_DIALOG_SEVERAL_SHEETS_CATALOG, { then, workflowId: RUN_DIALOG_CRM });
+const onboarding = compileWorkflow(onboardingWorkflow).descriptor;
+const onboardingReference = onboarding.workbookReference, onboardingInput = onboarding.surfaces.inputRun;
+if (onboardingReference === undefined || onboardingInput === undefined) throw new Error("The Onboarding story requires saved roster input");
+const onboardingFlow: RunStartWorkflow = {
+  workflowId: onboarding.id, label: onboarding.label, categoryId: onboarding.category, role: onboardingWorkflow.role, icon: onboarding.icon,
+  enqueue: onboarding.enqueue, version: onboarding.version, spreadsheetIntake: false, requiredWorkbookFields: onboarding.requiredWorkbookFields,
+  workbookReference: onboardingReference, inputRun: { state: "present", surface: onboardingInput },
+  steps: onboarding.timeline.map(({ key, label }) => ({ key, label, includedByDefault: true, control: { state: "required", reason: "This workflow requires every node in this step." } })),
+};
+const onboardingCatalog = buildWorkflowCatalog([onboardingFlow], { [onboarding.id]: "served" });
+const onboardingReads = runDialogReferenceReads(["People", "Archive"], onboardingReference.id, {
+  workflowId: onboarding.id, label: onboarding.label, keyFieldId: onboardingReference.keyFieldId,
+  fields: onboarding.requiredWorkbookFields, writableFields: onboardingReference.writableFields,
+  row: ["hire@example.test", "Example Hire", null, null, null],
+});
+const twoWorksheetPicker = (page: Page) => dialog(page).getByRole("button", { name: "Roster worksheets, 2 worksheets" });
+const waitForTwoWorksheets = async (page: Page) => {
+  for (const name of ["People", "Archive"]) {
+    await page.getByRole("menuitemcheckbox", { name, checked: true }).waitFor();
+  }
+};
 export const LONG_NAME = "Roster of all onboarding and separation candidates for the fall quarter 2026 final reviewed edition v3 (do not edit).xlsx";
 const REFERENCE = {
   "none-added": reference("The reference field before any spreadsheet is picked", RUN_DIALOG_REFERENCE_READS),
@@ -220,10 +245,28 @@ const REFERENCE = {
   "long-name-menu": reference("The Add spreadsheet menu open on a spreadsheet with a very long name", runDialogReferenceReads(["First"], "roster-type", undefined, LONG_NAME), RUN_DIALOG_REFERENCE_CATALOG, { knownFailures: { "named-and-focusable": "#532" }, then: async page => {
     await dialog(page).getByRole("button", { name: /Add spreadsheet|Change spreadsheet/u }).click(); await page.getByRole("searchbox", { name: "Find a spreadsheet" }).fill("Roster"); await page.getByRole("menuitem").filter({ hasText: "Roster" }).first().waitFor(); } }),
   "worksheet-menu": reference("The chosen spreadsheet's worksheet menu open", runDialogReferenceReads(SHEETS), RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page);
-    await dialog(page).getByRole("button", { name: /worksheet, /u }).click(); await page.getByRole("searchbox", { name: "Find a worksheet" }).waitFor(); } }),
+    await dialog(page).getByRole("button", { name: /worksheets, /u }).click(); await page.getByRole("searchbox", { name: "Find a worksheet" }).waitFor(); } }),
   "one-of-several": several("A reference that takes several worksheets, one chosen", chooseRoster),
   "three-worksheets": several("Three reference worksheets chosen, the menu closed", async page => { await chooseThree(page); await page.keyboard.press("Escape"); await worksheetSearch(page).waitFor({ state: "hidden" }); }),
   "several-menu": several("The worksheet menu of a several-worksheet reference, three checked", chooseThree),
+  "two-start": reference("Onboarding Start with People and Archive selected", onboardingReads, onboardingCatalog, { workflowId: onboarding.id, then: async page => {
+    await chooseRoster(page);
+    await dialog(page).getByRole("button", { name: "Roster worksheets, Archive" }).click();
+    await page.getByRole("menuitemcheckbox", { name: "People" }).click();
+    await waitForTwoWorksheets(page);
+  } }),
+  "two-rerun": stage("Onboarding Rerun with both retained worksheets shown", () => runDialogClient({ ...onboardingReads, rerunValues: async () => ({
+    state: "available", snapshot: {
+      source: { runId: RUN_DIALOG_RERUN_SOURCE.runId, version: RUN_DIALOG_RERUN_SOURCE.expectedVersion, workflow: onboarding.id,
+        descriptorVersion: onboarding.version, contractFingerprint: onboarding.contractFingerprint, outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headless" },
+      sourceInput: { state: "available", value: { email: "hire@example.test", mode: "new-hire" } }, values: [], transactions: [],
+      spreadsheets: ["first", "sheet-1"].map(sheetId => ({ typeId: onboardingReference.id, libraryId: "roster", versionId: "version", sheetId })),
+      steps: onboarding.timeline.map(({ key, nodes }) => ({ key, state: "unfinished", nodes: nodes.map(({ id }) => ({ nodeId: id, state: "unfinished", reason: "not-recorded" })) })),
+    },
+  }) }), "Steps", { catalog: onboardingCatalog, workflowId: onboarding.id, rerun: true, then: async page => {
+    await twoWorksheetPicker(page).click();
+    await waitForTwoWorksheets(page);
+  } }),
   start: reference("Start, with the chosen spreadsheet", RUN_DIALOG_REFERENCE_READS, RUN_DIALOG_REFERENCE_CATALOG, { then: async page => { await chooseRoster(page); await dialog(page).locator("textarea").first().fill(RUN_DIALOG_TYPED); await press(page, "Next"); await at(page, "Start"); } }),
 } satisfies Record<ReferenceState, Story>;
 

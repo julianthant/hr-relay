@@ -88,12 +88,14 @@ export function useRunStartWorkbookRows(
   const rowLibrary = library.catalog.find(entry => entry.libraryId === rowReference?.libraryId && entry.state.origin.kind === "local" && !entry.state.removed);
   const rowVersion = rowLibrary?.state.versions.find(version => version.id === rowReference?.versionId);
   const rowReadReady = !library.catalogLoading && !library.catalogRefreshing && !library.catalogError && rowLibrary !== undefined && rowVersion !== undefined
-    && versionSources.state === 'ready' && versionSources.sources.some(source => source.libraryId === rowReference?.libraryId && source.versionId === rowReference?.versionId && source.sheetId === rowReference?.sheetIds[0]);
+    && versionSources.state === 'ready' && rowReference !== undefined && rowReference.sheetIds.length > 0
+    && rowReference.sheetIds.every(sheetId => versionSources.sources.some(source => source.libraryId === rowReference.libraryId && source.versionId === rowReference.versionId && source.sheetId === sheetId));
   const rowIdentity = canonicalJsonStringify([actorId, workflowId, workflow?.version ?? null, inputRun, rowReference ?? null, rowLibrary?.state.revision ?? null]);
   const workbookRows = useWorkbookRows(client, rowIdentity, commandBinding?.authority.epoch ?? client, open && rowCapability !== undefined,
-    rowReadReady, rowReference?.libraryId ?? "", rowVersion, workbookReference?.keyFieldId, rowReference?.sheetIds[0]);
-  const rowSource = canonicalJsonStringify([rowReference?.libraryId ?? null, rowReference?.versionId ?? null, rowReference?.sheetIds[0] ?? null]);
-  const rowSelectionFresh = selectedWorkbookRows === undefined || selectedWorkbookRows.source === rowSource;
+    rowReadReady, rowReference?.libraryId ?? "", rowVersion, workbookReference?.keyFieldId, rowReference?.sheetIds);
+  const rowSource = canonicalJsonStringify([rowReference?.libraryId ?? null, rowReference?.versionId ?? null]);
+  const rowSelectionFresh = selectedWorkbookRows === undefined || selectedWorkbookRows.source === rowSource
+    && selectedWorkbookRows.choices.every(row => rowReference?.sheetIds.includes(row.sheetId));
   const rowChoices = rowSelectionFresh ? workbookRows.choices : selectedWorkbookRows?.choices ?? [];
   return { rowCapability, rowReference, rowLibrary, rowVersion, rowIdentity, workbookRows, rowSource, rowSelectionFresh, rowChoices };
 }

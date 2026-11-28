@@ -46,13 +46,19 @@ it('refuses missing reference identities, unavailable named versions', () => {
   expect(() => launchWorkbookReferences(['roster-type'], [{ ...entry, state: { ...entry.state, origin: { kind: 'unavailable', code: 'WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE' } } }], selections, 1, sources, false)).toThrow();
   expect(() => launchWorkbookReferences(['roster-type'], [entry], selections, 1, [], false)).toThrow();
 });
-it('sends one reference per chosen worksheet and refuses an unknown one or a saved row beside several', () => {
+it('sends one reference per chosen worksheet and attaches a picked row only to its own sheet', () => {
   const several = { 'roster-type': { libraryId: 'roster', versionId: 'current', sheetIds: ['people', 'staff'] } };
   const both = [...sources, { libraryId: 'roster', versionId: 'current', sheetId: 'staff' }];
   expect(launchWorkbookReferences(['roster-type'], [entry], several, 1, both, false)).toEqual(['people', 'staff'].map(sheetId => (
     { entry: 1, libraryId: 'roster', versionId: 'current', sheetId, expectedVersion: 3 })));
   expect(() => launchWorkbookReferences(['roster-type'], [entry], several, 1, sources, false)).toThrow();
-  expect(() => launchWorkbookReferences(['roster-type'], [entry], several, 1, both, false, { typeId: 'roster-type', rows: [{ sheetId: 'people', rowId: 'first' }] })).toThrow();
+  const row = { sheetId: 'staff', rowId: 'first' };
+  expect(launchWorkbookReferences(['roster-type'], [entry], several, 1, both, true, { typeId: 'roster-type', rows: [row] })).toEqual([
+    { entry: 1, libraryId: 'roster', versionId: 'current', sheetId: 'people', expectedVersion: 3 },
+    { entry: 1, libraryId: 'roster', versionId: 'current', sheetId: 'staff', expectedVersion: 3, selectedRow: row },
+  ]);
+  expect(() => launchWorkbookReferences(['roster-type'], [entry], several, 1, both, true,
+    { typeId: 'roster-type', rows: [{ ...row, sheetId: 'unknown' }] })).toThrow(ERROR_CATALOG.WORKBOOK_INVALID.text);
 });
 
 it('pins an explicitly chosen historical worksheet even when its sheet ID differs from current', () => {

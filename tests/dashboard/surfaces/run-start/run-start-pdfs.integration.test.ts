@@ -33,16 +33,17 @@ const reference = WorkbookLibraryEntrySchema.parse({ libraryId: "action-history-
   state: { libraryId: "action-history-file", revision: 4, selectedVersionId: "current", removed: false, pinned: false, tags: [], origin: { kind: "local" },
     versions: ["earlier", "current"].map((id, index) => ({ id, name: id === "earlier" ? "Fall review" : "Current", snapshotId: id,
       version: index + 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" })) } });
-const workbookFor = (fields: readonly string[]) => ({ name: reference.name, libraryId: reference.libraryId, themes: [], hasFormulas: false,
-  sheets: [{ id: 'history', name: 'Action History', width: fields.length, hidden: [],
+const TWO_SHEETS = [...reference.worksheets, { id: "archive", name: "Archive" }];
+const workbookFor = (fields: readonly string[], worksheets: typeof reference.worksheets) => ({ name: reference.name, libraryId: reference.libraryId, themes: [], hasFormulas: false,
+  sheets: worksheets.map(({ id, name }) => ({ id, name, width: fields.length, hidden: [],
     columnBindings: fields.map((fieldId, column) => ({ id: `binding-${column}`, sourceColumn: column, sourceHeader: fieldId, fieldId, basis: 'manual' as const })),
-    rows: [{ id: 'header', cells: fields.map(value => ({ value })) }, { id: 'person', cells: fields.map(value => ({ value: value === 'eid' ? '10800000' : '' })) }] }] });
-const compatibilityFor = (workflow: Parameters<typeof projectWorkbookCompatibility>[0][number], fields: readonly string[]) => projectWorkbookCompatibility([workflow], [{ libraryId: reference.libraryId, versionId: 'current', origin: { kind: 'local' }, removed: false,
-  sheets: [{ id: 'history', name: 'Action History', mappings: fields.map((fieldId, column) => ({ fieldId, column, basis: 'manual' as const })) }] }]);
-function client(served: Partial<DashboardClient>, fields: readonly string[] = descriptor.requiredWorkbookFields, workflow: Parameters<typeof projectWorkbookCompatibility>[0][number] = descriptor) {
-  return h.stubClient({ workbookCatalog: async () => [reference], workbookCompatibility: async () => compatibilityFor(workflow, fields),
+    rows: [{ id: 'header', cells: fields.map(value => ({ value })) }, { id: 'person', cells: fields.map(value => ({ value: value === 'eid' ? '10800000' : '' })) }] })) });
+const compatibilityFor = (workflow: Parameters<typeof projectWorkbookCompatibility>[0][number], fields: readonly string[], worksheets: typeof reference.worksheets) => projectWorkbookCompatibility([workflow], [{ libraryId: reference.libraryId, versionId: 'current', origin: { kind: 'local' }, removed: false,
+  sheets: worksheets.map(({ id, name }) => ({ id, name, mappings: fields.map((fieldId, column) => ({ fieldId, column, basis: 'manual' as const })) })) }]);
+function client(served: Partial<DashboardClient>, fields: readonly string[] = descriptor.requiredWorkbookFields, workflow: Parameters<typeof projectWorkbookCompatibility>[0][number] = descriptor, worksheets = reference.worksheets) {
+  return h.stubClient({ workbookCatalog: async () => [{ ...reference, worksheets }], workbookCompatibility: async () => compatibilityFor(workflow, fields, worksheets),
     workbookTypes: async () => [reference.type], workbookLibraryVersion: async (_libraryId, versionId) => WorkbookLibraryVersionViewSchema.parse({
-      libraryId: reference.libraryId, version: reference.state.versions.find(version => version.id === versionId), workbook: workbookFor(fields),
+      libraryId: reference.libraryId, version: reference.state.versions.find(version => version.id === versionId), workbook: workbookFor(fields, worksheets),
     }), ...served });
 }
 function pdf(name: string, contents: string) {
@@ -73,14 +74,15 @@ it.each([
       plans.push(request);
       const requested = StartPlanRequestSchema.parse(request), plan = h.planResponse("5a000000-0000-4000-8000-000000000001");
       return { ...plan, workflowId: parent.id, omittedSteps: requested.stepOmissions?.map(({ step }) => step),
-        planned: plan.planned.map(entry => ({ ...entry, workbookReferences: [{ libraryId: reference.libraryId, version: reference.version,
-          versionId: "earlier", versionName: "Fall review", worksheets: [{ sheetId: "history", name: "Action History" }], type: reference.type }] })) };
+        planned: plan.planned.map(entry => ({ ...entry, workbookReferences: TWO_SHEETS.map(({ id, name }) => ({ libraryId: reference.libraryId, version: reference.version,
+          versionId: "earlier", versionName: "Fall review", worksheets: [{ sheetId: id, name }], type: reference.type })) })) };
     },
     executeCommand: async request => { commands.push(request); return h.APPLIED; },
-  }, parent.requiredWorkbookFields, parent), { workflows: [h.WORKFLOWS[0], flow], panelWorkflowId: h.WORKFLOW_ID });
+  }, parent.requiredWorkbookFields, parent, TWO_SHEETS), { workflows: [h.WORKFLOWS[0], flow], panelWorkflowId: h.WORKFLOW_ID });
   await dialog.press(flow.label);
   await attach([pdf("first.pdf", "%PDF first")]);
-  await h.chooseReference("Action History.xlsx", "Fall review", "Action History");
+  await h.chooseReference("Action History.xlsx", "Fall review");
+  await h.chooseWorksheets(["Action History", "Archive"]);
   await dialog.press("Next");
   if (parent.id === "emergency-contact") {
     const skip = document.querySelector<HTMLInputElement>('input[type="radio"][name^="File to OnBase-"][value="skip"]');
@@ -108,6 +110,7 @@ it.each([
   expect(StartPlanRequestSchema.parse(plans.at(-1)).stepOmissions).toEqual([
     { workflow: "ocr", step: "page-readings", facts: { readings: [reading] } },
   ]);
+  expect(StartPlanRequestSchema.parse(plans.at(-1)).workbookReferences?.map(({ sheetId }) => sheetId)).toEqual(["history", "archive"]);
   assert.equal(commands.length, 1, dialog.text());
   expect(StartCommandRequestSchema.parse(commands.at(-1))).toMatchObject({ requestedBy: h.ACTOR_ID, target: { workflowId: parent.id } });
 });

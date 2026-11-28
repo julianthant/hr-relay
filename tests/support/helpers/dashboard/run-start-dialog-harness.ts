@@ -479,6 +479,23 @@ export function createRunStartDialogHarness() {
   }
 
   /** Drives the Reference spreadsheets rows: Add (or Change) spreadsheet and search it, then optionally its version select and worksheet menu. */
+  async function chooseWorksheets(worksheets: readonly string[]): Promise<void> {
+    const trigger = buttons().find(button => /worksheets?, /u.test(button.getAttribute("aria-label") ?? ""));
+    if (trigger === undefined) throw new Error("the reference row draws no worksheet menu");
+    await act(async () => { trigger.click(); });
+    const choices = [...document.body.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')];
+    for (const name of worksheets) {
+      const choice = choices.find(node => node.textContent === name);
+      if (choice === undefined) throw new Error(`no worksheet ${name}`);
+      if (choice.getAttribute("aria-checked") !== "true") await act(async () => { choice.click(); });
+    }
+    for (const choice of choices) {
+      if (!worksheets.includes(choice.textContent ?? "") && choice.getAttribute("aria-checked") === "true") await act(async () => { choice.click(); });
+    }
+    await act(async () => { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    await settle();
+  }
+
   async function chooseReference(spreadsheet: string, version?: string, worksheet?: string): Promise<void> {
     const open = buttons().find(button => ["Add spreadsheet", "Change spreadsheet"].includes(button.textContent?.trim() ?? ""));
     if (open === undefined) throw new Error("the dialog draws no Add spreadsheet button");
@@ -491,15 +508,7 @@ export function createRunStartDialogHarness() {
     await act(async () => { item.click(); });
     await settle();
     if (version !== undefined) await chooseVersion(version);
-    if (worksheet !== undefined) {
-      const trigger = buttons().find(button => /worksheet, /u.test(button.getAttribute("aria-label") ?? ""));
-      if (trigger === undefined) throw new Error("the reference row draws no worksheet menu");
-      await act(async () => { trigger.click(); });
-      const choice = [...document.body.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(node => node.textContent?.includes(worksheet));
-      if (choice === undefined) throw new Error(`no worksheet ${worksheet}`);
-      await act(async () => { choice.click(); });
-      await settle();
-    }
+    if (worksheet !== undefined) await chooseWorksheets([worksheet]);
   }
 
   // Compare presence as a boolean; formatting a jsdom node can exhaust the assertion budget.
@@ -520,5 +529,5 @@ export function createRunStartDialogHarness() {
     return dialog;
   }
 
-  return { cleanup, openDialog, stubClient, readiness, READY, ACTOR_ID, WORKFLOW_ID, TYPED, HASH, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName, chooseReference, chooseVersion };
+  return { cleanup, openDialog, stubClient, readiness, READY, ACTOR_ID, WORKFLOW_ID, TYPED, HASH, WORKFLOWS, APPLIED, CONFLICT, planResponse, planIsDrawn, reachResult, closed, intakeHandoffs, settle, buttons, buttonName, chooseReference, chooseVersion, chooseWorksheets };
 }

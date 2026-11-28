@@ -90,17 +90,17 @@ export function previewWorkbookRows(surface: InputRunSurface, choices: readonly 
 
 
 export function useWorkbookRows(client: Pick<DashboardClient, "workbookLibraryVersion">, identity: string, authority: object,
-  enabled: boolean, ready: boolean, libraryId: string, version: WorkbookLibraryVersion | undefined, keyFieldId: string | undefined, selectedSheetId: string | undefined) {
-  const token = useMemo(() => ({ client, identity, authority, enabled, ready, libraryId, version, keyFieldId, selectedSheetId }), [client, identity, authority, enabled, ready, libraryId, version, keyFieldId, selectedSheetId]);
+  enabled: boolean, ready: boolean, libraryId: string, version: WorkbookLibraryVersion | undefined, keyFieldId: string | undefined, selectedSheetIds: readonly string[] | undefined) {
+  const token = useMemo(() => ({ client, identity, authority, enabled, ready, libraryId, version, keyFieldId, selectedSheetIds }), [client, identity, authority, enabled, ready, libraryId, version, keyFieldId, selectedSheetIds]);
   const [loaded, setLoaded] = useState<{ token: object; state: "loading" | "ready" | "error"; choices: readonly WorkbookRowChoice[]; error: string | null }>();
   useEffect(() => {
-    if (!enabled || !ready || version === undefined || keyFieldId === undefined || selectedSheetId === undefined) return;
+    if (!enabled || !ready || version === undefined || keyFieldId === undefined || selectedSheetIds === undefined) return;
     let current = true;
     setLoaded(previous => ({ token, state: "loading", choices: previous?.choices ?? [], error: null }));
     void client.workbookLibraryVersion(libraryId, version.id).then(view => {
       if (!current) return;
       if (view.libraryId !== libraryId || canonicalJsonStringify(view.version) !== canonicalJsonStringify(version)) throw schemaError("Saved spreadsheet version", "named version identity mismatch");
-      setLoaded({ token, state: "ready", choices: workbookRowChoices(view.workbook, keyFieldId, selectedSheetId), error: null });
+      setLoaded({ token, state: "ready", choices: selectedSheetIds.flatMap(sheetId => workbookRowChoices(view.workbook, keyFieldId, sheetId)), error: null });
     }).catch((error: unknown) => {
       const code = ErrorCatalogCodeSchema.safeParse(error instanceof DashboardClientError && error.kind === "http" ? error.code : undefined);
       const publicCode = error instanceof DashboardClientError && (error.kind === "schema" || error.kind === "protocol")
@@ -108,7 +108,7 @@ export function useWorkbookRows(client: Pick<DashboardClient, "workbookLibraryVe
       if (current) setLoaded(previous => ({ token, state: "error", choices: previous?.choices ?? [], error: ERROR_CATALOG[publicCode].text }));
     });
     return () => { current = false; };
-  }, [client, token, enabled, ready, libraryId, version, keyFieldId, selectedSheetId]);
+  }, [client, token, enabled, ready, libraryId, version, keyFieldId, selectedSheetIds]);
   const state = !enabled ? "idle" : !ready ? "stale" : loaded?.token !== token ? "loading" : loaded.state;
   return { authority: token, state, choices: loaded?.choices ?? [], error: state === "error" ? loaded?.error ?? null : null };
 }

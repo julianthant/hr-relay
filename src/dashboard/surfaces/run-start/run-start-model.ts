@@ -581,15 +581,16 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
     const selection = selections[typeId];
     if (selection === undefined) throw new Error(ERROR_CATALOG.WORKBOOK_REFERENCE_MISSING.text);
     const entry = catalog.find(entry => entry.libraryId === selection.libraryId);
+    const row = selectedRows?.typeId === typeId ? selectedRows.rows[index] : undefined;
     if (!entry || entry.state.removed || entry.state.origin.kind !== 'local'
       || !entry.state.versions.some(version => version.id === selection.versionId)
       || writable && entry.state.selectedVersionId !== selection.versionId
-      || selection.sheetIds.length === 0 || selectedRows?.typeId === typeId && selection.sheetIds.length > 1
+      || selection.sheetIds.length === 0 || row !== undefined && !selection.sheetIds.includes(row.sheetId)
       || !selection.sheetIds.every(sheetId => eligibleSources.some(source => source.libraryId === selection.libraryId && source.versionId === selection.versionId && source.sheetId === sheetId)))
       throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
     return selection.sheetIds.map(sheetId => WorkbookActiveSelectionSchema.parse({ entry: index + 1, libraryId: entry.libraryId, versionId: selection.versionId,
       sheetId, expectedVersion: entry.version,
-      ...(selectedRows?.typeId === typeId ? { selectedRow: { sheetId: selectedRows.rows[index].sheetId, rowId: selectedRows.rows[index].rowId } } : {}) }));
+      ...(row?.sheetId === sheetId ? { selectedRow: { sheetId, rowId: row.rowId } } : {}) }));
   }), ...checkEntries(index)]).flat();
 }
 

@@ -152,17 +152,32 @@ it("retains the original issued envelope after an unknown result and later mode 
   assert.equal(commands.length, 1); assert.equal(dialog.disabled("Next"), true);
 });
 
-function rerunSnapshot() {
+it("lists both selected sheets' saved rows and pins the picked row only on its own sheet", async () => {
+  let planned: StartPlanRequest | undefined;
+  const dialog = await h.openDialog(h.stubClient({ ...libraryReads, submitStartPlan: async input => {
+    planned = StartPlanRequestSchema.parse(input); return proposal(planned);
+  } }), { workflows: [workflow], panelWorkflowId: descriptor.id });
+  await h.settle(); await chooseCurrent();
+  await h.chooseWorksheets(["First", "Second"]);
+  const second = checkboxRows().findIndex(checkbox => checkbox.closest("tr")?.textContent?.includes("Second · Row 2"));
+  assert.equal(checkboxRows().length, 4);
+  await select(second); await dialog.press("Next"); await dialog.press("Start live run");
+  assert.deepEqual(planned?.workbookReferences?.map(({ sheetId, selectedRow }) => [sheetId, selectedRow]),
+    [["first", undefined], ["second", { sheetId: "second", rowId: "same-row" }]]);
+});
+
+function rerunSnapshot(several = false) {
   const source = RerunValuesRequestSchema.parse({ runId: "22222222-2222-4222-8222-222222222222", expectedVersion: 3 });
   const snapshot = RerunValuesSnapshotSchema.parse({ source: { runId: source.runId, version: source.expectedVersion, workflow: rerunDescriptor.id,
     descriptorVersion: rerunDescriptor.version, contractFingerprint: rerunDescriptor.contractFingerprint, outcome: "failed", dryRun: false, priority: "interactive", browserMode: "headless" }, sourceInput: { state: "available", value: { email: "source@example.test", mode: "rehire" } },
-    spreadsheets: [{ typeId: workflow.workbookReference?.id, libraryId: entry.libraryId, versionId: "version", sheetId: "first", selectedRow: { sheetId: "first", rowId: "row-2" } }],
+    spreadsheets: (several ? ["first", "second"] : ["first"]).map(sheetId => ({ typeId: workflow.workbookReference?.id, libraryId: entry.libraryId, versionId: "version", sheetId,
+      ...(sheetId === (several ? "second" : "first") ? { selectedRow: { sheetId, rowId: "row-2" } } : {}) })),
     steps: rerunDescriptor.timeline.map(step => ({ key: step.key, state: "unfinished", nodes: step.nodes.map(node => ({ nodeId: node.id, state: "unfinished", reason: "not-recorded" })) })), values: [], transactions: [] });
   return { source, snapshot };
 }
 
-it("reruns the original person, mode and saved spreadsheet, with its row and no roster", async () => {
-  const { source, snapshot } = rerunSnapshot();
+it("reruns the original person and mode with both saved worksheets and the picked row on its own sheet", async () => {
+  const { source, snapshot } = rerunSnapshot(true);
   let planned: StartPlanRequest | undefined;
   const dialog = await h.openDialog(h.stubClient({ ...libraryReads, rerunValues: async () => ({ state: "available", snapshot }),
     previewRerunWarnings: async input => RerunWarningWireSchema.parse({ workflowId: descriptor.id, rerun: { source: RerunWarningRequestSchema.parse(input).source, warnings: [], warningDigest: h.HASH } }),
@@ -170,9 +185,17 @@ it("reruns the original person, mode and saved spreadsheet, with its row and no 
   }), { workflows: [workflow], panelWorkflowId: descriptor.id, rerunSource: source });
   await h.settle();
   assert.equal(checkboxRows().length, 0); assert.equal(document.querySelector(".launch-dialog textarea") === null, true);
+  const picker = h.buttons().find(button => h.buttonName(button) === "Roster worksheets, 2 worksheets"); assert.ok(picker);
+  await act(async () => picker.click());
+  assert.deepEqual([...document.body.querySelectorAll('[role="menuitemcheckbox"]')].map(item =>
+    [item.textContent, item.getAttribute("aria-checked"), item.getAttribute("aria-disabled")]), [["Second", "true", "true"], ["First", "true", "true"]]);
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await dialog.press("Next"); await dialog.press("Start live run"); assert.ok(planned);
   assert.deepEqual(planned.submissions, [{ email: "source@example.test", mode: "rehire" }]);
-  assert.deepEqual(planned.workbookReferences, [{ entry: 1, libraryId: entry.libraryId, versionId: "version", sheetId: "first", expectedVersion: 1, selectedRow: { sheetId: "first", rowId: "row-2" } }]);
+  assert.deepEqual(planned.workbookReferences, [
+    { entry: 1, libraryId: entry.libraryId, versionId: "version", sheetId: "first", expectedVersion: 1 },
+    { entry: 1, libraryId: entry.libraryId, versionId: "version", sheetId: "second", expectedVersion: 1, selectedRow: { sheetId: "second", rowId: "row-2" } },
+  ]);
 });
 
 it("refuses a rerun whose saved spreadsheet version is no longer the active one, never moving its row to another version", async () => {

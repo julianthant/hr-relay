@@ -39,8 +39,8 @@ export function SpreadsheetPicker({ label, options, busy, onPick }: {
 }
 
 /** The worksheet chip of a picked spreadsheet: a searchable menu, newest worksheet first, for one worksheet (radio) or several (checks). */
-function WorksheetMenu({ owner, worksheets, picked, mode, disabled, max, onChange }: {
-  owner: string; worksheets: readonly SheetWorksheet[]; picked: readonly string[]; mode: "one" | "many"; disabled: boolean; max?: number | undefined; onChange: (sheetIds: readonly string[]) => void;
+function WorksheetMenu({ owner, worksheets, picked, mode, disabled, max, readOnly, onChange }: {
+  owner: string; worksheets: readonly SheetWorksheet[]; picked: readonly string[]; mode: "one" | "many"; disabled: boolean; max?: number | undefined; readOnly: boolean; onChange: (sheetIds: readonly string[]) => void;
 }) {
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
@@ -57,9 +57,9 @@ function WorksheetMenu({ owner, worksheets, picked, mode, disabled, max, onChang
       <DropdownMenuGroup aria-label={`${owner} worksheets`} className="max-h-56 overflow-y-auto">
         {mode === "one"
           ? <DropdownMenuRadioGroup value={picked[0] ?? ""} onValueChange={sheetId => onChange([sheetId])}>
-            {found.map(worksheet => <DropdownMenuRadioItem key={worksheet.sheetId} value={worksheet.sheetId}>{worksheet.sheetName}</DropdownMenuRadioItem>)}
+            {found.map(worksheet => <DropdownMenuRadioItem key={worksheet.sheetId} value={worksheet.sheetId} disabled={readOnly}>{worksheet.sheetName}</DropdownMenuRadioItem>)}
           </DropdownMenuRadioGroup>
-          : found.map(worksheet => <DropdownMenuCheckboxItem key={worksheet.sheetId} checked={picked.includes(worksheet.sheetId)} disabled={max !== undefined && picked.length >= max && !picked.includes(worksheet.sheetId)}
+          : found.map(worksheet => <DropdownMenuCheckboxItem key={worksheet.sheetId} checked={picked.includes(worksheet.sheetId)} disabled={readOnly || max !== undefined && picked.length >= max && !picked.includes(worksheet.sheetId)}
             onCheckedChange={on => { const next = on === true ? [...picked, worksheet.sheetId] : picked.filter(id => id !== worksheet.sheetId); if (next.length > 0) onChange(next); }}>{worksheet.sheetName}</DropdownMenuCheckboxItem>)}
       </DropdownMenuGroup>
       {found.length === 0 && <p className="m-0 p-2 text-body text-ui-muted">No worksheets match.</p>}
@@ -69,13 +69,14 @@ function WorksheetMenu({ owner, worksheets, picked, mode, disabled, max, onChang
 }
 
 /** One picked spreadsheet: name left; worksheet chip, "v6 · Nov 24" version choice and remove right. `note` says what stops the row. */
-export function SpreadsheetRow({ name, versions, versionId, note, worksheets, picked, mode, busy, locked = false, worksheetsReady, max, onVersion, onWorksheets, onRemove }: {
+export function SpreadsheetRow({ name, versions, versionId, note, worksheets, picked, mode, busy, locked = false, worksheetsReady, max, onVersion, onWorksheets, onRemove, inspectWorksheets = false }: {
   name: string; versions: readonly SheetVersion[]; versionId: string; note?: string | undefined;
-  worksheets: readonly SheetWorksheet[]; picked: readonly string[]; mode: "one" | "many"; busy: boolean; locked?: boolean; worksheetsReady: boolean; max?: number | undefined;
+  worksheets: readonly SheetWorksheet[]; picked: readonly string[]; mode: "one" | "many"; busy: boolean; locked?: boolean; worksheetsReady: boolean; max?: number | undefined; inspectWorksheets?: boolean;
   onVersion: (versionId: string) => void; onWorksheets: (sheetIds: readonly string[]) => void; onRemove: () => void;
 }) {
   return <RunListRow title={name} description={note} lead={<Table2 aria-hidden className={`${dsIcon.md} shrink-0 text-ui-muted`} />}>
-    <WorksheetMenu owner={name} worksheets={worksheets} picked={picked} mode={mode} disabled={busy || !worksheetsReady} max={max} onChange={onWorksheets} />
+    <WorksheetMenu owner={name} worksheets={worksheets} picked={picked} mode={mode} disabled={!worksheetsReady || busy && !inspectWorksheets}
+      readOnly={inspectWorksheets} max={max} onChange={onWorksheets} />
     <Select aria-label={`${name} version`} variant="toolbar" className="min-w-0 max-w-52 !border-transparent !bg-transparent !text-ui-muted tabular-nums" disabled={busy} value={versionId} onChange={event => onVersion(event.target.value)}>
       {versions.map(({ id, name, savedAt }) => {
         const label = `${name} · ${formatMonthDay(savedAt, undefined, "short")}`;
