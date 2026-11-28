@@ -18,7 +18,7 @@ export const i9CheckStartWorkflow = defineWorkflow({
   referenceKeys: () => [],
   requiresOcrProvider: (input, omissions) => !omissions?.some(entry => entry.workflow === undefined && entry.step === "documents")
     && input.documents.some(usesOcrProvider),
-  plannedOutputs: (_input, _references, omissions) => omissions?.some(entry => entry.workflow === undefined && entry.step === "publication") ? []
+  plannedOutputs: (_input, _references, omittedSteps = []) => omittedSteps.includes("publication") ? []
     : [{ kind: "workbook", name: "I-9 Check results", rowSubject: "person", rows: { state: "after-review" } }],
   presentation: { title: ({ documents }) => documents.length === 1 && documents[0] !== undefined ? documents[0].fileName : `I-9 Check · ${documents.length} PDFs`, subtitle: () => "One results workbook" },
   surface: { shape: "single" }, surfaces: {

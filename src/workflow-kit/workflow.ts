@@ -213,7 +213,7 @@ export interface WorkflowDescriptor<
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
   readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   readonly referenceKeys?: (input: z.output<InputSchema>) => readonly string[];
-  readonly plannedOutputs?: (input: z.output<InputSchema>, references: readonly RunWorkbookReference[], omissions?: StepOmissions) => readonly PlannedRunOutput[];
+  readonly plannedOutputs?: (input: z.output<InputSchema>, references: readonly RunWorkbookReference[], omittedSteps?: readonly string[]) => readonly PlannedRunOutput[];
   readonly requiresOcrProvider?: (input: z.output<InputSchema>, omissions?: StepOmissions) => boolean;
   readonly code: string;
   readonly label: string;
@@ -280,7 +280,7 @@ export interface AnyWorkflowDescriptor {
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
   readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
   readonly referenceKeys?: (input: never) => readonly string[];
-  readonly plannedOutputs?: (input: never, references: readonly RunWorkbookReference[], omissions?: StepOmissions) => readonly PlannedRunOutput[];
+  readonly plannedOutputs?: (input: never, references: readonly RunWorkbookReference[], omittedSteps?: readonly string[]) => readonly PlannedRunOutput[];
   readonly code: string;
   readonly label: string;
   readonly sessionLabel?: string;
@@ -588,7 +588,7 @@ export interface WorkflowPlanning {
   readonly requiredWorkbookFields: readonly string[];
   readonly workbookReference?: WorkflowWorkbookRequirement["workbookReference"];
   readonly workbookCheck?: WorkflowWorkbookRequirement["workbookCheck"];
-  readonly plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[], omissions?: StepOmissions) => readonly PlannedRunOutput[];
+  readonly plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[], omittedSteps?: readonly string[]) => readonly PlannedRunOutput[];
   readonly requiresOcrProvider: (parsed: unknown, omissions?: StepOmissions) => boolean;
   readonly parseInput: (raw: unknown) => Readonly<{ input: unknown; lookups: readonly WorkbookReferenceLookup[] }>;
   readonly parseCanonicalInput: (value: unknown) => unknown;
@@ -1690,8 +1690,8 @@ export function defineWorkflowDescriptor<
     requiredWorkbookFields,
     ...(workbookReference === undefined ? {} : { workbookReference }),
     ...(workbookCheck === undefined ? {} : { workbookCheck }),
-    plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[], omissions?: StepOmissions) =>
-      PlannedRunOutputSchema.array().parse(spec.plannedOutputs?.(spec.canonicalInput.parse(parsed), references, omissions) ?? []),
+    plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[], omittedSteps?: readonly string[]) =>
+      PlannedRunOutputSchema.array().parse(spec.plannedOutputs?.(spec.canonicalInput.parse(parsed), references, omittedSteps) ?? []),
     requiresOcrProvider: (parsed: unknown, omissions?: StepOmissions) => spec.requiresOcrProvider?.(spec.canonicalInput.parse(parsed), omissions) ?? false,
     parseInput: (raw: unknown) => {
       const input = spec.flow.input.parse(raw);

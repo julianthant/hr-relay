@@ -15,6 +15,11 @@ import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-pro
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { createRunResourcesFactory } from "../../../src/backend/app/composition/worker/run-resources.js";
 import { composeWorkerArtifactProjector } from "../../../src/backend/app/composition/worker/artifact-output.js";
+import { createOperatorProjection } from "../../../src/backend/app/composition/dashboard/queue.js";
+import { createOperatorRunDetail } from "../../../src/backend/app/composition/dashboard/run-detail.js";
+import { buildRunDetail, buildRunSection } from "../../../src/backend/runs/queries/run-detail.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { projectRunLogs } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-error.js";
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
@@ -42,14 +47,15 @@ import { foundationFixture } from "../../support/helpers/database-foundation/fix
 import { ManualScheduler, sessionFactoryHarness, recordingLogger } from "../../support/helpers/phase1f-executor-harness.js";
 import { createCommandKernelTestWorld } from "../../support/helpers/backend/command-kernel-harness.js";
 import { singleAppliedRunId } from "../../support/fixtures/operator-command-fixtures.js";
-import { testRunLifecycle, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunLifecycle, testRunService, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { duoCeremonyGatesOver } from "../../support/helpers/duo-ceremony-fixtures.js";
 import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
 import { importWorkbook } from "../../../src/rules/spreadsheets/workbook-io.js";
 import { CRM_DOCUMENT_RECORDS_FIXTURE, crmDocumentWorkbookFixture } from "../../support/fixtures/crm-doc-download.js";
 
-async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-failed" | "cancelled" | "split", descriptor: AnyWorkflowDescriptor = crmDocDownloadModule.descriptor,
+async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-failed" | "cancelled" | "split" | "manual-search" | "manual-package" | "manual-reference",
+  descriptor: AnyWorkflowDescriptor = crmDocDownloadModule.descriptor,
   inspect?: (world: { f: Awaited<ReturnType<typeof foundationFixture>>; runId: string; itemId: string }) => void) {
   const f = await foundationFixture(), controller = new AbortController();
   const world = createCommandKernelTestWorld();
@@ -96,12 +102,44 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
     const planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: f.clock, ids: h.plannerIds,
       descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, planTtlMs: 600000, workbooks: library, plannedBy: "local-operator",
       configFingerprint: f.snapshot.fingerprint, configSnapshotId: f.snapshot.configSnapshotId });
-    const planned = planner.plan({ workflowId: descriptor.id, submissions: [{ people: "10000001;two@example.test" }], dryRun: false,
-      workbookReferences,
-    });
+    const startRequest = { workflowId: descriptor.id, submissions: [{ people: "10000001;two@example.test" }], dryRun: false, workbookReferences };
+    const stepOmissions = mode === "manual-search"
+      ? [{ step: "search-records", facts: { records: "one | 10000001 | one@example.test | ; two | | two@example.test | other@example.test" } }]
+      : mode === "manual-package" ? [{ step: "package-worksheets", facts: {} }]
+        : mode === "manual-reference" ? [
+          { step: "reference", facts: { worksheetRows: "July 6, rows 2 and 3" } },
+          { step: "read-idocs", facts: { pdfFileNames: "Signed Offer Letter.pdf" } },
+          { step: "package-worksheets", facts: {} },
+        ] : undefined;
+    if (mode === "manual-search") {
+      const selectedStepKeys = ["reference", "read-idocs", "package-worksheets"];
+      assert.throws(() => planner.plan({ ...startRequest, selectedStepKeys }), /no typed facts/);
+      assert.throws(() => planner.plan({ ...startRequest, selectedStepKeys,
+        stepOmissions: [{ step: "search-records", facts: { records: "one | 10000001 | invalid email |" } }],
+      }), /omission facts are invalid at: records/);
+      for (const [records, reason] of [
+        ["one | 10000001 | one@example.test | ; one | | two@example.test |", /omission facts are invalid at: records/],
+        ["one | 10000001 | one@example.test |", /one CRM record per requested person/],
+        ["one | 10000001 | one@example.test | ; two | | other@example.test |", /Match the requested people in input order/],
+      ] as const) {
+        assert.throws(() => planner.plan({ ...startRequest, selectedStepKeys,
+          stepOmissions: [{ step: "search-records", facts: { records } }],
+        }), reason);
+      }
+      assert.deepEqual(h.database.authority.runs.listByWorkflow(descriptor.id), []);
+    }
+    if (mode === "manual-reference") {
+      assert.throws(() => planner.plan({ ...startRequest, selectedStepKeys: ["search-records", "read-idocs", "package-worksheets"],
+        stepOmissions: [{ step: "reference", facts: { worksheetRows: "July 6, rows 2 and 3" } }],
+      }), /refuses this omission/);
+    }
+    const planned = planner.plan({ ...startRequest, ...(stepOmissions === undefined ? {} : {
+      stepOmissions, selectedStepKeys: descriptor.timeline.map(({ key }) => key).filter(key => !stepOmissions.some(({ step }) => step === key)),
+    }) });
     const plan = h.database.authority.startPlans.get(planned.startPlanId); assert.ok(plan);
     assert.equal(plan.planned.length, 1); assert.deepEqual(plan.refused, []);
     const entry = plan.planned[0]; assert.ok(entry?.workbookReferences);
+    if (mode === "manual-package" || mode === "manual-reference") assert.equal(entry.outputs, undefined);
     if (mode === "split") assert.equal(entry.workbookReferences.length, 2);
     const start = h.kernel.execute({ ...world.startCommand(plan), requestedAt: f.clock.now().toISOString() });
     const runId = singleAppliedRunId(start);
@@ -118,6 +156,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
           documents: [{ index: 0, fileName: "Signed Offer Letter.pdf", bytes: Buffer.from(`%PDF-1.7 worksheet person ${String(index + 1)}`) }] })),
       });
       return { ...driver, async findDocumentRecord(request: Parameters<typeof driver.findDocumentRecord>[0]) {
+        assert.notEqual(mode, "manual-search", "manual records must replace the browser search");
         const captured = f.db.authority.runs.get(runId); assert.ok(captured); assert.equal(captured.lifecycle.state, "running");
         const reader = createRunWorkbookService({ database: f.db, clock: f.clock }), command = { typeId: ONBOARDING_ROSTER_TYPE_ID, keys: ["one@example.test"] };
         const read = reader.read(captured, command);
@@ -137,6 +176,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
         return driver.findDocumentRecord(request);
       }, async readIdocs(request: Parameters<typeof driver.readIdocs>[0]) {
         downloads++;
+        if (mode === "manual-search") assert.equal(request.recordId, downloads === 1 ? "one" : "two");
         if (mode === "download-failed") throw new Error("fixture download failed");
         if (mode === "cancelled") { controller.abort(new Error("fixture cancellation")); throw controller.signal.reason; }
         return driver.readIdocs(request);
@@ -163,6 +203,38 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       providers: selected.providers, artifacts, artifactProjector: composeWorkerArtifactProjector({ admission: f.profile.admission, database: f.db, artifacts, clock: f.clock }) },
       context = { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration }, signal: controller.signal };
     let result = await executeClaimedRun(execution, context);
+    if (mode === "manual-package" || mode === "manual-reference") {
+      const failures = f.db.authority.failures.listByRun(runId);
+      assert.equal(result.state, "done", JSON.stringify(failures.map(failure => failure.summary)));
+      const run = f.db.authority.runs.get(runId), terminal = f.db.authority.runResults.get(runId);
+      assert.ok(run && terminal);
+      assert.deepEqual(terminal.result.value, { state: "omitted", step: "package-worksheets" });
+      const { receipt } = deriveRunEvidenceReceipt({ descriptor, run, result: terminal,
+        checkpoints: f.db.authority.runCheckpoints.listByItem(descriptor.id, entry.itemId),
+        gateResults: f.db.authority.gateResults.listByRun(runId) });
+      assert.deepEqual(receipt.output.map(({ field, state }) => [field, state]), [["state", "satisfied"], ["step", "satisfied"]]);
+      assert.deepEqual(f.db.authority.writeIntents.listByRun(runId), []);
+      assert.equal(f.db.authority.runCheckpoints.latest(descriptor.id, entry.itemId, "worksheet-archives"), undefined);
+      assert.equal(f.db.authority.generatedArtifacts.get(`sink:documents-file-${runId}`), undefined);
+      assert.deepEqual(f.db.authority.artifactOutbox.listPending(), []);
+      assert.equal(existsSync(join(f.snapshot.config.paths.onboardingDocsDir, "July 6", "July 6.zip")), false);
+      assert.equal(downloads, mode === "manual-package" ? 2 : 0);
+      if (mode === "manual-reference") {
+        assert.equal(f.db.authority.runCheckpoints.latest(descriptor.id, entry.itemId, "workbook-reference"), undefined);
+        assert.deepEqual(f.db.authority.gateResults.listByRun(runId), []);
+      }
+      const reader = testRunService(f.db, f.clock), descriptors = { resolve: (id: string) => id === descriptor.id ? descriptor : undefined };
+      const projection = createOperatorProjection({ database: f.db, reader, descriptors, stateRoot: f.root, clock: f.clock,
+        appVersion: "fixture", descriptorSetHash: descriptor.contractFingerprint, ledger: createTransactionHistory(f.db.authority) });
+      projection.ingestFromTimeline();
+      const deps = createOperatorRunDetail({ database: f.db, runReader: reader, projection, stateRoot: f.root });
+      const logs = buildRunSection(deps, runId, "logs"); assert.equal(logs.section, "logs");
+      const view = projectRunLogs({ detail: buildRunDetail(deps, runId), logs: logs.payload, sections: [], unavailableEvidence: [] },
+        { artifactUrl: id => `/artifact/${id}` });
+      const packageLog = view.steps.find(step => step.title === "Package worksheet archives");
+      assert.ok(packageLog?.entries.some(log => log.kind === "note" && log.message === "Skipped · Done outside Relay"));
+      return;
+    }
     if (mode === "split") {
       assert.equal(result.state, "parked-gate"); assert.equal(downloads, 0);
       const parked = f.db.authority.runs.get(runId); assert.ok(parked);
@@ -294,7 +366,7 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
         claim: { workerId: slot.workerId, claimGeneration: resumed.run.claimGeneration } });
     }
     const failures = f.db.authority.failures.listByRun(runId);
-    if (mode === "complete" || mode === "ambiguous") {
+    if (mode === "complete" || mode === "ambiguous" || mode === "manual-search") {
       assert.equal(result.state, "done", JSON.stringify(failures.map(failure => failure.summary)));
       const terminal = f.db.authority.runResults.get(runId); assert.ok(terminal);
       if (descriptor.id === "crm-doc-download-reference") {
@@ -327,9 +399,20 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       for (const nodeId of ["document-records", "workbook-reference", "document-rows", "document-pdfs", "worksheet-archives"]) {
         const checkpoint = f.db.authority.runCheckpoints.latest(descriptor.id, entry.itemId, nodeId); assert.ok(checkpoint);
         assert.equal(checkpoint.runId, runId); assert.ok(checkpoint.provenance.length > 0);
+        if (mode === "manual-search" && nodeId === "document-records") {
+          assert.equal(checkpoint.assertion?.step, "search-records");
+          assert.deepEqual(checkpoint.output.value, CRM_DOCUMENT_RECORDS_FIXTURE);
+        }
       }
       assert.equal(f.db.authority.generatedArtifacts.get(`sink:documents-file-${runId}`)?.state, "ready");
       assert.equal(f.db.authority.artifactOutbox.listPending().length, 0); assert.equal(downloads, 2);
+      if (mode === "manual-search") {
+        const run = f.db.authority.runs.get(runId); assert.ok(run);
+        const { receipt } = deriveRunEvidenceReceipt({ descriptor, run, result: terminal,
+          checkpoints: f.db.authority.runCheckpoints.listByItem(descriptor.id, entry.itemId),
+          gateResults: f.db.authority.gateResults.listByRun(runId) });
+        assert.ok(receipt.observations.some(({ source }) => source.kind === "operator-assertion" && source.step === "search-records"));
+      }
       inspect?.({ f, runId, itemId: entry.itemId });
     } else {
       assert.notEqual(result.state, "done");
@@ -348,6 +431,9 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
 it("crm-doc-download/worksheet-archives — executes registered CRM sessions, run-bound references and both PDFs in the selected worksheet ZIP", () => runCrm("complete"));
 it("retains multiple operator row choices and resumes the same batch to publish both exact PDFs in one worksheet archive", () => runCrm("ambiguous"));
 it("reads two General CSVs that share csv/row-1, records the chosen source, and publishes both archives", () => runCrm("split"));
+it("publishes nothing and logs Done outside Relay when worksheet packaging is off", () => runCrm("manual-package"));
+it("uses operator-entered CRM records for the workbook lookup and downloads", () => runCrm("manual-search"));
+it("requires dependent omissions when worksheet row resolution is entered by hand", () => runCrm("manual-reference"));
 it.each(["missing", "download-failed", "cancelled"] as const)("publishes no collection for %s", mode => runCrm(mode));
 
 it("authenticates batch choices in the retained reference step proof", () => {
