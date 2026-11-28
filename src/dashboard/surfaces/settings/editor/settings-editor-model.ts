@@ -80,6 +80,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     ? { state: "failed", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_INITIAL_READ_UNAVAILABLE", {})).text } : shownEditor, [streamUnavailable, shownEditor]);
   const [draft, setDraft] = useState<SettingsDraft>({});
   const [saving, setSaving] = useState(false);
+  /** The paths of the command in flight: only their rows show a spinner. */
+  const [savingPaths, setSavingPaths] = useState<readonly string[]>([]);
   const busy = useRef(false);
   /** Toggles and choices save without the typing wait; the last change decides. */
   const saveAtOnce = useRef(false);
@@ -179,7 +181,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   };
   const perform = async (command: OrdinarySettingsAttempt, sent: SettingsDraft): Promise<void> => {
     if (busy.current) return;
-    busy.current = true; setSaving(true);
+    busy.current = true; setSaving(true); setSavingPaths(Object.keys(sent));
     try {
       if (binding === undefined || command.requestedBy !== binding.scope.actorId) { failed(sent); return; }
       let readDocument: EditableSettingsWire | undefined;
@@ -240,7 +242,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       if (!landed) { failed(sent); return; }
       acceptedRequest.current = currentRequest.current; resource.accept(served); setEditor({ state: "loaded", document: served }); setReadProblem(undefined);
       settle(sent);
-    } finally { busy.current = false; setSaving(false); }
+    } finally { busy.current = false; setSaving(false); setSavingPaths([]); }
   };
 
   const submit = (): void => {
@@ -270,7 +272,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     } else if (!busy.current && Object.keys(draft).some(key => path === key || path.startsWith(`${key}.`))) submit();
   };
   const reload = (): void => { void refresh().catch(() => undefined); };
-  return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: IDLE_SAVE, protectedEditor, leaves, readProblem,
+  return Object.freeze({ editor, savingPaths, refreshing: observation.state === "loading", draft, errors, save: IDLE_SAVE, protectedEditor, leaves, readProblem,
     dirtyCount: Object.keys(draft).length, locked: !editable,
     update, reset, clear, discard, submit, reload, onFieldBlur, readCurrent: () => refresh() });
 }

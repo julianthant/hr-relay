@@ -13,6 +13,7 @@ import { createDashboardClient,createRowStore,type DashboardClient,type RowStore
 import { StreamRowSchema } from "../../../../src/models/dashboard/subscription.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
+import { ProtectedPencilRow } from "../../../../src/dashboard/surfaces/settings/providers/protected-pencil-row.js";
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -377,25 +378,86 @@ it("publishes a failed refresh while retaining the verified document and unsaved
   assert.equal(current().dirtyCount, 1);
 });
 
-it("keeps fields editable while Settings re-reads and holds an edit made meanwhile", async () => {
-  let release: (() => void) | undefined;
-  let hold = false;
-  let controller: ReturnType<typeof useEditableSettings> | undefined;
-  const client = { editableSettings: () => hold ? new Promise(resolve => { release = () => resolve(DOCUMENT); }) : Promise.resolve(DOCUMENT),
-  } as unknown as DashboardClient;
-  function Surface() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); return null; }
+/** The Settings page over providers that stay mounted, so closing and opening it again is a re-read of the kept document. */
+function mountReopenable(client: DashboardClient, page?: () => ReturnType<typeof createElement>): (open: boolean) => Promise<void> {
   host = document.createElement("div"); document.body.append(host);
-  await act(async () => { root = createRoot(host!); root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(Surface) }) })); });
-  const current = () => { if (controller === undefined) throw new Error("missing editor"); return controller; };
-  const leaf = current().leaves.find(candidate => candidate.input === "text");
-  assert.ok(leaf);
-  hold = true;
-  await act(async () => current().reload());
-  assert.equal(current().refreshing, true);
-  assert.equal(current().locked, false);
-  await act(async () => current().update(leaf.path, "edited during re-read"));
-  await act(async () => { release?.(); });
-  assert.deepEqual(current().draft[leaf.path], { kind: "set", raw: "edited during re-read" });
+  const element = host;
+  return async open => { await act(async () => {
+    root ??= createRoot(element);
+    root.render(createElement(ToastProvider, { children: createElement(DashboardClientProvider, { client,
+      children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso: "2026-08-28T18:00:00.000Z",
+        children: open ? page?.() ?? createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: () => undefined, section: "general", actorId: "local-operator", descriptorFingerprint: "d".repeat(64), onSection: () => undefined }) : null }) }) }));
+  }); await act(async () => undefined); };
+}
+
+it("keeps the real Settings fields enabled over a held re-read and keeps an edit when a distinct response lands", async () => {
+  const authority = await syntheticSettingsAuthority(); authorities.push(authority);
+  const first = authority.read();
+  authority.apply({ "actor.label": { set: "Distinct served label" } });
+  const distinct = authority.read();
+  let calls = 0;
+  let land: (() => void) | undefined;
+  const client = { editableSettings: () => ++calls === 1 ? Promise.resolve(first) : new Promise(resolve => { land = () => resolve(distinct); }),
+  } as unknown as DashboardClient;
+  const render = mountReopenable(client);
+  await render(true); await render(false); await render(true);
+  await vi.waitFor(() => { assert.equal(calls, 2); });
+  assert.ok(host);
+  const rows = [...host.querySelectorAll("[data-settings-path]")];
+  assert.ok(rows.length > 0);
+  assert.deepEqual(rows.flatMap(row => [...row.querySelectorAll<HTMLElement>("input, button, select, [role='switch'], [role='spinbutton']")].filter(control => control.matches(":disabled, [aria-disabled='true']"))), [], "no served field is disabled while the re-read is held");
+  const date = host.querySelector<HTMLElement>('[data-settings-path$=".jobEndDate"] [role="spinbutton"]');
+  assert.ok(date);
+  const toggle = host.querySelector<HTMLInputElement>('[data-settings-path="preferences.preventSleepWhileRunning"] input');
+  assert.ok(toggle);
+  const before = toggle.checked;
+  await act(async () => toggle.click());
+  assert.notEqual(toggle.checked, before, "the edit shows at once");
+  await act(async () => { land?.(); });
+  assert.notEqual(host.querySelector<HTMLInputElement>('[data-settings-path="preferences.preventSleepWhileRunning"] input')?.checked, before, "the edit stays visible after the distinct response lands");
+});
+
+it("keeps an explicit username Save visible and unsent until the held re-read lands", async () => {
+  const authority = await syntheticSettingsAuthority(); authorities.push(authority);
+  const doc = authority.read();
+  let calls = 0;
+  const writes: unknown[] = [];
+  const client = { editableSettings: () => ++calls === 1 ? Promise.resolve(doc) : new Promise(() => undefined),
+    executeCommand: (request: unknown) => { writes.push(request); return Promise.reject(new Error("held")); } } as unknown as DashboardClient;
+  function PencilProbe() {
+    const editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) });
+    return createElement(ProtectedPencilRow, { editor, name: "ucpathUserId", label: "Username", thing: "UCPath username", description: "Login name." });
+  }
+  const render = mountReopenable(client, () => createElement(PencilProbe));
+  await render(true); await render(false); await render(true);
+  await vi.waitFor(() => { assert.equal(calls, 2); });
+  assert.ok(host);
+  await act(async () => (host?.querySelector('button[aria-label="Edit UCPath username"]') as HTMLButtonElement | null)?.click());
+  const input = document.body.querySelector<HTMLInputElement>('[role="dialog"] input[name="ucpathUserId"]');
+  assert.ok(input);
+  await act(async () => { // eslint-disable-next-line @typescript-eslint/unbound-method
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (setter === undefined) throw new Error("input setter unavailable");
+    Reflect.apply(setter, input, ["held-username"]); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => overlayButton("Save").click());
+  assert.equal(writes.length, 0, "nothing is sent over a held read");
+  assert.match(host.querySelector('[data-settings-path="protected.ucpathUserId"]')?.textContent ?? "", /held-username/u);
+});
+
+it("shows a spinner only on the row whose own command is held", async () => {
+  const applied: unknown[] = [];
+  const transport = await settingsClient(applied, "held");
+  host = await mountSettingsPage(transport.client, "general");
+  const toggle = host.querySelector<HTMLInputElement>('[data-settings-path="preferences.preventSleepWhileRunning"] input');
+  assert.ok(toggle);
+  const row = toggle.closest("[data-settings-path]");
+  assert.ok(row);
+  await act(async () => toggle.click());
+  await vi.waitFor(() => { assert.equal(applied.length, 1); });
+  assert.equal(row.querySelectorAll('[aria-label="Saving"]').length, 1);
+  assert.equal(host.querySelectorAll('[aria-label="Saving"]').length, 1, "no other row shows a spinner");
+  await act(async () => { transport.release(); });
+  await vi.waitFor(() => { assert.equal(host?.querySelectorAll('[aria-label="Saving"]').length, 0); });
 });
 
 for (const section of ["general", "performance"]) for (const mode of ["failed", "hung"]) {

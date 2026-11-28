@@ -20,11 +20,13 @@ export function ProtectedPencilRow({ editor, name, label, thing, description }: 
   const authority = editor.editor.document.protectedSettings;
   const credentials = editor.protectedEditor;
   const stored = authority.state === "available" ? authority.entries[name] : undefined;
-  const shown = stored === undefined ? "Not set" : name === "ucpathUserId" ? formatSetting(stored.value) : "••••••••";
   const disabled = credentials.locked || authority.state !== "available" || editor.readProblem !== undefined;
   const operation = credentials.draft[name];
   const typed = operation?.kind === "set" ? operation.raw.trim() : "";
   const changed = typed !== "" && !(name === "ucpathUserId" && stored !== undefined && typed === formatSetting(stored.value));
+  // A username waiting for a fresh revision to save shows what was typed, not the stored value.
+  const waiting = name === "ucpathUserId" && !open && typed !== "" ? typed : undefined;
+  const shown = stored === undefined && waiting === undefined ? "Not set" : name === "ucpathUserId" ? waiting ?? formatSetting(stored?.value) : "••••••••";
   const close = (): void => { credentials.reset(name); setOpen(false); };
   return <div data-settings-path={`protected.${name}`}>
     <ResultRow label={label} value={<span className="inline-flex items-center justify-end gap-3">

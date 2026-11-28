@@ -71,7 +71,10 @@ const editDuringReread = async (page: Page): Promise<void> => {
   await month.click();
   await page.keyboard.type("06302027");
 };
-const release = async (page: Page): Promise<void> => { await page.evaluate(() => { Reflect.apply(Reflect.get(window, "releaseSettingsRead") as () => void, window, []); }); await page.waitForTimeout(300); };
+const release = async (page: Page): Promise<void> => { await page.evaluate(() => { Reflect.apply(Reflect.get(window, "releaseSettingsRead") as () => void, window, []); }); await page.waitForTimeout(300);
+  const month = await page.getByRole("spinbutton", { name: /^month, Job end date/ }).first().textContent();
+  if (month?.trim() !== "06") throw new Error(`the edited Job end date did not survive the re-read: ${String(month)}`);
+};
 
 const REFRESH = {
   held: scene("General over its kept document during a held re-read, a field mid-edit", { server: { read: "hold-later" }, host: { rereadOnceLoaded: true }, play: editDuringReread, story: { ready: JOB_END } }),
