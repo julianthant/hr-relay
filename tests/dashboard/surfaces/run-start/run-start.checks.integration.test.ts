@@ -368,8 +368,11 @@ describe("a refused re-check through the real client", () => {
       if (path === "/api/v1/preflight") return Response.json({ state: "unavailable", reason: "Not checked yet." });
       if (path === "/api/v1/settings/editable") return Response.json(FIXTURE_EDITABLE_SETTINGS);
       if (path === "/api/v1/bootstrap") return Response.json(FIXTURE_BOOTSTRAP);
-      if (path === "/api/v1/preflight/rerun") return Response.json(rerunBody ?? { state: "error", code: rerunStatus === 429 ? "PREFLIGHT_RATE_LIMITED" : "PREFLIGHT_RERUN_FAILED",
-        message: rerunStatus === 429 ? "Relay allows six readiness checks per minute." : "refused", retryable: true }, { status: rerunStatus });
+      if (path === "/api/v1/preflight/rerun") {
+        if (typeof rerunBody === "string") return new Response(rerunBody, { status: rerunStatus, headers: { "content-type": "application/json" } });
+        return Response.json(rerunBody ?? { state: "error", code: rerunStatus === 429 ? "PREFLIGHT_RATE_LIMITED" : "PREFLIGHT_RERUN_FAILED",
+          message: rerunStatus === 429 ? "Relay allows six readiness checks per minute." : "refused", retryable: true }, { status: rerunStatus });
+      }
       throw new Error(`unexpected request ${path}`);
     } });
     await real.readProfileSession();
@@ -424,10 +427,11 @@ describe("a refused re-check through the real client", () => {
     assert.equal(dialog.disabled("Start run"), true);
   });
 
-  it("explains an invalid successful rerun response and keeps Start disabled", async () => {
-    const { client, reports } = await served(200, {
-      state: "completed", commandId: "00000000-0000-4000-8000-000000000002", report: {},
-    });
+  it.each([
+    { problem: "schema-invalid JSON", body: { state: "completed", commandId: "00000000-0000-4000-8000-000000000002", report: {} } },
+    { problem: "malformed JSON", body: '{"state":' },
+  ])("explains an HTTP 200 rerun response with $problem and keeps Start disabled", async ({ body }) => {
+    const { client, reports } = await served(200, body);
     const { dialog } = await openSettled(client, reports);
     await toChecks(dialog);
     const alerts = [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "");

@@ -50,7 +50,10 @@ function runCheckFailure(error: unknown, fallback: string): string {
   if (readDeadlineExpired(cause)) return "The readiness check request timed out.";
   if (cause instanceof DashboardClientError) {
     if (cause.code === "COMMAND_RESULT_IDENTITY_MISMATCH") return ERROR_CATALOG.COMMAND_RESULT_IDENTITY_MISMATCH.text;
-    if (cause.kind === "schema" && cause.code === undefined) return "Relay received an invalid readiness response.";
+    if ((cause.kind === "schema" && cause.code === undefined)
+      || (cause.kind === "http" && cause.status !== undefined && cause.status >= 200 && cause.status < 300)) {
+      return "Relay received an invalid readiness response.";
+    }
     if (cause.kind === "network") return "Relay lost the connection while checking readiness.";
     if (cause.kind === "http" && cause.status !== undefined && cause.status >= 400) {
       if ((cause.status === 409 || cause.status === 429) && cause.code?.startsWith("PREFLIGHT_")) return cause.message;
