@@ -1,7 +1,7 @@
 {
  "wireVersion": 1,
  "appVersion": "0.1.0",
- "descriptorHash": "d3bd9418ee91601e3040d89ad42f4dae010ff81b28a29fae2034860649a5619f",
+ "descriptorHash": "d4851f36063e2cc609e4e5bb2607f0a01ce0737cd1920cca0a4df57f1ba75661",
  "settingsSchemaHash": "fbfbae972dfc97e52b8b69a9d0b9e7cc17ffddc95aac788835707483f82719e1",
  "protectedSchemaHash": "2d7ec6671675d59980e74b368875e40b3828f94b1a817a1029b0867ad7f4e3f6",
  "projectionGeneration": 1,
@@ -23,7 +23,7 @@
    "label": "Person Lookup",
    "icon": "Search",
    "categoryId": "search",
-   "descriptorFingerprint": "d82bc39dacb8b9702c3a95515e7a9f20b4ad4bad8a650d8f844f1164351fe2af",
+   "descriptorFingerprint": "2dd9ad20614d934c35fe0bfb24562e22d8c1df5b4c5aea292a998ece5987fc61",
    "availability": {
     "state": "available"
    },

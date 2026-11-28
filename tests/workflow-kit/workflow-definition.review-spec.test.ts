@@ -19,8 +19,8 @@ const review = Object.freeze({ pages: Object.freeze([Object.freeze({
 })]), branchLabels: Object.freeze([]) }) satisfies WorkflowStepReview;
 
 function compileReview(candidate: WorkflowStepReview) {
-  return compileWorkflow({ ...personLookupWorkflow, steps: personLookupWorkflow.steps.map(([group, entries], index) =>
-    [{ ...group, review: index === 0 ? candidate : undefined }, entries] as const) });
+  return compileWorkflow({ ...personLookupWorkflow, steps: personLookupWorkflow.steps.map(([group, entries]) =>
+    [{ ...group, review: group.key === "searching" ? candidate : undefined }, entries] as const) });
 }
 
 it("validates starts against a real delegate in its own step and requires one scope phrase", () => {

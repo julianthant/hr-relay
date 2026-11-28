@@ -19,7 +19,7 @@ import { pauseTimeline } from "./log-timeline-model.js";
 import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
 import { LogFeedPadding, LogSkeleton } from "../../shared/loading/loading.js";
-import { RunStateChips } from "../run-state-chips.js";
+import { RunStateChips, StartedByLine } from "../run-state-chips.js";
 import { queueRowTitle, type QueueSurfaceWire } from "../../queue/queue-model.js";
 import { SYSTEM_NAME } from "../../shared/status/system-chip-model.js";
 import { elapsedSecondsBetween } from "../../shared/status/format.js";
@@ -118,7 +118,7 @@ function ServedLogSample({ selection, initialStepId, confirm, reviewOpen, review
   // The Duo wait is a state card: it follows the recorded setup in the feed.
   const duoCard = setupProblem === undefined && selection.row.operatorWait.state === "present" ? <div className="mt-4 min-w-0"><DuoWaitBanner wait={selection.row.operatorWait} nowIso={selection.row.updatedAt} /></div> : undefined;
   return <><LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? queueRowTitle(selection.row)} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision === undefined ? undefined : decide} onCancelRun={cancelRun}
-    status={status} navigation={setupProblem !== undefined ? <div className="px-3 py-2"><Banner tone="warning" title={setupProblem} /></div> : undefined}
+    status={status} subtitle={<StartedByLine surface={selection.row} wrap className="mt-0.5" />} navigation={setupProblem !== undefined ? <div className="px-3 py-2"><Banner tone="warning" title={setupProblem} /></div> : undefined}
     onReview={reviewAvailable ? onReview : undefined}
     toolbar={toolbar} linkedRuns={linkedRuns} onOpenLinkedRun={onOpenLinked} headerActions={headerActions} rerun={rerun} records={records}
     content={content}

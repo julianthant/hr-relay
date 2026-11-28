@@ -16,7 +16,7 @@ describe("Onboarding Start run rows", () => {
       ["ucpath-search", "Match existing person"],
       ["i9-search", "Search I-9 profiles"],
       ["hire-review", "Review hire findings"],
-      ["reference-check", "Check reference spreadsheets"],
+      ["reference-check", "Reference spreadsheets"],
       ["i9-creation", "Create I-9 profile"],
       ["ucpath-hire", "Submit hire"],
       ["master-results", "Fill master results"],
@@ -36,7 +36,7 @@ describe("Onboarding Start run rows", () => {
       steps: projectStartSteps(descriptor).map(step => ({ ...step, control: startStepWireControl(step.control) })),
     });
     assert.equal(rows.find(row => row.key === "i9-search")?.note,
-      "Also skips: Review hire findings, Check reference spreadsheets, Create I-9 profile, Submit hire, Fill master results");
+      "Also skips: Review hire findings, Create I-9 profile, Submit hire, Fill master results");
     assert.deepEqual(rows.find(row => row.key === "crm-data")?.forces, []);
   });
 
@@ -50,7 +50,7 @@ describe("Onboarding Start run rows", () => {
   it("plans nothing new and keeps today's node list", () => {
     assert.equal(resolveStartStepOmissions(descriptor, projectStartSteps(descriptor).map(({ key }) => key), undefined), undefined);
     const nodes = descriptorRuntimeNodes(descriptor).map((node) => [String(node.id), node.kind, node.dependsOn.map(String), "dryRun" in node ? node.dryRun ?? null : null]);
-    assert.deepEqual(nodes.find(([id]) => id === "reference-check")?.[2], ["hire-plan", "hire-subject", "hire-review"]);
-    assert.equal(createHash("sha256").update(JSON.stringify(nodes)).digest("hex"), "5b266b94ba8f6729841e17b828b9be64a03009bb84c96053812559b31c2e53cc");
+    assert.deepEqual(nodes.find(([id]) => id === "reference-fields-crm-source")?.[2], ["crm-source", "reference-fields-start", "reference-field-review-start"]);
+    assert.equal(createHash("sha256").update(JSON.stringify(nodes)).digest("hex"), "221a5488e619b1a8644532d362fa9382640fa37533a45cd39ebd5c52077dda25");
   });
 });

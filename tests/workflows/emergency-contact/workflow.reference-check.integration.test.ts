@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { parseRunWorkbookReference } from "../../../src/models/dashboard/workbooks.js";
-import { REFERENCE_CHECK_REVIEW_GATE } from "../../../src/models/processing/workbooks/reference-check-stop.js";
-import { REFERENCE_CHECK } from "../../../src/models/processing/workbooks/verify-person.js";
+import { REFERENCE_CHECK_ID } from "../../../src/models/processing/workbooks/reference-fields.js";
 import { createEmergencyContactReferenceWorld } from "../../support/helpers/backend/emergency-contact-reference-world.js";
 
 const world = createEmergencyContactReferenceWorld();
@@ -22,8 +21,8 @@ describe("Emergency Contact reference spreadsheet check", () => {
     for (const emplId of [AVERY, BLAKE]) {
       const member = f.member(emplId);
       assert.equal(member.input.workbookReferences, undefined);
-      assert.deepEqual(f.nodeSpans(member, "reference-check"), [["skipped", "condition-false"]]);
-      assert.deepEqual(f.nodeSpans(member, "reference-check-review"), [["skipped", "condition-false"]]);
+      assert.deepEqual(f.nodeSpans(member, "reference-fields-start"), [["skipped", "condition-false"]]);
+      assert.deepEqual(f.nodeSpans(member, "reference-field-review-map-contact"), [["skipped", "condition-false"]]);
       assert.equal(f.saves(emplId), 1);
     }
   });
@@ -34,44 +33,32 @@ describe("Emergency Contact reference spreadsheet check", () => {
     assert.ok(parent?.lifecycle.state === "terminal" && parent.lifecycle.outcome === "done", JSON.stringify(parent?.lifecycle));
     for (const [emplId, row] of [[AVERY, 2], [BLAKE, 3]] as const) {
       const member = f.member(emplId);
-      assert.deepEqual((member.input.workbookReferences ?? []).map(bound => parseRunWorkbookReference(bound).request.typeId), [REFERENCE_CHECK.id],
+      assert.deepEqual((member.input.workbookReferences ?? []).map(bound => parseRunWorkbookReference(bound).request.typeId), [REFERENCE_CHECK_ID],
         "a member gets the extra pick, never the required roster");
-      assert.deepEqual(f.checkLines(member), [`Fall roster · Hires: found in row ${String(row)}`]);
+      assert.deepEqual(f.checkLines(member), [`Hires, row ${String(row)}: Employee ID matches`, `Hires, row ${String(row)}: Legal name matches`]);
       assert.equal(f.saves(emplId), 1);
     }
   });
 
-  it("stops only the missing member before its Save; the other saves, and Continue anyway saves the stopped one once", async () => {
+  it("logs the missing row for that member and saves each member once", async () => {
     const f = await world.fixture({ checks: [AVERY_ONLY] });
-    await f.execute();
-    const blake = f.member(BLAKE);
-    assert.ok(blake.lifecycle.state === "parked-gate" && String(blake.lifecycle.gateId) === REFERENCE_CHECK_REVIEW_GATE, JSON.stringify(blake.lifecycle));
-    assert.deepEqual(f.checkLines(blake), ["Badge list · Issued: not found"]);
-    assert.equal(f.saves(BLAKE), 0);
-    assert.deepEqual(f.database.authority.writeIntents.listByRun(blake.envelope.runId), []);
-    const avery = f.member(AVERY);
-    assert.ok(avery.lifecycle.state === "terminal" && avery.lifecycle.outcome === "done", JSON.stringify(avery.lifecycle));
-    assert.deepEqual(f.checkLines(avery), ["Badge list · Issued: found in row 2"]);
-    assert.equal(f.saves(AVERY), 1);
-    const decision = f.card(blake);
-    assert.equal(decision.type, "review-before-write");
-    assert.deepEqual(decision.options.map(option => [option.id, option.label, option.send.via]), [["continue", "Continue anyway", "gate-arm"], ["cancel-run", "Cancel run", "row-action"]]);
-    assert.equal(decision.context, "Badge list · Issued: not found · Compared: Employee ID, and name where the sheet has one.");
-
-    assert.equal(f.continueAnyway(blake).state, "applied");
     const parent = await f.execute();
     assert.ok(parent?.lifecycle.state === "terminal" && parent.lifecycle.outcome === "done", JSON.stringify(parent?.lifecycle));
+    assert.deepEqual(f.checkLines(f.member(BLAKE)), ["Not in Issued"]);
+    assert.deepEqual(f.checkLines(f.member(AVERY)), ["Issued, row 2: Employee ID matches"]);
     assert.equal(f.saves(BLAKE), 1);
     assert.equal(f.saves(AVERY), 1);
   });
 
-  it("stops the member whose name differs without recording the row's name, and Cancel run saves nothing for them", async () => {
+  it("stops the member whose name differs and keeps the row value out of Logs, and Cancel run saves nothing for them", async () => {
     const f = await world.fixture({ checks: [BLAKE_RENAMED] });
     await f.execute();
     const blake = f.member(BLAKE);
     assert.equal(blake.lifecycle.state, "parked-gate");
-    assert.equal(f.card(blake).context, "Fall roster · Hires: name differs in row 3 · Compared: Employee ID, and name where the sheet has one.");
-    assert.equal(JSON.stringify([f.events(blake), f.card(blake)]).includes(ROW_ONLY_NAME), false);
+    const decision = f.card(blake);
+    assert.deepEqual(decision.options.map(option => [option.id, option.label, option.send.via]), [["continue", "Continue anyway", "gate-arm"], ["cancel-run", "Cancel run", "row-action"]]);
+    assert.match(decision.context ?? "", /Hires, row 3 · Legal name: spreadsheet “Zebedee Quillfeather”, workflow “[^”]+”/u);
+    assert.equal(JSON.stringify(f.events(blake)).includes(ROW_ONLY_NAME), false);
     assert.equal(f.saves(AVERY), 1);
 
     assert.equal(f.cancel(blake).state, "applied");
@@ -81,13 +68,13 @@ describe("Emergency Contact reference spreadsheet check", () => {
     assert.deepEqual(f.database.authority.writeIntents.listByRun(blake.envelope.runId), []);
   });
 
-  it("never stops a dry run for the check, and still records each member's line", async () => {
+  it("continues a dry run with a missing row and records each member's line", async () => {
     const f = await world.fixture({ dryRun: true, checks: [AVERY_ONLY] });
     const parent = await f.execute();
     assert.ok(parent?.lifecycle.state === "terminal" && parent.lifecycle.outcome === "done", JSON.stringify(parent?.lifecycle));
-    assert.deepEqual(f.checkLines(f.member(AVERY)), ["Badge list · Issued: found in row 2"]);
-    assert.deepEqual(f.checkLines(f.member(BLAKE)), ["Badge list · Issued: not found"]);
-    assert.deepEqual(f.nodeSpans(f.member(BLAKE), "reference-check-review"), [["skipped", "condition-false"]]);
+    assert.deepEqual(f.checkLines(f.member(AVERY)), ["Issued, row 2: Employee ID matches"]);
+    assert.deepEqual(f.checkLines(f.member(BLAKE)), ["Not in Issued"]);
+    assert.deepEqual(f.nodeSpans(f.member(BLAKE), "reference-field-review-map-contact"), [["skipped", "condition-false"]]);
     assert.equal(f.saves(AVERY) + f.saves(BLAKE), 0);
   });
 });

@@ -16,7 +16,7 @@ describe("Work Study in the dashboard", () => {
 
   it("shows the mock's step labels in Logs", () => {
     const served = DESCRIPTORS.find(descriptor => descriptor.id === "work-study");
-    expect(served?.timeline.map(step => step.label)).toEqual(["Sign in to UCPath", "Check reference spreadsheets", "Submit work-study transaction"]);
+    expect(served?.timeline.map(step => step.label)).toEqual(["Reference spreadsheets", "Sign in to UCPath", "Submit work-study transaction"]);
   });
 
   it("starts one run per Employee ID, each with the typed date and no mode", () => {

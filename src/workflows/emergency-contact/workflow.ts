@@ -7,7 +7,7 @@ import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js
 import { PositiveIntSchema } from "../../rules/identity/ids.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { EMERGENCY_CONTACT_SCENARIOS } from "../emergency-contact-member/workflow.js";
-import { REFERENCE_CHECK } from "../../models/processing/workbooks/verify-person.js";
+import { EMPLOYEE_REFERENCE_CHECK } from "../../models/processing/workbooks/reference-fields.js";
 import { usesOcrProvider } from "../../models/workflows/ocr/input.js";
 
 const UNNAMED_PDF_TITLE = "Emergency Contact PDF";
@@ -15,7 +15,7 @@ const UNNAMED_PDF_TITLE = "Emergency Contact PDF";
 export const emergencyContactWorkflow = defineWorkflow({
   id: "emergency-contact", version: 1, code: "ec", label: "Emergency Contact", icon: "Users", category: "documents",
   summary: "Reads and releases a PDF, then delegates exactly its approved records for primary contact previews.",
-  requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] }, workbookCheck: REFERENCE_CHECK, input: EmergencyContactInputSchema, canonicalInput: EmergencyContactCanonicalInput,
+  requiredWorkbookFields: [...OCR_ROSTER_FIELDS], workbookReference: { id: OCR_ROSTER_TYPE_ID, keyFieldId: "eid", mode: "all", writableFields: [] }, workbookCheck: EMPLOYEE_REFERENCE_CHECK, input: EmergencyContactInputSchema, canonicalInput: EmergencyContactCanonicalInput,
   inputSubject: "document", surface: { shape: "operation" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
   requiresOcrProvider: usesOcrProvider,
   capabilities: { review: false, editData: false, singleAcquisitionPerSystemPerClaim: true },

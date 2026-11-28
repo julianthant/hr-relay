@@ -38,7 +38,7 @@ const mount = () => {
 const workerButtons = (host: HTMLElement) => [...host.querySelectorAll<HTMLButtonElement>('[role="region"][aria-label="Sessions"] button')];
 const addWorkers = (host: HTMLElement) => host.querySelector<HTMLButtonElement>('button[aria-label="Add workers"]');
 
-it("keeps the worker cards it last read while another day loads, marked as updating, with every command disabled", async () => {
+it("keeps the worker cards it last read while another day loads, marked by a spinner, with every command disabled", async () => {
   const { host, render } = mount();
   await render({ state: "loaded", value: FIXTURE_DAY_WIRE });
   const cards = host.querySelectorAll("article").length;
@@ -49,7 +49,11 @@ it("keeps the worker cards it last read while another day loads, marked as updat
   await render({ state: "loading" });
   assert.equal(host.querySelectorAll("article").length, cards);
   assert.equal(host.querySelector('[aria-busy="true"]') === null, true, "no skeleton for a day that is still loading");
-  assert.equal(host.querySelector("[data-sessions-stale]")?.textContent, "Updating");
+  const spinner = () => host.querySelector('[data-sessions-stale] [role="status"][aria-label="Refreshing"]')?.parentElement ?? undefined;
+  assert.ok(spinner()?.classList.contains("invisible"), "a fast reload shows a named spinner, still hidden");
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });
+  assert.equal(spinner()?.classList.contains("invisible"), false, "a slow reload shows the spinner");
+  assert.equal(host.textContent?.includes("Updating"), false);
   assert.deepEqual(workerButtons(host).filter(button => !button.disabled).map(button => button.getAttribute("aria-label")), []);
   assert.equal(addWorkers(host)?.disabled, true, "Add workers stays shown and switched off while the day loads");
   assert.equal(addWorkers(host)?.parentElement?.getAttribute("aria-label"), "Sessions are out of date", "the dimmed button says why");

@@ -343,7 +343,7 @@ describe("the identity-gate run-detail section (ref write-safety §14.4)", () =>
     ).includes("identity-gate"));
 
     const otherGate = await world();
-    seed(otherGate, { lifecycle: { ...PARKED_GATE_LIFECYCLE, gateId: "reference-check-review" } });
+    seed(otherGate, { lifecycle: { ...PARKED_GATE_LIFECYCLE, gateId: "reference-field-review-start" } });
     assert.ok(!buildRunDetail(depsOf(otherGate), RUN_ID).availableSections.includes("identity-gate"));
   });
 

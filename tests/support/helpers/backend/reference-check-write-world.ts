@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { referenceCheckLines, referenceGateId } from "./reference-check-lines.js";
+import { REFERENCE_CHECK_ID } from "../../../../src/models/processing/workbooks/reference-fields.js";
 import { randomUUID } from "node:crypto";
 import type { z } from "zod";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -18,8 +20,6 @@ import type { WorkbookActiveSelectionSchema } from "../../../../src/models/dashb
 import { MatchIdentityOutputSchema } from "../../../../src/models/workflows/separations/match-identity.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
-import { REFERENCE_CHECK_REVIEW_GATE } from "../../../../src/models/processing/workbooks/reference-check-stop.js";
-import { REFERENCE_CHECK, VerifyWorkbookPerson } from "../../../../src/models/processing/workbooks/verify-person.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import type { StartPlanRequest } from "../../../../src/models/dashboard/start-plan.js";
 import { CommandRequestSchema, GateArmAnswerRequestSchema } from "../../../../src/rules/commands/commands.js";
@@ -33,7 +33,6 @@ import { protectedSecretSource } from "../protected-secret-source.js";
 import { createRunExecutorTestWorld } from "./run-executor-world.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
 
-const CheckLines = VerifyWorkbookPerson.output.shape.checks;
 /** The queue row's own cancel descriptor, as the run's row actions serve it. */
 export const CANCEL_ROW_ACTION = { kind: "command", key: "cancel", label: "Cancel run", command: "cancel", expectedVersion: 1,
   intent: "neutral", icon: "cancel", placement: ["row"] } as unknown as ActionDescriptorWire;
@@ -61,13 +60,13 @@ export function createReferenceCheckWriteWorld() {
       resources: (_reader, run) => ({ providers: { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
         adapters: { "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
           references: { runId: run.envelope.runId, write: () => { throw new Error("the reference check must not write a reference"); },
-            verifyPerson: command => runWorkbooks.verifyPerson(run, command) } }) } } }) });
+            readFields: command => runWorkbooks.readReferenceFields(run, command) } }) } } }) });
     /** Saves one library spreadsheet; `rows` follow the header row, so the first data row is sheet row 2. */
     const spreadsheet = (name: string, sheetName: string, fields: readonly string[], rows: readonly (readonly (string | number)[])[]): z.infer<typeof WorkbookActiveSelectionSchema> => {
       const saved = library.create({ name, themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: sheetName, width: fields.length, hidden: [], headerRow: 1,
         columnBindings: fields.map((fieldId, index) => ({ id: `column-${String(index)}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" as const })),
         rows: [{ id: "header", cells: fields.map(value => ({ value })) }, ...rows.map((cells, index) => ({ id: `row-${String(index)}`, cells: cells.map(value => ({ value })) }))] }] });
-      return { entry: 1, typeId: REFERENCE_CHECK.id, libraryId: saved.libraryId, versionId: library.libraryVersion(saved.libraryId).version.id,
+      return { entry: 1, typeId: REFERENCE_CHECK_ID, libraryId: saved.libraryId, versionId: library.libraryVersion(saved.libraryId).version.id,
         sheetId: "sheet", expectedVersion: library.read(saved.libraryId).version };
     };
     const start = (input: unknown, picks: readonly z.infer<typeof WorkbookActiveSelectionSchema>[], dryRun = false,
@@ -85,7 +84,7 @@ export function createReferenceCheckWriteWorld() {
     /** Answers the parked reference review as the dashboard does: the card's "continue" arm, translated by the served gate-arm answer path, then applied. */
     const continueAnyway = (run: RunRecord) => {
       const answer = GateArmAnswerRequestSchema.parse({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
-        family: "gate", type: "answer-gate-arm", target: { runId: run.envelope.runId, gateId: REFERENCE_CHECK_REVIEW_GATE, expectedVersion: current(run).version }, payload: { arm: "continue" } });
+        family: "gate", type: "answer-gate-arm", target: { runId: run.envelope.runId, gateId: referenceGateId(current(run)), expectedVersion: current(run).version }, payload: { arm: "continue" } });
       const resolution = resolveGateArmAnswer(gateDeps, answer, undefined);
       assert.ok(resolution.state === "accepted", JSON.stringify(resolution));
       return execution.kernel.execute(resolution.request);
@@ -102,10 +101,7 @@ export function createReferenceCheckWriteWorld() {
     const retry = (run: RunRecord) => command(run, { source: "queue-row", family: "run", type: "retry", target: { runId: run.envelope.runId, expectedVersion: current(run).version } });
     const events = (run: RunRecord) => database.authority.timelineEvents.page({}).filter(event => event.scope.kind === "run" && event.scope.runId === run.envelope.runId);
     /** The check's observed Logs lines, in the order the run recorded them. */
-    const checkLines = (run: RunRecord) => events(run).flatMap(event => event.payload.kind === "span" && event.payload.event.t === "data.observed" && event.payload.event.nodeId === "reference-check"
-      ? event.payload.event.points.flatMap(point => point.field !== "checks" ? [] : point.values.flatMap(value => value.state === "allowed" ? CheckLines.parse(value.value).map(check => check.line) : [value.state]))
-      : []);
-    /** The outcome of each reference node's task or gate span, in the order the run ended them. */
+    const checkLines = (run: RunRecord) => referenceCheckLines(events(run));
     const nodeSpans = (run: RunRecord, nodeId: string) => events(run).flatMap(event => event.payload.kind === "span" && event.payload.event.t === "span.ended"
       && event.payload.event.spanPath.includes(`/${nodeId}#`) ? [[event.payload.event.outcome, "notRunReason" in event.payload.event ? event.payload.event.notRunReason : undefined]] : []);
     const reader = testRunService(database, clock);

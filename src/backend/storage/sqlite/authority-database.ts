@@ -2520,6 +2520,14 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  /** Runs an assistant start command created: the commands table is the only record, so one read of its applied outcomes. */
+  assistantStartedRunIds(): ReadonlySet<string> {
+    return this.#withReadSnapshot(() => new Set(this.#database.prepare(`SELECT DISTINCT json_extract(target.value,'$.runId') AS run_id FROM commands command,
+      json_each(command.outcome_json,'$.result.affectedTargets') target WHERE command.family='start' AND json_extract(command.request_json,'$.source')='assistant'
+      AND json_extract(command.outcome_json,'$.result.state') IN ('applied','already-applied') AND json_extract(target.value,'$.family')='run'`)
+      .all().map(row => z.string().parse(row.run_id))));
+  }
+
   /** Live Duo ceremony leases this worker holds, with their original acquisition times. */
   heldDuoLeases(workerId: string) {
     return this.withAuthorityReadSnapshot(() => this.#database.prepare("SELECT * FROM auth_leases WHERE holder_worker_id=? AND state='held'").all(workerId)

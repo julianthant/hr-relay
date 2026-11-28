@@ -7,7 +7,7 @@ import { RunDetailWireSchema } from "../../../../../src/models/dashboard/run-det
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import { SEEDED_NOW, startSeededServer, type SeededServer } from "./seeded-bff.js";
 import { seededRequestOver, startScriptedRun } from "./seeded-scripted-executor.js";
-import { REFERENCE_CHECK_REVIEW_GATE } from "../../../../../src/models/processing/workbooks/reference-check-stop.js";
+import { referenceReviewId } from "../../../../../src/models/processing/workbooks/reference-fields.js";
 
 const servers: SeededServer[] = [];
 const roots: string[] = [];
@@ -120,7 +120,7 @@ describe("seeded drive helpers", () => {
     expect(detail.status).toBe(200);
     const { gate } = RunDetailWireSchema.parse(await detail.json());
     if (gate.state !== "open") throw new Error(`the parked run serves a ${gate.state} gate`);
-    expect(gate.nodeId).toBe(REFERENCE_CHECK_REVIEW_GATE);
+    expect(gate.nodeId).toBe(referenceReviewId("paypath-position"));
     const cursors = stream.envelopes.flatMap(envelope => envelope.type === "change" || envelope.type === "snapshot" ? [envelope] : []);
     for (const [index, envelope] of cursors.entries()) {
       if (envelope.type === "change") expect(envelope.after).toBe(cursors[index - 1]?.cursor);
