@@ -317,7 +317,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const ocrSources = createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent });
   const attachment = (conversationId: string, id: string) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString());
   const assistantPluginDeps = createAssistantPluginDeps({ database, runs: lifecycle, runDetail: runDetailDeps, assertCurrent, facts: assistantFacts,
-    search: () => shell.search, notifications: () => notifications, workbooks: () => workbookLibrary, attachment,
+    search: () => shell.search, notifications: () => notifications, workbooks: () => workbookLibrary, attachment, clock,
     edits: { apply: (context, work) => composedAssistant.applyEdit(context, work),
       notification: notificationId => database.authority.notifications.get(notificationId), workbooks: () => workbookLibrary } });
   database.bindAssistantEpoch(() => context.profileEpoch);
