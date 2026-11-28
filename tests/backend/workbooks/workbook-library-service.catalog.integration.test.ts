@@ -412,7 +412,7 @@ it.each([{ width: 2, value: 'populated', named: true }, { width: 4, value: null,
     // Supply the full-size sheet at the decoded read boundary so capture accounting still uses the production limits.
     const cells = Array.from({ length: width }, () => ({ value }));
     const rows = Array.from({ length: 62_501 }, (_, index) => ({ id: `row-${index}`, cells }));
-    const libraryVersion = f.repository.libraryVersion;
+    const libraryVersion = f.repository.libraryVersion.bind(f.repository);
     vi.spyOn(f.repository, 'libraryVersion').mockImplementation((id, versionId) => {
       const selected = libraryVersion(id, versionId);
       const [sheet] = selected.workbook.sheets;
