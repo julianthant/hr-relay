@@ -97,4 +97,13 @@ describe("Person Lookup reference spreadsheet check", () => {
     assert.deepEqual(checkSpans(settled), [["done", undefined]]);
     assert.deepEqual(checkLines(settled), ["Reference not checked: no Employee ID"]);
   });
+
+  it("resolves an Employee ID from a name-first search and compares both fields once", async () => {
+    const f = await world.fixture();
+    const settled = await f.run({ name: REFERENCE_PERSON.name }, [
+      f.spreadsheet("Fall roster", "Hires", ["eid", "fullName"], [[REFERENCE_PERSON.emplId, "Avery Example"]]),
+    ]);
+    assert.equal(outcome(f, settled).state, "active");
+    assert.deepEqual(checkLines(settled), ["Hires, row 2: Legal name matches", "Hires, row 2: Employee ID matches"]);
+  });
 });

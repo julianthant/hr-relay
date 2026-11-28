@@ -6,6 +6,7 @@ import { WorkbookRefusalSchema } from "./read-result.js";
 
 export const REFERENCE_CHECK_ID = "reference-check";
 export const REFERENCE_LOOKUP_NODE = "reference-person-lookup";
+export const ReferenceKeyFieldSchema = z.enum(["eid", "email"]);
 export const EMPLOYEE_REFERENCE_CHECK = Object.freeze({ id: REFERENCE_CHECK_ID, keyFieldId: "eid" });
 export const ReferenceReviewSchema = z.strictObject({ decision: z.literal("continue") });
 const REVIEW_PREFIX = "reference-field-review";
@@ -39,7 +40,7 @@ export const ReadReferenceFieldsResponseSchema = z.discriminatedUnion("state", [
 export const CompareReferenceFields = defineTaskContract({
   id: taskId("workbooks/read-reference-fields"), title: "Compare reference fields", effect: "read",
   input: z.strictObject({
-    read: ReadReferenceFieldsRequestSchema.nullable(), sheets: ReferenceSheetsSchema.nullable(),
+    keyField: ReferenceKeyFieldSchema, read: ReadReferenceFieldsRequestSchema.nullable(), sheets: ReferenceSheetsSchema.nullable(),
     fields: z.array(FieldSchema), approved: z.array(ApprovedFieldSchema), last: z.boolean(),
   }),
   output: z.strictObject({

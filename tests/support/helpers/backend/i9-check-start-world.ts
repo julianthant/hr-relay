@@ -52,7 +52,7 @@ import type { z } from "zod";
 export function createI9CheckStartWorld() {
   const world = createRunExecutorTestWorld();
   return { cleanup: world.cleanup, /** `checks` are extra library spreadsheets picked as the second check; `rows` follow the header row, so the first data row is sheet row 2. */
-  async fixture(options: Readonly<{ dryRun?: boolean; checks?: readonly Readonly<{ name: string; sheet: string; fields: readonly string[]; rows: readonly (readonly string[])[] }>[] }> = {}) {
+  async fixture(options: Readonly<{ dryRun?: boolean; nameSearch?: "none" | "multiple"; checks?: readonly Readonly<{ name: string; sheet: string; fields: readonly string[]; rows: readonly (readonly string[])[] }>[] }> = {}) {
     const publishCalls: string[] = [], fieldReads: { runId: string; key: string }[] = [], projections: (readonly string[])[] = [];
     const pages = new Map<string, z.output<typeof ExtractPdfPagesOutputSchema>>();
     const renderer = defineTask(ExtractPdfPages, { sessions: [], async run({ input, ctx }) {
@@ -68,7 +68,13 @@ export function createI9CheckStartWorld() {
       { ...i9Candidate, emplId: EidSchema.parse("10000002"), name: "Example, Blair", startDate: "06/01/2020" },
     ];
     const sessions = sessionFactoryHarness({ crm: () => healthyCrmDriver(), i9: () => createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: clock.now().toISOString() }), ucpath: (): UcpathPersonOrgDriver => ({ ...createDeterministicUcpathPersonOrgDriver(),
-      async searchPersonOrg(input) { return i9Search(candidates.filter(candidate => input.kind === "by-name" ? candidate.name === input.name : candidate.emplId === input.emplId)); },
+      async searchPersonOrg(input) {
+        const found = candidates.filter(candidate => input.kind === "by-name" ? candidate.name === input.name : candidate.emplId === input.emplId);
+        if (input.kind !== "by-name" || options.nameSearch === undefined) return i9Search(found);
+        return i9Search(options.nameSearch === "none" ? [] : found.flatMap(candidate => [
+          candidate, { ...candidate, emplId: EidSchema.parse("10000009") },
+        ]));
+      },
       async searchPersonMatch(input) {
         const confirmed = candidates.filter(candidate => candidate.name === `${input.lastName}, ${input.firstName}`).map(candidate => ({ emplId: candidate.emplId, name: candidate.name }));
         return { hits: confirmed, confirmed, dropped: [] };

@@ -46,7 +46,7 @@ import type {
 } from "./workflow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes, parseWorkbookRequirement } from "./workflow.js";
 import { CompareReferenceFields, REFERENCE_LOOKUP_NODE, ReferenceReviewSchema, referenceComparisonForGate, referenceReviewId } from "../models/processing/workbooks/reference-fields.js";
-import { defineReferenceCheck, manualReferenceReview, REFERENCE_RESULT_FORM, referenceFieldsAt } from "./reference-check.js";
+import { defineReferenceCheck, manualReferenceReview, newReferenceFields, REFERENCE_RESULT_FORM, referenceFieldsAt } from "./reference-check.js";
 import { PersonLookupInput } from "../models/workflows/person-lookup/input.js";
 import { PersonLookupResultSchema } from "../models/workflows/person-lookup/result.js";
 
@@ -841,7 +841,7 @@ function referenceStages<Input extends z.ZodType>(
   const fieldsFor = (id: string, value: unknown) => id === lookupId
     ? referenceFieldsAt({ eid: "0.output.activeStatus.details.eid", fullName: "0.output.activeStatus.details.name" }, value)
     : referenceFieldsAt(definition.outputs[id] ?? {}, value);
-  for (const suffix of stageIds) {
+  for (const [index, suffix] of stageIds.entries()) {
     if (lookupName !== undefined && suffix === lookupId) {
       const lookup = author.delegate({
         id: lookupId, label: "Resolve a reference Employee ID",
@@ -870,12 +870,15 @@ function referenceStages<Input extends z.ZodType>(
     }), [...resolved, ...previous.flatMap(stage => [stage.check, stage.gate])], ({ input, outputs }) => {
       const prior = previous.flatMap(stage => {
         const output = outputs[stage.check.id];
-        return output === undefined ? [] : [{ output: CompareReferenceFields.output.parse(output), continued: outputs[stage.gate.id] !== undefined }];
+        return output === undefined ? [] : [{ source: stage.source, output: CompareReferenceFields.output.parse(output), continued: outputs[stage.gate.id] !== undefined }];
       });
       const sheets = prior.find(stage => stage.output.captured !== null)?.output.captured ?? null;
       const initial = referenceFieldsAt(definition.input ?? {}, input);
       const current = suffix === "start" ? initial : fieldsFor(suffix, outputs[suffix]);
-      const fields = sheets !== null ? current : [
+      // The capture compared all values known at that point, including those from stages before the key resolved.
+      const fields = sheets !== null ? newReferenceFields(current, [
+        ...initial, ...prior.flatMap(stage => fieldsFor(stage.source, outputs[stage.source])),
+      ]) : [
         ...initial,
         ...resolved.flatMap(node => fieldsFor(node.id, outputs[node.id])),
       ];
@@ -883,9 +886,9 @@ function referenceStages<Input extends z.ZodType>(
         .find(field => field.field === definition.key && keySchema.safeParse(field.value).success)?.value;
       return {
         read: sheets !== null || key === undefined ? null : { typeId: definition.selection.id, key, columns },
-        sheets, fields,
+        keyField: definition.key, sheets, fields,
         approved: prior.filter(stage => stage.continued).flatMap(stage => stage.output.mismatches.map(({ source, field }) => ({ source, field }))),
-        last: suffix === finalStage,
+        last: !stageIds.slice(index + 1).some(later => compatible(later, suffix)),
       };
     });
     const gate = author.gate(entries.operatorGate(referenceReviewId(suffix), {

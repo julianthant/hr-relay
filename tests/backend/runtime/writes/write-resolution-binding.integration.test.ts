@@ -247,7 +247,7 @@ async function parkPendingSweep(keyRule: "current" | "retired" = "retired", revi
     surfaces: {}, details: [], identity: { matchKey: value => `eid:${value.eid}` },
     presentation: { title: () => "Sweep fixture" }, scenarios: ["write-fixture/happy"],
     flow: flow(input).step("reference-fields-start", CompareReferenceFields, {
-      dependsOn: [], replay: "always-rerun", bind: () => ({ read: null, sheets: null, fields: [], approved: [], last: false }),
+      dependsOn: [], replay: "always-rerun", bind: () => ({ keyField: "eid", read: null, sheets: null, fields: [], approved: [], last: false }),
       when: review === "required-source" ? { kind: "equals", of: { from: "input", path: "eid" }, value: eid }
         : { kind: "is-present", of: { from: "reference", typeId: EMPLOYEE_REFERENCE_CHECK.id } },
     }).gate(referenceReviewId("start"), {

@@ -4,10 +4,10 @@ import type { RunRecord } from "../../../../src/models/run/record.js";
 import { referenceComparisonForGate } from "../../../../src/models/processing/workbooks/reference-fields.js";
 
 export function referenceCheckLines(events: readonly TimelineEventRecord[]): readonly string[] {
-  return [...new Set(events.flatMap(({ payload }) => payload.kind === "note"
+  return events.flatMap(({ payload }) => payload.kind === "note"
     && /\/reference-fields-[^/]+#/u.test(payload.note.spanPath)
     && /^(?:Not in |Reference not checked: )|, row \d+: [^:]+ (?:matches|differs)$/u.test(payload.note.message)
-    ? [payload.note.message] : []))];
+    ? [payload.note.message] : []);
 }
 
 export function referenceGateId(run: RunRecord) {
