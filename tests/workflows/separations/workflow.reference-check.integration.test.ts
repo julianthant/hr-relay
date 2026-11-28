@@ -72,7 +72,7 @@ describe("Separations reference spreadsheet check", () => {
     assert.ok(review.kind === "gate" && review.resolvedBy === "operator");
     assert.deepEqual(review.when, { kind: "is-present", of: { from: "node", nodeId: "reference-fields-approval", path: "review" } });
     for (const write of nodes.filter(candidate => candidate.kind === "transaction")) {
-      assert.ok(upstreamOf(String(write.id)).has(APPROVAL_GATE), `${String(write.id)} waits for the reference review`);
+      assert.ok(nodes.indexOf(write) > nodes.indexOf(review), `${String(write.id)} follows the reference review in execution order`);
     }
     assert.equal(upstreamOf(APPROVAL_GATE).has("clear-pending"), false, "the review comes before the first write");
   });
@@ -252,6 +252,8 @@ describe("Separations composition with a reference spreadsheet", () => {
   it("resumes from stored state after Continue without asking on the same field again", async () => {
     const c = await composition(), started = c.begin([c.renamed()]);
     assert.equal(c.parkedAt(await c.execute(started)), REFERENCE_GATE);
+    assert.deepEqual(c.commits(), []);
+    assert.deepEqual(c.writeIntents(started), []);
     assert.equal(c.continueAnyway(started).state, "applied");
     const resumed = await c.execute(c.current(started));
     assert.ok(resumed.lifecycle.state === "terminal" && resumed.lifecycle.outcome === "done", c.parkedAt(resumed));

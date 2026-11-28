@@ -45,7 +45,7 @@ import type {
   WorkflowDescriptorSpec,
 } from "./workflow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes, parseWorkbookRequirement } from "./workflow.js";
-import { CompareReferenceFields, REFERENCE_LOOKUP_NODE, ReferenceReviewSchema, referenceComparisonForGate, referenceReviewId } from "../models/processing/workbooks/reference-fields.js";
+import { CompareReferenceFields, REFERENCE_LOOKUP_NODE, ReferenceReviewSchema, referenceReviewId } from "../models/processing/workbooks/reference-fields.js";
 import { defineReferenceCheck, referenceFieldsAt } from "./reference-check.js";
 import { PersonLookupInput } from "../models/workflows/person-lookup/input.js";
 import { PersonLookupResultSchema } from "../models/workflows/person-lookup/result.js";
@@ -1035,7 +1035,7 @@ export function defineWorkflow<
   const authored = authorSteps(author);
   const reference = spec.referenceCheck === undefined || authored.steps.some(([group]) => group.key === REFERENCE_CHECK_STEP.key)
     ? undefined : referenceStages(spec.referenceCheck, authored.steps, author);
-  // The compiler takes ready entries in tuple order, so each comparison and gate runs immediately after its last producer.
+  // Ready entries run in tuple order. Reference reviews precede later writes without supplying write-authority inputs.
   const steps = reference === undefined ? authored.steps : [reference, ...authored.steps];
   const rows = spec.referenceCheck !== undefined && spec.rows !== undefined
     && !spec.rows.some(row => row.members.some(member => member.workflow === undefined && member.step === REFERENCE_CHECK_STEP.key))
@@ -1175,7 +1175,6 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
   const builder = flow(definition.input) as unknown as RuntimeFlowBuilder;
   const parallelOf = parallelMembership(definition.steps);
   const emittedParallels = new Set<ParallelEntry<string, unknown>>();
-  let referenceGate: string | undefined;
   const emitParallel = (entry: ParallelEntry<string, unknown>): void => {
     if (emittedParallels.has(entry)) return;
     emittedParallels.add(entry);
@@ -1209,7 +1208,7 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
     if (entry.kind === "transaction") {
       builder.transaction(entry.id, {
         ...(entry.label === undefined ? {} : { label: entry.label }),
-        dependsOn: referenceGate === undefined ? dependsOn : [...dependsOn, referenceGate],
+        dependsOn,
         prepare: { uses: entry.prepareContract, bind: entry.prepareBind },
         ...(entry.previewBind === undefined ? {} : { previewBind: entry.previewBind }),
         commit: { uses: entry.commitContract, bind: entry.commitBind },
@@ -1243,7 +1242,6 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
       ...(entry.when === undefined ? {} : { when: entry.when }),
       result: entry.result,
     });
-    if (definition.referenceCheck !== undefined && referenceComparisonForGate(entry.id) !== undefined) referenceGate = entry.id;
   }
   return builder.build({
     schema: definition.result.schema,
