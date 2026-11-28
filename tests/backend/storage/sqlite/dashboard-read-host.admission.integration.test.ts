@@ -201,12 +201,25 @@ it.skipIf(process.platform === "win32")("reuses reply custody until the WAL chan
   });
   syncBuiltinESMExports();
   const read = () => lanes.read(laneSleep, { tag: "custody", ms: 0 });
+  const assertReusedCustody = async () => {
+    // SQLite readers can update WAL shared memory even without a new commit.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const unchanged = fixture.profile.admission.observeDashboardReadCustody(fixture.path);
+      assert.ok(unchanged);
+      await read();
+      const first = registryReads;
+      await read();
+      if (unchanged()) {
+        assert.equal(registryReads, first, "the next reply reuses unchanged custody");
+        return;
+      }
+    }
+    assert.fail("no pair of reads with unchanged custody");
+  };
   try {
     await read();
-    const first = registryReads;
-    assert.ok(first > 0);
-    await read();
-    assert.equal(registryReads, first, "the next reply reuses unchanged custody");
+    assert.ok(registryReads > 0);
+    await assertReusedCustody();
 
     fixture.database.authority.workerPools.plan({ workflow: "person-lookup", desiredWorkers: 1, expectedVersion: 0, requestedBy: "local-operator",
       now: systemClock.now().toISOString() });
@@ -214,8 +227,7 @@ it.skipIf(process.platform === "win32")("reuses reply custody until the WAL chan
     await read();
     const afterProof = registryReads;
     assert.ok(afterProof > afterCommit, "the WAL commit requires a fresh proof");
-    await read();
-    assert.equal(registryReads, afterProof);
+    await assertReusedCustody();
 
     await assert.rejects(lanes.read(laneStuck, {}), /read-lane-restarted/u);
     const afterRestart = registryReads;
