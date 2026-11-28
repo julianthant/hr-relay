@@ -194,6 +194,8 @@ async function serveG4(shape: Shape, workspace: string) {
   });
   process.channel?.unref();
   try {
+    const { applicationDataWorkspace } = await import("../../src/backend/app/config/runtime-isolation.js");
+    if (applicationDataWorkspace() !== workspace) throw new Error("read-lanes-g4-clone-binding-unproved");
     const { runSecureEnvironmentEntrypoint } = await import("../dev/secure-env-bootstrap.js");
     await runSecureEnvironmentEntrypoint(["cli", "dashboard", "--prod"]);
   } finally {
@@ -594,54 +596,58 @@ if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url
   const [profile] = z.tuple([CopyProfileSchema]).parse(positionals);
   // Runtime isolation and key custody bind the profile at module initialization.
   process.env[RUNTIME_PROFILE_ENV] = profile;
-  const { applicationDataWorkspace } = await import("../../src/backend/app/config/runtime-isolation.js");
-  const workspace = applicationDataWorkspace(undefined, profile), lockPort = runtimeProfiles[profile].lockPort;
+  const lockPort = runtimeProfiles[profile].lockPort;
   const cloneRoot = realpathSync(tmpdir());
   const clonedWorkspace = values["cloned-workspace"];
   if (clonedWorkspace !== undefined && ((values.shape === undefined && values["g4-backend"] === undefined) || dirname(clonedWorkspace) !== cloneRoot
     || !basename(clonedWorkspace).startsWith(CLONE_PREFIX) || realpathSync(clonedWorkspace) !== clonedWorkspace)) {
     throw new Error("read-lanes-bench-clone-refused");
   }
-  if (values["g4-backend"] !== undefined) {
+  const g4Backend = values["g4-backend"];
+  if (g4Backend !== undefined) {
     if (clonedWorkspace === undefined) throw new Error("read-lanes-g4-fresh-copy-required");
-    await serveG4(ShapeSchema.parse(values["g4-backend"]), clonedWorkspace);
-  } else if (values.g4 === true) {
-    if (!values["fresh-copy"]) throw new Error("read-lanes-g4-fresh-copy-required");
-    const clone = mkdtempSync(join(cloneRoot, CLONE_PREFIX));
-    try {
-      await cloneProfile(workspace, clone, lockPort);
-      await runG4(profile, clone, { days: values.days, workflow: values.workflow, query: values.query, g2: values.g2, runs: values.runs, shape: values.shape });
-    } finally {
-      const { acquireRuntimeLifetimeLock } = await import("../../src/backend/storage/admission/lifetime-lock.js");
-      const lock = await acquireRuntimeLifetimeLock(lockPort);
-      try { rmSync(clone, { recursive: true, force: true }); }
-      finally { await lock.close(); }
-    }
-  } else if (values.shape !== undefined) {
-    if (values["fresh-copy"]) throw new Error("read-lanes-bench-fresh-copy-requires-both-shapes");
-    process.stdout.write(`${JSON.stringify(await measure(ShapeSchema.parse(values.shape), clonedWorkspace ?? workspace, lockPort))}\n`);
+    await serveG4(ShapeSchema.parse(g4Backend), clonedWorkspace);
   } else {
-    const runs = z.coerce.number().int().min(1).max(10).parse(values.runs ?? "3");
-    const script = fileURLToPath(import.meta.url);
-    const results: Record<Shape, Run[]> = { A: [], B: [] };
-    const clone = values["fresh-copy"] ? mkdtempSync(join(cloneRoot, CLONE_PREFIX)) : undefined;
-    try {
-      if (clone !== undefined) await cloneProfile(workspace, clone, lockPort);
-      const cloneArgs = clone === undefined ? [] : ["--cloned-workspace", clone];
-      // Alternate shapes so host drift touches both; every run is a cold process.
-      for (let index = 0; index < runs; index++) {
-        for (const shape of ShapeSchema.options) {
-          const output = execFileSync(process.execPath, ["--import", "tsx", script, profile, "--shape", shape, ...cloneArgs], { encoding: "utf8" });
-          results[shape].push(RunSchema.parse(JSON.parse(output.trim().split("\n").at(-1) ?? "")));
-        }
+    const { applicationDataWorkspace } = await import("../../src/backend/app/config/runtime-isolation.js");
+    const workspace = applicationDataWorkspace(undefined, profile);
+    if (values.g4 === true) {
+      if (!values["fresh-copy"]) throw new Error("read-lanes-g4-fresh-copy-required");
+      const clone = mkdtempSync(join(cloneRoot, CLONE_PREFIX));
+      try {
+        await cloneProfile(workspace, clone, lockPort);
+        await runG4(profile, clone, { days: values.days, workflow: values.workflow, query: values.query, g2: values.g2, runs: values.runs, shape: values.shape });
+      } finally {
+        const { acquireRuntimeLifetimeLock } = await import("../../src/backend/storage/admission/lifetime-lock.js");
+        const lock = await acquireRuntimeLifetimeLock(lockPort);
+        try { rmSync(clone, { recursive: true, force: true }); }
+        finally { await lock.close(); }
       }
-    } finally { if (clone !== undefined) rmSync(clone, { recursive: true, force: true }); }
-    const report = { gate: "G2", runtime: "tsx (the dashboard:prod backend loader; no packaged build exists)", node: process.version,
-      profile, freshCopy: clone !== undefined, commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
-      host: { cpus: availableParallelism(), loadavg: loadavg() },
-      shapes: ShapeSchema.options.map(shape => summarizeShape(shape, results[shape])), runs: results };
-    const path = join(process.cwd(), `read-lanes-g2-${new Date(systemClock.nowMs()).toISOString().replaceAll(":", "-")}.json`);
-    writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
-    process.stdout.write(`${JSON.stringify(report.shapes, null, 2)}\nwrote ${path}\n`);
+    } else if (values.shape !== undefined) {
+      if (values["fresh-copy"]) throw new Error("read-lanes-bench-fresh-copy-requires-both-shapes");
+      process.stdout.write(`${JSON.stringify(await measure(ShapeSchema.parse(values.shape), clonedWorkspace ?? workspace, lockPort))}\n`);
+    } else {
+      const runs = z.coerce.number().int().min(1).max(10).parse(values.runs ?? "3");
+      const script = fileURLToPath(import.meta.url);
+      const results: Record<Shape, Run[]> = { A: [], B: [] };
+      const clone = values["fresh-copy"] ? mkdtempSync(join(cloneRoot, CLONE_PREFIX)) : undefined;
+      try {
+        if (clone !== undefined) await cloneProfile(workspace, clone, lockPort);
+        const cloneArgs = clone === undefined ? [] : ["--cloned-workspace", clone];
+        // Alternate shapes so host drift touches both; every run is a cold process.
+        for (let index = 0; index < runs; index++) {
+          for (const shape of ShapeSchema.options) {
+            const output = execFileSync(process.execPath, ["--import", "tsx", script, profile, "--shape", shape, ...cloneArgs], { encoding: "utf8" });
+            results[shape].push(RunSchema.parse(JSON.parse(output.trim().split("\n").at(-1) ?? "")));
+          }
+        }
+      } finally { if (clone !== undefined) rmSync(clone, { recursive: true, force: true }); }
+      const report = { gate: "G2", runtime: "tsx (the dashboard:prod backend loader; no packaged build exists)", node: process.version,
+        profile, freshCopy: clone !== undefined, commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+        host: { cpus: availableParallelism(), loadavg: loadavg() },
+        shapes: ShapeSchema.options.map(shape => summarizeShape(shape, results[shape])), runs: results };
+      const path = join(process.cwd(), `read-lanes-g2-${new Date(systemClock.nowMs()).toISOString().replaceAll(":", "-")}.json`);
+      writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+      process.stdout.write(`${JSON.stringify(report.shapes, null, 2)}\nwrote ${path}\n`);
+    }
   }
 }
