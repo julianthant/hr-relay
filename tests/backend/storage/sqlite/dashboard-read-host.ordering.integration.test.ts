@@ -206,5 +206,6 @@ it("keeps reads queued and answers a cancel while a checkpoint holds the gate, t
   await until(() => replies.filter(reply => reply.kind === "read").length === 2);
   const reads = replies.filter(reply => reply.kind === "read").map(reply => ({ ids: reply.ids, ...RunSchema.parse(JSON.parse(reply.body ?? "")) }));
   assert.deepEqual(reads, [{ ids: [2], tag: "click", run: 1 }, { ids: [1], tag: "scan", run: 2 }]);
-  assert.equal(Atomics.load(gate, SEARCH_READING), 0);
+  // The worker posts the reply before it clears the shared reading flag.
+  await until(() => Atomics.load(gate, SEARCH_READING) === 0);
 });
