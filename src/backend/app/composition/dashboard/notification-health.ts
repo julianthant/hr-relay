@@ -51,15 +51,16 @@ function ownWrite<T>(database: AuthorityDatabase, write: () => T): T {
 export function ownedDiagnostics(database: AuthorityDatabase, debugEvents: { emit(input: unknown): unknown }): { emit(input: unknown): unknown } {
   return { emit: input => ownWrite(database, () => debugEvents.emit(input)) };
 }
-type VerifiedBackup = Readonly<{ manifest: string; backupPath: string; backup: string }>;
+type VerifiedBackup = Readonly<{ manifest: string; backupPath: string; backup: string; logs: string }>;
 const verifiedBackups = new WeakMap<AuthorityDatabase, ReadonlyMap<string, VerifiedBackup>>();
 function fileIdentity(path: string, followLinks = true): string {
   const fileStat = followLinks ? statSync : lstatSync;
   const stats = fileStat(path, { bigint: true, throwIfNoEntry: false });
   return stats === undefined ? "missing" : `${String(stats.dev)}:${String(stats.ino)}:${String(stats.size)}:${String(stats.mtimeNs)}:${String(stats.ctimeNs)}`;
 }
-const backupFiles = (backupPath: string) => [backupPath, ...backupLogPaths(backupPath)]
-  .flatMap(path => ["", "-wal", "-shm", "-journal"].map(suffix => fileIdentity(path + suffix, path === backupPath))).join("|");
+const backupFileSetIdentity = (path: string, followLinks: boolean) =>
+  ["", "-wal", "-shm", "-journal"].map(suffix => fileIdentity(path + suffix, followLinks)).join("|");
+const backupLogIdentity = (backupPath: string) => backupLogPaths(backupPath).map(path => backupFileSetIdentity(path, false)).join("|");
 /** No backup writer, credential reader, or unrelated outbox is called by this observation. An aborted read rejects: a stopped inspection is no reading. */
 export async function readNotificationHealth(input: { admission: RuntimeAdmission; database: AuthorityDatabase; reader: Pick<RunRecordService, "list">; stateRoot: string; clock: Clock; signal?: AbortSignal }): Promise<NotificationHealthReading> {
   const { stateRoot, clock } = input;
@@ -88,13 +89,19 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
     for (const file of readdirSync(backupRoot).filter(name => name.endsWith(".manifest.json"))) {
       const manifestPath = join(backupRoot, file), manifest = fileIdentity(manifestPath), prior = remembered?.get(manifestPath);
       // The full verifier runs again only for a new or changed backup, on a worker thread; a failure is never remembered.
-      if (prior !== undefined && prior.manifest === manifest && prior.backup === backupFiles(prior.backupPath)) { current.set(manifestPath, prior); continue; }
+      if (prior !== undefined && prior.manifest === manifest
+        && prior.backup === backupFileSetIdentity(prior.backupPath, true) && prior.logs === backupLogIdentity(prior.backupPath)) {
+        current.set(manifestPath, prior); continue;
+      }
       try {
         // The verdict belongs to the files as they were before verification began; a backup that changed since is not the one inspected.
-        const backupPath = join(backupRoot, parseBackupManifestFile(manifestPath).backupFileName), file = fileIdentity(backupPath), backup = backupFiles(backupPath);
+        const backupPath = join(backupRoot, parseBackupManifestFile(manifestPath).backupFileName);
+        const file = fileIdentity(backupPath), backup = backupFileSetIdentity(backupPath, true), logs = backupLogIdentity(backupPath);
         const verified = await verifyBackupManifestOffThread(input.admission, manifestPath, { signal: input.signal });
-        if (verified.backupPath !== backupPath || fileIdentity(backupPath) !== file) throw new Error("backup-changed-during-inspection");
-        if (fileIdentity(manifestPath) === manifest && backupFiles(backupPath) === backup) current.set(manifestPath, { manifest, backupPath, backup });
+        if (verified.backupPath !== backupPath || fileIdentity(backupPath) !== file || backupLogIdentity(backupPath) !== logs) {
+          throw new Error("backup-changed-during-inspection");
+        }
+        if (fileIdentity(manifestPath) === manifest && backupFileSetIdentity(backupPath, true) === backup) current.set(manifestPath, { manifest, backupPath, backup, logs });
       } catch (error) {
         if (input.signal?.aborted === true) throw error;
         backupFailed = true;
