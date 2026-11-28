@@ -52,6 +52,7 @@ export type WorkerDirective = z.infer<typeof WorkerDirectiveSchema>;
 const requestIdentity = { requestId: z.uuid(), sequence: z.number().int().positive() };
 export const WorkerParentMessageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("worker-stop"), reason: z.enum(["operator", "shutdown", "logout", "reset", "remove", "fault"]), mode: z.literal("after-run") }),
+  z.strictObject({ kind: z.literal("worker-work-available") }),
   z.strictObject({ kind: z.literal("worker-pause"), ...requestIdentity }),
   z.strictObject({ kind: z.literal("worker-resume"), ...requestIdentity }),
   z.strictObject({ kind: z.literal("worker-request"), ...requestIdentity, sentAt: IsoInstantSchema, deadlineMs: z.number().int().positive(), request: WorkerControlRequestSchema }),
