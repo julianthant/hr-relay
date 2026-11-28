@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { REFERENCE_CHECK_REVIEW_GATE, ReferenceCheckReviewSchema } from "../../../../models/processing/workbooks/reference-check-stop.js";
 import { REFERENCE_CHECK, VerifyWorkbookPerson } from "../../../../models/processing/workbooks/verify-person.js";
+import type { StepManualDeclaration } from "../../../../models/workflow/step-omission.js";
 import { EmergencyContactMemberInputSchema } from "../../../../models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactMemberReadReferenceStop } from "../../../../models/workflows/emergency-contact-member/read-reference-stop.js";
 import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
@@ -10,8 +11,20 @@ import { buildContactPlan } from "../contact-plan/step.js";
 
 export const REFERENCE_CHECK_NODE = "reference-check";
 
+export const REFERENCE_CHECK_MANUAL: StepManualDeclaration = {
+  off: "values",
+  ownStartOnly: true,
+  form: { fields: [{ key: "referenceResult", label: "Reference spreadsheet result", kind: "enum", values: ["Confirmed", "Unconfirmed", "Not checked"] }] },
+  produces: {
+    [REFERENCE_STOP_NODE]: ({ facts, scope }) => ({ ask: scope.dryRun === undefined && facts.referenceResult !== "Confirmed" ? true : null }),
+  },
+  skips: [REFERENCE_CHECK_NODE],
+  keeps: [REFERENCE_CHECK_REVIEW_GATE],
+};
+
 export const REFERENCE_CHECK_STEP = Object.freeze({
   ...defineWorkflowStep({ key: "reference-check", label: "Check reference spreadsheets" }), system: "local" as const,
+  manual: REFERENCE_CHECK_MANUAL,
   description: "Look the employee's Employee ID up in each picked reference spreadsheet, and ask before saving their contact when one does not confirm them.",
   operatorFields: [
     { label: "Reference spreadsheet", visibility: "logs", sources: [{ nodeId: REFERENCE_CHECK_NODE, kind: "output", fieldPath: "checks.line" }] },
