@@ -16,13 +16,13 @@ const world = createOcrReviewWorld();
 afterEach(world.cleanup);
 
 it.each([false, true])("reads two selected worksheets through the full roster with Emergency Contact parent %s", async coordinator => {
-  const f = await world.fixture({ coordinator, rosterSheets: "agreeing" });
+  const f = await world.fixture({ coordinator, record: coordinator, rosterSheets: "agreeing" });
   const review = f.database.authority.ocrReviews.latest(f.run.envelope.runId);
   assert.deepEqual(review?.seed.review.roster?.rows.map(row => [row.eid, row.name]), [["10000001", "Example, Alex"], ["10000002", "Example, Jamie"]]);
 });
 
 it.each([false, true])("applies one authenticated worksheet choice before reading OCR with Emergency Contact parent %s", async coordinator => {
-  const f = await world.fixture({ coordinator, rosterSheets: "conflicting" });
+  const f = await world.fixture({ coordinator, record: coordinator, rosterSheets: "conflicting" });
   const review = f.database.authority.ocrReviews.latest(f.run.envelope.runId);
   assert.deepEqual(review?.seed.review.roster?.rows.map(row => [row.eid, row.name]), [["10000001", "Example, Alexander"], ["10000002", "Example, Jamie"]]);
 });

@@ -126,7 +126,7 @@ export function assertOcrReviewChildrenCurrent(repositories: AuthorityRepositori
 export function readOcrReviewCheckpointSeed(repositories: AuthorityRepositories, ocrRun: RunRecord, checkpointValue: unknown): OcrReviewSeed {
   try {
     const input = OcrInputSchema.parse(ocrRun.input.parsed.value);
-    const choice = input.rosterChoice === undefined ? undefined
+    const choice = input.rosterChoice === "not-required" ? undefined
       : WorksheetRowChoiceSchema.parse(authenticateWorkbookReferenceExecution(repositories, ocrRun)?.gate.result.value);
     return hydrateOcrReviewSeed(ReadOcrReviewSeed.output.parse(checkpointValue), extractionId => {
       const stored = repositories.ocrExtractions.get(extractionId);

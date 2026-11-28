@@ -36,8 +36,8 @@ import { bindOnboardingRosterSources, onboardingRosterRow } from "../../rules/on
 import { deriveGateResultCheckpointFingerprint, type GateResultRecord } from "../../models/workflow/gates.js";
 import { readRunCheckpoint, readContinuationGate, validateRunContinuation } from "../storage/sqlite/run-continuation.js";
 import { rejectCommandRequest } from "./commands/command-refusal.js";
-import { OcrCanonicalInput, OcrCanonicalInputSchema } from "../../models/workflows/ocr/input.js";
-import { EmergencyContactCanonicalInput, EmergencyContactInputSchema } from "../../models/workflows/emergency-contact/input.js";
+import { OcrCanonicalInput, OcrCanonicalInputSchema, OcrInputSchema } from "../../models/workflows/ocr/input.js";
+import { EmergencyContactCanonicalInput, EmergencyContactInputSchema, emergencyContactOcrInput } from "../../models/workflows/emergency-contact/input.js";
 import { OCR_ROSTER_TYPE_ID } from "../../models/workflows/ocr/roster.js";
 import { I9_CHECK_REFERENCE } from "../../models/workflows/i9-check/start.js";
 import { resolveI9WorksheetRows } from "../../rules/i9-check/batch.js";
@@ -83,14 +83,15 @@ const ocrInputBinding = Object.freeze({
     return input;
   },
   assertSubmission(input: unknown) {
-    if (input !== null && typeof input === "object" && (Reflect.get(input, "roster") != null || Object.hasOwn(input, "rosterChoice"))) {
+    if (input !== null && typeof input === "object" && (Reflect.get(input, "roster") != null
+      || Object.hasOwn(input, "rosterChoice") && Reflect.get(input, "rosterChoice") !== "not-required")) {
       throw new Error("OCR roster values are captured by Relay; caller-supplied roster input is invalid");
     }
   },
   bind(input: unknown, references: readonly SchemaBoundCanonicalValue[] | undefined, capturedAt: string) {
     if (input === null || typeof input !== "object" || Array.isArray(input) || references === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
     const { roster, conflicts } = bindOcrRoster(references, capturedAt);
-    return { ...input, roster, ...(conflicts.size === 0 ? {} : { rosterChoice: "required" }) };
+    return { ...input, roster, rosterChoice: conflicts.size === 0 ? "not-required" : "required" };
   },
 });
 interface WorkbookInputBinding {
@@ -104,6 +105,11 @@ const workbookInputBindings: ReadonlyMap<object, WorkbookInputBinding> = new Map
 
 export function workbookInputBinding(canonicalInput: object) {
   return workbookInputBindings.get(canonicalInput);
+}
+
+export function workbookStartChildInput(parent: object, child: object, input: unknown) {
+  if (parent !== EmergencyContactCanonicalInput || child !== OcrInputSchema) return undefined;
+  return { ...emergencyContactOcrInput(EmergencyContactInputSchema.parse(input)), roster: null };
 }
 
 type Reference = z.infer<typeof RunWorkbookSnapshotReferenceSchema>;
@@ -564,7 +570,7 @@ function batchReferenceRows(repositories: AuthorityRepositories, run: RunRecord,
   const canonical = run.input.parsed.value;
   if (!ocrReferenceWorkflows.has(workflow) || canonical === null || typeof canonical !== "object" || !Object.hasOwn(canonical, "rosterChoice")) return undefined;
   const input = (workflow.startsWith("emergency-contact") ? EmergencyContactInputSchema : OcrCanonicalInputSchema).parse(canonical);
-  if (input.rosterChoice === undefined) return undefined;
+  if (input.rosterChoice === "not-required") return undefined;
   if (input.roster === null) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   const sources = references(run).filter(reference => reference.value.request.typeId === OCR_ROSTER_TYPE_ID);
   const { roster, conflicts } = bindOcrRoster(sources.map(source => source.bound), input.roster.readAt);

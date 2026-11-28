@@ -51,9 +51,9 @@ export function bindOcrRoster(bounds: readonly SchemaBoundCanonicalValue[], read
   return { roster, conflicts };
 }
 
-export function chooseOcrRoster(input: { roster: OcrWorkbookRosterEvidence | null; rosterChoice?: "required" }, choice?: WorksheetRowChoice) {
+export function chooseOcrRoster(input: { roster: OcrWorkbookRosterEvidence | null; rosterChoice: "not-required" | "required" }, choice?: WorksheetRowChoice) {
   const { roster } = input;
-  if (input.rosterChoice === undefined && choice === undefined) return roster;
+  if (input.rosterChoice === "not-required" && choice === undefined) return roster;
   if (input.rosterChoice !== "required" || roster === null || choice?.referenceDigest !== roster.referenceDigest) {
     throw new Error("ocr-roster-choice-unavailable");
   }

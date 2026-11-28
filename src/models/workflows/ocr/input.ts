@@ -18,7 +18,7 @@ export const OcrParentInputSchema = z.strictObject({
   readingId: ItemIdSchema,
   formType: OcrFormTypeSchema,
   roster: OcrWorkbookRosterEvidenceSchema.nullable(),
-  rosterChoice: z.literal("required").optional(),
+  rosterChoice: z.enum(["not-required", "required"]).default("not-required"),
   extractWithOcr: z.boolean().optional(),
   reading: z.discriminatedUnion("kind", [Subscription, Manual]),
 });
@@ -29,7 +29,7 @@ export const OcrInputSchema = OcrParentInputSchema.extend({
     Manual.extend({ assertions: z.array(z.union([ManualOcrAssertionSchema, ManualOcrDraftAssertionSchema])).min(1) }),
   ]),
 });
-export const OcrCanonicalInputSchema = OcrInputSchema.extend({ approval: OcrInputSchema.shape.approval.removeDefault() });
+export const OcrCanonicalInputSchema = OcrInputSchema.extend({ approval: OcrInputSchema.shape.approval.removeDefault(), rosterChoice: OcrInputSchema.shape.rosterChoice.removeDefault() });
 export const OCR_INPUT_EXAMPLE = OcrParentInputSchema.parse({
   document: OCR_PAGE_EXAMPLE.page.document, readingId: OCR_PAGE_EXAMPLE.page.readingId,
   formType: "emergency-contact", roster: null, reading: { kind: "subscription" } });

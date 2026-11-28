@@ -2,7 +2,7 @@ import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { ocrRecordSourcePages } from "../../../../models/ocr/review-record.js";
 import { contactEffectIdentity } from "../../../../models/systems/ucpath/emergency-contacts.js";
 import { EmergencyContactMemberInputSchema } from "../../../../models/workflows/emergency-contact-member/input.js";
-import { EmergencyContactInputSchema } from "../../../../models/workflows/emergency-contact/input.js";
+import { EmergencyContactInputSchema, emergencyContactOcrInput } from "../../../../models/workflows/emergency-contact/input.js";
 import { ReadEmergencyContactResult } from "../../../../models/workflows/emergency-contact/read-result.js";
 import { EmergencyContactMemberResultSchema } from "../../../../models/workflows/emergency-contact/result.js";
 import { WorkflowIdSchema } from "../../../../rules/identity/ids.js";
@@ -24,8 +24,8 @@ export const READ_DOCUMENT_STEP = Object.freeze({ key: "read-document", label: "
   }], branchLabels: [], starts: [{ nodeId: "read-document", each: "This PDF" }] } as const,
 });
 export function buildEmergencyContactRecords(author: WorkflowAuthor<typeof EmergencyContactInputSchema>) {
-  const graph = buildApprovedOcrRecords(author, { ocrInput: ({ onbaseFiling: _onbaseFiling, rosterChoice, ...input }, choice) => ({
-      ...input, roster: chooseOcrRoster({ ...input, rosterChoice }, choice), formType: "emergency-contact" }),
+  const graph = buildApprovedOcrRecords(author, { ocrInput: (input, choice) => ({
+      ...emergencyContactOcrInput(input), roster: chooseOcrRoster(input, choice) }),
       target: { id: WorkflowIdSchema.parse("emergency-contact-member"), input: EmergencyContactMemberInputSchema, result: EmergencyContactMemberResultSchema },
       memberSystem: "ucpath", memberLabel: "Preview approved Emergency Contacts", filter: approvedRecordHasEid,
       validate: records => {

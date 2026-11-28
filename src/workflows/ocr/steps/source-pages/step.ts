@@ -89,7 +89,7 @@ function reviewSeed(input: z.output<typeof OcrInputSchema>,
 }
 const rosterChoiceGate = {
   id: WORKSHEET_ROW_CHOICE_GATE, label: "Choose roster rows", resolvedBy: "operator", result: WorksheetRowChoiceSchema,
-  when: { kind: "is-present", of: { from: "input", path: "rosterChoice" } },
+  when: { kind: "equals", of: { from: "input", path: "rosterChoice" }, value: "required" },
 } as const;
 function buildRosterChoice<Input extends z.ZodType>({ gate, task }: Pick<WorkflowAuthor<Input>, "gate" | "task">) {
   const choice = gate(rosterChoiceGate, []);

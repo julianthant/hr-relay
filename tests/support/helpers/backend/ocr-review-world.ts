@@ -365,7 +365,7 @@ export function createOcrReviewWorld(profileFixture?: () => Promise<BoundProfile
       if (actorId === "local-operator" && options.holdPages !== true) {
         const failures = result.outcomes.filter(outcome => outcome.state === "failed").map(outcome => {
           const failure = database.authority.failures.get(outcome.failureId); assert.ok(failure);
-          return { nodeId: failure.nodeId, taskId: failure.taskId, code: failure.code,
+          return { nodeId: failure.nodeId, taskId: failure.taskId, code: failure.code, summary: failure.summary,
             causes: failure.causeChain.map(cause => cause.code),
             frames: [...(failure.debug?.stack ?? "").matchAll(/(?:src|tests)\/[A-Za-z0-9_./-]+\.ts:\d+:\d+/gu)]
               .map(match => match[0]).slice(0, 8) };

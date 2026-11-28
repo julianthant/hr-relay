@@ -70,7 +70,7 @@ describe("OCR captured workbook roster", () => {
     const roster = readRoster();
     assert.throws(() => binding.assertSubmission({ roster }), /caller-supplied/);
     binding.assertSubmission({ roster: null });
-    assert.deepEqual(binding.bind({ roster: null }, [bound()], readAt), { roster });
+    assert.deepEqual(binding.bind({ roster: null }, [bound()], readAt), { roster, rosterChoice: "not-required" });
     assert.throws(() => binding.bind({}, [], readAt));
     assert.throws(() => binding.assertSubmission({ roster: { artifact: {}, rows: [] } }), /caller-supplied/);
   });

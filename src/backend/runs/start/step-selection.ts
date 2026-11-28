@@ -1,5 +1,6 @@
 import { descriptorRuntimeNodes, workflowDelegatedDescriptor, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
+import { workbookStartChildInput } from "../workbooks.js";
 import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import {
   delegatedStepOmissions,
@@ -317,9 +318,12 @@ export function assertStartStepOmissionInputs(descriptor: AnyWorkflowDescriptor,
 export function bindSingleStartChild(descriptor: AnyWorkflowDescriptor, workflow: string, canonicalInput: unknown): JsonValue {
   const delegates = descriptorRuntimeNodes(descriptor).filter(node => node.kind === "child-run" && node.target.id === workflow);
   const [node] = delegates;
-  if (delegates.length !== 1 || node?.kind !== "child-run" || node.dependsOn.length !== 0) {
+  if (delegates.length !== 1 || node?.kind !== "child-run") {
     throw new Error(`${descriptor.id} needs one initial delegation to bind typed ${workflow} input`);
   }
+  const beforeRosterChoice = workbookStartChildInput(descriptor.canonicalInput, node.target.input, canonicalInput);
+  if (beforeRosterChoice !== undefined) return JsonValueSchema.parse(beforeRosterChoice);
+  if (node.dependsOn.length !== 0) throw new Error(`${descriptor.id} needs one initial delegation to bind typed ${workflow} input`);
   const input = node.bind({ input: JsonValueSchema.parse(canonicalInput), outputs: {} });
   if (node.cardinality === "one") return JsonValueSchema.parse(input);
   if (!Array.isArray(input) || input.length !== 1) {
