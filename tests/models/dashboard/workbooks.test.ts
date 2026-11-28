@@ -97,10 +97,16 @@ it("roundtrips explicit Date cells while ISO-looking strings stay strings and pr
   const wire = JSON.parse(JSON.stringify(encodeEditableWorkbook(workbook))) as unknown;
   assert.deepEqual(decodeEditableWorkbook(wire), workbook);
   const saved = SavedWorkbookSchema.parse({ libraryId: "library", version: 2, createdAt: "2026-01-01T00:00:00.000Z", savedAt: "2026-01-02T00:00:00.000Z", workbook });
-  assert.deepEqual(decodeSavedWorkbook(JSON.parse(JSON.stringify(encodeSavedWorkbook(saved)))), saved);
+  const savedWire = encodeSavedWorkbook(saved);
+  const decoded = decodeSavedWorkbook(JSON.parse(JSON.stringify(savedWire)));
+  assert.deepEqual(decoded, saved);
+  assert.equal(Object.isFrozen(decoded.workbook.sheets[0].rows[0].cells[0]), true);
+  assert.throws(() => encodeSavedWorkbook({ ...saved, libraryId: "different" }));
+  assert.throws(() => decodeSavedWorkbook({ ...savedWire, libraryId: "different" }));
   const bad = structuredClone(encodeEditableWorkbook(workbook));
   Reflect.set(bad.sheets[0].rows[0].cells[0], "value", { type: "date", value: "not-a-date" });
   assert.equal(EditableWorkbookWireSchema.safeParse(bad).success, false);
+  assert.throws(() => decodeSavedWorkbook({ ...savedWire, workbook: bad }));
   assert.equal(EditableWorkbookWireSchema.safeParse(workbook).success, false);
 });
 
