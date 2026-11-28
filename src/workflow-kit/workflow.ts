@@ -951,9 +951,12 @@ function deriveStepOmissions(
       const validation = node.kind === "task" && node.uses.id.startsWith("workflow:") && node.uses.provenance.default === "derived"
         && node.uses.subject.kind === "none" && node.uses.artifacts === undefined && !isPreviewBoundary(node)
         && node.dependsOn.some(dependency => Object.hasOwn(manual.produces, dependency));
+      const inputBacked = manual.bindInput !== undefined && (node.kind === "child-run"
+        || node.kind === "task" && !isPreviewBoundary(node) && !node.uses.providers?.length
+          && node.uses.subject.kind === "none");
       if (manual.off !== "values" || !members.has(member) || skipped.has(member) || Object.hasOwn(manual.produces, member)
-        || !ingressGate && !validation) {
-        throw new Error(`${id}: ${owner} can only keep its own operator ingress gate or local validation of manual values`);
+        || !ingressGate && !validation && !inputBacked) {
+        throw new Error(`${id}: ${owner} can only keep its own operator ingress gate, local validation or an input-backed reader`);
       }
     }
     const switchable = category.selection !== undefined || selectedByOneInputCondition(id, nodes, category.nodes, owner);
@@ -1001,6 +1004,8 @@ function deriveStepOmissions(
       ...(manual.off === undefined ? {} : { off: manual.off }),
       ...(manual.skips === undefined ? {} : { skips: Object.freeze([...manual.skips]) }),
       ...(manual.refine === undefined ? {} : { refine: manual.refine }),
+      ...(manual.bindInput === undefined ? {} : { bindInput: manual.bindInput }),
+      ...(manual.allowsChildFanOut === undefined ? {} : { allowsChildFanOut: manual.allowsChildFanOut }),
       ...(manual.skipsGatesAndTransactions === undefined ? {} : { skipsGatesAndTransactions: manual.skipsGatesAndTransactions }),
       ...(manual.orderOnlyReaders === undefined ? {} : { orderOnlyReaders: Object.freeze([...manual.orderOnlyReaders]) }),
     }));

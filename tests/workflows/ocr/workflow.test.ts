@@ -5,6 +5,8 @@ import { auditWorkflowModuleRoles } from "../../../src/workflow-kit/validation/w
 import { compileWorkflow, workflowExplorerDeclaration } from "../../../src/workflow-kit/workflow-definition.js";
 import { descriptorRuntimeNodes, workflowPlanning, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
 import { DESCRIPTORS, workflowModuleOf, childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
+import { projectStartRows, resolveStartStepOmissions, stepOmissionGraphView } from "../../../src/backend/runs/start/step-selection.js";
+import { planStepOmissions } from "../../../src/models/workflow/step-omission.js";
 import { ocrWorkflow } from "../../../src/workflows/ocr/workflow.js";
 import { OcrPageWorkflowInputSchema } from "../../../src/models/workflows/ocr-page/input.js";
 import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
@@ -100,6 +102,36 @@ async function finishFixture(scope: Parameters<typeof completed.bind>[0], record
 }
 
 describe("child-only OCR document graph", () => {
+  it.each([
+    { workflow: "OCR", descriptor: ocrModule.descriptor,
+      steps: ["source-pages", "page-readings", "review-records", "identity-lookups", "signer-lookups", "approval"] },
+    { workflow: "OCR Page", descriptor: ocrPageModule.descriptor, steps: ["read-page"] },
+  ])("offers typed values for every $workflow Start row", ({ descriptor, steps }) => {
+    const rows = projectStartRows(descriptor);
+    assert.deepEqual(descriptor.stepLocks, []);
+    assert.deepEqual(rows.map(row => row.key), steps);
+    for (const row of rows) {
+      assert.equal(row.kind, "switch", row.key);
+      assert.equal(row.off, "values", row.key);
+      assert.equal(row.lockReason, undefined, row.key);
+      assert.ok(row.manual && row.manual.form.fields.length > 0, `${row.key} needs a typed values form`);
+    }
+  });
+
+  it("requires downstream omissions when record grouping is off", () => {
+    const rows = projectStartRows(descriptor);
+    assert.deepEqual(rows.find(row => row.key === "review-records")?.manual?.forces, ["identity-lookups", "signer-lookups", "approval"]);
+    const entries = resolveStartStepOmissions(descriptor, ["source-pages", "page-readings"], [
+      { step: "review-records", facts: { outcome: "leave unverified" } },
+      { step: "identity-lookups", facts: { outcome: "leave unverified" } },
+      { step: "signer-lookups", facts: { outcome: "leave unverified" } },
+      { step: "approval", facts: { release: "withhold" } },
+    ]);
+    const plan = planStepOmissions(stepOmissionGraphView(descriptor), entries ?? []);
+    assert.deepEqual([...plan.omitted.keys()], ["build-review", "lookup-identities", "lookup-signers", "read-result", "approve-records"]);
+    assert.deepEqual(plan.refusals, []);
+  });
+
   it.each(["emergency-contact", "oath", "i9"] as const)("emits only the %s form's declared lookup and retains its typed outcome", formType => {
     const source = sourceFixture(2, formType);
     const pages = source.inputs.map(input => donePage(input));

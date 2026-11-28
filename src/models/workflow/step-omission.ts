@@ -199,11 +199,15 @@ export interface StepManualDeclaration {
   readonly skips?: readonly string[];
   /** Cross-field rules checked by the server at plan time, after the form parses. */
   readonly refine?: (facts: JsonObject, submission: JsonValue | undefined) => readonly StepManualIssue[];
+  /** Binds typed facts into the admitted input before any reader or child receives it. */
+  readonly bindInput?: (input: JsonValue, facts: JsonObject) => JsonValue;
+  /** Own facts describe the parent document, not one shared assertion applied to its child members. */
+  readonly allowsChildFanOut?: true;
   /** Allows `skips` to name the step's gates and transactions: the typed values stand for their decision or write. */
   readonly skipsGatesAndTransactions?: true;
   /** Nodes in other steps that depend on a skipped member only to run after it and read none of its output. */
   readonly orderOnlyReaders?: readonly string[];
-  /** Ingress approvals and local validation that still run when the operator supplies values. */
+  /** Ingress approvals, local validation and input-backed readers that still run with supplied values. */
   readonly keeps?: readonly string[];
 }
 

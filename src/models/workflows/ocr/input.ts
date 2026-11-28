@@ -6,6 +6,7 @@ import { OcrWorkbookRosterEvidenceSchema } from "./roster.js";
 import { ManualOcrAssertionSchema, OCR_PAGE_EXAMPLE } from "../ocr-page/input.js";
 import { defineCanonicalInput } from "../../workflow/canonical-input.js";
 import { OcrSourceUploadSchema } from "../../ocr/review.js";
+import { PDF_PAGE_LIMIT } from "../../processing/extraction/extract-pdf-pages.js";
 
 export const OcrInputSchema = z.strictObject({
   sourceRunId: RunIdSchema.optional(),
@@ -16,6 +17,7 @@ export const OcrInputSchema = z.strictObject({
   formType: OcrFormTypeSchema,
   roster: OcrWorkbookRosterEvidenceSchema.nullable(),
   extractWithOcr: z.boolean().optional(),
+  assertedPageCount: z.number().int().min(1).max(PDF_PAGE_LIMIT).optional(),
   reading: z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("subscription") }),
     z.strictObject({ kind: z.literal("manual"), actorId: z.string().min(1), assertions: z.array(ManualOcrAssertionSchema).min(1) }),

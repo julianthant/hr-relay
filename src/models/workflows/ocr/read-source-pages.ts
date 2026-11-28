@@ -5,14 +5,17 @@ import { ExtractPdfPagesOutputSchema } from "../../processing/extraction/extract
 import { OcrInputSchema, OCR_INPUT_EXAMPLE } from "./input.js";
 import { OcrSourceManifestHeadSchema, buildOcrSourceManifest, ocrPageInputs } from "./source-manifest.js";
 import { bindCanonicalManualOcrReading } from "./page-accounting.js";
-import { OCR_PAGE_EXAMPLE } from "../ocr-page/input.js";
+import { manualOcrPageInput, OCR_PAGE_EXAMPLE } from "../ocr-page/input.js";
 
 export const OCR_SOURCE_MANIFEST_EXAMPLE = buildOcrSourceManifest(OCR_INPUT_EXAMPLE.document, { pageCount: 1,
   pages: [{ sourcePage: 1, image: OCR_PAGE_EXAMPLE.page.image }] });
 
 /** Every original page paired with its reading, derived from the rendered pages; throws when manual assertions do not cover every page once. */
-export function ocrPageWorkInputs(request: Pick<z.infer<typeof OcrInputSchema>, "document" | "readingId" | "formType" | "reading" | "extractWithOcr">, rendered: z.infer<typeof ExtractPdfPagesOutputSchema>) {
+export function ocrPageWorkInputs(request: Pick<z.infer<typeof OcrInputSchema>, "document" | "readingId" | "formType" | "reading" | "extractWithOcr" | "assertedPageCount">, rendered: z.infer<typeof ExtractPdfPagesOutputSchema>) {
   const manifest = buildOcrSourceManifest(request.document, rendered);
+  if (request.assertedPageCount !== undefined && request.assertedPageCount !== manifest.pageCount) {
+    throw new Error("The typed page count does not match the original PDF.");
+  }
   if (request.extractWithOcr === false) {
     if (request.formType !== "emergency-contact" || request.reading.kind !== "subscription") {
       throw new Error("Starting without OCR requires Emergency Contact and no manual reading assertions.");
@@ -29,6 +32,7 @@ export function ocrPageWorkInputs(request: Pick<z.infer<typeof OcrInputSchema>, 
     if (reading.kind === "subscription") return { page, reading };
     const assertion = reading.assertions.find(assertion => assertion.sourcePage === page.sourcePage);
     if (assertion === undefined) throw new Error("Manual OCR assertion is missing an original page.");
+    if ("values" in assertion) return manualOcrPageInput(page, reading.actorId, assertion.values);
     bindCanonicalManualOcrReading(page, reading.actorId, assertion.extraction);
     return { page, reading: { kind: "manual" as const, actorId: reading.actorId, extraction: assertion.extraction } };
   }) };

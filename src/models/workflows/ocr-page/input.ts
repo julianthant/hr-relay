@@ -1,11 +1,21 @@
 import { z } from "zod";
-import { AdmittedExtractionSchema } from "../../ocr/extraction.js";
-import { OcrPageInputSchema } from "../ocr/source-manifest.js";
+import { AdmittedExtractionSchema, SubmittedExtractionSchema } from "../../ocr/extraction.js";
+import { bindManualOcrPageReading } from "../ocr/page-accounting.js";
+import { OcrPageInputSchema, type OcrPageInput } from "../ocr/source-manifest.js";
 
-export const ManualOcrAssertionSchema = z.strictObject({
-  sourcePage: z.number().int().positive(),
-  extraction: AdmittedExtractionSchema,
-});
+export const ManualOcrPageValuesSchema = SubmittedExtractionSchema.pick({ pageKind: true, readAt: true, record: true });
+const SourcePageSchema = OcrPageInputSchema.shape.sourcePage;
+export const ManualOcrDocumentPageValuesSchema = ManualOcrPageValuesSchema.extend({ sourcePage: SourcePageSchema });
+export const ManualOcrAssertionSchema = z.union([
+  z.strictObject({ sourcePage: SourcePageSchema, extraction: AdmittedExtractionSchema }),
+  z.strictObject({ sourcePage: SourcePageSchema, values: ManualOcrPageValuesSchema }),
+]);
+
+export function manualOcrPageInput(page: OcrPageInput, actorId: string, values: z.output<typeof ManualOcrPageValuesSchema>) {
+  const { extraction } = bindManualOcrPageReading(page, actorId, { ...values, formType: page.formType,
+    sourcePage: page.sourcePage, sourceSha256: page.image.sha256, source: { kind: "operator", actorId } });
+  return { page, reading: { kind: "manual" as const, actorId, extraction } };
+}
 export const OcrPageWorkflowInputSchema = z.strictObject({
   page: OcrPageInputSchema,
   reading: z.discriminatedUnion("kind", [

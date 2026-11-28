@@ -18,6 +18,9 @@ import { deriveItemId } from "../../../src/rules/identity/identifiers.js";
 import { admittedPage, sourceFixture, submittedPage, SOURCE_RUN_ID, READ_AT } from "../../support/fixtures/ocr/source-pages.js";
 import { readOcrPageFixture } from "../../support/fixtures/ocr/read-page.js";
 import { ocrTaskContext } from "../../support/fixtures/ocr/task-context.js";
+import { applyStartStepSelection, projectStartRows, projectStartSteps, resolveStartStepOmissions, startRowWire } from "../../../src/backend/runs/start/step-selection.js";
+import { lastIncludedSwitch, startRowsOf } from "../../../src/dashboard/surfaces/run-start/run-steps-model.js";
+import { StartPlanIngressSchema } from "../../../src/models/dashboard/start-plan.js";
 
 const descriptor = compileWorkflow(ocrPageWorkflow).descriptor;
 const extract = descriptorRuntimeNodes(descriptor).find(node => node.id === "extract");
@@ -26,6 +29,24 @@ assert.ok(extract?.kind === "task" && bind?.kind === "task" && extract.when !== 
 const extractionCondition = extract.when;
 
 describe("child-only OCR page graph", () => {
+  it("can replace its sole Start row with a typed reading of the exact page", async () => {
+    const rows = startRowsOf({ steps: projectStartSteps(descriptor), rows: projectStartRows(descriptor).map(startRowWire) });
+    const [row] = rows;
+    assert.ok(row);
+    assert.equal(lastIncludedSwitch(row, rows, ["read-page"], []), false);
+    const { inputs } = sourceFixture(1);
+    const input = JsonValueSchema.parse({ page: inputs[0], reading: { kind: "subscription" } });
+    const request = StartPlanIngressSchema.parse({ workflowId: descriptor.id, submissions: [input], dryRun: false,
+      selectedStepKeys: [], stepOmissions: [{ step: "read-page", facts: { reading: JSON.stringify({ pageKind: "blank", readAt: READ_AT, record: null }) } }] });
+    const omissions = resolveStartStepOmissions(descriptor, request.selectedStepKeys, request.stepOmissions, input);
+    const bound = OcrPageWorkflowInputSchema.parse(applyStartStepSelection(descriptor, input, request.selectedStepKeys, omissions));
+    const { reading, requests } = await readOcrPageFixture(bound);
+    assert.deepEqual(requests, []);
+    assert.deepEqual(reading.input, inputs[0]);
+    assert.equal(reading.extraction.sourceSha256, inputs[0].image.sha256);
+    assert.deepEqual(reading.extraction.source, { kind: "operator", actorId: "local-operator" });
+  });
+
   it.each(["emergency-contact", "oath", "i9"] as const)("calls the existing subscription task for %s and retains canonical child identity", async formType => {
     const { inputs } = sourceFixture(1, formType);
     const input = OcrPageWorkflowInputSchema.parse({ page: inputs[0], reading: { kind: "subscription" } });

@@ -332,7 +332,21 @@ export function applyStartStepSelection(
       ? step.control.selectedWhen
       : !step.control.selectedWhen;
   }
-  return JsonValueSchema.parse(customized);
+  return applyStepOmissionInputs(descriptor, JsonValueSchema.parse(customized), stepOmissions);
+}
+
+export function applyStepOmissionInputs(descriptor: AnyWorkflowDescriptor, input: JsonValue, omissions?: StepOmissions): JsonValue {
+  let bound = input;
+  for (const spec of descriptor.stepOmissions) {
+    const entry = omissions?.find(({ workflow, step }) => workflow === undefined && step === spec.step);
+    if (entry === undefined || spec.bindInput === undefined) continue;
+    try {
+      bound = spec.bindInput(bound, stepOmissionFactsSchema(spec.form).parse(entry.facts));
+    } catch {
+      throw new StartStepOmissionRefusedError("facts-invalid", `${descriptor.id} start step ${spec.step} cannot bind its typed values to the input`);
+    }
+  }
+  return bound;
 }
 
 /** The Start run rows, each with its kind and lock reason, from the declared rows or one per timeline step; a child member or target reads the bound child. */
