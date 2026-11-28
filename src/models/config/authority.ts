@@ -77,7 +77,10 @@ export const AuthorityTableNameSchema = z.enum([
 export const CHANGE_LOG_TABLE = "authority_changes";
 /** Which rows name which run inside their JSON, derived from those rows by triggers; outside the registry like the change log. */
 export const RUN_REFERENCES_TABLE = "run_references";
-export const AUTHORITY_DERIVED_TABLES = deepFreeze([CHANGE_LOG_TABLE, RUN_REFERENCES_TABLE] as const);
+export const CHANGE_TRACKING_TABLES = deepFreeze([CHANGE_LOG_TABLE, RUN_REFERENCES_TABLE] as const);
+export const RUN_SEARCH_FTS_TABLES = deepFreeze(["run_search_fts", "run_search_fts_config", "run_search_fts_content",
+  "run_search_fts_data", "run_search_fts_docsize", "run_search_fts_idx"] as const);
+export const AUTHORITY_DERIVED_TABLES = deepFreeze([...CHANGE_TRACKING_TABLES, ...RUN_SEARCH_FTS_TABLES] as const);
 
 export const ProjectionTableNameSchema = z.enum([]);
 

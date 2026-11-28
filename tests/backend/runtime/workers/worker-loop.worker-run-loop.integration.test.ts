@@ -71,6 +71,128 @@ it("rejects stale and duplicate worker control sequences", async () => {
 });
 
 describe("worker run loop", () => {
+  for (const wakeDelivered of [true, false]) it(wakeDelivered
+    ? "rechecks for work when a wake arrives during an empty claim"
+    : "claims on the idle repoll if the work wake was lost", async () => {
+    const h = await loopHarness({ exitWhenIdle: false });
+    const empty = Promise.withResolvers<void>(), releaseEmpty = Promise.withResolvers<void>();
+    const unexpected = (): never => { throw new Error("unrequested control"); };
+    const child = createWorkerChildChannel({ clock: h.authority.clock, send: unexpected, onStop: unexpected,
+      handlers: { refreshBrowser: unexpected, reopenBrowser: unexpected, checkParkedWrite: unexpected,
+        closeForRemoval: unexpected, pause: unexpected, resume: unexpected } });
+    let claims = 0;
+    const looping = runWorkerLoop({ ...h.deps, idleRepollMs: 30_000, watchForWork: child.watchForWork,
+      claimNext: async (request, sessions) => {
+        claims += 1;
+        const outcome = await h.deps.claimNext(request, sessions);
+        if (claims === 1) { empty.resolve(); await releaseEmpty.promise; }
+        if (claims === 3) h.stop.abort();
+        return outcome;
+      } });
+    try {
+      await Promise.race([empty.promise, looping]);
+      h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+      if (wakeDelivered) child.receive({ kind: "worker-work-available" });
+      releaseEmpty.resolve();
+      if (!wakeDelivered) {
+        await new Promise<void>(resolve => setImmediate(resolve));
+        assert.equal(claims, 1);
+        const [timer] = h.scheduler.pending();
+        assert.ok(timer);
+        assert.equal(timer.deadlineMonotonicMs - h.authority.clock.monotonicMs(), 30_000);
+        timer.fire();
+      }
+      assert.deepEqual((await looping).outcomes.map(outcome => outcome.state), ["done"]);
+    } finally { releaseEmpty.resolve(); h.stop.abort(); await looping; }
+  });
+
+  it("checks queued work immediately when a paused worker resumes", async () => {
+    const h = await loopHarness();
+    let paused = true;
+    const unexpected = (): never => { throw new Error("unrequested control"); };
+    const child = createWorkerChildChannel({ clock: h.authority.clock, send: () => undefined, onStop: unexpected,
+      handlers: { refreshBrowser: unexpected, reopenBrowser: unexpected, checkParkedWrite: unexpected,
+        closeForRemoval: unexpected, pause: unexpected, resume: () => { paused = false; return { directive: "run" }; } } });
+    h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+    const looping = runWorkerLoop({ ...h.deps, watchForWork: child.watchForWork, controlPoll: () => paused ? "pause" : "run" });
+    try {
+      assert.equal(h.authority.database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+      assert.equal(h.scheduler.pending().length, 1);
+      child.receive({ kind: "worker-resume", requestId: randomUUID(), sequence: 1 });
+      assert.deepEqual((await looping).outcomes.map(outcome => outcome.state), ["done"]);
+    } finally { h.stop.abort(); await looping; }
+  });
+
+  for (const removalRefused of [false, true]) it(removalRefused
+    ? "claims work admitted during a removal close as soon as the close refuses"
+    : "claims work admitted during a browser control as soon as the control settles", async () => {
+    const h = await loopHarness({ exitWhenIdle: false });
+    const control = Promise.withResolvers<null>();
+    const unexpected = (): never => { throw new Error("unrequested control"); };
+    const child = createWorkerChildChannel({ clock: h.authority.clock, send: () => undefined, onStop: unexpected,
+      handlers: { refreshBrowser: () => control.promise, reopenBrowser: unexpected, checkParkedWrite: unexpected,
+        closeForRemoval: () => control.promise, pause: unexpected, resume: unexpected } });
+    const looping = runWorkerLoop({ ...h.deps, idleRepollMs: 30_000, watchForWork: child.watchForWork,
+      claimTurn: { begin: child.beginRun, end: child.endRun } });
+    const readRun = () => h.authority.database.authority.runs.get(RUN_ID);
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const [idle] = h.scheduler.pending();
+      assert.ok(idle);
+      child.receive({ kind: "worker-request", requestId: randomUUID(), sequence: 1,
+        sentAt: h.authority.clock.now().toISOString(), deadlineMs: 10_000,
+        request: removalRefused ? { type: "close-for-removal" } : { type: "refresh-browser", browserSessionId: randomUUID() } });
+      h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+      child.receive({ kind: "worker-work-available" });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(readRun()?.lifecycle.state, "queued");
+      assert.ok(idle.cancelled(), "the admission wake reached the idle claim loop");
+      const [waitingForControl] = h.scheduler.pending();
+      assert.ok(waitingForControl);
+      assert.equal(waitingForControl.deadlineMonotonicMs - h.authority.clock.monotonicMs(), 30_000);
+
+      if (removalRefused) control.reject(new Error("fixture removal close refused"));
+      else control.resolve(null);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(readRun()?.claimGeneration, 1, "the control release should trigger a claim without the idle timer");
+      assert.ok(waitingForControl.cancelled());
+    } finally { control.resolve(null); h.stop.abort(); await looping; }
+  });
+
+  it("fences a new admission after the removal close acknowledges and until Stop", async () => {
+    const h = await loopHarness({ exitWhenIdle: false });
+    const unexpected = (): never => { throw new Error("unrequested control"); };
+    const replies: WorkerChildMessage[] = [];
+    let stopRequested = false;
+    const child = createWorkerChildChannel({ clock: h.authority.clock, send: message => { replies.push(message); },
+      onStop: () => { stopRequested = true; },
+      handlers: { refreshBrowser: unexpected, reopenBrowser: unexpected, checkParkedWrite: unexpected,
+        closeForRemoval: async () => ({ closed: true }), pause: unexpected, resume: unexpected } });
+    const looping = runWorkerLoop({ ...h.deps, idleRepollMs: 30_000, watchForWork: child.watchForWork,
+      claimTurn: { begin: child.beginRun, end: child.endRun }, controlPoll: () => stopRequested ? "stop" : "run" });
+    const readRun = () => h.authority.database.authority.runs.get(RUN_ID);
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const requestId = randomUUID();
+      child.receive({ kind: "worker-request", requestId, sequence: 1,
+        sentAt: h.authority.clock.now().toISOString(), deadlineMs: 10_000, request: { type: "close-for-removal" } });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.deepEqual(replies, [{ kind: "worker-reply", requestId, outcome: { state: "done", result: { closed: true } } }]);
+
+      h.authority.database.authority.runs.enqueue(personLookupQueuedRun());
+      child.receive({ kind: "worker-work-available" });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(readRun()?.claimGeneration, 0, "a successfully closed worker must leave the run queued while awaiting Stop");
+      const [waitingForStop] = h.scheduler.pending();
+      assert.ok(waitingForStop);
+
+      child.receive({ kind: "worker-stop", reason: "remove", mode: "after-run" });
+      assert.ok(waitingForStop.cancelled(), "Stop should wake the fenced worker without the idle timer");
+      assert.equal((await looping).stopped, "stop-directive");
+      assert.equal(readRun()?.lifecycle.state, "queued");
+    } finally { h.stop.abort(); await looping; }
+  });
+
   it("stops with a typed preflight refusal before sessions or execution and never repeats the claim", async () => {
     const h = await loopHarness(); let claims = 0;
     const report = await runWorkerLoop({ ...h.deps, claimNext: () => {
