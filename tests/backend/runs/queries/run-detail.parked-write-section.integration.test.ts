@@ -467,7 +467,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
       ["saved", { via: "action", actionKey: "recheck-write" }],
       ["not-saved", { via: "action", actionKey: "resolve-write-absent" }],
     ]);
-    assert.equal(payload.decision?.context, "UCPath accepted the submit; status unreadable. Check Smart HR Transactions in UCPath.");
+    assert.equal(payload.decision?.context, "Submit did not confirm. Check Smart HR Transactions in UCPath.");
     const serialized = JSON.stringify(payload);
     assert.ok(!serialized.includes(idempotencyKey));
     assert.ok(!serialized.includes("hrauto-repeat"));
@@ -475,7 +475,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
 
   describe("a Kuali finalization park names its document only for unprotected input", () => {
     const KEY = "kuali:3170001|finalization|T00012345";
-    const kualiIntent = () => parkedIntentOf({ taskId: "kuali/save-separation-finalization", system: "kuali", idempotencyKey: KEY });
+    const kualiIntent = () => parkedIntentOf({ taskId: "kuali/save-separation-finalization", system: "kuali", idempotencyKey: KEY, readBack: true });
 
     it("names the document in the context", async () => {
       const w = await world();
