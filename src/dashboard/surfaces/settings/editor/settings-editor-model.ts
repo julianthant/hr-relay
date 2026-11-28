@@ -80,14 +80,19 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     ? { state: "failed", message: formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_INITIAL_READ_UNAVAILABLE", {})).text } : shownEditor, [streamUnavailable, shownEditor]);
   const [draft, setDraft] = useState<SettingsDraft>({});
   const [saving, setSaving] = useState(false);
+  /** The paths of the command in flight: only their rows show a spinner. */
+  const [savingPaths, setSavingPaths] = useState<readonly string[]>([]);
   const busy = useRef(false);
   /** Toggles and choices save without the typing wait; the last change decides. */
   const saveAtOnce = useRef(false);
-  // Edits wait for a fresh read of what is shown: a kept copy, or a document the resource has since replaced, decides nothing.
+  // Fields stay editable while a read is in flight; a save waits for a fresh read of what is shown, since a kept copy decides nothing.
   const readReady = acceptedRequest.current === request && observation.state === "loaded" && editor.state === "loaded" && editor.document === observation.value;
   // A row the stream could not read keeps the shown document display-only until the next good row.
   const readProblem = reportedReadProblem ?? (streamed?.unavailable === true
     ? formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_REFRESH_UNAVAILABLE", {})).text : undefined);
+  // A document this visit's authority verified stays editable through a re-read; only a read problem, or a document this authority's read does not hold, locks it.
+  const verified = editor.state === "loaded" && (acceptedRequest.current === request || editor.document === observation.value);
+  const editable = verified && readProblem === undefined;
   const refresh = useCallback(async (publish = true): Promise<EditableSettingsWire> => {
     try {
       const read = async (): Promise<EditableSettingsWire> => {
@@ -129,14 +134,14 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     const accepted = keepProtected(document);
     acceptedRequest.current = request; resource.accept(accepted); setEditor({ state: "loaded", document: accepted }); setReadProblem(undefined);
   }, [streamed, request, resource, editor.state, setEditor, keepProtected]);
-  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && reportedReadProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
+  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && reportedReadProblem === undefined, editable: verified && reportedReadProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
     const leaf = leaves.find(candidate => candidate.path === path);
     return [path, leaf === undefined ? "This setting is no longer served. Reset its draft." : draftError(leaf, operation)];
   }));
   const update = (path: string, raw: SettingsDraftInput, immediate = false): void => {
-    if (!readReady || readProblem !== undefined) return;
+    if (!editable) return;
     saveAtOnce.current = immediate;
     const leaf = leaves.find(candidate => candidate.path === path); if (leaf === undefined) return;
     setDraft(previous => {
@@ -148,12 +153,12 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     });
   };
   const clear = (path: string): void => {
-    if (!readReady || readProblem !== undefined) return;
+    if (!editable) return;
     const leaf = leaves.find(candidate => candidate.path === path); if (leaf === undefined) return;
     setDraft(previous => ({ ...previous, ...Object.fromEntries(coupledSettingsLeaves(leaf, leaves).map(value => [value.path, { kind: "clear" as const }])) }));
   };
   const reset = (path: string): void => {
-    if (!readReady || readProblem !== undefined) return;
+    if (!editable) return;
     const leaf = leaves.find(candidate => candidate.path === path); if (leaf === undefined) return;
     setDraft(previous => {
       const next = { ...previous };
@@ -176,7 +181,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   };
   const perform = async (command: OrdinarySettingsAttempt, sent: SettingsDraft): Promise<void> => {
     if (busy.current) return;
-    busy.current = true; setSaving(true);
+    busy.current = true; setSaving(true); setSavingPaths(Object.keys(sent));
     try {
       if (binding === undefined || command.requestedBy !== binding.scope.actorId) { failed(sent); return; }
       let readDocument: EditableSettingsWire | undefined;
@@ -237,7 +242,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       if (!landed) { failed(sent); return; }
       acceptedRequest.current = currentRequest.current; resource.accept(served); setEditor({ state: "loaded", document: served }); setReadProblem(undefined);
       settle(sent);
-    } finally { busy.current = false; setSaving(false); }
+    } finally { busy.current = false; setSaving(false); setSavingPaths([]); }
   };
 
   const submit = (): void => {
@@ -267,7 +272,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     } else if (!busy.current && Object.keys(draft).some(key => path === key || path.startsWith(`${key}.`))) submit();
   };
   const reload = (): void => { void refresh().catch(() => undefined); };
-  return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: IDLE_SAVE, protectedEditor, leaves, readProblem,
-    dirtyCount: Object.keys(draft).length, locked: !readReady || readProblem !== undefined,
+  return Object.freeze({ editor, savingPaths, refreshing: observation.state === "loading", draft, errors, save: IDLE_SAVE, protectedEditor, leaves, readProblem,
+    dirtyCount: Object.keys(draft).length, locked: !editable,
     update, reset, clear, discard, submit, reload, onFieldBlur, readCurrent: () => refresh() });
 }

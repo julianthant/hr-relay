@@ -62,6 +62,25 @@ const LOAD = {
   loaded: scene("General, every setting read", { play: loaded }),
 } satisfies Record<EditableSettingsState["state"], Story>;
 
+/** The edit every refresh story makes: the Job end date typed into while the re-read is held. */
+const JOB_END = 'text="Job end date"';
+const editDuringReread = async (page: Page): Promise<void> => {
+  const month = page.getByRole("spinbutton", { name: /^month, Job end date/ }).first();
+  await month.waitFor();
+  await page.waitForTimeout(1200);
+  await month.click();
+  await page.keyboard.type("06302027");
+};
+const release = async (page: Page): Promise<void> => { await page.evaluate(() => { Reflect.apply(Reflect.get(window, "releaseSettingsRead") as () => void, window, []); }); await page.waitForTimeout(300);
+  const month = await page.getByRole("spinbutton", { name: /^month, Job end date/ }).first().textContent();
+  if (month?.trim() !== "06") throw new Error(`the edited Job end date did not survive the re-read: ${String(month)}`);
+};
+
+const REFRESH = {
+  held: scene("General over its kept document during a held re-read, a field mid-edit", { server: { read: "hold-later" }, host: { rereadOnceLoaded: true }, play: editDuringReread, story: { ready: JOB_END } }),
+  landed: scene("General after the re-read lands, the edit kept", { server: { read: "hold-later" }, host: { rereadOnceLoaded: true }, play: then(editDuringReread, release), story: { ready: JOB_END } }),
+} satisfies Record<"held" | "landed", Story>;
+
 const SECTION = {
   general: scene("General page", { play: loaded }),
   account: scene("Account page", { section: "account", story: { ready: 'h1:has-text("Account"), h2:has-text("Account")' } }),
@@ -216,7 +235,7 @@ const CREDENTIAL_RECOVERY = {
 
 export const SETTINGS_STORIES = defineSurface("settings", {
   load: LOAD, section: SECTION, resolution: RESOLUTION, runtime: RUNTIME, credentials: CREDENTIALS, "credential-recovery": CREDENTIAL_RECOVERY, "credential-combo": CREDENTIAL_COMBO,
-  save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, "duo-keys": DUO_KEYS, notice: NOTICE,
+  refresh: REFRESH, save: SAVE, "save-combo": SAVE_COMBO, chatgpt: CHATGPT, plan: PLAN, delete: DELETE, search: SEARCH, dialog: DIALOG, action: ACTION, "duo-keys": DUO_KEYS, notice: NOTICE,
   permission: PERMISSION,
 });
 
