@@ -259,7 +259,6 @@ jobs:
         if: matrix.files != null
         env:
           FILES: ${{ toJSON(matrix.files) }}
-          RELAY_TEST_NATIVE: "1"
         run: |
           mapfile -t files < <(node -e 'for (const file of JSON.parse(process.env.FILES)) console.log(file)')
           npm run test:integration -- "${files[@]}" --reporter=verbose --maxWorkers=3

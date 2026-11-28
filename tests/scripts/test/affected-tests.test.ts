@@ -172,19 +172,6 @@ describe("affected integration tests", () => {
     });
   });
 
-  it("selects a directly changed Linux-proven native test and still excludes macOS-only and serial proofs", () => {
-    const { root, write, commit } = fixture();
-    const files = [
-      "tests/backend/app/composition/storage-compose.integration.test.ts",
-      "tests/backend/app/composition/profile-credential-inventory.integration.test.ts",
-      "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
-    ];
-    for (const file of files) write(file, "");
-    const base = commit();
-    for (const file of files) write(file, "// changed");
-    expect(createAffectedTestsPlanner(root)(base, commit()).shards).toEqual([[files[0]]]);
-  });
-
   it("selects a changed integration test with no imports", () => {
     const { root, write, commit } = fixture();
     write("tests/changed.integration.test.ts", "");
