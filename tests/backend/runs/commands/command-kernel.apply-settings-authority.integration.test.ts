@@ -3,11 +3,12 @@ import { createProfileFixtureSet, createBoundProfileFixture } from "../../../sup
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
+import { replay as replayCommand } from "../../../../src/backend/runs/commands/command-replay.js";
 import { type SettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-command.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { SETTINGS_SCHEMA_HASH, SettingsApplyRejectionCodeSchema, derivePersistedSettingsFingerprint, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
-import { deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
+import { CommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
@@ -118,6 +119,8 @@ describe("apply-settings authority", () => {
     assert.equal(harness.database.authority.settingsCurrent.get()?.commandId, command.commandId);
     assert.equal(harness.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "applied");
 
+    assert.throws(() => replayCommand({}, harness.database.authority, CommandRequestSchema.parse(command), NOW),
+      /replay reached a composition with no settings application executor/);
     const replay = harness.kernel.execute(command);
     assert.deepEqual(replay, {
       state: "already-applied",

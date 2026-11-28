@@ -191,8 +191,8 @@ describe("gate resolution", () => {
     const beforeEvents = harness.database.authority.timelineEvents.page({});
     const beforeGeneration = harness.database.getMeta().authorityGeneration;
     const result = harness.kernel.execute(command);
-    assert.equal(result.state, "rejected");
-    if (result.state === "rejected") assert.equal(result.code, expectedCode);
+    assert.ok(result.state === "rejected", JSON.stringify(result));
+    assert.equal(result.code, expectedCode);
     assert.deepEqual(harness.database.authority.runs.get(runId), beforeRun);
     assert.equal(harness.database.authority.gateResults.get(`${runId}:${command.target.gateId}`), undefined);
     assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
@@ -211,6 +211,33 @@ describe("gate resolution", () => {
     descriptors[index] = { ...identityCheckDescriptor, contractFingerprint: FingerprintSchema.parse(HASH_B) };
     assertGateRefusalHasNoMutation(harness, staged.runId,
       gateCommand(staged.runId, staged.version, identityResult(staged)), "schema-mismatch");
+  });
+
+  it("keeps the run parked when the gate or its retained checkpoint does not match", async () => {
+    let evidence: { checkpoint?: RunCheckpointRecord } | undefined;
+    const harness = await createHarness(repositories => ({
+      ...repositories,
+      runCheckpoints: {
+        ...repositories.runCheckpoints,
+        latest: (...args) => evidence === undefined ? repositories.runCheckpoints.latest(...args) : evidence.checkpoint,
+      },
+    }));
+    const staged = stageIdentityGateRun(harness);
+    const decision = identityResult(staged);
+
+    const wrongGate = assertGateRefusalHasNoMutation(harness, staged.runId,
+      gateCommand(staged.runId, staged.version, decision, "other-gate"), "invalid-state");
+    assert.match(wrongGate.message, /parked on gate identity-approval, not other-gate/);
+
+    evidence = {};
+    const missing = assertGateRefusalHasNoMutation(harness, staged.runId,
+      gateCommand(staged.runId, staged.version, decision), "invalid-state");
+    assert.match(missing.message, /dependency checkpoint comparison is absent/);
+
+    evidence = { checkpoint: { ...staged.checkpoint, contractFingerprint: FingerprintSchema.parse(HASH_B) } };
+    const incompatible = assertGateRefusalHasNoMutation(harness, staged.runId,
+      gateCommand(staged.runId, staged.version, decision), "schema-mismatch");
+    assert.match(incompatible.message, /dependency checkpoint comparison is not compatible/);
   });
 
   it("confirms the real gate node through typed transport and retains uncertainty for divergent readback", async () => {
