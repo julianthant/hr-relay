@@ -5,6 +5,7 @@ import { CRM_DOCUMENT_ROSTER_FIELDS, CrmWorksheetPersonSchema } from "../../mode
 import { CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema } from "../../models/workflows/crm-doc-download/read-document-rows.js";
 import { ONBOARDING_ROSTER_TYPE_ID } from "../../models/workflows/onboarding/roster.js";
 import { FingerprintSchema } from "../identity/ids.js";
+import { resolveWorksheetRows } from "../spreadsheets/reference-rows.js";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { matchesCrmDocumentSubject } from "./documents.js";
 
@@ -47,7 +48,7 @@ export function resolveCrmDocumentRows(value: z.input<typeof CrmDocumentRecordsS
     }
   }
   return records.map(record => {
-    const candidates = new Map<string, Candidate>();
+    const candidates = new Map<string, { candidate: Candidate; values: Reference["snapshot"]["rows"][number]["matches"][number]["values"] }>();
     for (const source of sources) {
       const { snapshot } = source.reference;
       for (const key of emails(record)) {
@@ -70,15 +71,16 @@ export function resolveCrmDocumentRows(value: z.input<typeof CrmDocumentRecordsS
           });
           const membership = JSON.stringify([source.referenceDigest, row.worksheetId, row.rowId]);
           if (candidates.has(membership)) throw new Error("CRM document reference repeats a worksheet row");
-          candidates.set(membership, { key, referenceDigest: source.referenceDigest, row });
+          candidates.set(membership, { candidate: { key, referenceDigest: source.referenceDigest, row }, values });
         }
       }
     }
     const matches = [...candidates.values()];
-    const [selected] = matches;
-    const resolution = matches.length === 1 && selected !== undefined
-      ? { state: "resolved" as const, selected }
-      : { state: "resolve-required" as const, reason: matches.length === 0 ? "row-missing" as const : "row-ambiguous" as const, candidates: matches };
+    const resolved = resolveWorksheetRows(matches, ({ candidate, values }) => ({ key: candidate.key, values }));
+    const resolution = resolved.state === "resolved"
+      ? { state: "resolved" as const, selected: resolved.row.candidate }
+      : { state: "resolve-required" as const, reason: resolved.state === "missing" ? "row-missing" as const : "row-ambiguous" as const,
+        candidates: matches.map(({ candidate }) => candidate) };
     return { ...record, resolution };
   });
 }

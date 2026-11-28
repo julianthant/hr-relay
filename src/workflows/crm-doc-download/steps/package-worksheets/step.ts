@@ -100,7 +100,7 @@ export const crmDocumentPackageWorksheetsDefinition = defineStep({
   nodePurposes: [{ nodeId: "worksheet-archives", purpose: "Verify retained PDFs and exact row choices, then retain one ZIP per worksheet and one publication collection." }],
   proof: { id: "crm-doc-download-package-worksheets", order: 24,
     build: (parent: WorkflowDefinition<typeof CrmDocDownloadInput>) => ({
-      ...inheritStepProof(parent), code: "cdp", label: group.label,
+      ...inheritStepProof(parent), version: 2, code: "cdp", label: group.label,
       summary: "Proves the complete identity-to-worksheet archive path and its retained output collection.",
       steps: () => ({ steps: parent.steps, result: parent.result }),
     }),

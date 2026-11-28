@@ -13,7 +13,7 @@ import { crmDocumentPackageWorksheetsDefinition } from "./steps/package-workshee
 const packageStep = crmDocumentPackageWorksheetsDefinition.group.key;
 
 export const crmDocDownloadWorkflow = defineWorkflow({
-  id: "crm-doc-download", version: 1, code: "cd", label: "CRM Document Download", icon: "FileText", category: "documents",
+  id: "crm-doc-download", version: 2, code: "cd", label: "CRM Document Download", icon: "FileText", category: "documents",
   summary: "Download verified CRM PDFs and package one archive in each person's worksheet folder using the selected spreadsheet version's legal and lived names.",
   requiredWorkbookFields: [...CRM_DOCUMENT_ROSTER_FIELDS],
   workbookReference: { id: ONBOARDING_ROSTER_TYPE_ID, keyFieldId: "email", mode: "keys", writableFields: [] },

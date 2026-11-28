@@ -106,7 +106,7 @@ export const crmDocumentReferenceDefinition = defineStep({
   ],
   proof: { id: "crm-doc-download-reference", order: 22,
     build: (parent: WorkflowDefinition<typeof CrmDocDownloadInput>) => ({
-      ...inheritStepProof(parent), code: "cdr", label: group.label, summary: "Proves run-bound reference reads and explicit worksheet row resolution.",
+      ...inheritStepProof(parent), version: 2, code: "cdr", label: group.label, summary: "Proves run-bound reference reads and explicit worksheet row resolution.",
       steps: (author: WorkflowAuthor<typeof CrmDocDownloadInput>) => {
         const search = buildSearchRecords(author, false), reference = buildReference(author, search, false);
         return { steps: [...search.steps, ...reference.steps], result: reference.result };

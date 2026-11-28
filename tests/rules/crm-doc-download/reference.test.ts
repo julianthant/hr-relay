@@ -20,11 +20,16 @@ it("resolves an EID-learned email and mixed batch to only their exact worksheet 
   ]);
 });
 
-it("keeps missing rows and every duplicate or alternative-email match unresolved", () => {
+it("collapses agreeing worksheet rows and keeps missing, conflicting or alternative-email matches unresolved", () => {
   const missing = reference(); missing.snapshot.rows[0] = { key: "one@example.test", state: "missing", matches: [] };
   assert.deepEqual(rowsOf(missing)[0]?.resolution, { state: "resolve-required", reason: "row-missing", candidates: [] });
   const duplicate = reference(), row = duplicate.snapshot.rows[0]; assert.ok(row?.matches[0]);
-  row.state = "ambiguous"; row.matches.push({ ...row.matches[0], sheetId: "august", rowId: "duplicate" });
+  const first = row.matches[0];
+  row.state = "ambiguous"; row.matches.push({ ...first, sheetId: "august", rowId: "duplicate" });
+  const resolved = rowsOf(duplicate)[0]?.resolution;
+  assert.equal(resolved?.state, "resolved");
+  assert.equal(resolved.selected.row.worksheetId, "july");
+  row.matches[1] = { ...row.matches[1], values: { ...first.values, firstName: "Different" } };
   const ambiguous = rowsOf(duplicate)[0]?.resolution;
   assert.equal(ambiguous?.state, "resolve-required");
   assert.equal(ambiguous?.state === "resolve-required" && ambiguous.candidates.length, 2);
@@ -55,7 +60,7 @@ it("binds each downloaded identity to its retained row and refuses swapped PDFs 
     } }],
   })) });
   const value = reference(), first = value.snapshot.rows[0], match = first?.matches[0]; assert.ok(first && match);
-  first.state = "ambiguous"; first.matches.push({ ...match, sheetId: "august", rowId: "operator-choice" });
+  first.state = "ambiguous"; first.matches.push({ ...match, sheetId: "august", rowId: "operator-choice", values: { ...match.values, firstName: "Other" } });
   const rows = CrmDocumentRowsSchema.parse({ referenceDigest: digest, sourceDigests: [digest], state: "resolve-required", people: rowsOf(value) });
   assert.throws(() => bindCrmWorksheetPeople(downloads, rows));
   const choice = CrmDocumentRowChoiceSchema.parse({ ...rows, state: "resolved", decision: "selected", people: rows.people.map(person => {
@@ -76,7 +81,7 @@ it("binds each downloaded identity to its retained row and refuses swapped PDFs 
   assert.throws(() => bindCrmWorksheetPeople(downloads, rows, forged));
 });
 
-it("keeps each complete source's coverage and refuses to join or collapse agreeing rows", () => {
+it("keeps each complete source's coverage and selects one row when sources agree", () => {
   const left = reference(), right = reference();
   const shared = right.snapshot.rows[0]?.matches[0]; assert.ok(shared);
   shared.values.firstName = "Other";
@@ -99,6 +104,6 @@ it("keeps each complete source's coverage and refuses to join or collapse agreei
     { referenceDigest: digest, reference: reference() },
     { referenceDigest: "b".repeat(64), reference: agreed },
   ])[0]?.resolution;
-  assert.equal(repeated?.state, "resolve-required");
-  assert.equal(repeated?.state === "resolve-required" && repeated.candidates.length, 2);
+  assert.equal(repeated?.state, "resolved");
+  assert.equal(repeated.selected.referenceDigest, digest);
 });

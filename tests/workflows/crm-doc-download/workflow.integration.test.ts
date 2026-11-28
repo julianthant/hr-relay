@@ -91,7 +91,13 @@ async function runCrm(mode: "complete" | "ambiguous" | "missing" | "download-fai
       const workbook = crmDocumentWorkbookFixture(mode === "ambiguous");
       const selectedSheet = workbook.sheets[0], secondSheet = workbook.sheets[1]; assert.ok(selectedSheet && secondSheet);
       selectedSheet.rows.push(...structuredClone(secondSheet.rows.slice(1)));
-      if (mode === "ambiguous") { const row = secondSheet.rows[1]; assert.ok(row); selectedSheet.rows.push({ ...structuredClone(row), id: "duplicate-two" }); }
+      if (mode === "ambiguous") {
+        const first = selectedSheet.rows.find(row => row.id === "duplicate"), second = secondSheet.rows[1]; assert.ok(first && second);
+        first.cells[1] = { value: "Different" };
+        const conflict = { ...structuredClone(second), id: "duplicate-two" };
+        conflict.cells[1] = { value: "Different" };
+        selectedSheet.rows.push(conflict);
+      }
       if (mode === "missing") { const row = workbook.sheets[0]?.rows[1]; assert.ok(row); row.cells[0] = { value: "missing@example.test" }; }
       const saved = library.create(workbook);
       libraryId = saved.libraryId;
