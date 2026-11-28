@@ -15,7 +15,7 @@ import { deriveRunStatus } from "../../rules/runs/run-status.js";
 import { searchPartitionDay } from "../../models/dashboard/search-calendar.js";
 import { hasProtectedSubject, protectedSubjectDisplay } from "../runs/start/protected-input.js";
 import { AssistantToolRefusal } from "./plugins/plugin.js";
-import type { AssistantReferenceEntry, AssistantReferenceTable } from "./references.js";
+import { ASSISTANT_REFERENCE_KINDS, type AssistantReferenceEntry, type AssistantReferenceTable } from "./references.js";
 
 type BindingBase = Readonly<{ reference: string; entry: AssistantReferenceEntry; value: string; source?: z.input<typeof AssistantValueSourceSchema>; run?: RunRecord; rowRevision?: number }>;
 export type ServerReplyBinding = BindingBase & (
@@ -41,7 +41,7 @@ export function assistantPersonBinding(table: AssistantReferenceTable, reference
 }
 
 function bindingInline(binding: ServerReplyBinding, table: AssistantReferenceTable): AssistantInline {
-  const entry = table.resolve(binding.reference, ["P", "E", "R", "N", "S", "A", "T", "V"]);
+  const entry = table.resolve(binding.reference, ASSISTANT_REFERENCE_KINDS);
   if (canonicalJsonStringify(entry) !== canonicalJsonStringify(binding.entry) || binding.value !== entry.display) refuse("ASSISTANT_READ_STALE");
   const row = binding.run;
   if (row !== undefined && ((binding.rowRevision ?? entry.version) !== row.version || entry.version !== undefined && entry.version !== row.version)) refuse("ASSISTANT_READ_STALE");
@@ -85,9 +85,15 @@ export function resolveAssistantReply(modelText: string, table: AssistantReferen
     if (facts.has(binding.reference)) refuse("ASSISTANT_INVALID");
     facts.set(binding.reference, bindingInline(binding, table));
   }
-  const runs = table.segments(modelText).map(segment => segment.kind === "text" ? { kind: "plain" as const, text: segment.text }
+  const runs = (text: string) => table.segments(text).map(segment => segment.kind === "text" ? { kind: "plain" as const, text: segment.text }
     : facts.get(segment.token) ?? refuse());
-  return parts([{ kind: "text", runs }]);
+  const lines = modelText.trim().split("\n").map(line => line.trim()).filter(Boolean);
+  const question = lines.at(-1), choices = lines.slice(0, -1);
+  if (question === "Which edit should I undo?" && choices.length >= 2 && choices.length <= 20
+    && new Set(choices).size === choices.length && choices.every(line => /^- \[\[U[1-9]\d{0,3}\.g[1-9]\d{0,8}\]\]$/u.test(line))) {
+    return parts([{ kind: "bullets", items: choices.map(line => runs(line.slice(2))) }, { kind: "text", runs: runs(question) }]);
+  }
+  return parts([{ kind: "text", runs: runs(modelText) }]);
 }
 
 export function assistantListParts(rows: readonly (readonly AssistantInline[])[], proof?: Readonly<{ complete: boolean; total: number; target: z.input<typeof AssistantDataTargetSchema> }>): readonly AssistantReplyPart[] {

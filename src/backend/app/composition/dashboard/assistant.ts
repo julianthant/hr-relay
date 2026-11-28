@@ -18,6 +18,7 @@ import type { AssistantPluginDeps } from '../../../assistant/plugins/registry.js
 import type { AssistantWorkflowFacts } from '../../../assistant/plugins/workflows/facts.js';
 import type { NotificationWire } from '../../../../models/dashboard/projection.js';
 import type { WorkbookLibraryService } from '../../../workbooks/workbook-library-service.js';
+import type { Clock } from '../../../../rules/time/clock.js';
 import type { RunRecordService } from '../../../runs/lifecycle/run-record-service.js';
 import type { RunRecord } from '../../../../models/run/record.js';
 import { PersonLookupCanonicalInput, personLookupWorkflow } from '../../../../workflows/person-lookup/workflow.js';
@@ -46,10 +47,12 @@ export function createAssistantPluginDeps(options: Readonly<{
   workbooks: () => Pick<WorkbookLibraryService, 'catalog' | 'read' | 'types'>;
   attachment: AssistantPluginDeps['attachment'];
   edits?: AssistantEditOwner;
+  clock?: Clock;
   facts: () => AssistantWorkflowFacts;
   assertCurrent(): void;
 }>): AssistantPluginDeps {
   const current = <T>(read: () => T): T => { options.assertCurrent(); const value = read(); options.assertCurrent(); return value; };
+  const { clock } = options;
   const label = (row: RunRecord) => protectedSubjectDisplay(row.input.parsed.protectedBindings, () => {
     const eid = lookupEid(row), workflow = options.facts().facts.find(fact => fact.id === row.envelope.workflow)?.label ?? row.envelope.workflow;
     return { title: `${workflow}${row.runNumber === undefined ? '' : ` #${String(row.runNumber)}`}${eid === undefined ? '' : ` · EID ${directIdentifierDisplay(eid)}`} · ${row.envelope.enqueuedAt} · attempt ${String(row.envelope.attempt)}` };
@@ -85,6 +88,7 @@ export function createAssistantPluginDeps(options: Readonly<{
     settings: () => current(() => options.database.withAuthorityReadSnapshot(() => readSettings(options.database.authority).settings)),
     ...(options.edits === undefined ? {} : { edits: options.edits,
       settingsRecord: () => current(() => options.database.withAuthorityReadSnapshot(() => readSettings(options.database.authority))) }),
+    ...(clock === undefined ? {} : { appliedEdits: { clock, list: (since: string) => current(() => options.database.authority.assistantAppliedEdits.list(since)) } }),
     facts: options.facts,
   };
 }

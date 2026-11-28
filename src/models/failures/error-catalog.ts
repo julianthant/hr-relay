@@ -251,6 +251,7 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_SUBJECT_REQUIRED: catalogEntry("Select one person before preparing a proposal.", EmptyParametersSchema),
   ASSISTANT_VALUE_NEEDS_SOURCE: catalogEntry("Provide the exact value or a source for it.", EmptyParametersSchema),
   ASSISTANT_EDIT_STALE: catalogEntry("This changed since I read it. Ask again to use the current value.", EmptyParametersSchema),
+  ASSISTANT_UNDO_STALE: catalogEntry("Not undone: changed since.", EmptyParametersSchema),
   ASSISTANT_EDIT_REFUSED: catalogEntry("Relay could not apply this edit.", EmptyParametersSchema),
   ASSISTANT_SPREADSHEET_REFUSED: catalogEntry("Spreadsheets refused this change. Review the workbook there.", EmptyParametersSchema),
   ASSISTANT_PROPOSAL_REFUSED: catalogEntry("The plan refused this proposal. Review it in Run.", EmptyParametersSchema),
