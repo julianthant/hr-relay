@@ -645,6 +645,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         exitWhenIdle: drain,
         controlPoll: () => stopRequested ? "stop" : paused() ? "pause" : "run",
         claimTurn: { begin: () => channel?.beginRun() ?? true, end: () => { claimedRun = undefined; channel?.endRun(); publish(activityNow()); } },
+        watchForWork: channel?.watchForWork,
         bindSessions: sessions => {
           boundSessions = sessions;
           channel?.ready({ workerId, pid: process.pid, profileId: selected.profileId, sessionGeneration: launch?.sessionGeneration ?? 0,
